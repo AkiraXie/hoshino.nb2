@@ -3,6 +3,14 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Repository-customized
+.vscode
+.env.*
+!.env.prod.example
+data/service
+logs
+
+
 # C extensions
 *.so
 
