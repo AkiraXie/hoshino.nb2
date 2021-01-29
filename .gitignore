@@ -5,6 +5,7 @@ __pycache__/
 
 # Repository-customized
 .vscode
+*.bak
 .env.*
 !.env.prod.example
 data/service
