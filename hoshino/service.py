@@ -20,7 +20,7 @@ from .event import Event, GroupMessageEvent
 from .matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_keyword, on_request
 from .permission import ADMIN, NORMAL, OWNER, Permission
 from .util import get_bot_list
-from .rule import Rule, to_me, regex,keyword
+from .rule import Rule, to_me, regex, keyword
 from .typing import Dict, Iterable, Optional, Union, T_State, Set, List
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.]')
@@ -100,7 +100,7 @@ class Service:
                 gl[g].append((sid, bot))
         return gl
 
-    def check_enabled(self, group_id: int)->bool:
+    def check_enabled(self, group_id: int) -> bool:
         return bool((group_id in self.enable_group) or (
             self.enable_on_default and group_id not in self.disable_group))
 
@@ -135,15 +135,15 @@ class Service:
         kwargs['rule'] = rule
         return on_endswith(msg, **kwargs)
 
-    def on_keyword(self, keywords: Union[Set[str], str],normal:bool=True,only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+    def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
         if isinstance(keywords, str):
             keywords = set(keywords)
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = keyword(keywords,normal) & rule
+        kwargs['rule'] = keyword(keywords, normal) & rule
         return on_message(**kwargs)
 
-    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal:bool=True,only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
         '''
         根据正则表达式进行匹配。
         可以通过 ``state["_matched"]`` 获取正则表达式匹配成功的文本。
@@ -151,7 +151,7 @@ class Service:
         '''
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = regex(pattern, flags,normal) & rule
+        kwargs['rule'] = regex(pattern, flags, normal) & rule
         return on_message(**kwargs)
 
     def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:

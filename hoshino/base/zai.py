@@ -18,6 +18,6 @@ zai = on_command('zai', aliases={'在?', '在？', '在吗', '在么？', '在�
 
 @zai.handle()
 async def handle_zai(bot: Bot):
-    if zaitext:=hsn_config.zai:
+    if zaitext := hsn_config.zai:
         await zai.finish(str(zaitext))
     await zai.finish(Message('はい！私はいつも貴方の側にいますよ！'))

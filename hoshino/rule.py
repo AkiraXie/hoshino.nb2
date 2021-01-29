@@ -12,7 +12,9 @@ from nonebot.typing import T_State
 from nonebot.adapters import Bot, Event
 from nonebot.rule import Rule, to_me
 from .util import normalize_str
-def regex(regex: str, flags: Union[int, re.RegexFlag] = 0,normal:bool=True) -> Rule:
+
+
+def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) -> Rule:
     """
     :说明:
       改自`nonebot.rule.regex`
@@ -20,7 +22,7 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0,normal:bool=True) -> R
       可以通过 ``state["_matched"]`` 获取正则表达式匹配成功的文本。
       可以通过 ``state["match"]`` 获取正则表达式匹配成功后的`match`
       可以通过
-      
+
     :参数:
       * ``regex: str``: 正则表达式
       * ``flags: Union[int, re.RegexFlag]``: 正则标志
@@ -30,27 +32,27 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0,normal:bool=True) -> R
     """
 
     pattern = re.compile(regex, flags)
-    
+
     async def _regex(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
-        text=event.get_plaintext()
+        text = event.get_plaintext()
         if normal:
-          text=normalize_str(text)
+            text = normalize_str(text)
         matched = pattern.search(text)
         if matched:
-            state['match']=matched
+            state['match'] = matched
             state["_matched"] = matched.group()
             return True
         else:
-            state['match']=None
+            state['match'] = None
             state["_matched"] = None
             return False
 
     return Rule(_regex)
-  
 
-def keyword(*keywords: str,normal:bool=True) -> Rule:
+
+def keyword(*keywords: str, normal: bool = True) -> Rule:
     """
     改自 nonebot.rule.keyword
     :说明:
@@ -67,7 +69,7 @@ def keyword(*keywords: str,normal:bool=True) -> Rule:
             return False
         text = event.get_plaintext()
         if normal:
-          text=normalize_str(text)
+            text = normalize_str(text)
         return bool(text and any(keyword in text for keyword in keywords))
 
     return Rule(_keyword)

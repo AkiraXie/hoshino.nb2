@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 18:19:53
+LastEditTime: 2021-01-29 23:26:49
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -12,6 +12,8 @@ from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from loguru import logger
+import os
+import json
 import unicodedata
 import time
 import pytz
@@ -86,6 +88,7 @@ def get_bot_list() -> ItemsView[str, Bot]:
 def sucmd(name: str, rule: Rule = Rule(), aliases: Optional[Iterable] = None, **kwargs) -> Matcher:
     kwargs['aliases'] = aliases
     kwargs['permission'] = SUPERUSER
+    kwargs['rule'] = rule
     return on_command(name, **kwargs)
 
 
@@ -127,9 +130,6 @@ def pic2b64(pic: Image.Image) -> str:
     base64_str = base64.b64encode(
         buf.getvalue()).decode()  # , encoding='utf8')
     return 'base64://' + base64_str
-
-
-
 
 
 def concat_pic(pics, border=5):
