@@ -2,21 +2,21 @@
 Author: AkiraXie
 Date: 2021-01-29 12:54:47
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 14:55:02
+LastEditTime: 2021-01-29 23:53:43
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from functools import cmp_to_key
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
-from hoshino import Service, Bot, Event, service
-from hoshino import permission
+from hoshino import Service, Bot, Event
+from hoshino.rule import to_me
 from hoshino.permission import ADMIN
 from hoshino.matcher import on_command
 from hoshino.typing import T_State
 from .util import manage_service, parse_gid, lssv_parse_gid, parse_service
-lssv = on_command('lssv', aliases={'服务列表', '功能列表'}, permission=ADMIN)
-enable = on_command('enable', aliases={'开启服务', '打开服务', '启用服务'})
-disable = on_command('disable', aliases={'关闭服务', '停用服务', '禁用服务'})
+lssv = on_command('lssv', to_me(), aliases={'服务列表', '功能列表'}, permission=ADMIN)
+enable = on_command('enable', to_me(), aliases={'开启服务', '打开服务', '启用服务'})
+disable = on_command('disable', to_me(), aliases={'关闭服务', '停用服务', '禁用服务'})
 
 
 @lssv.handle()
@@ -73,7 +73,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         state['gids'] = [event.group_id]
         msgs = event.get_plaintext().split(' ')
         for msg in msgs:
-            if msg!='':
+            if msg != '':
                 services.append(msg)
         if len(services) != 0:
             state['services'] = services.copy()
@@ -91,7 +91,7 @@ async def _(bot: Bot, event: Event, state: T_State):
                     continue
                 else:
                     gids.append(gid)
-            elif msg!='':
+            elif msg != '':
                 services.append(msg)
         if failure:
             await disable.send(f'bot未入群 {"，".join(failure)}')
@@ -101,11 +101,10 @@ async def _(bot: Bot, event: Event, state: T_State):
             state['services'] = services.copy()
 
 
-@disable.got('gids', '请输入要关闭服务的群ID，用空格间隔',args_parser=parse_gid)
-@disable.got('services', '请输入服务名称，用空格间隔',args_parser=parse_service)
+@disable.got('gids', '请输入要关闭服务的群ID，用空格间隔', args_parser=parse_gid)
+@disable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
-    await manage_service(disable,bot,event,state)
-
+    await manage_service(disable, bot, event, state)
 
 
 @enable.handle()
@@ -115,7 +114,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         state['gids'] = [event.group_id]
         msgs = event.get_plaintext().split(' ')
         for msg in msgs:
-            if msg!='':
+            if msg != '':
                 services.append(msg)
         if len(services) != 0:
             state['services'] = services.copy()
@@ -133,7 +132,7 @@ async def _(bot: Bot, event: Event, state: T_State):
                     continue
                 else:
                     gids.append(gid)
-            elif msg!='':
+            elif msg != '':
                 services.append(msg)
         if failure:
             await enable.send(f'bot未入群 {"，".join(failure)}')
@@ -143,8 +142,7 @@ async def _(bot: Bot, event: Event, state: T_State):
             state['services'] = services.copy()
 
 
-
-@enable.got('gids', '请输入要开启服务的群ID，用空格间隔',args_parser=parse_gid)
-@enable.got('services', '请输入服务名称，用空格间隔',args_parser=parse_service)
+@enable.got('gids', '请输入要开启服务的群ID，用空格间隔', args_parser=parse_gid)
+@enable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
-    await manage_service(enable,bot,event,state)
+    await manage_service(enable, bot, event, state)

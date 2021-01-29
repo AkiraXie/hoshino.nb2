@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 12:56:12
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 14:54:51
+LastEditTime: 2021-01-29 23:59:52
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -81,8 +81,8 @@ async def lssv_parse_gid(bot: Bot, event: Event, state: T_State):
 
 
 async def manage_service(matcher: Matcher, bot: Bot, event: Event, state: T_State):
-    from . import enable,disable
-    assert matcher in (enable,disable), 'Matcher must be enable or disable'
+    from . import enable, disable
+    assert matcher in (enable, disable), 'Matcher must be enable or disable'
     svs = Service.get_loaded_services()
     succ, notfound = set(), set()
     succ_group = set()
