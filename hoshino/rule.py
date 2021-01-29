@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:10:09
 LastEditors: AkiraXie
-LastEditTime: 2021-01-28 14:14:04
+LastEditTime: 2021-01-29 18:38:26
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,8 +11,8 @@ import re
 from nonebot.typing import T_State
 from nonebot.adapters import Bot, Event
 from nonebot.rule import Rule, to_me
-
-def regex(regex: str, flags: Union[int, re.RegexFlag] = 0) -> Rule:
+from .util import normalize_str
+def regex(regex: str, flags: Union[int, re.RegexFlag] = 0,normal:bool=True) -> Rule:
     """
     :说明:
       改自`nonebot.rule.regex`
@@ -30,11 +30,14 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0) -> Rule:
     """
 
     pattern = re.compile(regex, flags)
-
+    
     async def _regex(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
-        matched = pattern.search(str(event.get_message()))
+        text=event.get_plaintext()
+        if normal:
+          text=normalize_str(text)
+        matched = pattern.search(text)
         if matched:
             state['match']=matched
             state["_matched"] = matched.group()
@@ -45,3 +48,26 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0) -> Rule:
             return False
 
     return Rule(_regex)
+  
+
+def keyword(*keywords: str,normal:bool=True) -> Rule:
+    """
+    改自 nonebot.rule.keyword
+    :说明:
+
+      匹配消息关键词
+
+    :参数:
+
+      * ``*keywords: str``: 关键词
+    """
+
+    async def _keyword(bot: "Bot", event: "Event", state: T_State) -> bool:
+        if event.get_type() != "message":
+            return False
+        text = event.get_plaintext()
+        if normal:
+          text=normalize_str(text)
+        return bool(text and any(keyword in text for keyword in keywords))
+
+    return Rule(_keyword)
