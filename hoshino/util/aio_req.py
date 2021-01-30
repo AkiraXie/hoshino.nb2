@@ -2,12 +2,12 @@
 Author: AkiraXie
 Date: 2021-01-30 00:05:12
 LastEditors: AkiraXie
-LastEditTime: 2021-01-30 00:20:48
+LastEditTime: 2021-01-30 13:04:38
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from aiohttp import request
-from .typing import CIMultiDictProxy,Any
+from hoshino.typing import CIMultiDictProxy,Any
 
 
 async def aio_get_json(url: str, params=None, content_type: str = 'application/json', **kw) -> Any:
