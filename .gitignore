@@ -8,7 +8,7 @@ __pycache__/
 *.bak
 .env.*
 !.env.prod.example
-data/service
+data
 logs
 
 

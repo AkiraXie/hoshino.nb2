@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 02:32:32
 LastEditors: AkiraXie
-LastEditTime: 2021-01-28 21:02:12
+LastEditTime: 2021-01-31 04:14:20
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,7 +11,7 @@ from hoshino.matcher import get_matchers
 from hoshino.event import Event, get_event
 from hoshino import Bot, get_bot_list, sucmd
 test1 = sucmd('testgetbot', to_me())
-test2 = sucmd('testmachers', to_me())
+test2 = sucmd('testmatchers', to_me())
 test3 = sucmd('testevent', to_me())
 
 

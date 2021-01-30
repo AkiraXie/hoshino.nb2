@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 18:40:21
+LastEditTime: 2021-01-31 02:44:20
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -15,18 +15,17 @@ from collections import defaultdict
 from loguru import logger
 
 
-from . import hsn_config, Bot
+from . import hsn_config, Bot,service_dir as _service_dir
 from .event import Event, GroupMessageEvent
 from .matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_keyword, on_request
-from .permission import ADMIN, NORMAL, OWNER, Permission
+from .permission import ADMIN, NORMAL, OWNER, Permission,SUPERUSER
 from .util import get_bot_list
 from .rule import Rule, to_me, regex, keyword
 from .typing import Dict, Iterable, Optional, Union, T_State, Set, List
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.]')
 _loaded_services: Dict[str, "Service"] = {}
-_service_dir = os.path.join(hsn_config.data or 'data', 'service')
-os.makedirs(_service_dir, exist_ok=True)
+
 
 
 def _save_service_data(service: 'Service'):
@@ -54,15 +53,19 @@ class Service:
         Descrption:  定义一个服务
 
         Params: 
+        
         *`name` : 服务名字
-        *`manage_perm` : 管理服务的权限,是一`Permission`实例
+        
+        *`manage_perm` : 管理服务的权限,是一`Permission`实例,`ADMIN`和`OWNER`和`SUPERSUSER`是允许的
+        
         *`enable_on_default` : 默认开启状态
+        
         *`visible` : 默认可见状态
         '''
         assert not _illegal_char.search(
             name) or not name.isdigit(), 'Service name cannot contain character in [\\/:*?"<>|.] or be pure number'
         assert manage_perm in (
-            ADMIN, OWNER, NORMAL), 'Service manage_perm is illegal'
+            ADMIN, OWNER,SUPERUSER), 'Service manage_perm is illegal'
         self.name = name
         self.manage_perm = manage_perm
         self.enable_on_default = enable_on_default
