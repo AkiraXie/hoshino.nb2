@@ -2,15 +2,15 @@
 Author: AkiraXie
 Date: 2021-01-30 15:00:40
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 02:05:53
+LastEditTime: 2021-01-31 15:16:48
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import random
 from typing import Dict, List, Tuple
-
+from nonebot import require
 from hoshino import util
-from hoshino.modules.priconne.chara import Chara
+Chara=require('chara').Chara
 
 
 class Gacha(object):

@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:58
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 02:21:07
+LastEditTime: 2021-01-31 20:22:18
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -75,8 +75,8 @@ async def download_config():
 
 async def download_pcrdata():
     try:
-        dataget = await aiorequests.get('http://api.akiraxie.me/pcr/priconne_data.py', timeout=5)
-        datacon = await dataget.content
+        dataget = await aiohttpx.get('http://api.akiraxie.me/pcr/_pcr_data.py', timeout=5)
+        datacon = dataget.content
     except Exception as e:
         logger.error(exc:=f'下载角色数据失败. {type(e)}:{e}')
         logger.exception(e)

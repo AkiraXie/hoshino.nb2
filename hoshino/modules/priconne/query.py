@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 18:24:41
 LastEditors: AkiraXie
-LastEditTime: 2021-01-30 01:51:54
+LastEditTime: 2021-01-31 23:51:09
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -34,7 +34,7 @@ serdic = {'b': brank, '国': brank, '台': trank,
           '日': rrank, 't': trank, 'j': rrank}
 sv = Service('query')
 
-rank = sv.on_regex(r'^([台国日btj]{1,3})服?([前中后]{0,3})rank表?', only_group=False)
+rank = sv.on_regex(r'^([台国日btj]{1,3})服?([前中后]{0,3})rank表?$', only_group=0)
 yukari = sv.on_command('yukari_charge', aliases={
                        '黄骑充电', '黄骑充电表', '酒鬼充电', '酒鬼充电表'}, only_group=False)
 byk = sv.on_command(
@@ -43,7 +43,9 @@ byk = sv.on_command(
 
 @rank.handle()
 async def _(bot: Bot, event: Event, state: T_State):
-    match = state['match']
+    import re
+    match=re.compile(r'^([台国日btj]{1,3})服?([前中后]{0,3})rank表?$').search(str(event.get_message()))
+    match=state['match']
     pos = match.group(2)
     ser = match.group(1)
     msg = ['Rank表仅供参考,以公会要求为准', '不定期更新，来源见图']

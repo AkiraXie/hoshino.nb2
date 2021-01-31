@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 23:26:49
+LastEditTime: 2021-01-31 23:35:35
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -142,7 +142,7 @@ def concat_pic(pics, border=5):
     return des
 
 
-def normalize_str(string) -> str:
+def normalize_str(string:str) -> str:
     """
     规范化unicode字符串 并 转为小写 并 转为简体
     """

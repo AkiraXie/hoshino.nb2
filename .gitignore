@@ -10,6 +10,7 @@ __pycache__/
 !.env.prod.example
 data
 logs
+config.json
 
 
 # C extensions

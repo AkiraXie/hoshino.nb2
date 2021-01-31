@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 12:56:12
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 23:59:52
+LastEditTime: 2021-02-01 01:58:32
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -19,9 +19,6 @@ async def parse_service(bot: Bot, event: Event, state: T_State):
             services.append(msg)
     if len(services) != 0:
         state['services'] = services.copy()
-    else:
-        await bot.send(event, '无效输入')
-        raise FinishedException
 
 
 async def parse_gid(bot: Bot, event: Event, state: T_State):
@@ -46,9 +43,7 @@ async def parse_gid(bot: Bot, event: Event, state: T_State):
         await bot.send(event, f'bot未入群 {"，".join(failure)}')
     if len(gids) != 0:
         state['gids'] = gids.copy()
-    else:
-        await bot.send(event, '无效输入')
-        raise FinishedException
+    
 
 
 async def lssv_parse_gid(bot: Bot, event: Event, state: T_State):
@@ -75,9 +70,6 @@ async def lssv_parse_gid(bot: Bot, event: Event, state: T_State):
         await bot.send(event, f'bot未入群 {"，".join(failure)}')
     if len(gids) != 0:
         state['gids'] = gids.copy()
-    else:
-        await bot.send(event, '无效输入')
-        raise FinishedException
 
 
 async def manage_service(matcher: Matcher, bot: Bot, event: Event, state: T_State):

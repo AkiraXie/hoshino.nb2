@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 03:15:30
+LastEditTime: 2021-01-31 23:38:42
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,6 +11,7 @@ import pygtrie
 import zhconv
 import importlib
 from PIL import Image, ImageFont
+import nonebot
 from loguru import logger
 from hoshino import Bot, Event, R, rhelper
 from hoshino.util import sucmd, get_text_size, text2pic
@@ -35,7 +36,7 @@ os.makedirs(R.img(f'priconne/gadget/').path, exist_ok=True)
 os.makedirs(R.img(f'priconne/card/').path, exist_ok=True)
 os.makedirs(R.img(f'priconne/unit/').path, exist_ok=True)
 NAME2ID = pygtrie.CharTrie()
-TFONT = ImageFont.truetype(R.img('priconne/gadget/FZY3K.TTF').path, 16)
+
 
 
 @dlicon.handle()
@@ -46,10 +47,10 @@ async def _(bot: Bot, event: Event):
     replys = ["本次下载头像情况:"]
     for c in charas:
         for star in STARS:
-            code, s =download_chara_icon(c.id, star)
+            code, s = download_chara_icon(c.id, star)
             status = '成功' if code == 0 else '失败'
             replys.append(f'id:{c.id},star:{c.star},下载头像{status}')
-            if code!=0:
+            if code != 0:
                 replys.append(code)
     await dlicon.finish('\n'.join(replys))
 
@@ -65,9 +66,10 @@ async def _(bot: Bot, event: Event):
             code, s = download_card(c.id, star)
             status = '成功' if code == 0 else '失败'
             replys.append(f'id:{c.id},star:{c.star},下载卡面{status}')
-            if code!=0:
+            if code != 0:
                 replys.append(code)
     await dlcard.finish('\n'.join(replys))
+
 
 @dldata.handle()
 async def _(bot: Bot, event: Event):
@@ -80,17 +82,19 @@ async def _(bot: Bot, event: Event):
         except Exception as e:
             logger.exception(e)
             logger.error(f'重载花名册失败！{type(e)}, {e}')
-            await dldata.finish(f'重载花名册失败！错误如下：\n{type(e)}, {e}') 
-            
+            await dldata.finish(f'重载花名册失败！错误如下：\n{type(e)}, {e}')
+
         await dldata.finish('更新卡池和数据成功')
     else:
-        exc=filter(lambda x: x!=0,(code_1,code_2))
-        exc="\n".join(exc)
+        exc = filter(lambda x: x != 0, (code_1, code_2))
+        exc = "\n".join(exc)
         await dldata.finish(f'更新卡池和数据失败，错误如下：\n {exc}')
-        
-class Chara:
 
-    def __init__(self, id_:int, star:int=3, equip:int=0):
+
+class Chara:
+    UNKNOWN = 1000
+
+    def __init__(self, id_: int, star: int = 3, equip: int = 0):
         self.id = id_
         self.star = star
         self.equip = equip
@@ -225,6 +229,7 @@ class Chara:
 
     @staticmethod
     def gen_team_pic(team, size=64, star_slot_verbose=True, text=None):
+        TFONT = ImageFont.truetype(R.img('priconne/gadget/FZY3K.TTF').path, 16)
         num = len(team)
         if isinstance(text, str):
             tsize = get_text_size(text, TFONT, padding=(5, 5, 12, 12))
@@ -270,3 +275,7 @@ class Chara:
         name = name.lower().replace('（', '(').replace('）', ')')
         name = zhconv.convert(name, 'zh-hans')
         return name
+
+
+Chara.gen_name2id()
+nonebot.export()['Chara'] = Chara

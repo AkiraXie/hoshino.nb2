@@ -2,19 +2,19 @@
 Author: AkiraXie
 Date: 2021-01-28 14:10:09
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 18:38:26
+LastEditTime: 2021-02-01 02:45:40
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from typing import Union
 import re
+from typing import Union
 from nonebot.typing import T_State
-from nonebot.adapters import Bot, Event
+from nonebot.adapters.cqhttp import Bot, Event
 from nonebot.rule import Rule, to_me
-from .util import normalize_str
+from hoshino.util import normalize_str
 
 
-def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) -> Rule:
+def regex(regex: str, flags: Union[int, re.RegexFlag] = 0,normal:bool=True) -> Rule:
     """
     :说明:
       改自`nonebot.rule.regex`
@@ -36,17 +36,15 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) 
     async def _regex(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
-        text = event.get_plaintext()
+        text=event.get_plaintext()
         if normal:
-            text = normalize_str(text)
+          text=normalize_str(text)
         matched = pattern.search(text)
         if matched:
-            state['match'] = matched
+            state['match']=matched
             state["_matched"] = matched.group()
             return True
-        else:
-            state['match'] = None
-            state["_matched"] = None
+        else:    #BUG：nonebot2目前对rule中state的处理还有问题，此处是一个权宜之计，能暂且保证regex的可用性。
             return False
 
     return Rule(_regex)
