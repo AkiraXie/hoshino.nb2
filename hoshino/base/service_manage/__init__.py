@@ -2,11 +2,13 @@
 Author: AkiraXie
 Date: 2021-01-29 12:54:47
 LastEditors: AkiraXie
-LastEditTime: 2021-01-29 23:53:43
+LastEditTime: 2021-02-01 01:59:43
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from functools import cmp_to_key
+
+from nonebot.exception import FinishedException
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from hoshino import Service, Bot, Event
 from hoshino.rule import to_me
@@ -24,33 +26,14 @@ async def _(bot: Bot, event: Event, state: T_State):
     if isinstance(event, GroupMessageEvent):
         state['gids'] = [event.group_id]
     elif isinstance(event, PrivateMessageEvent):
-        msgs = event.get_plaintext().split(' ')
-        glist = list(g['group_id'] for g in await bot.get_group_list())
-        failure = set()
-        illegal = set()
-        gids = []
-        for msg in msgs:
-            if msg.isdigit():
-                gid = int(msg)
-                if gid not in glist:
-                    failure.add(msg)
-                    continue
-                else:
-                    gids.append(gid)
-            elif msg == '-a' or msg == '--all':
-                state['all'] = True
-            elif msg != '':
-                illegal.add(msg)
-        if illegal:
-            await lssv.send(f'"{"，".join(illegal)}"无效，群ID只能为纯数字')
-        if failure:
-            await lssv.send(f'bot未入群 {"，".join(failure)}')
-        if len(gids) != 0:
-            state['gids'] = gids.copy()
+        await lssv_parse_gid(bot,event,state)
 
 
 @lssv.got('gids', prompt='请输入群号，并用空格隔开。', args_parser=lssv_parse_gid)
 async def _(bot: Bot, event: Event, state: T_State):
+    if not 'gids' in state:
+        await bot.send(event,'无效输入')
+        raise FinishedException
     verbose_all = state.get('all', False)
     svs = Service.get_loaded_services().values()
     for gid in state['gids']:
@@ -71,12 +54,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     services = []
     if isinstance(event, GroupMessageEvent):
         state['gids'] = [event.group_id]
-        msgs = event.get_plaintext().split(' ')
-        for msg in msgs:
-            if msg != '':
-                services.append(msg)
-        if len(services) != 0:
-            state['services'] = services.copy()
+        await parse_service(bot,event,state)
 
     elif isinstance(event, PrivateMessageEvent):
         glist = list(g['group_id'] for g in await bot.get_group_list())
@@ -104,6 +82,9 @@ async def _(bot: Bot, event: Event, state: T_State):
 @disable.got('gids', '请输入要关闭服务的群ID，用空格间隔', args_parser=parse_gid)
 @disable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
+    if not state['gids'] or not state['services']:
+        await bot.send(event,'无效输入')
+        raise FinishedException
     await manage_service(disable, bot, event, state)
 
 
@@ -112,12 +93,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     services = []
     if isinstance(event, GroupMessageEvent):
         state['gids'] = [event.group_id]
-        msgs = event.get_plaintext().split(' ')
-        for msg in msgs:
-            if msg != '':
-                services.append(msg)
-        if len(services) != 0:
-            state['services'] = services.copy()
+        await parse_service(bot,event,state)
 
     elif isinstance(event, PrivateMessageEvent):
         glist = list(g['group_id'] for g in await bot.get_group_list())
@@ -145,4 +121,7 @@ async def _(bot: Bot, event: Event, state: T_State):
 @enable.got('gids', '请输入要开启服务的群ID，用空格间隔', args_parser=parse_gid)
 @enable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
+    if not state['gids'] or not state['services']:
+        await bot.send(event,'无效输入')
+        raise FinishedException
     await manage_service(enable, bot, event, state)

@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 02:44:20
+LastEditTime: 2021-01-31 23:53:36
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,17 +11,16 @@ import re
 import os
 import json
 from collections import defaultdict
-
 from loguru import logger
 
 
-from . import hsn_config, Bot,service_dir as _service_dir
-from .event import Event, GroupMessageEvent
-from .matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_keyword, on_request
-from .permission import ADMIN, NORMAL, OWNER, Permission,SUPERUSER
-from .util import get_bot_list
-from .rule import Rule, to_me, regex, keyword
-from .typing import Dict, Iterable, Optional, Union, T_State, Set, List
+from hoshino import  Bot,service_dir as _service_dir
+from hoshino.event import Event, GroupMessageEvent
+from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_keyword, on_request
+from hoshino.permission import ADMIN, NORMAL, OWNER, Permission,SUPERUSER
+from hoshino.util import get_bot_list
+from hoshino.rule import Rule, to_me, regex, keyword
+from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List,Type
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.]')
 _loaded_services: Dict[str, "Service"] = {}
@@ -107,9 +106,9 @@ class Service:
         return bool((group_id in self.enable_group) or (
             self.enable_on_default and group_id not in self.disable_group))
 
-    def check_service(self, only_to_me: bool = False, only_group: bool = True):
+    def check_service(self, only_to_me: bool = False, only_group: bool = True)->Rule:
         async def _cs(bot: Bot, event: Event, state: T_State) -> bool:
-            if not isinstance(event, GroupMessageEvent):
+            if not 'group_id' in event.__dict__:
                 return not only_group
             else:
                 group_id = event.group_id
@@ -119,59 +118,58 @@ class Service:
             rule = rule & (to_me())
         return rule
 
-    def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+    def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         kwargs['aliases'] = aliases
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         return on_command(name, **kwargs)
 
-    def on_startswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+    def on_startswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         return on_startswith(msg, **kwargs)
 
-    def on_endswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+    def on_endswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         return on_endswith(msg, **kwargs)
 
-    def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+    def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         if isinstance(keywords, str):
-            keywords = set(keywords)
+            keywords = set(keywords,)
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = keyword(keywords, normal) & rule
         return on_message(**kwargs)
 
-    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         '''
         根据正则表达式进行匹配。
         可以通过 ``state["_matched"]`` 获取正则表达式匹配成功的文本。
         可以通过 ``state["match"]`` 获取正则表达式匹配成功后的`match`
         '''
-        kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = regex(pattern, flags, normal) & rule
-        return on_message(**kwargs)
-
-    def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Matcher:
+        rule = regex(pattern, flags,normal) & rule
+        return on_message(rule,permission,**kwargs)
+    
+    def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         return on_message(**kwargs)
 
-    def on_notice(self,  only_group: bool = True, **kwargs) -> Matcher:
+    def on_notice(self,  only_group: bool = True, **kwargs) ->Type[Matcher]:
         rule = self.check_service(0, only_group)
         return on_notice(rule, **kwargs)
 
-    def on_request(self, only_group: bool = True, **kwargs) -> Matcher:
+    def on_request(self, only_group: bool = True, **kwargs) -> Type[Matcher]:
         rule = self.check_service(0, only_group)
         return on_request(rule, **kwargs)
 
-    async def broadcast(self, msg, tag='', interval_time=0.5,):
+    async def broadcast(self, msg, tag='', interval_time=0.5):
         gdict = await self.get_enable_groups()
         for gid in gdict.keys():
             for sid, bot in gdict[gid]:
