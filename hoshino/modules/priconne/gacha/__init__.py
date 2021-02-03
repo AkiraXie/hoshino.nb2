@@ -130,7 +130,7 @@ switchpool = sv.on_command("切换卡池", aliases={
     '选择卡池', '切換卡池', '選擇卡池'}, only_group=False, handlers=[parse_pool], permission=permission.PADMIN)
 
 
-@switchpool.got('pool', prompt='请输入要切换的卡池:\n> jp\n> tw\n> bl', args_parser=parse_pool)
+@switchpool.got('pool', prompt='请输入要切换的卡池:\n> mix\n> jp\n> tw\n> bl', args_parser=parse_pool)
 async def _(bot: Bot, event: Event, state: T_State):
     if state['pool']:
         set_pool(state['gid'], state['pool'])
@@ -183,7 +183,7 @@ async def _(bot: Bot, event: Event):
     res2 = ' '.join(result[5:])
     res = f'{res}\n{res1}\n{res2}'
     if hiishi >= SUPER_LUCKY_LINE:
-        gacha10.send('恭喜海豹！おめでとうございます！')
+        await gacha10.send('恭喜海豹！おめでとうございます！')
     await gacha10.finish(Message(f'素敵な仲間が増えますよ！\n{res}'), at_sender=True)
 
 
