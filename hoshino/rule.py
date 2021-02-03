@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:10:09
 LastEditors: AkiraXie
-LastEditTime: 2021-02-02 22:55:56
+LastEditTime: 2021-02-04 03:01:55
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -34,7 +34,7 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) 
     async def _regex(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
-        text = event.get_plaintext()
+        text = str(event.get_message())
         if normal:
             text = normalize_str(text)
         matched = pattern.search(text)

@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 14:25:25
+LastEditTime: 2021-02-03 22:19:45
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -21,7 +21,7 @@ from hoshino.util import get_bot_list
 from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
 from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List, Type
 
-_illegal_char = re.compile(r'[\\/:*?"<>|\.]')
+_illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
 
 
