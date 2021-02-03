@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-02-02 22:00:20
+LastEditTime: 2021-02-03 22:08:56
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -16,16 +16,19 @@ import os
 import json
 import unicodedata
 import time
+from nonebot.adapters.cqhttp import MessageSegment
 import pytz
 import base64
 import zhconv
 import nonebot
+from hoshino import R
 from nonebot.utils import run_sync
 from nonebot.adapters.cqhttp import Bot
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import on_command
 from nonebot.rule import Rule
+DEFAULTFONT = ImageFont.truetype(R.img('priconne/gadget/simhei.ttf'), size=20)
 
 
 class FreqLimiter:
@@ -93,7 +96,7 @@ def sucmd(name: str, rule: Rule = Rule(), aliases: Optional[Iterable] = None, **
     return on_command(name, **kwargs)
 
 
-def get_text_size(text: str, font: ImageFont.ImageFont, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> tuple:
+def get_text_size(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> tuple:
     '''
     返回文本转图片的图片大小
 
@@ -108,7 +111,7 @@ def get_text_size(text: str, font: ImageFont.ImageFont, padding: Tuple[int, int,
     return ret[0]+padding[0]+padding[1], ret[1]+padding[2]+padding[3]
 
 
-def text2pic(text: str, font: ImageFont.ImageFont, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> Image.Image:
+def text2pic(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> Image.Image:
     '''
     返回一个文本转化后的`Image`实例
 
@@ -133,6 +136,10 @@ def pic2b64(pic: Image.Image) -> str:
     return 'base64://' + base64_str
 
 
+def text2Seg(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> MessageSegment:
+    return MessageSegment.image(pic2b64(text2pic(text, font, padding, spacing)))
+
+
 def concat_pic(pics, border=5):
     num = len(pics)
     w, h = pics[0].size
@@ -143,7 +150,7 @@ def concat_pic(pics, border=5):
     return des
 
 
-def normalize_str(string:str) -> str:
+def normalize_str(string: str) -> str:
     """
     规范化unicode字符串 并 转为小写 并 转为简体
     """

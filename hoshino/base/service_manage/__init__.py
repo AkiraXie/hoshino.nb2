@@ -2,39 +2,45 @@
 Author: AkiraXie
 Date: 2021-01-29 12:54:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-01 01:59:43
-Description: 
+LastEditTime: 2021-02-03 22:44:26
+Description:
 Github: http://github.com/AkiraXie/
 '''
 from functools import cmp_to_key
 
 from nonebot.exception import FinishedException
+from nonebot.rule import ArgumentParser
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from hoshino import Service, Bot, Event
 from hoshino.rule import to_me
 from hoshino.permission import ADMIN
-from hoshino.matcher import on_command
+from hoshino.matcher import  on_shell_command
+from hoshino.util import text2Seg
 from hoshino.typing import T_State
-from .util import manage_service, parse_gid, lssv_parse_gid, parse_service
-lssv = on_command('lssv', to_me(), aliases={'服务列表', '功能列表'}, permission=ADMIN)
-enable = on_command('enable', to_me(), aliases={'开启服务', '打开服务', '启用服务'})
-disable = on_command('disable', to_me(), aliases={'关闭服务', '停用服务', '禁用服务'})
-
+parser = ArgumentParser()
+parser.add_argument('-a', '--all', action='store_true')
+parser.add_argument('-p', '--picture', action='store_true')
+parser1 = ArgumentParser()
+parser1.add_argument('-a', '--all', action='store_true')
+lssv = on_shell_command('lssv', to_me(), aliases={
+                        '服务列表', '功能列表'}, permission=ADMIN, parser=parser)
+enable =on_shell_command('enable', to_me(), aliases={'开启服务', '打开服务', '启用服务'},parser=parser1)
+disable =on_shell_command('disable', to_me(), aliases={'关闭服务', '停用服务', '禁用服务'},parser=parser1)
+from .util import manage_service, parse_gid, parse_service
 
 @lssv.handle()
 async def _(bot: Bot, event: Event, state: T_State):
     if isinstance(event, GroupMessageEvent):
         state['gids'] = [event.group_id]
-    elif isinstance(event, PrivateMessageEvent):
-        await lssv_parse_gid(bot,event,state)
 
 
-@lssv.got('gids', prompt='请输入群号，并用空格隔开。', args_parser=lssv_parse_gid)
+@lssv.got('gids', prompt='请输入群号，并用空格隔开。', args_parser=parse_gid)
 async def _(bot: Bot, event: Event, state: T_State):
     if not 'gids' in state:
-        await bot.send(event,'无效输入')
+        await bot.send(event, '无效输入')
         raise FinishedException
-    verbose_all = state.get('all', False)
+    verbose_all = state['args'].all
+    as_pic = state['args'].picture
     svs = Service.get_loaded_services().values()
     for gid in state['gids']:
         current_svs = map(lambda sv: (sv, sv.check_enabled(gid)), svs)
@@ -46,7 +52,7 @@ async def _(bot: Bot, event: Event, state: T_State):
             if sv.visible or verbose_all:
                 ox = '○' if on else '×'
                 reply.append(f"|{ox}| {sv.name}")
-        await lssv.send("\n".join(reply))
+        await lssv.finish("\n".join(reply)) if not as_pic else await lssv.finish(text2Seg("\n".join(reply)))
 
 
 @disable.handle()
@@ -54,7 +60,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     services = []
     if isinstance(event, GroupMessageEvent):
         state['gids'] = [event.group_id]
-        await parse_service(bot,event,state)
+        await parse_service(bot, event, state)
 
     elif isinstance(event, PrivateMessageEvent):
         glist = list(g['group_id'] for g in await bot.get_group_list())
@@ -83,7 +89,7 @@ async def _(bot: Bot, event: Event, state: T_State):
 @disable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
     if not state['gids'] or not state['services']:
-        await bot.send(event,'无效输入')
+        await bot.send(event, '无效输入')
         raise FinishedException
     await manage_service(disable, bot, event, state)
 
@@ -93,7 +99,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     services = []
     if isinstance(event, GroupMessageEvent):
         state['gids'] = [event.group_id]
-        await parse_service(bot,event,state)
+        await parse_service(bot, event, state)
 
     elif isinstance(event, PrivateMessageEvent):
         glist = list(g['group_id'] for g in await bot.get_group_list())
@@ -122,6 +128,6 @@ async def _(bot: Bot, event: Event, state: T_State):
 @enable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
     if not state['gids'] or not state['services']:
-        await bot.send(event,'无效输入')
+        await bot.send(event, '无效输入')
         raise FinishedException
     await manage_service(enable, bot, event, state)

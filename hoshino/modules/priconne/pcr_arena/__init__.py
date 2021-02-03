@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-31 15:27:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-02 23:18:44
+LastEditTime: 2021-02-03 21:23:22
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -22,11 +22,13 @@ sv = Service('pcr-arena')
 lmt = FreqLimiter(5)
 
 aliases = {'怎么拆', '怎么解', '怎么打', '如何拆', '如何解', '如何打',
-           '怎麼拆', '怎麼解', '怎麼打', 'jjc查询', 'jjc查詢'}
+           '怎麼拆', '怎麼解', '怎麼打', 'jjc查询', 'jjc查詢', '拆'}
 aliases_b = set('b' + a for a in aliases) | set('国' +
                                                 a for a in aliases) | set('B' + a for a in aliases)
-aliases_tw = set('台' + a for a in aliases)
-aliases_jp = set('日' + a for a in aliases)
+aliases_b |= set('b服' + a for a in aliases) | set('国服' +
+                                                  a for a in aliases) | set('B服' + a for a in aliases)
+aliases_tw = set('台' + a for a in aliases) | set('台服' + a for a in aliases)
+aliases_jp = set('日' + a for a in aliases) | set('日服' + a for a in aliases)
 
 
 async def parse_query(bot: Bot, event: Event, state: T_State):

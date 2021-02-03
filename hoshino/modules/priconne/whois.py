@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-31 03:06:03
 LastEditors: AkiraXie
-LastEditTime: 2021-02-01 03:18:30
+LastEditTime: 2021-02-03 21:08:47
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -72,4 +72,4 @@ async def handle_lookcard(bot: Bot, event: Event, state: T_State):
     await bot.send(event, Message(msg), at_sender=True)
     raise FinishedException
 lookcard = sv.on_regex(
-    r'^[看查]?\s?([1-6一二三四五六][xX星])?\s?(.*?)([1-6一二三四五六][xX星])?(立绘|卡面)$', only_group=False, handlers=[handle_lookcard])
+    r'^([1-6一二三四五六][xX星])?\s?(.*?)([1-6一二三四五六][xX星])?(立绘|卡面)$', only_group=False, handlers=[handle_lookcard])

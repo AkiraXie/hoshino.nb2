@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 14:19:35
+LastEditTime: 2021-02-03 21:47:27
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -21,7 +21,7 @@ dlicon = sucmd('下载头像')
 dlcard = sucmd('下载卡面')
 dldata = sucmd('更新卡池', aliases={'更新数据'})
 STARS = [1, 3, 6]
-
+TFONT = ImageFont.truetype(R.img('priconne/gadget/FZY3K.TTF').path, 16)
 UNKNOWN = 1000
 try:
     gadget_equip = R.img('priconne/gadget/equip.png').open()
@@ -227,7 +227,6 @@ class Chara:
 
     @staticmethod
     def gen_team_pic(team, size=64, star_slot_verbose=True, text=None):
-        TFONT = ImageFont.truetype(R.img('priconne/gadget/FZY3K.TTF').path, 16)
         num = len(team)
         if isinstance(text, str):
             tsize = get_text_size(text, TFONT, padding=(5, 5, 12, 12))

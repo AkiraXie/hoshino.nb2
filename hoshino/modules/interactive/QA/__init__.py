@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-02 23:57:37
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 15:04:40
+LastEditTime: 2021-02-03 21:14:55
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -153,6 +153,6 @@ async def _(bot: Bot, event: Event):
     gid = event.group_id if 'group_id' in event.__dict__ else 0
     uid = event.user_id
     question = str(event.get_message())
-    answer = Question.get_or_none(group=gid, user=0,question=question) or Question.get_or_none(group=gid, user=uid,question=question)
+    answer =  Question.get_or_none(group=gid, user=uid,question=question) or Question.get_or_none(group=gid, user=0,question=question)
     if answer:
         await ans.finish(Message(answer.answer))
