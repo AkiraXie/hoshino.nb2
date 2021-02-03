@@ -2,12 +2,12 @@
 Author: AkiraXie
 Date: 2021-01-30 15:00:40
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 15:16:48
+LastEditTime: 2021-02-02 23:34:36
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import random
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 from nonebot import require
 from hoshino import util
 Chara=require('chara').Chara

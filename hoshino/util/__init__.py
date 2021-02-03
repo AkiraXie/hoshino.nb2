@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 23:35:35
+LastEditTime: 2021-02-02 22:00:20
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -20,6 +20,7 @@ import pytz
 import base64
 import zhconv
 import nonebot
+from nonebot.utils import run_sync
 from nonebot.adapters.cqhttp import Bot
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER

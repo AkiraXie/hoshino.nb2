@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 23:38:42
+LastEditTime: 2021-02-03 14:19:35
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -14,8 +14,7 @@ from PIL import Image, ImageFont
 import nonebot
 from loguru import logger
 from hoshino import Bot, Event, R, rhelper
-from hoshino.util import sucmd, get_text_size, text2pic
-from hoshino.typing import Final
+from hoshino.util import sucmd, get_text_size, text2pic, run_sync
 from .util import download_card, download_chara_icon, download_config, download_pcrdata
 from hoshino.modules.priconne import _pcr_data
 dlicon = sucmd('下载头像')
@@ -38,7 +37,6 @@ os.makedirs(R.img(f'priconne/unit/').path, exist_ok=True)
 NAME2ID = pygtrie.CharTrie()
 
 
-
 @dlicon.handle()
 async def _(bot: Bot, event: Event):
     msgs = event.get_plaintext().strip().split()
@@ -47,9 +45,9 @@ async def _(bot: Bot, event: Event):
     replys = ["本次下载头像情况:"]
     for c in charas:
         for star in STARS:
-            code, s = download_chara_icon(c.id, star)
-            status = '成功' if code == 0 else '失败'
-            replys.append(f'id:{c.id},star:{c.star},下载头像{status}')
+            code, s = await run_sync(download_chara_icon)(c.id, star)
+            status = '成功' if code == 0 else '失败: '
+            replys.append(f'name:{c.name},id:{c.id},star:{s},下载头像{status}')
             if code != 0:
                 replys.append(code)
     await dlicon.finish('\n'.join(replys))
@@ -63,9 +61,9 @@ async def _(bot: Bot, event: Event):
     replys = ["本次下载卡面情况:"]
     for c in charas:
         for star in STARS[1:]:
-            code, s = download_card(c.id, star)
+            code, s = await run_sync(download_card)(c.id, star)
             status = '成功' if code == 0 else '失败'
-            replys.append(f'id:{c.id},star:{c.star},下载卡面{status}')
+            replys.append(f'name:{c.name},id:{c.id},star:{s},下载卡面{status}')
             if code != 0:
                 replys.append(code)
     await dlcard.finish('\n'.join(replys))

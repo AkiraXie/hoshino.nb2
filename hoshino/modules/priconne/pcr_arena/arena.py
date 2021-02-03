@@ -2,21 +2,23 @@
 Author: AkiraXie
 Date: 2021-01-31 15:28:12
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 20:23:40
+LastEditTime: 2021-02-03 13:57:29
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from nonebot import require
-from hoshino.util import aiorequests,load_config,aiohttpx
-from loguru import logger
 import time
-Chara=require('chara').Chara
+from hoshino.util import load_config, aiohttpx
+from loguru import logger
+from nonebot import require
+Chara = require('chara').Chara
+
+
 def __get_auth_key():
     config = load_config(__file__)
     return config["AUTH_KEY"]
 
 
-async def do_query(id_list,region=1):
+async def do_query(id_list, region=1):
     id_list = [x * 100 + 1 for x in id_list]
     header = {
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.87 Safari/537.36',

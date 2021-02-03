@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:10:09
 LastEditors: AkiraXie
-LastEditTime: 2021-02-01 02:45:40
+LastEditTime: 2021-02-02 22:55:56
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -10,19 +10,17 @@ import re
 from typing import Union
 from nonebot.typing import T_State
 from nonebot.adapters.cqhttp import Bot, Event
-from nonebot.rule import Rule, to_me
+from nonebot.rule import ArgumentParser,Rule, to_me
 from hoshino.util import normalize_str
 
 
-def regex(regex: str, flags: Union[int, re.RegexFlag] = 0,normal:bool=True) -> Rule:
+def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) -> Rule:
     """
     :说明:
       改自`nonebot.rule.regex`
       根据正则表达式进行匹配。
       可以通过 ``state["_matched"]`` 获取正则表达式匹配成功的文本。
-      可以通过 ``state["match"]`` 获取正则表达式匹配成功后的`match`
-      可以通过
-
+      可以通过 ``state["match"]`` 获取正则表达式匹配成功后的 ``match``
     :参数:
       * ``regex: str``: 正则表达式
       * ``flags: Union[int, re.RegexFlag]``: 正则标志
@@ -36,15 +34,15 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0,normal:bool=True) -> R
     async def _regex(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
-        text=event.get_plaintext()
+        text = event.get_plaintext()
         if normal:
-          text=normalize_str(text)
+            text = normalize_str(text)
         matched = pattern.search(text)
         if matched:
-            state['match']=matched
+            state['match'] = matched
             state["_matched"] = matched.group()
             return True
-        else:    #BUG：nonebot2目前对rule中state的处理还有问题，此处是一个权宜之计，能暂且保证regex的可用性。
+        else:
             return False
 
     return Rule(_regex)

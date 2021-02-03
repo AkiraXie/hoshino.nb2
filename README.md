@@ -6,6 +6,8 @@
 
 ## 项目笔记
 
+2021/2/03下午 新增`interactive`模块，之后会存放互动的插件；在其中增加机器人最重要的自定义问答功能`QA`；`下载卡面` `下载头像`使用了`nonebot.util.run_sync`功能，将同步函数装饰异步;引用`nonebot2.00a9`的新特性`on_shell_command`。
+
 2021/2/01凌晨  昨天的问题今天下午查阅nb2的[issue#153](https://github.com/nonebot/nonebot2/issues/153)得到了解决，跨插件访问不建议直接引用，可以利用`require()`和`export()`办法来处理，于是就将`chara.Chara`进行导出。
 
 另外，今天新增了`pcr_arena`和`whois`插件，`pcr_arena`的编写让我大概明白了`Matcher`处理事件的流程，于是就试着用了`Matcher.new(state=...,handlers=...)`的办法来初始化响应器，这样省去了大量的重复代码。

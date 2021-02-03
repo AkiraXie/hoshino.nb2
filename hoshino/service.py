@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 23:53:36
+LastEditTime: 2021-02-03 14:25:25
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -13,18 +13,16 @@ import json
 from collections import defaultdict
 from loguru import logger
 
-
-from hoshino import  Bot,service_dir as _service_dir
-from hoshino.event import Event, GroupMessageEvent
-from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_keyword, on_request
-from hoshino.permission import ADMIN, NORMAL, OWNER, Permission,SUPERUSER
+from hoshino import Bot, service_dir as _service_dir
+from hoshino.event import Event
+from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_request, on_shell_command
+from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import get_bot_list
-from hoshino.rule import Rule, to_me, regex, keyword
-from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List,Type
+from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
+from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List, Type
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.]')
 _loaded_services: Dict[str, "Service"] = {}
-
 
 
 def _save_service_data(service: 'Service'):
@@ -52,19 +50,19 @@ class Service:
         Descrption:  定义一个服务
 
         Params: 
-        
+
         *`name` : 服务名字
-        
+
         *`manage_perm` : 管理服务的权限,是一`Permission`实例,`ADMIN`和`OWNER`和`SUPERSUSER`是允许的
-        
+
         *`enable_on_default` : 默认开启状态
-        
+
         *`visible` : 默认可见状态
         '''
         assert not _illegal_char.search(
             name) or not name.isdigit(), 'Service name cannot contain character in [\\/:*?"<>|.] or be pure number'
         assert manage_perm in (
-            ADMIN, OWNER,SUPERUSER), 'Service manage_perm is illegal'
+            ADMIN, OWNER, SUPERUSER), 'Service manage_perm is illegal'
         self.name = name
         self.manage_perm = manage_perm
         self.enable_on_default = enable_on_default
@@ -106,7 +104,7 @@ class Service:
         return bool((group_id in self.enable_group) or (
             self.enable_on_default and group_id not in self.disable_group))
 
-    def check_service(self, only_to_me: bool = False, only_group: bool = True)->Rule:
+    def check_service(self, only_to_me: bool = False, only_group: bool = True) -> Rule:
         async def _cs(bot: Bot, event: Event, state: T_State) -> bool:
             if not 'group_id' in event.__dict__:
                 return not only_group
@@ -119,11 +117,27 @@ class Service:
         return rule
 
     def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+        if isinstance(aliases, str):
+            aliases = set(aliases,)
+        else:
+            aliases = set(aliases) if aliases is not None else set()
         kwargs['aliases'] = aliases
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         return on_command(name, **kwargs)
+
+    def on_shell_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, parser: Optional[ArgumentParser] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+        if isinstance(aliases, str):
+            aliases = set(aliases,)
+        else:
+            aliases = set(aliases) if aliases else set()
+        kwargs['parser']=parser
+        kwargs['aliases'] = aliases
+        kwargs['permission'] = permission
+        rule = self.check_service(only_to_me, only_group)
+        kwargs['rule'] = rule
+        return on_shell_command(name, **kwargs)
 
     def on_startswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         kwargs['permission'] = permission
@@ -140,6 +154,8 @@ class Service:
     def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         if isinstance(keywords, str):
             keywords = set(keywords,)
+        else:
+            keywords = set(keywords) if keywords is not None else set()
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = keyword(keywords, normal) & rule
@@ -152,16 +168,16 @@ class Service:
         可以通过 ``state["match"]`` 获取正则表达式匹配成功后的`match`
         '''
         rule = self.check_service(only_to_me, only_group)
-        rule = regex(pattern, flags,normal) & rule
-        return on_message(rule,permission,**kwargs)
-    
+        rule = regex(pattern, flags, normal) & rule
+        return on_message(rule, permission, **kwargs)
+
     def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         return on_message(**kwargs)
 
-    def on_notice(self,  only_group: bool = True, **kwargs) ->Type[Matcher]:
+    def on_notice(self,  only_group: bool = True, **kwargs) -> Type[Matcher]:
         rule = self.check_service(0, only_group)
         return on_notice(rule, **kwargs)
 

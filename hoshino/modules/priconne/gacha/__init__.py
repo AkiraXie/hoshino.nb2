@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 21:55:30
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 15:17:34
+LastEditTime: 2021-02-02 23:36:06
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -15,10 +15,10 @@ from hoshino.util import DailyNumberLimiter, pic2b64, concat_pic, normalize_str,
 from hoshino import MessageSegment, Message, Service, permission, Bot, Event
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from hoshino.matcher import Matcher
-from nonebot import require
 from nonebot.exception import FinishedException
+from nonebot.plugin import require
+Chara =require('chara')['Chara']
 
-Chara = require('chara')['Chara']
 
 sv = Service('gacha')
 jewel_limit = DailyNumberLimiter(7500)
@@ -73,11 +73,45 @@ async def lookup_handler(bot: Bot, event: Event):
     msg = f'本期{pool}卡池主打的角色：\n{up_chara}\nUP角色合计={(gacha.up_prob/10):.1f}% 3★出率={(gacha.s3_prob)/10:.1f}%'
     await bot.send(event, Message(msg))
     raise FinishedException
+
+
 lookup = sv.on_command("看看卡池", aliases={
     '查看卡池',  '康康卡池', '卡池資訊', '看看up', 'kkup', '看看UP', '卡池资讯'}, only_group=False, handlers=[lookup_handler])
 
 
+async def lookpool_handler(bot: Bot, event: Event, state: T_State):
+    match = state['match']
+    name = match.group(1)
+    if name in ('b', 'b服', 'bl', 'bilibili', '国', '国服', 'cn'):
+        pool = 'BL'
+    elif name in ('台', '台服', 'tw', 'sonet'):
+        pool = 'TW'
+    elif name in ('日', '日服', 'jp', 'cy', 'cygames'):
+        pool = 'JP'
+    elif name in ('混', '混合', 'mix'):
+        pool = 'MIX'
+    elif name:
+        await bot.send(event, '查看卡池失败,未识别{}'.format(name))
+        raise FinishedException
+    gacha = Gacha(pool)
+    up_chara = gacha.up
+    up_chara = map(lambda x: str(
+        Chara.fromname(x).icon.CQcode) + x, up_chara)
+    up_chara = '\n'.join(up_chara)
+    msg = f'本期{pool}卡池主打的角色：\n{up_chara}\nUP角色合计={(gacha.up_prob/10):.1f}% 3★出率={(gacha.s3_prob)/10:.1f}%'
+    await bot.send(event, Message(msg))
+    raise FinishedException
+
+
+lookpool = sv.on_regex(
+    r'^[查看][查看](.{1,10})卡池$', only_group=False, handlers=[lookpool_handler])
+
+
 async def parse_pool(bot: Bot, event: Event, state: T_State):
+    if isinstance(event, GroupMessageEvent):
+        state['gid'] = event.group_id
+    elif isinstance(event, PrivateMessageEvent):
+        state['gid'] = event.user_id*100
     name = normalize_str(event.get_plaintext().strip())
     if name in ('b', 'b服', 'bl', 'bilibili', '国', '国服', 'cn'):
         state['pool'] = 'BL'
@@ -90,16 +124,10 @@ async def parse_pool(bot: Bot, event: Event, state: T_State):
     elif name:
         await bot.send(event, '切换卡池失败,未识别{}'.format(name))
         raise FinishedException
+    
+    
 switchpool = sv.on_command("切换卡池", aliases={
-    '选择卡池', '切換卡池', '選擇卡池'}, only_group=False, handlers=[parse_pool])
-
-
-@switchpool.handle()
-async def _(bot: Bot, event: Event, state: T_State):
-    if isinstance(event, GroupMessageEvent):
-        state['gid'] = event.group_id
-    elif isinstance(event, PrivateMessageEvent):
-        state['gid'] = event.user_id*100
+    '选择卡池', '切換卡池', '選擇卡池'}, only_group=False, handlers=[parse_pool], permission=permission.PADMIN)
 
 
 @switchpool.got('pool', prompt='请输入要切换的卡池:\n> jp\n> tw\n> bl', args_parser=parse_pool)
