@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-31 15:27:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-01 01:49:30
+LastEditTime: 2021-02-02 23:18:44
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -103,24 +103,3 @@ async def query(bot: Bot, event: Event, state: T_State):
     logger.debug('Arena sending result...')
     await bot.send(event, Message('\n'.join(msg)), at_sender=1)
     raise FinishedException
-
-'''
-@jjc.got('defen', '请输入需要查询的防守队伍,无需空格隔开', parse_query)
-async def _(bot: Bot, event: Event, state: T_State):
-    await query(bot, event, state)
-
-
-@bjjc.got('defen', '请输入需要查询的防守队伍,无需空格隔开', parse_query)
-async def _(bot: Bot, event: Event, state: T_State):
-    await query(bot, event, state)
-
-
-@tjjc.got('defen', '请输入需要查询的防守队伍,无需空格隔开', parse_query)
-async def _(bot: Bot, event: Event, state: T_State):
-    await query(bot, event, state)
-
-
-@jjjc.got('defen', '请输入需要查询的防守队伍,无需空格隔开', parse_query)
-async def _(bot: Bot, event: Event, state: T_State):
-    await query(bot, event, state)
-'''
