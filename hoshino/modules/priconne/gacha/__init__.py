@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 21:55:30
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 20:45:15
+LastEditTime: 2021-02-04 16:28:59
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -104,7 +104,7 @@ async def lookpool_handler(bot: Bot, event: Event, state: T_State):
 
 
 lookpool = sv.on_regex(
-    r'^[查看]{0,2}(.{1,10})卡池$', only_group=False, handlers=[lookpool_handler])
+    r'^(看看|康康|查看)(.{1,10})卡池$', only_group=False, handlers=[lookpool_handler])
 
 
 async def parse_pool(bot: Bot, event: Event, state: T_State):
