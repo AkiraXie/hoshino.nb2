@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 21:47:27
+LastEditTime: 2021-02-05 14:19:06
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -21,7 +21,7 @@ dlicon = sucmd('下载头像')
 dlcard = sucmd('下载卡面')
 dldata = sucmd('更新卡池', aliases={'更新数据'})
 STARS = [1, 3, 6]
-TFONT = ImageFont.truetype(R.img('priconne/gadget/FZY3K.TTF').path, 16)
+TFONT = ImageFont.truetype(R.img('priconne/gadget/FZY3K.TTF').path, 32)
 UNKNOWN = 1000
 try:
     gadget_equip = R.img('priconne/gadget/equip.png').open()
@@ -29,6 +29,8 @@ try:
     gadget_star_dis = R.img('priconne/gadget/star_disabled.png').open()
     gadget_star_pink = R.img('priconne/gadget/star_pink.png').open()
     unknown_chara_icon = R.img('priconne/unit/icon_unit_100031.png').open()
+    like=R.img('priconne/gadget/like.png').open()
+    dislike=R.img('priconne/gadget/dislike.png').open()
 except Exception as e:
     logger.exception(e)
 os.makedirs(R.img(f'priconne/gadget/').path, exist_ok=True)
@@ -226,21 +228,19 @@ class Chara:
         return team, ''.join(unknown)
 
     @staticmethod
-    def gen_team_pic(team, size=64, star_slot_verbose=True, text=None):
+    def gen_team_pic(team, size=128, star_slot_verbose=True, text=None):
         num = len(team)
         if isinstance(text, str):
-            tsize = get_text_size(text, TFONT, padding=(5, 5, 12, 12))
+            tsize = get_text_size(text, TFONT, padding=(8, 8, 24, 24))
             des = Image.new(
                 'RGBA', (num*size+tsize[0], size), (255, 255, 255, 255))
-            timg = text2pic(text, TFONT, padding=(5, 5, 12, 12))
-            img = Image.new('RGBA', (20, 45), (255, 255, 255, 255))
-            like = Image.open(R.img('priconne/gadget/like.png').path)
-            dislike = Image.open(R.img('priconne/gadget/dislike.png').path)
-            dislike.thumbnail((20, 20))
-            like.thumbnail((20, 20))
+            timg = text2pic(text, TFONT, padding=(8, 8, 24, 24))
+            img = Image.new('RGBA', (40, 90), (255, 255, 255, 255))
+            dislike.thumbnail((40, 40))
+            like.thumbnail((40, 40))
             img.paste(like, (0, 0), like)
-            img.paste(dislike, (0, 25), dislike)
-            timg.paste(img, (5, 11), img)
+            img.paste(dislike, (0, 50), dislike)
+            timg.paste(img, (8, 22), img)
             des.paste(timg, (num * size, 0), timg)
         else:
             des = Image.new('RGBA', (num*size, size), (255, 255, 255, 255))
