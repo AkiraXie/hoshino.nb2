@@ -94,7 +94,11 @@ async def get_account_status(id) -> dict:
         "format": "json",
         "steamids": id
     }
-    resp = await aiohttpx.get("https://api.steampowered.cfom/ISteamUser/GetPlayerSummaries/v2/", params=params)
+    try:
+        resp = await aiohttpx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/", params=params)
+    except Exception as e:
+        logger.exception(e)
+        logger.error(type(e))
     rsp = resp.json
     friend = rsp["response"]["players"][0]
     return {
@@ -109,7 +113,11 @@ async def update_game_status() -> None:
         "format": "json",
         "steamids": ",".join(sub["subscribes"].keys())
     }
-    resp = await aiohttpx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/", params=params)
+    try:
+        resp = await aiohttpx.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/", params=params)
+    except Exception as e:
+        logger.exception(e)
+        logger.error(type(e))
     rsp = resp.json
     for friend in rsp["response"]["players"]:
         playing_state[friend["steamid"]] = {

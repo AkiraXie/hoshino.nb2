@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 22:08:56
+LastEditTime: 2021-02-05 16:19:40
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -17,6 +17,8 @@ import json
 import unicodedata
 import time
 from nonebot.adapters.cqhttp import MessageSegment
+from nonebot.adapters.cqhttp.event import Event, GroupMessageEvent, PrivateMessageEvent
+from nonebot.typing import T_State
 import pytz
 import base64
 import zhconv
@@ -158,3 +160,20 @@ def normalize_str(string: str) -> str:
     string = string.lower()
     string = zhconv.convert(string, 'zh-hans')
     return string
+
+
+async def parse_qq(bot: Bot, event: Event, state: T_State):
+    ids = []
+    if isinstance(event, GroupMessageEvent):
+        for m in event.get_message():
+            if m.type == 'at' and m.data['qq'] != 'all':
+                ids.append(int(m.data['qq']))
+        for m in event.get_plaintext().split():
+            if m.isdigit():
+                ids.append(int(m.data['text']))
+    elif isinstance(event, PrivateMessageEvent):
+        for m in event.get_plaintext().split():
+            if m.isdigit():
+                ids.append(int(m.data['text']))
+    if ids:
+        state['ids'] = ids.copy()

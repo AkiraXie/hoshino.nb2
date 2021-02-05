@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 21:55:30
 LastEditors: AkiraXie
-LastEditTime: 2021-02-04 16:28:59
+LastEditTime: 2021-02-05 17:23:05
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,7 +11,7 @@ Github: http://github.com/AkiraXie/
 from .data import set_collection, set_pool, select_collection, get_pool
 from .gacha import Gacha
 from hoshino.typing import T_State
-from hoshino.util import DailyNumberLimiter, pic2b64, concat_pic, normalize_str, sucmd
+from hoshino.util import DailyNumberLimiter, pic2b64, concat_pic, normalize_str, sucmd,parse_qq
 from hoshino import MessageSegment, Message, Service, permission, Bot, Event
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from hoshino.matcher import Matcher
@@ -273,20 +273,6 @@ async def _(bot: Bot, event: Event):
     await showcol.finish(Message('\n'.join(msg)), at_sender=True)
 
 
-async def parse_qq(bot: Bot, event: Event, state: T_State):
-    ids = []
-    if isinstance(event, GroupMessageEvent):
-        for m in event.get_message():
-            if m.type == 'at' and m.data['qq'] != 'all':
-                ids.append(int(m.data['qq']))
-            elif m.type == 'text' and m.data['text'].isdigit():
-                ids.append(int(m.data['text']))
-    elif isinstance(event, PrivateMessageEvent):
-        for m in event.get_plaintext().split():
-            if m.isdigit():
-                ids.append(int(m.data['text']))
-    if ids:
-        state['ids'] = ids.copy()
 kakin = sucmd('氪金', aliases={'充值'}, handlers=[parse_qq])
 
 
