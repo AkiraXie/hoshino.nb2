@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 12:54:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 22:44:26
+LastEditTime: 2021-02-08 22:12:44
 Description:
 Github: http://github.com/AkiraXie/
 '''
@@ -24,8 +24,8 @@ parser1 = ArgumentParser()
 parser1.add_argument('-a', '--all', action='store_true')
 lssv = on_shell_command('lssv', to_me(), aliases={
                         '服务列表', '功能列表'}, permission=ADMIN, parser=parser)
-enable =on_shell_command('enable', to_me(), aliases={'开启服务', '打开服务', '启用服务'},parser=parser1)
-disable =on_shell_command('disable', to_me(), aliases={'关闭服务', '停用服务', '禁用服务'},parser=parser1)
+enable =on_shell_command('enable', to_me(), aliases={'开启', '打开', '启用'},parser=parser1)
+disable =on_shell_command('disable', to_me(), aliases={'关闭', '停用', '禁用'},parser=parser1)
 from .util import manage_service, parse_gid, parse_service
 
 @lssv.handle()

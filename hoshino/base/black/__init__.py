@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-05 14:34:41
 LastEditors: AkiraXie
-LastEditTime: 2021-02-05 17:23:15
+LastEditTime: 2021-02-05 20:10:12
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,6 +11,7 @@ from nonebot.adapters.cqhttp.event import MessageEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import FinishedException, IgnoredException
 from nonebot.permission import SUPERUSER
+from nonebot.rule import to_me
 from hoshino import Bot, Event
 from hoshino.typing import T_State
 from hoshino.util import sucmd, parse_qq
@@ -62,9 +63,9 @@ async def _(bot: Bot, event: Event, state: T_State):
                 await bot.send(event, '拉黑了,再见了您~', at_sender=True)
                 break
 
-lahei = sucmd('拉黑', aliases={'block', '封禁', 'ban',
+lahei = sucmd('拉黑', to_me(),aliases={'block', '封禁', 'ban',
                              '禁言', '小黑屋', 'b了'}, handlers=[parse_qq])
-jiefeng = sucmd('解封', aliases={'解禁'}, handlers=[parse_qq])
+jiefeng = sucmd('解封',to_me(), aliases={'解禁'}, handlers=[parse_qq])
 
 
 @lahei.got('ids', prompt='请输入要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~', args_parser=parse_qq)
