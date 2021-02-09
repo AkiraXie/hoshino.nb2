@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 22:19:45
+LastEditTime: 2021-02-10 00:21:01
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -12,8 +12,7 @@ import os
 import json
 from collections import defaultdict
 from loguru import logger
-
-from hoshino import Bot, service_dir as _service_dir
+from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment
 from hoshino.event import Event
 from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_request, on_shell_command
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
@@ -132,7 +131,7 @@ class Service:
             aliases = set(aliases,)
         else:
             aliases = set(aliases) if aliases else set()
-        kwargs['parser']=parser
+        kwargs['parser'] = parser
         kwargs['aliases'] = aliases
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
@@ -185,15 +184,18 @@ class Service:
         rule = self.check_service(0, only_group)
         return on_request(rule, **kwargs)
 
-    async def broadcast(self, msg, tag='', interval_time=0.5):
+    async def broadcast(self, msgs: Optional[Iterable], tag='', interval_time=0.5):
+        if isinstance(msgs, (str, Message, MessageSegment)):
+            msgs = (msgs,)
         gdict = await self.get_enable_groups()
         for gid in gdict.keys():
             for sid, bot in gdict[gid]:
-                await asyncio.sleep(interval_time)
-                try:
-                    await bot.send_group_msg(self_id=sid, group_id=gid, message=msg)
-                except Exception as e:
-                    logger.exception(e)
-                    logger.error(
-                        f"{self.name}: {sid}在群{gid}投递{tag}失败, {type(e)}")
-                logger.info(f"{self.name}: {sid}在群{gid}投递{tag}成功")
+                for msg in msgs:
+                    await asyncio.sleep(interval_time)
+                    try:
+                        await bot.send_group_msg(self_id=sid, group_id=gid, message=msg)
+                    except Exception as e:
+                        logger.exception(e)
+                        logger.error(
+                            f"{self.name}: {sid}在群{gid}投递{tag}失败, {type(e)}")
+                    logger.info(f"{self.name}: {sid}在群{gid}投递{tag}成功")

@@ -40,8 +40,10 @@ async def handle_whois(bot: Bot, event: Event, state: T_State):
     msg = f'{chara.name}\n{chara.icon.CQcode}'
     await bot.send(event, Message(msg), at_sender=True)
     raise FinishedException
+
+
 whois = sv.on_regex(r'^谁是(.{1,20})$',
-                    handlers=[handle_whois],only_group=False)
+                    handlers=[handle_whois], only_group=False)
 
 whoisr = sv.on_regex(r'^(.*?)是谁$',  only_group=False,
                      priority=2, handlers=[handle_whois])
