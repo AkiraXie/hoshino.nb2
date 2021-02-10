@@ -2,14 +2,14 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:58
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 20:22:18
+LastEditTime: 2021-02-11 00:11:09
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from loguru import logger
 import requests
-from hoshino import R, Bot, Event
-from hoshino.util import Image, BytesIO, aiohttpx, aiorequests, sucmd
+from hoshino import R
+from hoshino.util import Image, BytesIO, aiohttpx
 from hoshino.modules.priconne import jsonpath, pcrdatapath
 import os
 os.makedirs(R.img('priconne/unit/'), exist_ok=1)
