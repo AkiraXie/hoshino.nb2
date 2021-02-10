@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-10 15:23:51
+LastEditTime: 2021-02-11 00:32:46
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -80,7 +80,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         await delrss.finish('删除订阅失败')
     await delrss.finish(f'删除订阅{name}成功')
 
-lookrss = sv.on_command('订阅列表', aliases=('查看本群订阅'))
+lookrss = sv.on_command('订阅列表', aliases=('查看本群订阅',))
 
 
 @lookrss.handle()

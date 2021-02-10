@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-05 15:18:30
 LastEditors: AkiraXie
-LastEditTime: 2021-02-05 16:56:03
+LastEditTime: 2021-02-11 00:21:50
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -21,7 +21,7 @@ class black(pw.Model):
 
     class Meta:
         database = db
-        primary_key = pw.CompositeKey('uid','due_date')
+        primary_key = pw.CompositeKey('uid','due_time')
 
 
 if not os.path.exists(db_path):
