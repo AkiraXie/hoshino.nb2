@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-31 15:27:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-10 15:13:45
+LastEditTime: 2021-02-11 02:38:24
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -69,7 +69,7 @@ async def query(bot: Bot, event: Event, state: T_State):
         raise FinishedException
     logger.info('Doing query...')
     try:
-        res = await do_query(state['defen'], 1)
+        res = await do_query(state['defen'], state['region'])
 
     except Exception as e:
         logger.exception(e)
