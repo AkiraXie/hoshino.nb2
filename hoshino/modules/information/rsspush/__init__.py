@@ -2,13 +2,13 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-10 00:18:28
+LastEditTime: 2021-02-10 15:23:51
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import asyncio
 from hoshino.typing import List, T_State
-from hoshino import Service, aiohttpx, R, sucmd, Bot, Event, scheduler, Message
+from hoshino import Service, aiohttpx, Bot, Event, scheduler, Message
 from hoshino.util import get_bot_list, text2Seg
 from hoshino.rule import ArgumentParser
 from loguru import logger
