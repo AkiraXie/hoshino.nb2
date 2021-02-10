@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-02-09 23:28:55
+LastEditTime: 2021-02-10 15:17:21
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -30,7 +30,7 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import on_command
 from nonebot.rule import Rule
-DEFAULTFONT = ImageFont.truetype(R.img('priconne/gadget/simhei.ttf'), size=40)
+DEFAULTFONT = ImageFont.truetype(R.img('priconne/gadget/SourceHanSerif-Regular.ttc'), size=40)
 
 
 class FreqLimiter:

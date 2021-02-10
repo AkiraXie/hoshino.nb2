@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-31 15:27:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 21:23:22
+LastEditTime: 2021-02-10 15:13:45
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -86,8 +86,8 @@ async def query(bot: Bot, event: Event, state: T_State):
     res = res[:min(6, len(res))]
     logger.info('Arena generating picture...')
     atk_team = [Chara.gen_team_pic(team=entry['atk'], text="\n".join([
-        f"赞  {entry['up']}",
-        f"踩  {entry['down']}",
+        f" {entry['up']} ",
+        f" {entry['down']} ",
     ])) for entry in res]
     atk_team = concat_pic(atk_team)
     atk_team = pic2b64(atk_team)

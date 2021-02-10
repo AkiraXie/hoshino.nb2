@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-02-05 14:19:06
+LastEditTime: 2021-02-10 15:15:14
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -21,7 +21,7 @@ dlicon = sucmd('下载头像')
 dlcard = sucmd('下载卡面')
 dldata = sucmd('更新卡池', aliases={'更新数据'})
 STARS = [1, 3, 6]
-TFONT = ImageFont.truetype(R.img('priconne/gadget/FZY3K.TTF').path, 32)
+TFONT = ImageFont.truetype(R.img('priconne/gadget/SourceHanSerif-Light.ttc'), 40)
 UNKNOWN = 1000
 try:
     gadget_equip = R.img('priconne/gadget/equip.png').open()
@@ -231,17 +231,17 @@ class Chara:
     def gen_team_pic(team, size=128, star_slot_verbose=True, text=None):
         num = len(team)
         if isinstance(text, str):
-            tsize = get_text_size(text, TFONT, padding=(8, 8, 24, 24))
+            tsize = get_text_size(text, TFONT, padding=(0, 20, 12, 36))
             des = Image.new(
-                'RGBA', (num*size+tsize[0], size), (255, 255, 255, 255))
-            timg = text2pic(text, TFONT, padding=(8, 8, 24, 24))
-            img = Image.new('RGBA', (40, 90), (255, 255, 255, 255))
+                'RGBA', (num*size+tsize[0]+48, size), (255, 255, 255,255))
+            timg = text2pic(text, TFONT, padding=(0, 20, 12, 36),spacing=10)
+            img = Image.new('RGBA', (40, 100), (255, 255, 255,255))
             dislike.thumbnail((40, 40))
             like.thumbnail((40, 40))
             img.paste(like, (0, 0), like)
-            img.paste(dislike, (0, 50), dislike)
-            timg.paste(img, (8, 22), img)
-            des.paste(timg, (num * size, 0), timg)
+            img.paste(dislike, (0, 60), dislike)
+            des.paste(img,(num*size+8,23))
+            des.paste(timg, (num * size+48, 0))
         else:
             des = Image.new('RGBA', (num*size, size), (255, 255, 255, 255))
         for i, chara in enumerate(team):
