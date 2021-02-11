@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:30:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-10 00:20:28
+LastEditTime: 2021-02-12 01:43:30
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -95,7 +95,7 @@ class Rss:
             return None
 
 
-db_path = os.path.join(db_dir, 'rss.db')
+db_path = os.path.join(db_dir, 'rssdata.db')
 db = pw.SqliteDatabase(db_path)
 
 
