@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-11 00:00:55
 LastEditors: AkiraXie
-LastEditTime: 2021-02-11 01:11:24
+LastEditTime: 2021-02-11 23:47:21
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -54,7 +54,7 @@ class BaseSpider(abc.ABC):
     def format_items(cls, items) -> str:
         msgs=[]
         for i,item in enumerate(items):
-            msg=[f'News {i+1} | Time {item.time}',f'Title: {item.content}',f'Link: {item.link}','=========']
+            msg=[f'News {i+1} | Time {item.time}',f'{item.content}',f'{item.link}','=========']
             msg='\n'.join(msg)
             msgs.append(msg)
         return f'{cls.src_name}新闻\n'+'\n'.join(msgs)
@@ -72,7 +72,7 @@ class SonetSpider(BaseSpider):
             Item(idx=dd.a["href"],
                  content=f"{dd.text}",
                  link=f"www.princessconnect.so-net.tw{dd.a['href']}",
-                 time=str(dd.previous_sibling.previous_sibling.get_text()).strip()[:10]
+                 time=str(dd.previous_sibling.previous_sibling.get_text()).strip()[:10].replace('.','-')
             ) for dd in soup.find_all("dd")
         ]
 
