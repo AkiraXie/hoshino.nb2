@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-02-10 15:15:14
+LastEditTime: 2021-02-12 22:07:03
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -21,7 +21,8 @@ dlicon = sucmd('下载头像')
 dlcard = sucmd('下载卡面')
 dldata = sucmd('更新卡池', aliases={'更新数据'})
 STARS = [1, 3, 6]
-TFONT = ImageFont.truetype(R.img('priconne/gadget/SourceHanSerif-Light.ttc'), 40)
+TFONT = ImageFont.truetype(
+    R.img('priconne/gadget/SourceHanSerif-Light.ttc'), 40)
 UNKNOWN = 1000
 try:
     gadget_equip = R.img('priconne/gadget/equip.png').open()
@@ -29,8 +30,8 @@ try:
     gadget_star_dis = R.img('priconne/gadget/star_disabled.png').open()
     gadget_star_pink = R.img('priconne/gadget/star_pink.png').open()
     unknown_chara_icon = R.img('priconne/unit/icon_unit_100031.png').open()
-    like=R.img('priconne/gadget/like.png').open()
-    dislike=R.img('priconne/gadget/dislike.png').open()
+    like = R.img('priconne/gadget/like.png').open()
+    dislike = R.img('priconne/gadget/dislike.png').open()
 except Exception as e:
     logger.exception(e)
 os.makedirs(R.img(f'priconne/gadget/').path, exist_ok=True)
@@ -62,7 +63,7 @@ async def _(bot: Bot, event: Event):
                       if x.isdigit() else Chara.fromname(x), msgs))
     replys = ["本次下载卡面情况:"]
     for c in charas:
-        for star in STARS[1:]:
+        for star in STARS:
             code, s = await run_sync(download_card)(c.id, star)
             status = '成功' if code == 0 else '失败'
             replys.append(f'name:{c.name},id:{c.id},star:{s},下载卡面{status}')
@@ -116,68 +117,61 @@ class Chara:
 
     @property
     def icon(self) -> rhelper:
-        if self.star == 0 or self.star == 6:
-            star = '6'
+        res_path = R.img+'priconne/unit/'
+        if self.star == 6:
+            star = 6
         elif 3 <= self.star <= 5:
-            star = '3'
+            star = 3
+        elif self.star==1:
+            star = 1
         else:
-            star = "1"
-        res = R.img(f'priconne/unit/icon_unit_{self.id}{star}1.png')
-        if not res.exist:
-            res = R.img(f'priconne/unit/icon_unit_{self.id}31.png')
-        if not res.exist:
-            res = R.img(f'priconne/unit/icon_unit_{self.id}11.png')
-        if not res.exist:
+            for i in (6, 3, 1):
+                if r := res_path+f'icon_unit_{self.id}{i}1.png':
+                    return r
+            star=6
+        res = res_path+f'icon_unit_{self.id}{star}1.png'
+        if not res:
             download_chara_icon(self.id, 6)
             download_chara_icon(self.id, 3)
             download_chara_icon(self.id, 1)
-            res = R.img(f'priconne/unit/icon_unit_{self.id}{star}1.png')
-        if not res.exist:
-            res = R.img(f'priconne/unit/icon_unit_{self.id}31.png')
-        if not res.exist:
-            res = R.img(f'priconne/unit/icon_unit_{self.id}11.png')
-        if not res.exist:  # should never reach here
+        if not res:
             res = R.img(f'priconne/unit/icon_unit_{UNKNOWN}31.png')
+            for i in (6, 3, 1):
+                if r := res_path+f'icon_unit_{self.id}{i}1.png':
+                    res = r
+                    break
         return res
 
     @property
     def card(self) -> str:
-        if self.star == 0 or self.star == 6:
-            star = '6'
+        res_path = R.img+'priconne/card/'
+        if self.star == 6:
+            star = 6
         elif 3 <= self.star <= 5:
-            star = '3'
+            star = 3
+        elif self.star==1:
+            star = 1
         else:
-            star = "1"
+            for i in (6, 3, 1):
+                tip = f"{self.name}{i}星卡面：\n"
+                if r := res_path+f'{self.id}{i}1.png':
+                    return f'{tip}{r.CQcode}'
+            star=6
         tip = f"{self.name}{star}星卡面：\n"
-        res = R.img(f'priconne/card/{self.id}{star}1.png')
-        if not res.exist:
-            if self.star == 6:
-                tip = f"{self.name}没有6星卡面，将展示3星卡面：\n"
-            else:
-                tip = f"{self.name}3星卡面：\n"
-            res = R.img(f'priconne/card/{self.id}31.png')
-        if not res.exist:
-            tip = f"{self.name}1星卡面：\n"
-            res = R.img(f'priconne/card/{self.id}11.png')
-        if not res.exist:
+        res = res_path+f'{self.id}{star}1.png'
+        if not res:
             download_card(self.id, 6)
             download_card(self.id, 3)
             download_card(self.id, 1)
-            tip = f"{self.name}{star}星卡面：\n"
-            res = R.img(f'priconne/card/{self.id}{star}1.png')
-        if not res.exist:
-            if self.star == 6:
-                tip = f"{self.name}没有6星卡面，将展示3星卡面：\n"
-            else:
-                tip = f"{self.name}3星卡面：\n"
-            res = R.img(f'priconne/card/{self.id}31.png')
-        if not res.exist:
-            tip = f"{self.name}1星卡面：\n"
-            res = R.img(f'priconne/card/{self.id}11.png')
-        if not res.exist:  # should never reach here
-            tip = ""
+        if not res:
+            tip = f""
             res = R.img(f'priconne/unit/icon_unit_{UNKNOWN}31.png')
-        return tip+f'{res.CQcode}'
+            for i in (6, 3, 1):
+                if r := res_path+f'{self.id}{i}1.png':
+                    tip = f"{self.name}{i}星卡面：\n"
+                    res = r
+                    break
+        return f'{tip}{res.CQcode}'
 
     def gen_icon_img(self, size, star_slot_verbose=True) -> Image:
         try:
@@ -233,14 +227,14 @@ class Chara:
         if isinstance(text, str):
             tsize = get_text_size(text, TFONT, padding=(0, 20, 12, 36))
             des = Image.new(
-                'RGBA', (num*size+tsize[0]+48, size), (255, 255, 255,255))
-            timg = text2pic(text, TFONT, padding=(0, 20, 12, 36),spacing=10)
-            img = Image.new('RGBA', (40, 100), (255, 255, 255,255))
+                'RGBA', (num*size+tsize[0]+48, size), (255, 255, 255, 255))
+            timg = text2pic(text, TFONT, padding=(0, 20, 12, 36), spacing=10)
+            img = Image.new('RGBA', (40, 100), (255, 255, 255, 255))
             dislike.thumbnail((40, 40))
             like.thumbnail((40, 40))
             img.paste(like, (0, 0), like)
             img.paste(dislike, (0, 60), dislike)
-            des.paste(img,(num*size+8,23))
+            des.paste(img, (num*size+8, 23))
             des.paste(timg, (num * size+48, 0))
         else:
             des = Image.new('RGBA', (num*size, size), (255, 255, 255, 255))

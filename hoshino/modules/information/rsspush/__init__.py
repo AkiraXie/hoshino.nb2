@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-11 00:32:46
+LastEditTime: 2021-02-12 21:59:47
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -127,9 +127,10 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 @scheduler.scheduled_job('interval', minutes=3, jitter=20)
 async def push_rss():
+    logger.info('push_rss started')
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
-        for sid, bot in get_bot_list():
+        for sid,bot in glist[gid]:
             res = Rssdata.select(Rssdata.url, Rssdata.name,
                                  Rssdata.date).where(Rssdata.group == gid)
             for r in res:
@@ -149,6 +150,7 @@ async def push_rss():
                     except Exception as e:
                         logger.exception(e)
                         logger.error(f'{type(e)} occured when pushing rss')
+    logger.info('push_rss completed')
 
 querynewrss = sv.on_command('看最新订阅', aliases=('查最新订阅', '查看最新订阅'))
 
