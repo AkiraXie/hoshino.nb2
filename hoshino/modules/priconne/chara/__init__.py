@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-02-12 22:07:03
+LastEditTime: 2021-02-13 01:10:06
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -173,7 +173,7 @@ class Chara:
                     break
         return f'{tip}{res.CQcode}'
 
-    def gen_icon_img(self, size, star_slot_verbose=True) -> Image:
+    def gen_icon_img(self, size, star_slot_verbose=True) -> Image.Image:
         try:
             pic = self.icon.open().convert('RGBA').resize((size, size), Image.LANCZOS)
         except FileNotFoundError:
