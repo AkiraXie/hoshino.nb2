@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-12 21:59:47
+LastEditTime: 2021-02-13 00:26:29
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -142,7 +142,8 @@ async def push_rss():
                         await asyncio.sleep(0.5)
                         newinfo = await rss.get_new_entry_info()
                         msg = [f'订阅 {r.name} 更新啦！']
-                        msg.append(info2pic)
+                        msg.append(info2pic(newinfo))
+                        msg.append(newinfo['图片'])
                         msg.append(f'链接: {newinfo["链接"]}')
                         Rssdata.update(date=lstdate).where(
                             Rssdata.group == gid, Rssdata.name == r.name, Rssdata.url == r.url).execute()
@@ -170,5 +171,6 @@ async def _(bot: Bot, event: Event, state: T_State):
         await querynewrss.finish(f'查看最新订阅 {name}失败')
     msg = [f'订阅 {name} 最新消息']
     msg.append(info2pic(newinfo))
+    msg.append(newinfo['图片'])
     msg.append(f'链接: {newinfo["链接"]}')
     await querynewrss.finish(Message('\n'.join(msg)))

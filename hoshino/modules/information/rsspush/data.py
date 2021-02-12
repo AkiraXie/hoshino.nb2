@@ -2,11 +2,15 @@
 Author: AkiraXie
 Date: 2021-02-09 23:30:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-12 01:43:30
+LastEditTime: 2021-02-13 01:02:18
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from hoshino import aiohttpx, db_dir
+from loguru import logger
+from hoshino.util import concat_pic, pic2b64
+from io import BytesIO
+from hoshino import aiohttpx, db_dir, MessageSegment
+from PIL import Image
 from bs4 import BeautifulSoup
 import peewee as pw
 from feedparser import FeedParserDict
@@ -16,6 +20,15 @@ from datetime import datetime, timedelta
 import time
 import os
 BASE_URL = "https://rsshub.akiraxie.me/"
+
+
+def gen_rss_pic(imglist: List[Image.Image]):
+    num = len(imglist)
+    size = 384
+    des = Image.new('RGBA', (num*size, size), (255, 255, 255, 255))
+    for i, img in enumerate(imglist):
+        des.paste(img, (i*size, 0), img)
+    return des
 
 
 class Rss:
@@ -56,7 +69,7 @@ class Rss:
         return str(dt+timedelta(hours=8))
 
     @staticmethod
-    def _get_rssdic(entry: FeedParserDict, flag: bool = False) -> Dict:
+    async def _get_rssdic(entry: FeedParserDict, flag: bool = False) -> Dict:
         ret = {'标题': entry.title,
                '时间': entry.updated,
                '链接': entry.link, }
@@ -65,15 +78,36 @@ class Rss:
         except:
             pass
         if flag:
-            ret['正文'] = BeautifulSoup(entry.summary, "lxml").get_text()
+            soup = BeautifulSoup(entry.summary, "lxml")
+            imglist = []
+            ret['正文'] = soup.get_text()
+            for i in soup.find_all('img'):
+                img = await aiohttpx.get(i['src'], timeout=5)
+                img = Image.open(BytesIO(img.content)).convert('RGBA')
+                if img.width < 384 and img.height < 384:
+                    continue
+                img = img.resize((384, 384), Image.LANCZOS)
+                imglist.append(img)
+            imglen = len(imglist)
+            pics = []
+            if imglen == 0:
+                res = ""
+            else:
+                for i in range(0, imglen, 3):
+                    j = min(imglen, i+3)
+                    pics.append(gen_rss_pic(imglist[i:j]))
+                res = pic2b64(concat_pic(pics))
+                res = str(MessageSegment.image(res))
+            ret['图片'] = res
+
         return ret
 
     async def get_new_entry_info(self) -> Optional[Dict]:
         try:
             entries = await self.feed_entries
-            return Rss._get_rssdic(entries[0], True)
-        except:
-            return None
+            return await Rss._get_rssdic(entries[0], True)
+        except Exception as e:
+            logger.exception(e)
 
     async def get_all_entry_info(self) -> Optional[List[Dict]]:
         try:
@@ -81,18 +115,20 @@ class Rss:
             entries = await self.feed_entries
             lmt = min(self.limit, len(entries))
             for entry in entries[:lmt]:
-                entrydic = self._get_rssdic(entry)
+                entrydic = await self._get_rssdic(entry)
                 ret.append(entrydic)
             return ret
-        except:
-            return None
+        except Exception as e:
+            logger.exception(e)
 
     @property
     async def last_update(self) -> Optional[str]:
         try:
-            return (await self.get_new_entry_info())['时间']
-        except:
-            return None
+            entries = await self.feed_entries
+            res= await Rss._get_rssdic(entries[0])
+            return res['时间']
+        except Exception as e:
+            logger.exception(e)
 
 
 db_path = os.path.join(db_dir, 'rssdata.db')
