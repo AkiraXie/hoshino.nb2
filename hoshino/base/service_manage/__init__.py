@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 12:54:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-08 22:12:44
+LastEditTime: 2021-02-12 20:21:21
 Description:
 Github: http://github.com/AkiraXie/
 '''
@@ -50,7 +50,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         reply = [f'群{gid}服务一览：']
         for sv, on in current_svs:
             if sv.visible or verbose_all:
-                ox = '○' if on else '×'
+                ox = 'O' if on else 'X'
                 reply.append(f"|{ox}| {sv.name}")
         await lssv.finish("\n".join(reply)) if not as_pic else await lssv.finish(text2Seg("\n".join(reply)))
 
