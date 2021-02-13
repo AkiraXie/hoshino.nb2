@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:30:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-13 01:02:18
+LastEditTime: 2021-02-13 20:19:36
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -125,8 +125,8 @@ class Rss:
     async def last_update(self) -> Optional[str]:
         try:
             entries = await self.feed_entries
-            res= await Rss._get_rssdic(entries[0])
-            return res['时间']
+            res= entries[0].updated
+            return res
         except Exception as e:
             logger.exception(e)
 

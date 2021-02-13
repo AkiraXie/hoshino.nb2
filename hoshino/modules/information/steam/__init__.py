@@ -3,7 +3,7 @@ from loguru import logger
 from lxml import etree
 import json
 import os
-from hoshino import event, scheduler, Bot, Event, Service
+from hoshino import scheduler, Bot, Event, Service
 from asyncio import sleep
 from hoshino.util import get_bot_list, load_config, aiohttpx
 
