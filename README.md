@@ -6,6 +6,23 @@
 
 ## 项目笔记
 
+2021/2/15凌晨 在这段期间，项目进展算是很缓慢的，但是也学习并实践了一些nb2的feature:
+
+1.  对于原先`HoshinoBot`的`anti_abuse`插件， 在这个项目重构为[`black`](hoshino/base/black/__init__.py)，并利用了nb2的钩子函数(新学到的名词)`event_preprocessor`进行处理。
+
+    这个插件的编写让我仔细阅读了nb2的[message.py](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/message.py),  并理解了nb2处理事件的周期：
+
+   `上报(以及根据adapter剥离事件的tome)`->`事件预处理`->`匹配响应器`->`运行前处理`->`运行响应器`->`运行后处理`->`事件后处理`
+
+2.  在编写[`poke`](hoshino/modules/interactive/poke.py)的时候，学习到了nb2的`事件处理函数重载`，这个feature会运用魔法，可以让matcher运行的时候按`handler`规定的`typing`来执行`handler`,这个feature能减少rule的编写，可以让一个响应器针对不同的事件作响应。
+
+   这个魔法的源代码在[run_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L458), 粗略来说，它会根据参数名字和参数类型进行检查，如果参数名字和类型对得上的话，才会运行`handler`，否则就会`ignore`。
+
+   当然，这个检查是在`handler`对象有一个`__params__`这样一个类似注释的存在前提下进行的，这个前提的是由[process_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L246)制造的，查看这个代码段时候，大概查看了[`inspect`](https://docs.python.org/zh-cn/3.9/library/inspect.html)模块，学习到了python对于类型检查的处理。
+   
+
+在迁移了[`rsspush`](hoshino\modules\information\rsspush\__init__.py)时，想着能不能将图片输出出来，这个思考直接导致了对网络请求的封装的修改，才注意到对于返回的请求体，一定是有`content`这样一个`bytes`，但是这个`bytes`并不一定能解码为`text`或者`json`，比如图片和文件。
+
 2021/2/03下午 新增`interactive`模块，之后会存放互动的插件；在其中增加机器人最重要的自定义问答功能`QA`；`下载卡面` `下载头像`使用了`nonebot.util.run_sync`功能，将同步函数装饰异步;引用`nonebot2.00a9`的新特性`on_shell_command`。
 
 2021/2/01凌晨  昨天的问题今天下午查阅nb2的[issue#153](https://github.com/nonebot/nonebot2/issues/153)得到了解决，跨插件访问不建议直接引用，可以利用`require()`和`export()`办法来处理，于是就将`chara.Chara`进行导出。
