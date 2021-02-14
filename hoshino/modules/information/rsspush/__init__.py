@@ -116,8 +116,8 @@ async def _(bot: Bot, event: Event, state: T_State):
         rss = Rss(r.url, limit)
         infos = await rss.get_all_entry_info()
     except Exception as e:
-        sv.logger.exception(e)
-        sv.logger.error(type(e))
+        logger.exception(e)
+        logger.error(type(e))
         await queryrss.finish(f'查订阅{name}失败')
     msg = [f'{name}的最近记录:']
     msg.append(infos2pic(infos))
