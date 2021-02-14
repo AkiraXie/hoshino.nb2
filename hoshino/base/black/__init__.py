@@ -2,11 +2,10 @@
 Author: AkiraXie
 Date: 2021-02-05 14:34:41
 LastEditors: AkiraXie
-LastEditTime: 2021-02-05 20:10:12
+LastEditTime: 2021-02-15 02:41:13
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from loguru import logger
 from nonebot.adapters.cqhttp.event import MessageEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import FinishedException, IgnoredException
@@ -61,7 +60,7 @@ async def _(bot: Bot, event: Event, state: T_State):
                     return
                 block_uid(uid, timedelta(hours=12))
                 await bot.send(event, '拉黑了,再见了您~', at_sender=True)
-                break
+                return
 
 lahei = sucmd('拉黑', to_me(),aliases={'block', '封禁', 'ban',
                              '禁言', '小黑屋', 'b了'}, handlers=[parse_qq])

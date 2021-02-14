@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-13 20:24:21
 LastEditors: AkiraXie
-LastEditTime: 2021-02-13 21:18:13
+LastEditTime: 2021-02-15 04:01:21
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -20,7 +20,7 @@ async def _(bot: Bot):
     format_string = ''.join(random.sample(
         string.ascii_letters + string.digits, 16))
     try:
-        resp = await aiohttpx.post(f'https://nd.2890.ltd/api/?format={format_string}')
+        resp = await aiohttpx.get(f'https://nd.2890.ltd/api/?format={format_string}')
         j = resp.json
     except Exception as e:
         logger.exception(e)
