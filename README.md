@@ -16,9 +16,9 @@
 
 2.  在编写[`poke`](hoshino/modules/interactive/poke.py)的时候，学习到了nb2的`事件处理函数重载`，这个feature会运用魔法，可以让matcher运行的时候按`handler`规定的`typing`来执行`handler`,这个feature能减少rule的编写，可以让一个响应器针对不同的事件作响应。
 
-   这个魔法的源代码在[run_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L458), 粗略来说，它会根据参数名字和参数类型进行检查，如果参数名字和类型对得上的话，才会运行`handler`，否则就会`ignore`。
+    这个魔法的源代码在[run_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L458), 粗略来说，它会根据参数名字和参数类型进行检查，如果参数名字和类型对得上的话，才会运行`handler`，否则就会`ignore`。
 
-   当然，这个检查是在`handler`对象有一个`__params__`这样一个类似注释的存在前提下进行的，这个前提的是由[process_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L246)制造的，查看这个代码段时候，大概查看了[`inspect`](https://docs.python.org/zh-cn/3.9/library/inspect.html)模块，学习到了python对于类型检查的处理。
+    当然，这个检查是在`handler`对象有一个`__params__`这样一个类似注释的存在前提下进行的，这个前提的是由[process_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L246)制造的，查看这个代码段时候，大概查看了[`inspect`](https://docs.python.org/zh-cn/3.9/library/inspect.html)模块，学习到了python对于类型检查的处理。
    
 
 在迁移了[`rsspush`](hoshino\modules\information\rsspush\__init__.py)时，想着能不能将图片输出出来，这个思考直接导致了对网络请求的封装的修改，才注意到对于返回的请求体，一定是有`content`这样一个`bytes`，但是这个`bytes`并不一定能解码为`text`或者`json`，比如图片和文件。
