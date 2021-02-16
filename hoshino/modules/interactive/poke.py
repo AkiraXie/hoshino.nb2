@@ -2,13 +2,13 @@
 Author: AkiraXie
 Date: 2021-02-06 21:22:43
 LastEditors: AkiraXie
-LastEditTime: 2021-02-15 01:42:03
+LastEditTime: 2021-02-15 21:00:42
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from hoshino import Service, Bot, Message
 from nonebot.adapters.cqhttp.event import PokeNotifyEvent, GroupRecallNoticeEvent
-sv = Service('poke and recall',enable_on_default=False)
+sv = Service('poke-and-recall',enable_on_default=False)
 poke = sv.on_notice(False)
 
 

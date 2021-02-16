@@ -15,7 +15,7 @@ jiami = sv.on_command('b64加密',only_group=False)
 
 @jiami.handle()
 async def _(bot: Bot, event: Event):
-    res = base64.b64encode(event.get_plaintext()).decode('utf8')
+    res = base64.b64encode(event.get_plaintext().encode()).decode('utf8')
     await jiami.finish(res)
 
 
