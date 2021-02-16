@@ -51,7 +51,7 @@ async def _(bot: Bot, event: Event):
     msg = str(event.get_message())
     msgs = msg.split('你答', 1)
     if len(msgs) != 2:
-        await group_ques.finish()
+        await person_ques.finish()
     if len(msgs[0]) == 0 or len(msgs[1]) == 0:
         await person_ques.finish('提问和回答都不可以是空!', at_sender=True)
     question, answer = msgs
