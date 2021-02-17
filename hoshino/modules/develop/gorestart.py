@@ -12,6 +12,7 @@ async def gorestart(bot: Bot):
     go_port = hsn_config.admin_port if 'admin_port' in hsn_config.dict() else 9999
     try:
         res = await aiohttpx.post(f'http://127.0.0.1:{go_port}/admin/do_process_restart', params=params)
+        logger.info(f'send post to "{res.url}" and restart go-cqhttp...')
         if res.status_code != 200:
             resj = res.json
             await gore.finish(f'重启go-cqhttp失败,请前往服务器查看,出错如下:\n{json.dumps(resj)}')
