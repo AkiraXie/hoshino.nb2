@@ -29,8 +29,9 @@ from nonebot.adapters.cqhttp import Bot
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import on_command
-from nonebot.rule import Rule
-DEFAULTFONT = ImageFont.truetype(R.img('priconne/gadget/SourceHanSerif-Regular.ttc'), size=48)
+from nonebot.rule import Rule, to_me
+DEFAULTFONT = ImageFont.truetype(
+    R.img('priconne/gadget/SourceHanSerif-Regular.ttc'), size=48)
 
 
 class FreqLimiter:
@@ -91,10 +92,10 @@ def get_bot_list() -> ItemsView[str, Bot]:
     return nonebot.get_bots().items()
 
 
-def sucmd(name: str, rule: Rule = Rule(), aliases: Optional[Iterable] = None, **kwargs) -> Matcher:
+def sucmd(name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, **kwargs) -> Matcher:
     kwargs['aliases'] = aliases
     kwargs['permission'] = SUPERUSER
-    kwargs['rule'] = rule
+    kwargs['rule'] = to_me() if only_to_me else Rule()
     return on_command(name, **kwargs)
 
 

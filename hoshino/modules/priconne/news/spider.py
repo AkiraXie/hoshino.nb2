@@ -31,13 +31,13 @@ class BaseSpider(abc.ABC):
     item_cache = []
 
     @classmethod
-    async def get_response(cls) -> aiohttpx.BaseResponse:
+    async def get_response(cls) -> aiohttpx.Response:
         resp = await aiohttpx.get(cls.url)
         return resp
 
     @staticmethod
     @abc.abstractmethod
-    async def get_items(resp: aiohttpx.BaseResponse) -> List[Item]:
+    async def get_items(resp: aiohttpx.Response) -> List[Item]:
         raise NotImplementedError
 
     @classmethod
@@ -66,7 +66,7 @@ class SonetSpider(BaseSpider):
     src_name = "台服官网"
 
     @staticmethod
-    async def get_items(resp:aiohttpx.BaseResponse):
+    async def get_items(resp:aiohttpx.Response):
         soup = BeautifulSoup(resp.content, 'lxml')
         return [
             Item(idx=dd.a["href"],
@@ -83,7 +83,7 @@ class BiliSpider(BaseSpider):
     src_name = "B服官网"
 
     @staticmethod
-    async def get_items(resp:aiohttpx.BaseResponse):
+    async def get_items(resp:aiohttpx.Response):
         content = resp.json
         items = [
             Item(idx=n["id"],
