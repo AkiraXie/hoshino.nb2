@@ -10,10 +10,10 @@ from typing import Type
 from hoshino.matcher import Matcher
 from hoshino import Service, scheduler, Bot
 from loguru import logger
-from .spider import *
+from .spider import BaseSpider, BiliSpider, SonetSpider
 
-svtw = Service('pcr-news-tw')
-svbl = Service('pcr-news-bili')
+svtw = Service('pcr-news-tw', enable_on_default=False)
+svbl = Service('pcr-news-bili', enable_on_default=False)
 
 
 async def news_poller(spider: BaseSpider, sv: Service, TAG):
@@ -47,14 +47,14 @@ async def send_news(matcher: Type[Matcher], spider: BaseSpider, max_num=5):
     await matcher.send(spider.format_items(news), at_sender=True)
 
 
-twnews = svtw.on_command('台服新闻', aliases=('台服活动',),only_group=False)
+twnews = svtw.on_command('台服新闻', aliases=('台服活动',), only_group=False)
 
 
 @twnews.handle()
 async def send_sonet_news(bot: Bot):
     await send_news(twnews, SonetSpider)
 
-blnews = svbl.on_command('B服新闻', aliases=('b服新闻', '国服新闻'),only_group=False)
+blnews = svbl.on_command('B服新闻', aliases=('b服新闻', '国服新闻'), only_group=False)
 
 
 @blnews.handle()

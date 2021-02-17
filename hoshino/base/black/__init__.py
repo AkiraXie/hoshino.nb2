@@ -62,9 +62,9 @@ async def _(bot: Bot, event: Event, state: T_State):
                 await bot.send(event, '拉黑了,再见了您~', at_sender=True)
                 return
 
-lahei = sucmd('拉黑', to_me(),aliases={'block', '封禁', 'ban',
-                             '禁言', '小黑屋', 'b了'}, handlers=[parse_qq])
-jiefeng = sucmd('解封',to_me(), aliases={'解禁'}, handlers=[parse_qq])
+lahei = sucmd('拉黑', True, aliases={'block', '封禁', 'ban',
+                                   '禁言', '小黑屋', 'b了'}, handlers=[parse_qq])
+jiefeng = sucmd('解封', True, aliases={'解禁'}, handlers=[parse_qq])
 
 
 @lahei.got('ids', prompt='请输入要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~', args_parser=parse_qq)
