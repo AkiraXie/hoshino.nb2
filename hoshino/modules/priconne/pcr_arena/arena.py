@@ -7,14 +7,13 @@ Description:
 Github: http://github.com/AkiraXie/
 '''
 import time
-from hoshino.util import load_config, aiohttpx
+from hoshino.util import  aiohttpx
 from loguru import logger
-from nonebot import require
-Chara = require('chara').Chara
+from . import sv,Chara
 
 
 def __get_auth_key():
-    config = load_config(__file__)
+    config = sv.config
     return config["AUTH_KEY"]
 
 

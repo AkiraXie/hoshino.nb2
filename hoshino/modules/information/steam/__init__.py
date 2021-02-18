@@ -5,7 +5,7 @@ import json
 import os
 from hoshino import scheduler, Bot, Event, Service
 from asyncio import sleep
-from hoshino.util import get_bot_list, load_config, aiohttpx
+from hoshino.util import get_bot_list, aiohttpx
 
 sv = Service("steam", enable_on_default=False, visible=False)
 
@@ -13,7 +13,7 @@ subscribe_file = os.path.join(os.path.dirname(__file__), 'subscribes.json')
 with open(subscribe_file, mode="r") as f:
     f = f.read()
     sub = json.loads(f)
-cfg = load_config(__file__)
+cfg = sv.config
 
 playing_state = {}
 

@@ -10,10 +10,11 @@ from loguru import logger
 import requests
 from hoshino import R
 from hoshino.util import Image, BytesIO, aiohttpx
-from hoshino.modules.priconne import jsonpath, pcrdatapath
+from hoshino.modules.priconne import pcrdatapath
 import os
 os.makedirs(R.img('priconne/unit/'), exist_ok=1)
 os.makedirs(R.img('priconne/card/'), exist_ok=1)
+jsonpath = 'hoshino/service_config/gacha.json'
 
 
 def download_chara_icon(id_: int, star: int, rurl: str = 'https://api.redive.lolikon.icu/icon/icon_unit_'):
