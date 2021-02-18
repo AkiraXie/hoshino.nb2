@@ -5,7 +5,7 @@
 ## 怎么用？
 1. 装依赖
 2. 复制service_config_sample到service_config, 然后自己改配置
-3. run run.py
+3. python run.py
 
 
 
