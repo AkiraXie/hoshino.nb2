@@ -99,6 +99,16 @@ class Service:
                 gl[g].append((sid, bot))
         return gl
 
+    @property
+    def config(self) -> dict:
+        filename = f'hoshino/service_config/{self.name}.json'
+        try:
+            with open(filename, encoding='utf8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.exception(f'failed to load {self.name} config. {e}')
+            return dict()
+
     def check_enabled(self, group_id: int) -> bool:
         return bool((group_id in self.enable_group) or (
             self.enable_on_default and group_id not in self.disable_group))

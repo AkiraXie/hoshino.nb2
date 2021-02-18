@@ -14,10 +14,9 @@ from hoshino import Event, Bot, Message, MessageSegment
 from hoshino.util import concat_pic, pic2b64, FreqLimiter
 from hoshino.service import Service
 import re
-from .arena import do_query
 Chara = require('chara').Chara
 sv = Service('pcr-arena')
-
+from .arena import do_query
 
 lmt = FreqLimiter(5)
 

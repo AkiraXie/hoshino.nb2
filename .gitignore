@@ -10,7 +10,8 @@ __pycache__/
 !.env.prod.example
 data
 logs
-
+static
+hoshino/service_config
 
 
 # C extensions

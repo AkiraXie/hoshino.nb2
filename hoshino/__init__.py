@@ -16,6 +16,8 @@ service_dir=os.path.join(hsn_config.data,'service/')
 os.makedirs(db_dir,exist_ok=True)
 os.makedirs(service_dir,exist_ok=True)
 
+
+
 scheduler=nonebot.require('nonebot_plugin_apscheduler').scheduler
 
 
