@@ -41,7 +41,7 @@ addrss = sv.on_shell_command('添加订阅', aliases=('addrss', '增加订阅'),
 async def _(bot: Bot, event: Event, state: T_State):
     args = state['args']
     name = args.name
-    url = BASE_URL+args.url if args.rsshub else args.url
+    url = BASE_URL+args.url.lstrip('/') if args.rsshub else args.url
     try:
         stats = await aiohttpx.head(url, timeout=5, allow_redirects=True)
     except Exception as e:

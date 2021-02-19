@@ -8,6 +8,6 @@ Github: http://github.com/AkiraXie/
 '''
 from typing import List, Set, Any, Dict, Union, TypeVar, Optional, Callable, Iterable, Final, Type,Awaitable
 from multidict import CIMultiDictProxy
-from nonebot.typing import T_State
+from nonebot.typing import T_State,T_Handler,T_ArgsParser
 from nonebot.exception import FinishedException, IgnoredException
 from argparse import Namespace

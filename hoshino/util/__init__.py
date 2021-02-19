@@ -156,10 +156,10 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
                 ids.append(int(m.data['qq']))
         for m in event.get_plaintext().split():
             if m.isdigit():
-                ids.append(int(m.data['text']))
+                ids.append(int(m))
     elif isinstance(event, PrivateMessageEvent):
         for m in event.get_plaintext().split():
             if m.isdigit():
-                ids.append(int(m.data['text']))
+                ids.append(int(m))
     if ids:
         state['ids'] = ids.copy()
