@@ -30,7 +30,7 @@ class grouppool(pw.Model):
 
     class Meta:
         database = db
-        primary_key = pw.CompositeKey('id','pool')
+        primary_key = pw.CompositeKey('id')
 
 
 def get_pool(gid: int) -> str:
