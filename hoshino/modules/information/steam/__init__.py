@@ -3,7 +3,7 @@ from loguru import logger
 from lxml import etree
 import json
 import os
-from hoshino import scheduler, Bot, Event, Service
+from hoshino import scheduled_job, Bot, Event, Service
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx
 
@@ -146,7 +146,7 @@ async def del_steam_ids(steam_id, group):
     await update_game_status()
 
 
-@scheduler.scheduled_job('cron', minute='*/2', jitter=20)
+@scheduled_job('cron', minute='*/2', id='推送steam',jitter=20)
 async def check_steam_status():
     old_state = playing_state.copy()
     await update_game_status()

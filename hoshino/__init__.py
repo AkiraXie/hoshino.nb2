@@ -17,10 +17,6 @@ os.makedirs(db_dir,exist_ok=True)
 os.makedirs(service_dir,exist_ok=True)
 
 
-
-scheduler=nonebot.require('nonebot_plugin_apscheduler').scheduler
-
-
 from .typing import Final
 from .res import rhelper
 
@@ -44,4 +40,4 @@ from .util import aiohttpx,get_bot_list, sucmd
 from .message import MessageSegment, Message
 from .event import Event
 from .service import Service
-
+from .schedule import scheduled_job,add_job
