@@ -6,17 +6,16 @@ LastEditTime: 2021-02-12 20:21:21
 Description:
 Github: http://github.com/AkiraXie/
 '''
+import re
 from functools import cmp_to_key
-
-from nonebot.exception import FinishedException
-from nonebot.rule import ArgumentParser
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from hoshino import Service, Bot, Event
-from hoshino.rule import to_me
+from hoshino.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
-from hoshino.matcher import  on_shell_command
+from hoshino.matcher import on_shell_command
 from hoshino.util import text2Seg
-from hoshino.typing import T_State
+from hoshino.typing import T_State, FinishedException
+from .util import parse_gid, parse_service
 parser = ArgumentParser()
 parser.add_argument('-a', '--all', action='store_true')
 parser.add_argument('-p', '--picture', action='store_true')
@@ -24,9 +23,11 @@ parser1 = ArgumentParser()
 parser1.add_argument('-a', '--all', action='store_true')
 lssv = on_shell_command('lssv', to_me(), aliases={
                         '服务列表', '功能列表'}, permission=ADMIN, parser=parser)
-enable =on_shell_command('enable', to_me(), aliases={'开启', '打开', '启用'},parser=parser1)
-disable =on_shell_command('disable', to_me(), aliases={'关闭', '停用', '禁用'},parser=parser1)
-from .util import manage_service, parse_gid, parse_service
+enable = on_shell_command('enable', to_me(), aliases={
+                          '开启', '打开', '启用'}, parser=parser1, state={'action': '开启'})
+disable = on_shell_command('disable', to_me(), aliases={
+                           '关闭', '停用', '禁用'}, parser=parser1, state={'action': '关闭'})
+
 
 @lssv.handle()
 async def _(bot: Bot, event: Event, state: T_State):
@@ -55,14 +56,13 @@ async def _(bot: Bot, event: Event, state: T_State):
         await lssv.finish("\n".join(reply)) if not as_pic else await lssv.finish(text2Seg("\n".join(reply)))
 
 
-@disable.handle()
-async def _(bot: Bot, event: Event, state: T_State):
-    services = []
+async def handle_msg(bot: Bot, event: Event, state: T_State):
     if isinstance(event, GroupMessageEvent):
         state['gids'] = [event.group_id]
         await parse_service(bot, event, state)
 
     elif isinstance(event, PrivateMessageEvent):
+        services = []
         glist = list(g['group_id'] for g in await bot.get_group_list())
         failure = set()
         msgs = event.get_plaintext().split(' ')
@@ -78,56 +78,60 @@ async def _(bot: Bot, event: Event, state: T_State):
             elif msg != '':
                 services.append(msg)
         if failure:
-            await disable.send(f'bot未入群 {"，".join(failure)}')
+            await enable.send(f'bot未入群 {", ".join(failure)}')
         if len(gids) != 0:
             state['gids'] = gids.copy()
         if len(services) != 0:
             state['services'] = services.copy()
+
+disable.handle()(handle_msg)
+enable.handle()(handle_msg)
 
 
 @disable.got('gids', '请输入要关闭服务的群ID，用空格间隔', args_parser=parse_gid)
 @disable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
-async def _(bot: Bot, event: Event, state: T_State):
-    if not state['gids'] or not state['services']:
-        await bot.send(event, '无效输入')
-        raise FinishedException
-    await manage_service(disable, bot, event, state)
-
-
-@enable.handle()
-async def _(bot: Bot, event: Event, state: T_State):
-    services = []
-    if isinstance(event, GroupMessageEvent):
-        state['gids'] = [event.group_id]
-        await parse_service(bot, event, state)
-
-    elif isinstance(event, PrivateMessageEvent):
-        glist = list(g['group_id'] for g in await bot.get_group_list())
-        failure = set()
-        msgs = event.get_plaintext().split(' ')
-        gids = []
-        for msg in msgs:
-            if msg.isdigit():
-                gid = int(msg)
-                if gid not in glist:
-                    failure.add(msg)
-                    continue
-                else:
-                    gids.append(gid)
-            elif msg != '':
-                services.append(msg)
-        if failure:
-            await enable.send(f'bot未入群 {"，".join(failure)}')
-        if len(gids) != 0:
-            state['gids'] = gids.copy()
-        if len(services) != 0:
-            state['services'] = services.copy()
-
-
 @enable.got('gids', '请输入要开启服务的群ID，用空格间隔', args_parser=parse_gid)
 @enable.got('services', '请输入服务名称，用空格间隔', args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
     if not state['gids'] or not state['services']:
         await bot.send(event, '无效输入')
         raise FinishedException
-    await manage_service(enable, bot, event, state)
+    action = state['action']
+    svs = Service.get_loaded_services()
+    if 'all' in state['args'].__dict__ and state['args'].all:
+        state['services'] = svs.keys()
+    allsv = set(svs.keys())
+    exclude, succ, notfound, succ_group = set(), set(), set(), set()
+    for name in state['services']:
+        flag = 1
+        if name.startswith(('!', '！')) or name.endswith(('!', '！')):
+            name = re.sub(r'[!！]', '', name)
+            flag = 0
+        if name in svs:
+            sv = svs[name]
+            if await sv.manage_perm(bot, event):
+                if flag:
+                    succ.add(name)
+                else:
+                    exclude.add(name)
+        else:
+            notfound.add(name)
+    if not succ and notfound:
+        await bot.send(event, f'未找到服务: {", ".join(notfound)}')
+        raise FinishedException
+    succ = succ if not exclude else allsv-exclude
+    for gid in state['gids']:
+        for name in succ:
+            sv = svs[name]
+            sv.set_enable(gid) if action == '开启' else sv.set_disable(gid)
+        succ_group.add(str(gid))
+    reply = []
+    if isinstance(event, GroupMessageEvent):
+        reply.append(f'已{action}服务: {", ".join(succ)}')
+    else:
+        reply.append(
+            f'已在群 {", ".join(succ_group)}{action}服务: {", ".join(succ)}')
+    if notfound:
+        reply.append(f'未找到服务: {", ".join(notfound)}')
+    await bot.send(event, '\n'.join(reply))
+    raise FinishedException
