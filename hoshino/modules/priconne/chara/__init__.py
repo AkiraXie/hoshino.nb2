@@ -13,7 +13,7 @@ import importlib
 from PIL import Image, ImageFont
 import nonebot
 from loguru import logger
-from hoshino import Bot, Event, R, rhelper
+from hoshino import Bot, Event, R, rhelper, scheduled_job
 from hoshino.util import sucmd, get_text_size, text2pic, run_sync
 from .util import download_card, download_chara_icon, download_config, download_pcrdata
 from hoshino.modules.priconne import _pcr_data
@@ -72,6 +72,19 @@ async def _(bot: Bot, event: Event):
     await dlcard.finish('\n'.join(replys))
 
 
+@scheduled_job('cron', hour='0,12', minute='18', jitter=20, id='检查卡池更新')
+async def check_data():
+    code_1 = await download_pcrdata()
+    code_2 = await download_config()
+    if code_1 == 0 and code_2 == 0:
+        try:
+            importlib.reload(_pcr_data)
+            Chara.gen_name2id()
+        except Exception as e:
+            logger.exception(e)
+            logger.error(f'重载花名册失败！{type(e)}')
+
+
 @dldata.handle()
 async def _(bot: Bot, event: Event):
     code_1 = await download_pcrdata()
@@ -82,7 +95,7 @@ async def _(bot: Bot, event: Event):
             Chara.gen_name2id()
         except Exception as e:
             logger.exception(e)
-            logger.error(f'重载花名册失败！{type(e)}, {e}')
+            logger.error(f'重载花名册失败！{type(e)}')
             await dldata.finish(f'重载花名册失败！错误如下：\n{type(e)}, {e}')
 
         await dldata.finish('更新卡池和数据成功')
@@ -122,13 +135,13 @@ class Chara:
             star = 6
         elif 3 <= self.star <= 5:
             star = 3
-        elif self.star==1:
+        elif self.star == 1:
             star = 1
         else:
             for i in (6, 3, 1):
                 if r := res_path+f'icon_unit_{self.id}{i}1.png':
                     return r
-            star=6
+            star = 6
         res = res_path+f'icon_unit_{self.id}{star}1.png'
         if not res:
             download_chara_icon(self.id, 6)
@@ -149,14 +162,14 @@ class Chara:
             star = 6
         elif 3 <= self.star <= 5:
             star = 3
-        elif self.star==1:
+        elif self.star == 1:
             star = 1
         else:
             for i in (6, 3, 1):
                 tip = f"{self.name}{i}星卡面：\n"
                 if r := res_path+f'{self.id}{i}1.png':
                     return f'{tip}{r.CQcode}'
-            star=6
+            star = 6
         tip = f"{self.name}{star}星卡面：\n"
         res = res_path+f'{self.id}{star}1.png'
         if not res:

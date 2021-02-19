@@ -8,8 +8,8 @@ Github: http://github.com/AkiraXie/
 '''
 import asyncio
 from hoshino.typing import List, T_State
-from hoshino import Service, aiohttpx, Bot, Event, scheduler, Message
-from hoshino.util import get_bot_list, text2Seg
+from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message
+from hoshino.util import text2Seg
 from hoshino.rule import ArgumentParser
 from loguru import logger
 from .data import Rss, Rssdata, BASE_URL
@@ -125,9 +125,8 @@ async def _(bot: Bot, event: Event, state: T_State):
     await queryrss.finish(Message('\n'.join(msg)))
 
 
-@scheduler.scheduled_job('interval', minutes=3, jitter=20)
+@scheduled_job('interval', minutes=3, jitter=20,id='推送rss')
 async def push_rss():
-    logger.info('push_rss started')
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
         for sid,bot in glist[gid]:
@@ -151,7 +150,6 @@ async def push_rss():
                     except Exception as e:
                         logger.exception(e)
                         logger.error(f'{type(e)} occured when pushing rss')
-    logger.info('push_rss completed')
 
 querynewrss = sv.on_command('看最新订阅', aliases=('查最新订阅', '查看最新订阅'))
 

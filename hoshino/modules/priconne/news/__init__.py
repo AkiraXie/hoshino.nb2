@@ -8,7 +8,7 @@ Github: http://github.com/AkiraXie/
 '''
 from typing import Type
 from hoshino.matcher import Matcher
-from hoshino import Service, scheduler, Bot
+from hoshino import Service, Bot,scheduled_job
 from loguru import logger
 from .spider import BaseSpider, BiliSpider, SonetSpider
 
@@ -29,13 +29,9 @@ async def news_poller(spider: BaseSpider, sv: Service, TAG):
     await sv.broadcast(spider.format_items(news), TAG, interval_time=0.5)
 
 
-@scheduler.scheduled_job('interval', minutes=5, jitter=20)
-async def sonet_news_poller():
-    await news_poller(SonetSpider, svtw, '台服官网')
-
-
-@scheduler.scheduled_job('interval', minutes=5, jitter=20)
+@scheduled_job('interval', id='推送新闻',minutes=5, jitter=20)
 async def bili_news_poller():
+    await news_poller(SonetSpider, svtw, '台服官网')
     await news_poller(BiliSpider, svbl, 'B服官网')
 
 

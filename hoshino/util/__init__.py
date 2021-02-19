@@ -77,7 +77,7 @@ def get_bot_list() -> ItemsView[str, Bot]:
     return nonebot.get_bots().items()
 
 
-def sucmd(name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, **kwargs) -> Matcher:
+def sucmd(name: str, only_to_me: bool = False, aliases: Optional[set] = None, **kwargs) -> Matcher:
     kwargs['aliases'] = aliases
     kwargs['permission'] = SUPERUSER
     kwargs['rule'] = to_me() if only_to_me else Rule()

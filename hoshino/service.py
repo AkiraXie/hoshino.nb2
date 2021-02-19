@@ -127,9 +127,12 @@ class Service:
 
     def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         if isinstance(aliases, str):
-            aliases = set(aliases,)
-        else:
-            aliases = set(aliases) if aliases is not None else set()
+            aliases = set([aliases])
+        elif not isinstance(aliases,set):
+            if aliases:
+                aliases = set([aliases]) if len(aliases) == 1 else set(aliases)
+            else:
+                aliases = set()
         kwargs['aliases'] = aliases
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
@@ -138,9 +141,12 @@ class Service:
 
     def on_shell_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, parser: Optional[ArgumentParser] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         if isinstance(aliases, str):
-            aliases = set(aliases,)
-        else:
-            aliases = set(aliases) if aliases else set()
+            aliases = set([aliases])
+        elif not isinstance(aliases,set):
+            if aliases:
+                aliases = set([aliases]) if len(aliases) == 1 else set(aliases)
+            else:
+                aliases = set()
         kwargs['parser'] = parser
         kwargs['aliases'] = aliases
         kwargs['permission'] = permission
@@ -162,9 +168,12 @@ class Service:
 
     def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
         if isinstance(keywords, str):
-            keywords = set(keywords,)
-        else:
-            keywords = set(keywords) if keywords is not None else set()
+            keywords = set([keywords])
+        elif not isinstance(keywords,set):
+            if keywords:
+                keywords = set([keywords]) if len(keywords) == 1 else set(keywords)
+            else:
+                keywords = set()
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = keyword(keywords, normal) & rule
@@ -204,8 +213,7 @@ class Service:
                     await asyncio.sleep(interval_time)
                     try:
                         await bot.send_group_msg(self_id=sid, group_id=gid, message=msg)
+                        logger.opt(colors=True).info(f"<c>{self.name}</c> | {sid}在群{gid}投递{tag}成功")
                     except Exception as e:
-                        logger.exception(e)
-                        logger.error(
-                            f"{self.name}: {sid}在群{gid}投递{tag}失败, {type(e)}")
-                    logger.info(f"{self.name}: {sid}在群{gid}投递{tag}成功")
+                        logger.opt(colors=True,exception=e).error(
+                            f"<r><bg #f8bbd0><c>{self.name}</c> | {sid}在群{gid}投递{tag}失败, {type(e)}</bg #f8bbd0></r>")

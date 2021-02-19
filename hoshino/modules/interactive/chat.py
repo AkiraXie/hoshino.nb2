@@ -19,13 +19,13 @@ sv1 = Service('repeat', visible=False)
 
 
 class reapter:
-    def __init__(self, msg: Message , repeated: bool , prob: float) -> None:
-        self.msg = str(msg)
+    def __init__(self, msg: str , repeated: bool , prob: float) -> None:
+        self.msg = msg
         self.repeated = repeated
         self.prob = prob
 
-    def check(self, current_msg: Message) -> bool:
-        return not self.repeated and str(current_msg) == self.msg
+    def check(self, current_msg: str) -> bool:
+        return not self.repeated and current_msg == self.msg
 
 
 # 想了想要复现HoshinoBot的复读还是得有个全局字典来存数据F
@@ -34,7 +34,7 @@ GROUP_STATE: Dict[int, reapter] = dict()
 
 async def random_reapt(bot: Bot, event: Event):
     gid = event.group_id
-    msg = event.get_message()
+    msg = event.raw_message
     if gid not in GROUP_STATE:
         GROUP_STATE[gid] = reapter(msg, False, 0.0)
         return
@@ -43,7 +43,7 @@ async def random_reapt(bot: Bot, event: Event):
         if  p := current_reapter.prob > random.random():
             try:
                 GROUP_STATE[gid] = reapter(msg, True, 0.0)
-                await bot.send(event,msg)
+                await bot.send(event,Message(msg))
             except Exception as e:
                 logger.exception(e)
         else:

@@ -7,7 +7,7 @@ Description:
 Github: http://github.com/AkiraXie/
 '''
 from .util import check_ver, db_message
-from hoshino import Service,  sucmd, scheduler, rule, Bot, Event
+from hoshino import Service,  sucmd, scheduled_job, rule, Bot, Event
 from hoshino.typing import T_State
 from hoshino.util import text2Seg
 
@@ -17,14 +17,14 @@ svbl = Service('calendar-bili', enable_on_default=False)
 svtw = Service('calendar-tw', enable_on_default=False)
 
 
-@scheduler.scheduled_job('cron', hour='*/3', jitter=40)
+@scheduled_job('cron', hour='*/3', jitter=40, id='检查数据库更新')
 async def db_check_ver():
     await check_ver('jp')
     await check_ver('bili')
     await check_ver('tw')
 
 
-@scheduler.scheduled_job('cron', hour='14', minute='15', jitter=30)
+@scheduled_job('cron', hour='14', minute='15', jitter=30, id='推送日程')
 async def _():
     await svjp.broadcast(text2Seg(await db_message('jp')), 'calendar-jp')
     await svbl.broadcast(text2Seg(await db_message('bili')), 'calendar-bilibili')

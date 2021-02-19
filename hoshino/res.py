@@ -12,7 +12,7 @@ from PIL import Image
 import os
 from nonebot.adapters.cqhttp.message import MessageSegment
 from hoshino import hsn_config
-STATIC = os.path.expanduser(hsn_config.static or 'data/static')
+STATIC = os.path.expanduser(hsn_config.static or 'static')
 
 os.makedirs(STATIC, exist_ok=1)
 
@@ -100,7 +100,10 @@ class rhelper(str):
         return self.exist
 
     def open(self) -> Image.Image:
-        return Image.open(self.path)
+        try:
+            return Image.open(self.path)
+        except Exception as e:
+            logger.exception(e)
 
     @property
     def CQcode(self) -> MessageSegment:
