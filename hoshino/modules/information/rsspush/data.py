@@ -24,7 +24,7 @@ BASE_URL = "https://rsshub.akiraxie.me/"
 
 def gen_rss_pic(imglist: List[Image.Image]):
     num = len(imglist)
-    size = 384
+    size = 400
     des = Image.new('RGBA', (num*size, size), (255, 255, 255, 255))
     for i, img in enumerate(imglist):
         des.paste(img, (i*size, 0), img)
@@ -84,11 +84,13 @@ class Rss:
             for i in soup.find_all('img'):
                 img = await aiohttpx.get(i['src'], timeout=5)
                 img = Image.open(BytesIO(img.content)).convert('RGBA')
-                if img.width < 384 and img.height < 384:
+                if img.width < 400 or img.height < 400:
                     continue
-                img = img.resize((384, 384), Image.LANCZOS)
+                center=(img.width//2,img.height//2)
+                new_size=(center[0]-200,center[1]-200,center[0]+200,center[1]+200)
+                img=img.crop(new_size)
                 imglist.append(img)
-            imglen = len(imglist)
+            imglen = min(len(imglist),9)
             pics = []
             if imglen == 0:
                 res = ""
