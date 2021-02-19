@@ -65,9 +65,9 @@ async def look_calendar(bot: Bot, event: Event, state: T_State):
         await bot.send(event, text2Seg(await db_message(state['region'], 'all')), at_sender=True)
 
 
-twcal = svtw.on_regex(r'^台服(当前|预定)?日程$', state={
+svtw.on_regex(r'^台服(当前|预定)?日程$', state={
                       'region': 'tw'}, handlers=[look_calendar])
-blcal = svbl.on_regex(r'^[b国]服(当前|预定)?日程$', state={
+svbl.on_regex(r'^[b国]服(当前|预定)?日程$', state={
                       'region': 'bili'}, handlers=[look_calendar])
-jpcal = svjp.on_regex(r'^日服(当前|预定)?日程$', state={
+svjp.on_regex(r'^日服(当前|预定)?日程$', state={
                       'region': 'jp'}, handlers=[look_calendar])

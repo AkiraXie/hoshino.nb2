@@ -10,6 +10,7 @@ Github: http://github.com/AkiraXie/
 
 
 from hoshino.typing import T_State
+from hoshino.service import matcher_wrapper
 from hoshino.util import DailyNumberLimiter, pic2b64, concat_pic, normalize_str, sucmd,parse_qq
 from hoshino import MessageSegment, Message, Service, permission, Bot, Event
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
@@ -46,13 +47,13 @@ showcol = sv.on_command('仓库',  aliases={
     '查看仓库', '我的仓库', '看看仓库'}, only_group=False)
 
 
-async def check_jewel_num(mathcer: Matcher, event: Event):
+async def check_jewel_num(mathcer: matcher_wrapper, event: Event):
     uid = event.get_user_id()
     if not jewel_limit.check(int(uid)):
         await mathcer.finish(JEWEL_EXCEED_NOTICE, at_sender=True)
 
 
-async def check_tenjo_num(mathcer: Matcher, event: Event):
+async def check_tenjo_num(mathcer: matcher_wrapper, event: Event):
     uid = event.get_user_id()
     if not tenjo_limit.check(int(uid)):
         await mathcer.finish(TENJO_EXCEED_NOTICE, at_sender=True)

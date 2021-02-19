@@ -6,9 +6,6 @@ LastEditTime: 2021-02-02 19:58:30
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from typing import Any, Optional
-from nonebot.adapters.cqhttp.message import MessageSegment,Message
-from nonebot.adapters.cqhttp.event import Event,GroupMessageEvent
 from nonebot.matcher import Matcher, matchers
 from nonebot.plugin import on_command, on_message,  on_startswith, on_endswith, on_notice, on_keyword, on_metaevent, on_request, on_shell_command
 

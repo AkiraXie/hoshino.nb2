@@ -10,21 +10,26 @@ import asyncio
 import re
 import os
 import json
+from functools import wraps
 from collections import defaultdict
-from loguru import logger
+from nonebot.exception import PausedException, RejectedException, StopPropagation
+from nonebot.typing import T_ArgsParser, T_Handler
+from nonebot.message import run_preprocessor, run_postprocessor
+from hoshino.log import wrap_logger
 from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment
 from hoshino.event import Event
 from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_request, on_shell_command
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import get_bot_list
 from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
-from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List, Type
+from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List, Type, FinishedException
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
+_loaded_matchers: Dict["Type[Matcher]", "matcher_wrapper"] = {}
 
 
-def _save_service_data(service: 'Service'):
+def _save_service_data(service: "Service"):
     data_file = os.path.join(_service_dir, f'{service.name}.json')
     with open(data_file, 'w', encoding='utf8') as f:
         json.dump({
@@ -71,6 +76,8 @@ class Service:
         data = _load_service_data(self.name)
         self.enable_group = set(data.get('enable_group', []))
         self.disable_group = set(data.get('disable_group', []))
+        self.logger = wrap_logger(self.name)
+        self.matchers = []
 
     @staticmethod
     def get_loaded_services() -> Dict[str, "Service"]:
@@ -105,8 +112,8 @@ class Service:
         try:
             with open(filename, encoding='utf8') as f:
                 return json.load(f)
-        except Exception as e:
-            logger.exception(f'failed to load {self.name} config. {e}')
+        except:
+            self.logger.error(f'Failed to load config')
             return dict()
 
     def check_enabled(self, group_id: int) -> bool:
@@ -125,10 +132,10 @@ class Service:
             rule = rule & (to_me())
         return rule
 
-    def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+    def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         if isinstance(aliases, str):
             aliases = set([aliases])
-        elif not isinstance(aliases,set):
+        elif not isinstance(aliases, set):
             if aliases:
                 aliases = set([aliases]) if len(aliases) == 1 else set(aliases)
             else:
@@ -137,12 +144,19 @@ class Service:
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
-        return on_command(name, **kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.command', priority, command=name, only_group=only_group)
+        matcher = on_command(name, **kwargs)
+        mw.load_matcher(matcher)
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_shell_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, parser: Optional[ArgumentParser] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+    def on_shell_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, parser: Optional[ArgumentParser] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         if isinstance(aliases, str):
             aliases = set([aliases])
-        elif not isinstance(aliases,set):
+        elif not isinstance(aliases, set):
             if aliases:
                 aliases = set([aliases]) if len(aliases) == 1 else set(aliases)
             else:
@@ -152,34 +166,59 @@ class Service:
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
-        return on_shell_command(name, **kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.shell_command', priority, command=name, only_group=only_group)
+        mw.load_matcher(on_shell_command(name, **kwargs))
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_startswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+    def on_startswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
-        return on_startswith(msg, **kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.startswith', priority, startswith=msg, only_group=only_group)
+        mw.load_matcher(on_startswith(msg, **kwargs))
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_endswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+    def on_endswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
-        return on_endswith(msg, **kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.endswith', priority, endswith=msg, only_group=only_group)
+        mw.load_matcher(on_endswith(msg, **kwargs))
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+    def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         if isinstance(keywords, str):
             keywords = set([keywords])
-        elif not isinstance(keywords,set):
+        elif not isinstance(keywords, set):
             if keywords:
-                keywords = set([keywords]) if len(keywords) == 1 else set(keywords)
+                keywords = set([keywords]) if len(
+                    keywords) == 1 else set(keywords)
             else:
                 keywords = set()
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = keyword(keywords, normal) & rule
-        return on_message(**kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.keyword', priority, keywords=str(keywords), only_group=only_group)
+        mw.load_matcher(on_message(**kwargs))
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         '''
         根据正则表达式进行匹配。
         可以通过 ``state["_matched"]`` 获取正则表达式匹配成功的文本。
@@ -187,21 +226,45 @@ class Service:
         '''
         rule = self.check_service(only_to_me, only_group)
         rule = regex(pattern, flags, normal) & rule
-        return on_message(rule, permission, **kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.regex', priority, pattern=str(pattern), flags=str(flags), only_group=only_group)
+        self.matchers.append(str(mw))
+        mw.load_matcher(on_message(rule, permission, **kwargs))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> Type[Matcher]:
+    def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
-        return on_message(**kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.message', priority, only_group=only_group)
+        self.matchers.append(str(mw))
+        mw.load_matcher(on_message(**kwargs))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_notice(self,  only_group: bool = True, **kwargs) -> Type[Matcher]:
+    def on_notice(self,  only_group: bool = True, **kwargs) -> "matcher_wrapper":
         rule = self.check_service(0, only_group)
-        return on_notice(rule, **kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Notice', priority, only_group=only_group)
+        self.matchers.append(str(mw))
+        mw.load_matcher(on_notice(rule, **kwargs))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
-    def on_request(self, only_group: bool = True, **kwargs) -> Type[Matcher]:
+    def on_request(self, only_group: bool = True, **kwargs) -> "matcher_wrapper":
         rule = self.check_service(0, only_group)
-        return on_request(rule, **kwargs)
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Request', priority, only_group=only_group)
+        self.matchers.append(str(mw))
+        mw.load_matcher(on_request(rule, **kwargs))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
 
     async def broadcast(self, msgs: Optional[Iterable], tag='', interval_time=0.5):
         if isinstance(msgs, (str, Message, MessageSegment)):
@@ -213,7 +276,95 @@ class Service:
                     await asyncio.sleep(interval_time)
                     try:
                         await bot.send_group_msg(self_id=sid, group_id=gid, message=msg)
-                        logger.opt(colors=True).info(f"<c>{self.name}</c> | {sid}在群{gid}投递{tag}成功")
-                    except Exception as e:
-                        logger.opt(colors=True,exception=e).error(
-                            f"<r><bg #f8bbd0><c>{self.name}</c> | {sid}在群{gid}投递{tag}失败, {type(e)}</bg #f8bbd0></r>")
+                        self.logger.info(
+                            f"{sid}在群{gid}投递{tag}成功")
+                    except:
+                        self.logger.error(f'{sid}在群{gid}投递{tag}失败')
+
+
+class matcher_wrapper:
+    '''
+    封装了 ``nonebot.matcher.Matcher`` ,使之可以受Service干预。
+
+    并将 ``Matcher`` 常见的类方法进行了封装，如果需要其他类方法，请调用 ``.matcher.* ``
+    '''
+
+    def __init__(self, sv: Service, type: str, priority: int, **info) -> None:
+        self.sv = sv
+        self.priority = priority
+        self.info = info
+        self.type = type
+        
+    def load_matcher(self, matcher: Type[Matcher]):
+        self.matcher = matcher
+        
+    @staticmethod
+    def get_loaded_matchers():
+        return list(map(str,_loaded_matchers.values()))
+        
+    def handle(self):
+        def deco(func: T_Handler):
+            return self.matcher.handle()(func)
+        return deco
+
+    def __call__(self, func: T_Handler) -> T_Handler:
+        return self.handle()(func)
+
+    def receive(self):
+        def deco(func: T_Handler):
+            return self.matcher.receive()(func)
+        return deco
+
+    def got(self,
+            key: str,
+            prompt: Optional[Union[str, "Message", "MessageSegment"]] = None,
+            args_parser: Optional[T_ArgsParser] = None):
+        def deco(func: T_Handler):
+            return self.matcher.got(key, prompt, args_parser)(func)
+        return deco
+
+    async def reject(self,
+                     prompt: Optional[Union[str, "Message",
+                                            "MessageSegment"]] = None,
+                     **kwargs):
+        return await self.matcher.reject(prompt, **kwargs)
+
+    async def pause(self,
+                    prompt: Optional[Union[str, "Message",
+                                           "MessageSegment"]] = None,
+                    **kwargs):
+        return await self.matcher.pause(prompt, **kwargs)
+
+    async def send(self, message: Union[str, "Message", "MessageSegment"],
+                   **kwargs):
+        return await self.matcher.send(message, **kwargs)
+
+    async def finish(self,
+                     message: Optional[Union[str, "Message",
+                                             "MessageSegment"]] = None,
+                     **kwargs):
+        return await self.matcher.finish(message, **kwargs)
+
+    def __str__(self) -> str:
+        finfo = [f"{k}={v}" for k, v in self.info.items()]
+        return (f"<Matcher from Sevice {self.sv.name}, priority={self.priority}, type={self.type}, "
+                + ", ".join(finfo)+">")
+
+    def __repr__(self) -> str:
+        return self.__str__
+
+
+@run_preprocessor
+async def _(matcher:Matcher, bot:Bot, event:Event, state:T_State):
+    mw = _loaded_matchers.get(matcher.__class__, None)
+    if mw:
+        mw.sv.logger.info(f'Event will be handled by <lc>{mw}</>')
+
+
+@run_postprocessor
+async def _(matcher:Matcher,exception:Exception, bot:Bot, event:Event, state:T_State):
+    mw = _loaded_matchers.get(matcher.__class__, None)
+    if mw:
+        if exception:
+            mw.sv.logger.error(f'Event handling failed from <lc>{mw}</>',False)
+        mw.sv.logger.info(f'Event handling completed from <lc>{mw}</>')
