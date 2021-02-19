@@ -125,7 +125,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     await queryrss.finish(Message('\n'.join(msg)))
 
 
-@scheduled_job('interval', minutes=3, jitter=20,id='推送rss')
+@scheduled_job('interval', minutes=4, jitter=20,id='推送rss')
 async def push_rss():
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
