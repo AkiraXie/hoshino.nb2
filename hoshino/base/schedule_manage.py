@@ -11,10 +11,10 @@ async def _(bot: Bot):
     msg = ["现有定时任务如下: "]
     jobs = scheduler.get_jobs()
     for job in jobs:
-        id=job.id
-        trigger=job.trigger
-        next_run_time=datetime.strftime(job.next_run_time,"%Y-%m-%d %H:%M:%S") if job.next_run_time else 'paused'
-        msg.append(f'ID: {id}\nTrigger: {trigger}\nNext run time: {next_run_time}======')
+        id = job.id
+        trigger = job.trigger
+        state = 'running' if job.next_run_time else 'pausing'
+        msg.append(f'ID: {id}\nTrigger: {trigger}\nstate: {state}\n======')
     await showjob.send('\n'.join(msg), at_sender=True)
 
 pausejob = sucmd('暂停定时任务', True, {'暂停任务', 'pausejob'}, state={'action': '暂停'})
@@ -41,7 +41,8 @@ async def _(bot: Bot, event: Event, state: T_State):
     fail = []
     for job in jobs:
         try:
-            scheduler.pause_job(job) if flag=='暂停' else scheduler.resume_job(job)
+            scheduler.pause_job(
+                job) if flag == '暂停' else scheduler.resume_job(job)
             msg.append(job)
         except Exception as e:
             logger.exception(e)

@@ -11,24 +11,103 @@
 
 ## 项目笔记
 
+2021/2/20凌晨 这几天项目进程依然缓慢进行，当然目前大体迁移完毕后已经投入生产使用了。使用过程中发现，对于定时任务的管理或许是可以提上日程的，于是一方面地，学习了APScheduler的[官方文档](https://apscheduler.readthedocs.io/en/latest/userguide.html#), 了解到了scheduler的属性和方法。然后查看本地源码时候傻眼了，它源代码没写类型标注，job不能直接定位到job的定义，scheduler也差不多（此时就感慨之前大佬们嘱托的写好类型标注的重要性，给自己给他人都有很大的方便），学完之后就知道了怎么修改任务的状态和查看任务的属性。
+
+另一方面，我想着将定时任务的运行状态记录下来，所以学习了loguru的[官方文档](https://loguru.readthedocs.io/en/stable/index.html)，了解到了对于颜色的处理，然后就需要对定时任务装饰的函数进行一些处理，在运行前后进行日志的记录。
+
+好吧这就又牵扯到了python的[`装饰器`](https://docs.python.org/zh-cn/3/glossary.html#term-decorator)的问题, 阅读了文档之后感觉还不够，就又去[菜鸟教程](https://www.runoob.com/w3cnote/python-func-decorators.html)复习了装饰器的用法。熟悉之后大概知道了装饰器的含义：`装饰器`是一个**参数是函数，返回值是传入的函数**函数，它的目的就是对于传入的函数进行处理和装饰(装饰器的名字终于理解了)，比较简单的例子就是`staticmethod`和`classmethod`。
+
+由于`@`语法糖装饰函数的时候，参数只有函数对象一个，函数本身的参数并未传入`装饰器`，这造成了如果需要函数正常运行，它会缺少参数，于是聪明的人们想到了一个办法，在`装饰器`内部再设立一个函数，让它与要装饰的函数的参数相同，这样相当于把函数包装成了另一个函数（往往称之为`闭包`），`闭包`会接受到装饰器对函数的装饰效果，装饰器再返回闭包对象就好，当然直接进行闭包会有一些问题，比如函数的__name__会有所改变等，如果参数和函数的参数不一定一致等，所以一般会引用`wraps`来装饰闭包和对闭包进行参数检查：
+
+```python
+from functools import wraps
+def deco(func):
+    @wraps(func)
+    def wrapper(*args,**kwargs):
+        print('before func')
+        res=func(*args,**kwargs)
+        print('after func')
+        return res
+    return wrapper
+@deco
+def fun(*args,**kwargs):
+    print(args)
+    print(kwargs)
+```
+
+但是有时候`装饰器`需要函数以外的参数来对函数进行处理（比如说，用鉴权参数来检测是否能让函数运行），要怎么办呢？聪明的人们又想到了一个方法，写一个外层函数传递参数，然后让内层的`装饰器`接收到这些参数,  再返回`装饰器`不就好了! 这样的场景很广泛，例子非常多，比如`flask`或者`fastapi`的`app.get`方法就是这样的，对于nb2来说，`matcher.handle`或者`matcher.got`也是这样，对于前面说的`apscheduler`的`scheduler.scheduled_job`也是如此。所以，绝大多数我之前认为的`装饰器`都不是`装饰器`本身，而是返回`装饰器`的函数。
+
+一般见到的装饰器函数有两个情况：大多数都有三层函数的结构，第一层接受`装饰器`需要的参数,第二层是接受函数的`装饰器`;第三层是接受函数的参数，打包函数的`闭包`；当然也有很多就两层结构，第一层接受装饰器的参数,第二层是接受函数的`装饰器`，这个`装饰器`往往只对函数对象**本身**操作。这里拿第一种情况举例：
+
+```python
+def return_deco(ab: bool):
+    def deco(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            print('before func')
+            if ab:
+                res = func(*args, **kwargs)
+            else:
+                print('鉴权不通过，函数不执行')
+                res = None
+            print('after func')
+            return res
+        return wrapper
+    return deco
+
+
+@return_deco(True)
+def fun(*args, **kwargs):
+    print(args)
+    print(kwargs)
+
+
+@return_deco(False)
+def fun1(*args, **kwargs):
+    print(args)
+    print(kwargs)
+
+
+fun('1234', name='jim')
+fun1('1234', name='jim')
+```
+
+上面的代码运行之后，会有以下的记录，`装饰器`的参数确实对函数运行造成了影响：
+
+```
+before func
+('1234',)
+{'name': 'jim'}
+after func
+before func
+鉴权不通过，函数不执行
+after func
+```
+
+~~好吧其实写完这篇笔记之后我大概对装饰器的理解是透透的了~~
+
 2021/2/15凌晨 在这段期间，项目进展算是很缓慢的，但是也学习并实践了一些nb2的feature:
 
 1.  对于原先`HoshinoBot`的`anti_abuse`插件， 在这个项目重构为[`black`](hoshino/base/black/__init__.py)，并利用了nb2的钩子函数(新学到的名词)`event_preprocessor`进行处理。
 
     这个插件的编写让我仔细阅读了nb2的[message.py](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/message.py),  并理解了nb2处理事件的周期：
 
-   `上报(以及根据adapter剥离事件的tome)`->`事件预处理`->`匹配响应器`->`运行前处理`->`运行响应器`->`运行后处理`->`事件后处理`
+    `上报(以及根据adapter剥离事件的tome)`->`事件预处理`->`匹配响应器`->`运行前处理`->`运行响应器`->`运行后处理`->`事件后处理`
 
 2.  在编写[`poke`](hoshino/modules/interactive/poke.py)的时候，学习到了nb2的`事件处理函数重载`，这个feature会运用魔法，可以让matcher运行的时候按`handler`规定的`typing`来执行`handler`,这个feature能减少rule的编写，可以让一个响应器针对不同的事件作响应。
 
     这个魔法的源代码在[run_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L458), 粗略来说，它会根据参数名字和参数类型进行检查，如果参数名字和类型对得上的话，才会运行`handler`，否则就会`ignore`。
 
     当然，这个检查是在`handler`对象有一个`__params__`这样一个类似注释的存在前提下进行的，这个前提的是由[process_handler](https://github.com/nonebot/nonebot2/blob/0428b1dd81263e474d7e18e36745d5bb9d572d14/nonebot/matcher.py#L246)制造的，查看这个代码段时候，大概查看了[`inspect`](https://docs.python.org/zh-cn/3.9/library/inspect.html)模块，学习到了python对于类型检查的处理。
-   
+
 
 在迁移了[`rsspush`](hoshino\modules\information\rsspush\__init__.py)时，想着能不能将图片输出出来，这个思考直接导致了对网络请求的封装的修改，才注意到对于返回的请求体，一定是有`content`这样一个`bytes`，但是这个`bytes`并不一定能解码为`text`或者`json`，比如图片和文件。
 
+
+
 2021/2/03下午 新增`interactive`模块，之后会存放互动的插件；在其中增加机器人最重要的自定义问答功能`QA`；`下载卡面` `下载头像`使用了`nonebot.util.run_sync`功能，将同步函数装饰异步;引用`nonebot2.00a9`的新特性`on_shell_command`。
+
+
 
 2021/2/01凌晨  昨天的问题今天下午查阅nb2的[issue#153](https://github.com/nonebot/nonebot2/issues/153)得到了解决，跨插件访问不建议直接引用，可以利用`require()`和`export()`办法来处理，于是就将`chara.Chara`进行导出。
 
@@ -42,7 +121,11 @@
 
 总之该项目最艰难的阶段结束了，之后就慢慢更新了。
 
+
+
 2021/1/31凌晨 新增`gacha`，`chara`，`query`；并遇到一个问题，`gacha`引用`chara`的一个类，但是同时也注册了`chara`的三个`matcher`（通过`nonebot.mathcer.matchers`debug可知，在启动时也会有`WARNING`），可能这是nb2的feature?
+
+
 
 2021/1/29晚   重写了原`Hoshinobot`的`R.py`,使之支持更多的表达方式,并写了相关demo。（写代码太累了。。。。）
 

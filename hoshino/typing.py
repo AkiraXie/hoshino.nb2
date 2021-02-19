@@ -6,7 +6,7 @@ LastEditTime: 2021-02-09 23:54:29
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from typing import List, Set, Any, Dict, Union, TypeVar, Optional, Callable, Iterable, Final, Type
+from typing import List, Set, Any, Dict, Union, TypeVar, Optional, Callable, Iterable, Final, Type,Awaitable
 from multidict import CIMultiDictProxy
 from nonebot.typing import T_State
 from nonebot.exception import FinishedException, IgnoredException
