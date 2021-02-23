@@ -6,9 +6,8 @@ LastEditTime: 2021-02-02 22:25:39
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from nonebot.permission import SUPERUSER
+from hoshino.util import sucmds
 from hoshino import Bot, Event
-from nonebot import CommandGroup
 from hoshino.service import Service, matcher_wrapper
 
 
@@ -28,7 +27,7 @@ async def ls_friend(bot: Bot, event: Event):
     await bot.send(event, msg)
 
 
-lscmds = CommandGroup('ls', permission=SUPERUSER)
+lscmds = sucmds('ls',True)
 lscmds.command('group', aliases={'查看群聊'}, handlers=[ls_group])
 lscmds.command('friend', aliases={'查看好友'}, handlers=[ls_friend])
 cmd_m = lscmds.command('matcher', aliases={'查看响应器'})

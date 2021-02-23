@@ -10,7 +10,7 @@ import re
 from typing import Union
 from nonebot.typing import T_State
 from nonebot.adapters.cqhttp import Bot, Event
-from nonebot.rule import ArgumentParser,Rule, to_me
+from nonebot.rule import ArgumentParser, Rule, to_me
 from hoshino.util import normalize_str
 
 
@@ -41,6 +41,8 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) 
         if matched:
             state['match'] = matched
             state["_matched"] = matched.group()
+            state["_matched_groups"] = matched.groups()
+            state["_matched_dict"] = matched.groupdict()
             return True
         else:
             return False
@@ -60,7 +62,7 @@ def keyword(*keywords: str, normal: bool = True) -> Rule:
       * ``*keywords: str``: 关键词
     """
 
-    async def _keyword(bot: "Bot", event: "Event", state: T_State) -> bool:
+    async def _keyword(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
         text = event.get_plaintext()
