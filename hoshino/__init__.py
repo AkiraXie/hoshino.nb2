@@ -36,9 +36,9 @@ R: Final[rhelper] = rhelper()
 
 
 from nonebot.adapters.cqhttp import Bot
-from .util import aiohttpx,get_bot_list, sucmd
+from .util import aiohttpx, get_bot_list, sucmd, sucmds
 from .message import MessageSegment, Message
 from .event import Event
 from .service import Service
-from .schedule import scheduled_job,add_job
+from .schedule import scheduled_job, add_job
 from .typing import T_State

@@ -6,7 +6,7 @@ LastEditTime: 2021-01-31 23:51:09
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-
+import re
 from hoshino import R, Service, Bot, Event, Message
 from hoshino.typing import T_State
 p1 = R.img('priconne/quick/tqian.png')
@@ -41,13 +41,11 @@ byk = sv.on_command(
     '半月刊', aliases={'活动半月刊', 'b服半月刊', '国服半月刊'}, only_group=False)
 
 
-@rank.handle()
+@rank
 async def _(bot: Bot, event: Event, state: T_State):
-    import re
-    event.get_user_id
-    bot.self_id
-    match=re.compile(r'^([台国日btj]{1,3})服?([前中后]{0,3})rank表?$').search(str(event.get_message()))
-    match=state['match']
+    match = re.compile(r'^([台国日btj]{1,3})服?([前中后]{0,3})rank表?$').search(
+        str(event.get_message()))
+    match = state['match']
     pos = match.group(2)
     ser = match.group(1)
     msg = ['Rank表仅供参考,以公会要求为准', '不定期更新，来源见图']
@@ -58,12 +56,12 @@ async def _(bot: Bot, event: Event, state: T_State):
     await rank.send(Message('\n'.join(msg)))
 
 
-@yukari.handle()
+@yukari
 async def _(bot: Bot):
     await yukari.finish(Message(YUKARI))
 
 
-@byk.handle()
+@byk
 async def _(bot: Bot):
     await byk.send('图片较大，请稍等片刻')
     await byk.send(Message(byk_pic.CQcode))
