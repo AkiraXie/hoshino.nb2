@@ -20,7 +20,7 @@ from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import get_bot_list
 from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
-from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List, Type
+from hoshino.typing import Dict, Iterable, Optional, Union, T_State, List, Type
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
@@ -134,7 +134,7 @@ class Service:
             aliases = set([aliases])
         elif not isinstance(aliases, set):
             if aliases:
-                aliases = set([aliases]) if len(aliases) == 1 else set(aliases)
+                aliases = set([aliases]) if len(aliases) == 1 and isinstance(aliases,tuple) else set(aliases)
             else:
                 aliases = set()
         kwargs['aliases'] = aliases
@@ -155,7 +155,7 @@ class Service:
             aliases = set([aliases])
         elif not isinstance(aliases, set):
             if aliases:
-                aliases = set([aliases]) if len(aliases) == 1 else set(aliases)
+                aliases = set([aliases]) if len(aliases) == 1 and isinstance(aliases,tuple) else set(aliases)
             else:
                 aliases = set()
         kwargs['parser'] = parser
@@ -195,13 +195,13 @@ class Service:
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_keyword(self, keywords: Union[Set[str], str], normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_keyword(self, keywords: Iterable, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
         if isinstance(keywords, str):
             keywords = set([keywords])
         elif not isinstance(keywords, set):
             if keywords:
                 keywords = set([keywords]) if len(
-                    keywords) == 1 else set(keywords)
+                    keywords) == 1 and isinstance(keywords,tuple) else set(keywords)
             else:
                 keywords = set()
         kwargs['permission'] = permission

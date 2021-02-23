@@ -6,7 +6,7 @@ LastEditTime: 2021-02-12 22:07:36
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from typing import  List, Optional, Tuple
+from typing import List, Optional, Tuple, Type
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
@@ -27,7 +27,7 @@ from nonebot.utils import run_sync
 from nonebot.adapters.cqhttp import Bot
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import on_command
+from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
 DEFAULTFONT = ImageFont.truetype(
     R.img('priconne/gadget/SourceHanSerif-Regular.ttc'), size=48)
@@ -76,11 +76,17 @@ def get_bot_list() -> List[Bot]:
     return list(nonebot.get_bots().values())
 
 
-def sucmd(name: str, only_to_me: bool = False, aliases: Optional[set] = None, **kwargs) -> Matcher:
+def sucmd(name: str, only_to_me: bool = False, aliases: Optional[set] = None, **kwargs) -> Type[Matcher]:
     kwargs['aliases'] = aliases
     kwargs['permission'] = SUPERUSER
     kwargs['rule'] = to_me() if only_to_me else Rule()
     return on_command(name, **kwargs)
+
+
+def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
+    kwargs['permission'] = SUPERUSER
+    kwargs['rule'] = to_me() if only_to_me else Rule()
+    return CommandGroup(name, **kwargs)
 
 
 def get_text_size(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> tuple:
