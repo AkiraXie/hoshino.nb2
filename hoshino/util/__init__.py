@@ -6,12 +6,11 @@ LastEditTime: 2021-02-12 22:07:36
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from typing import ItemsView, Iterable, Optional, Tuple
+from typing import  Optional, Tuple
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
-from loguru import logger
 import os
 import json
 import unicodedata
@@ -73,8 +72,8 @@ class DailyNumberLimiter:
         self.count[key] = 0
 
 
-def get_bot_list() -> ItemsView[str, Bot]:
-    return nonebot.get_bots().items()
+def get_bot_list() -> list[Bot]:
+    return list(nonebot.get_bots().values())
 
 
 def sucmd(name: str, only_to_me: bool = False, aliases: Optional[set] = None, **kwargs) -> Matcher:

@@ -129,7 +129,7 @@ async def _(bot: Bot, event: Event, state: T_State):
 async def push_rss():
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
-        for sid,bot in glist[gid]:
+        for bot in glist[gid]:
             res = Rssdata.select(Rssdata.url, Rssdata.name,
                                  Rssdata.date).where(Rssdata.group == gid)
             for r in res:
@@ -142,11 +142,11 @@ async def push_rss():
                         newinfo = await rss.get_new_entry_info()
                         msg = [f'订阅 {r.name} 更新啦！']
                         msg.append(info2pic(newinfo))
-                        msg.append(newinfo['图片'])
+                        msg.extend(newinfo['图片'])
                         msg.append(f'链接: {newinfo["链接"]}')
                         Rssdata.update(date=lstdate).where(
                             Rssdata.group == gid, Rssdata.name == r.name, Rssdata.url == r.url).execute()
-                        await bot.send_group_msg(message=Message('\n'.join(msg)), group_id=gid, self_id=sid)
+                        await bot.send_group_msg(message=Message('\n'.join(msg)), group_id=gid)
                     except Exception as e:
                         logger.exception(e)
                         logger.error(f'{type(e)} occured when pushing rss')
@@ -169,6 +169,6 @@ async def _(bot: Bot, event: Event, state: T_State):
         await querynewrss.finish(f'查看最新订阅 {name}失败')
     msg = [f'订阅 {name} 最新消息']
     msg.append(info2pic(newinfo))
-    msg.append(newinfo['图片'])
+    msg.extend(newinfo['图片'])
     msg.append(f'链接: {newinfo["链接"]}')
     await querynewrss.finish(Message('\n'.join(msg)))

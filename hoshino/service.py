@@ -10,9 +10,7 @@ import asyncio
 import re
 import os
 import json
-from functools import wraps
 from collections import defaultdict
-from nonebot.exception import PausedException, RejectedException, StopPropagation
 from nonebot.typing import T_ArgsParser, T_Handler
 from nonebot.message import run_preprocessor, run_postprocessor
 from hoshino.log import wrap_logger
@@ -22,7 +20,7 @@ from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import get_bot_list
 from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
-from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List, Type, FinishedException
+from hoshino.typing import Dict, Iterable, Optional, Union, T_State, Set, List, Type
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
@@ -93,17 +91,16 @@ class Service:
         self.disable_group.add(group_id)
         _save_service_data(self)
 
-    async def get_enable_groups(self) -> Dict[int, List]:
+    async def get_enable_groups(self) -> Dict[int, List[Bot]]:
         gl = defaultdict(list)
-        for sid, bot in get_bot_list():
-            sid = int(sid)
-            sgl = set(g['group_id'] for g in await bot.get_group_list(self_id=sid))
+        for bot in get_bot_list():
+            sgl = set(g['group_id'] for g in await bot.get_group_list())
             if self.enable_on_default:
                 sgl = sgl - self.disable_group
             else:
                 sgl = sgl & self.enable_group
             for g in sgl:
-                gl[g].append((sid, bot))
+                gl[g].append(bot)
         return gl
 
     @property
@@ -271,7 +268,8 @@ class Service:
             msgs = (msgs,)
         gdict = await self.get_enable_groups()
         for gid in gdict.keys():
-            for sid, bot in gdict[gid]:
+            for bot in gdict[gid]:
+                sid = int(bot.self_id)
                 for msg in msgs:
                     await asyncio.sleep(interval_time)
                     try:
@@ -294,14 +292,14 @@ class matcher_wrapper:
         self.priority = priority
         self.info = info
         self.type = type
-        
+
     def load_matcher(self, matcher: Type[Matcher]):
         self.matcher = matcher
-        
+
     @staticmethod
-    def get_loaded_matchers():
-        return list(map(str,_loaded_matchers.values()))
-        
+    def get_loaded_matchers()->List[str]:
+        return list(map(str, _loaded_matchers.values()))
+
     def handle(self):
         def deco(func: T_Handler):
             return self.matcher.handle()(func)
@@ -355,16 +353,17 @@ class matcher_wrapper:
 
 
 @run_preprocessor
-async def _(matcher:Matcher, bot:Bot, event:Event, state:T_State):
+async def _(matcher: Matcher, bot: Bot, event: Event, state: T_State):
     mw = _loaded_matchers.get(matcher.__class__, None)
     if mw:
         mw.sv.logger.info(f'Event will be handled by <lc>{mw}</>')
 
 
 @run_postprocessor
-async def _(matcher:Matcher,exception:Exception, bot:Bot, event:Event, state:T_State):
+async def _(matcher: Matcher, exception: Exception, bot: Bot, event: Event, state: T_State):
     mw = _loaded_matchers.get(matcher.__class__, None)
     if mw:
         if exception:
-            mw.sv.logger.error(f'Event handling failed from <lc>{mw}</>',False)
+            mw.sv.logger.error(
+                f'Event handling failed from <lc>{mw}</>', False)
         mw.sv.logger.info(f'Event handling completed from <lc>{mw}</>')

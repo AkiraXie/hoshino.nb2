@@ -22,14 +22,6 @@ import os
 BASE_URL = "https://rsshub.akiraxie.me/"
 
 
-def gen_rss_pic(imglist: List[Image.Image]):
-    num = len(imglist)
-    size = 400
-    des = Image.new('RGBA', (num*size, size), (255, 255, 255, 255))
-    for i, img in enumerate(imglist):
-        des.paste(img, (i*size, 0), img)
-    return des
-
 
 class Rss:
     def __init__(self, url: str, limit: int = 1) -> None:
@@ -84,23 +76,11 @@ class Rss:
             for i in soup.find_all('img'):
                 img = await aiohttpx.get(i['src'], timeout=5)
                 img = Image.open(BytesIO(img.content)).convert('RGBA')
-                if img.width < 400 or img.height < 400:
+                if img.width < 400 and img.height < 400:
                     continue
-                center=(img.width//2,img.height//2)
-                new_size=(center[0]-200,center[1]-200,center[0]+200,center[1]+200)
-                img=img.crop(new_size)
-                imglist.append(img)
-            imglen = min(len(imglist),9)
-            pics = []
-            if imglen == 0:
-                res = ""
-            else:
-                for i in range(0, imglen, 3):
-                    j = min(imglen, i+3)
-                    pics.append(gen_rss_pic(imglist[i:j]))
-                res = pic2b64(concat_pic(pics))
-                res = str(MessageSegment.image(res))
-            ret['图片'] = res
+                else:
+                    imglist.append(str(MessageSegment.image(pic2b64(img))))
+            ret['图片'] = imglist
 
         return ret
 

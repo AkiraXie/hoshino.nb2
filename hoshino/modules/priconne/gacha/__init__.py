@@ -128,7 +128,7 @@ async def parse_pool(bot: Bot, event: Event, state: T_State):
     
     
 switchpool = sv.on_command("切换卡池", aliases={
-    '选择卡池', '切換卡池', '選擇卡池'}, only_group=False, handlers=[parse_pool], permission=permission.PADMIN)
+    '选择卡池', '切換卡池', '選擇卡池','设置卡池'}, only_group=False, handlers=[parse_pool], permission=permission.PADMIN)
 
 
 @switchpool.got('pool', prompt='请输入要切换的卡池:\n> mix\n> jp\n> tw\n> bl', args_parser=parse_pool)
