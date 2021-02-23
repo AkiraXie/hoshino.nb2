@@ -17,12 +17,12 @@ os.makedirs(R.img('priconne/card/'), exist_ok=1)
 jsonpath = 'hoshino/service_config/gacha.json'
 
 
-def download_chara_icon(id_: int, star: int, rurl: str = 'https://api.redive.lolikon.icu/icon/icon_unit_'):
-    url = rurl+f'{id_}{star}1.webp'
+def download_chara_icon(id_: int, star: int):
+    url = f'https://redive.estertion.win/icon/unit/{id_}{star}1.webp'
     save_path = R.img(f'priconne/unit/icon_unit_{id_}{star}1.png').path
     logger.info(f'Downloading chara icon from {url}')
     try:
-        rsp = requests.get(url, timeout=5, stream=True)
+        rsp = requests.get(url, timeout=5, stream=True,verify=False)
     except Exception as e:
         logger.error(exc := f'Failed to download {url}. {type(e)}')
         logger.exception(e)
@@ -38,13 +38,12 @@ def download_chara_icon(id_: int, star: int, rurl: str = 'https://api.redive.lol
         return exc, star
 
 
-def download_card(id_: int, star: int, rurl: str = 'https://api.redive.lolikon.icu/bg_still/still_unit_'):
-    url = rurl + \
-        f'{id_}{star}1.webp' if star != 1 else f'https://redive.estertion.win/card/profile/{id_}11.webp'
+def download_card(id_: int, star: int):
+    url = f'https://redive.estertion.win/card/full/{id_}{star}1.webp' if star != 1 else f'https://redive.estertion.win/card/profile/{id_}11.webp'
     save_path = R.img(f'priconne/card/{id_}{star}1.png').path
     logger.info(f'Downloading card from {url}')
     try:
-        rsp = requests.get(url, timeout=5, stream=True)
+        rsp = requests.get(url, timeout=5, stream=True,verify=False)
     except Exception as e:
         logger.error(exc := f'Failed to download {url}. {type(e)}')
         logger.exception(e)

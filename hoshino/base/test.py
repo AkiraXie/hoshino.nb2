@@ -6,13 +6,12 @@ LastEditTime: 2021-02-02 23:48:55
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from hoshino.rule import to_me
 from hoshino.matcher import get_matchers
 from hoshino.event import Event, get_event
 from hoshino import Bot, get_bot_list, sucmd
-test1 = sucmd('testgetbot', to_me())
-test2 = sucmd('testmatchers', to_me())
-test3 = sucmd('testevent', to_me())
+test1 = sucmd('testgetbot', True)
+test2 = sucmd('testmatchers', True)
+test3 = sucmd('testevent', True)
 
 
 @test1.handle()

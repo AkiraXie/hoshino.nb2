@@ -20,13 +20,12 @@ nonebot.init()
 driver = nonebot.get_driver()
 driver.register_adapter('cqhttp', Bot)
 config = driver.config
-nonebot.load_builtin_plugins()
 nonebot.load_plugins(base)
 if modules := config.modules:
     for module in modules:
         module = os.path.join(moduledir, module)
         nonebot.load_plugins(module)
-nonebot.get_asgi()
+
 
 
 if __name__ == '__main__':

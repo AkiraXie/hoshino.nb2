@@ -37,28 +37,28 @@ class rhelper(str):
         else:
             self.__rpath = path
 
-    def __getattr__(self, key):
+    def __getattr__(self, key) :
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
         if not os.path.isdir(path) and not os.path.isfile(path):
             logger.warning(
                 f'{path} is not a directory and a file!\nif {key}.* or *.{key} is file or dir,please use + or () opearator.')
-        return rhelper(path)
+        return __class__(path)
 
     def __floordiv__(self, key):
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return rhelper(path)
+        return __class__(path)
 
     def __truediv__(self, key):
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return rhelper(path)
+        return __class__(path)
 
     def __add__(self, key):
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return rhelper(path)
+        return __class__(path)
 
     def __setattr__(self, name: str, value) -> None:
         if name != '_rhelper__rpath':
@@ -83,7 +83,7 @@ class rhelper(str):
         key = os.path.join(path, *paths)
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return rhelper(path)
+        return __class__(path)
 
     @property
     def path(self) -> str:

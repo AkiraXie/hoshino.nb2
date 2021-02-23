@@ -41,3 +41,4 @@ from .message import MessageSegment, Message
 from .event import Event
 from .service import Service
 from .schedule import scheduled_job,add_job
+from .typing import T_State
