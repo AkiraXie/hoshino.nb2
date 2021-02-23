@@ -6,7 +6,7 @@ LastEditTime: 2021-02-12 22:07:36
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from typing import  Optional, Tuple
+from typing import  List, Optional, Tuple
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
@@ -72,7 +72,7 @@ class DailyNumberLimiter:
         self.count[key] = 0
 
 
-def get_bot_list() -> list[Bot]:
+def get_bot_list() -> List[Bot]:
     return list(nonebot.get_bots().values())
 
 
