@@ -44,6 +44,8 @@ byk = sv.on_command(
 @rank.handle()
 async def _(bot: Bot, event: Event, state: T_State):
     import re
+    event.get_user_id
+    bot.self_id
     match=re.compile(r'^([台国日btj]{1,3})服?([前中后]{0,3})rank表?$').search(str(event.get_message()))
     match=state['match']
     pos = match.group(2)

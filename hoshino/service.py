@@ -206,7 +206,7 @@ class Service:
                 keywords = set()
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = keyword(keywords, normal) & rule
+        kwargs['rule'] = keyword(*keywords, normal) & rule
         priority = kwargs.get('priority', 1)
         mw = matcher_wrapper(self,
                              'Message.keyword', priority, keywords=str(keywords), only_group=only_group)
