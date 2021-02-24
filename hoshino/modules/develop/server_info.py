@@ -1,4 +1,4 @@
-from hoshino import sucmd, Bot, Event
+from hoshino import sucmd, Bot
 import psutil
 showcmd = sucmd('info', aliases={'serverinfo'})
 
