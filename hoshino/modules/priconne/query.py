@@ -53,7 +53,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     serlist = set([serdic[i] for i in ser])
     for s in serlist:
         msg.extend([f'{s[p].CQcode}' for p in poslist])
-    await rank.send(Message('\n'.join(msg)))
+    await rank.finish(Message('\n'.join(msg)),call_header=True)
 
 
 @yukari

@@ -11,6 +11,8 @@ import re
 import os
 import json
 from collections import defaultdict
+from nonebot.adapters.cqhttp.utils import escape
+from nonebot.matcher import current_bot, current_event
 from nonebot.typing import T_ArgsParser, T_Handler
 from nonebot.message import run_preprocessor, run_postprocessor
 from hoshino.log import wrap_logger
@@ -20,7 +22,7 @@ from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import get_bot_list
 from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
-from hoshino.typing import Dict, Iterable, Optional, Union, T_State, List, Type
+from hoshino.typing import Dict, Iterable, Optional, Union, T_State, List, Type, FinishedException, PausedException, RejectedException
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
@@ -134,7 +136,8 @@ class Service:
             aliases = set([aliases])
         elif not isinstance(aliases, set):
             if aliases:
-                aliases = set([aliases]) if len(aliases) == 1 and isinstance(aliases,tuple) else set(aliases)
+                aliases = set([aliases]) if len(aliases) == 1 and isinstance(
+                    aliases, tuple) else set(aliases)
             else:
                 aliases = set()
         kwargs['aliases'] = aliases
@@ -155,7 +158,8 @@ class Service:
             aliases = set([aliases])
         elif not isinstance(aliases, set):
             if aliases:
-                aliases = set([aliases]) if len(aliases) == 1 and isinstance(aliases,tuple) else set(aliases)
+                aliases = set([aliases]) if len(aliases) == 1 and isinstance(
+                    aliases, tuple) else set(aliases)
             else:
                 aliases = set()
         kwargs['parser'] = parser
@@ -201,7 +205,7 @@ class Service:
         elif not isinstance(keywords, set):
             if keywords:
                 keywords = set([keywords]) if len(
-                    keywords) == 1 and isinstance(keywords,tuple) else set(keywords)
+                    keywords) == 1 and isinstance(keywords, tuple) else set(keywords)
             else:
                 keywords = set()
         kwargs['permission'] = permission
@@ -297,7 +301,7 @@ class matcher_wrapper:
         self.matcher = matcher
 
     @staticmethod
-    def get_loaded_matchers()->List[str]:
+    def get_loaded_matchers() -> List[str]:
         return list(map(str, _loaded_matchers.values()))
 
     def handle(self):
@@ -324,24 +328,59 @@ class matcher_wrapper:
     async def reject(self,
                      prompt: Optional[Union[str, "Message",
                                             "MessageSegment"]] = None,
+                     *,
+                     call_header: bool = False,
+                     at_sender: bool = False,
                      **kwargs):
-        return await self.matcher.reject(prompt, **kwargs)
+        if prompt:
+            await self.send(prompt, call_header=call_header, at_sender=at_sender, **kwargs)
+        raise RejectedException
 
     async def pause(self,
                     prompt: Optional[Union[str, "Message",
                                            "MessageSegment"]] = None,
+                    *,
+                    call_header: bool = False,
+                    at_sender: bool = False,
                     **kwargs):
-        return await self.matcher.pause(prompt, **kwargs)
+        if prompt:
+            await self.send(prompt, call_header=call_header, at_sender=at_sender, **kwargs)
+        raise PausedException
 
     async def send(self, message: Union[str, "Message", "MessageSegment"],
+                   *,
+                   call_header: bool = False,
+                   at_sender: bool = False,
                    **kwargs):
-        return await self.matcher.send(message, **kwargs)
+        bot = current_bot.get()
+        event = current_event.get()
+        if "group_id" not in event.__dict__ or not call_header:
+            return await bot.send(event, message, at_sender=at_sender, **kwargs)
+        if event.user_id == 80000000:
+            header = '>???\n'
+        else:
+            info = await bot.get_group_member_info(
+                group_id=event.group_id,
+                user_id=event.user_id,
+                no_cache=True
+            )
+            nickname = escape(
+                info['title'] if info['title'] else info['card'] if info['card'] else info['nickname']
+            )
+            header = f'>{nickname}\n'
+        return await bot.send(event, header+message, at_sender=at_sender, **kwargs)
 
     async def finish(self,
                      message: Optional[Union[str, "Message",
-                                             "MessageSegment"]] = None,
+                                             "MessageSegment"]
+                                       ] = None,
+                     *,
+                     call_header: bool = False,
+                     at_sender: bool = False,
                      **kwargs):
-        return await self.matcher.finish(message, **kwargs)
+        if message:
+            await self.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
+        raise FinishedException
 
     def __str__(self) -> str:
         finfo = [f"{k}={v}" for k, v in self.info.items()]
