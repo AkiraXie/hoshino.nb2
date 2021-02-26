@@ -19,8 +19,11 @@ url = 'https://api.bilibili.com/x/web-interface/view'
 async def get_bvid(url: str) -> str:
     resp = await aiohttpx.head(url, allow_redirects=False)
     loc = resp.headers['Location']
-    pat = re.compile(r'https://www.bilibili.com/video/(.{12})')
-    return pat.match(loc).group(1)
+    pat = re.compile(r'https://www.bilibili.com/video/(.{12})')    
+    if mat:=pat.match(loc):
+        return mat.group(1)
+    else:
+        return None
 
 
 async def get_resp(bvid: str):
