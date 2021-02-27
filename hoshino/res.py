@@ -67,10 +67,6 @@ class rhelper(str):
         else:
             self.__dict__[name] = value
 
-    def __iadd__(self, key):
-        raise UnsupportedOperation(
-            f'unsupported operand type(s) for +=: "rhelper" and "{type(key)}"')
-
     def __imul__(self, key):
         raise UnsupportedOperation(
             f'unsupported operand type(s) for *: "rhelper" and "{type(key)}"')

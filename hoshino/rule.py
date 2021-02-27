@@ -7,7 +7,7 @@ Description:
 Github: http://github.com/AkiraXie/
 '''
 import re
-from typing import Union
+from typing import Union,Set
 from nonebot.typing import T_State
 from nonebot.adapters.cqhttp import Bot, Event
 from nonebot.rule import ArgumentParser, Rule, to_me
@@ -50,7 +50,7 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) 
     return Rule(_regex)
 
 
-def keyword(*keywords: str, normal: bool = True) -> Rule:
+def keyword(*keywords:str,normal: bool = True) -> Rule:
     """
     改自 nonebot.rule.keyword
     :说明:
@@ -68,6 +68,6 @@ def keyword(*keywords: str, normal: bool = True) -> Rule:
         text = event.get_plaintext()
         if normal:
             text = normalize_str(text)
-        return bool(text and any(keyword in text for keyword in keywords))
+        return bool(text and any(kw in text for kw in keywords))
 
     return Rule(_keyword)

@@ -210,7 +210,7 @@ class Service:
                 keywords = set()
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = keyword(*keywords, normal) & rule
+        kwargs['rule'] = keyword(*keywords, normal=normal) & rule
         priority = kwargs.get('priority', 1)
         mw = matcher_wrapper(self,
                              'Message.keyword', priority, keywords=str(keywords), only_group=only_group)
@@ -364,10 +364,10 @@ class matcher_wrapper:
                 user_id=event.user_id,
                 no_cache=True
             )
-            nickname = escape(
-                info['title'] if info['title'] else info['card'] if info['card'] else info['nickname']
-            )
-            header = f'>{nickname}\n'
+            for i in (info['title'],info['card'],info['nickname']):
+                if i :
+                    header = f'>{escape(i)}\n'
+                    break
         return await bot.send(event, header+message, at_sender=at_sender, **kwargs)
 
     async def finish(self,
