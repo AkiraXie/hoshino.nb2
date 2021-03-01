@@ -50,13 +50,13 @@ showcol = sv.on_command('仓库',  aliases={
 async def check_jewel_num(mathcer: matcher_wrapper, event: Event):
     uid = event.get_user_id()
     if not jewel_limit.check(int(uid)):
-        await mathcer.finish(JEWEL_EXCEED_NOTICE, at_sender=True)
+        await mathcer.finish(JEWEL_EXCEED_NOTICE, call_header=True)
 
 
 async def check_tenjo_num(mathcer: matcher_wrapper, event: Event):
     uid = event.get_user_id()
     if not tenjo_limit.check(int(uid)):
-        await mathcer.finish(TENJO_EXCEED_NOTICE, at_sender=True)
+        await mathcer.finish(TENJO_EXCEED_NOTICE, call_header=True)
 
 
 async def lookup_handler(bot: Bot, event: Event):
@@ -155,7 +155,7 @@ async def _(bot: Bot, event: Event):
     if chara.star == 3:
         set_collection(uid, chara.id)
     res = f'{chara.icon.CQcode}\n{chara.name} {"★"*chara.star}'
-    await gacha1.finish(Message(f'素敵な仲間が増えますよ！\n{res}'), at_sender=True)
+    await gacha1.finish(Message(f'素敵な仲間が増えますよ！\n{res}'), call_header=True)
 
 
 @gacha10.handle()
@@ -185,7 +185,7 @@ async def _(bot: Bot, event: Event):
     res = f'{res}\n{res1}\n{res2}'
     if hiishi >= SUPER_LUCKY_LINE:
         await gacha10.send('恭喜海豹！おめでとうございます！')
-    await gacha10.finish(Message(f'素敵な仲間が増えますよ！\n{res}'), at_sender=True)
+    await gacha10.finish(Message(f'素敵な仲間が増えますよ！\n{res}'), call_header=True)
 
 
 @gacha300.handle()
@@ -246,7 +246,7 @@ async def _(bot: Bot, event: Event):
         msg.append("抽井母五一气呵成！您就是欧洲人？")
     elif up >= 4:
         msg.append("记忆碎片一大堆！您是托吧？")
-    await gacha300.finish(Message('\n'.join(msg)), at_sender=True)
+    await gacha300.finish(Message('\n'.join(msg)), call_header=True)
 
 
 @showcol.handle()
@@ -255,7 +255,7 @@ async def _(bot: Bot, event: Event):
     col = select_collection(uid)
     length = len(col)
     if length <= 0:
-        await showcol.finish('您的仓库为空,请多多抽卡哦~', at_sender=True)
+        await showcol.finish('您的仓库为空,请多多抽卡哦~', call_header=True)
     result = list(map(lambda x: Chara.fromid(x), col))
     step = 6
     pics = []
@@ -271,7 +271,7 @@ async def _(bot: Bot, event: Event):
         f'{res}',
         f'您共有{length}个三星角色~'
     ]
-    await showcol.finish(Message('\n'.join(msg)), at_sender=True)
+    await showcol.finish(Message('\n'.join(msg)), call_header=True)
 
 
 kakin = sucmd('氪金', aliases={'充值'}, handlers=[parse_qq])

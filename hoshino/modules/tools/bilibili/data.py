@@ -27,7 +27,10 @@ async def get_bvid(url: str) -> str:
 
 
 async def get_resp(bvid: str):
-    resp = await aiohttpx.get(url, params={'bvid': bvid}, headers=headers)
+    try:
+        resp = await aiohttpx.get(url, params={'bvid': bvid}, headers=headers)
+    except:
+        return None
     js = resp.json
     data = js['data']
     oj = dict()

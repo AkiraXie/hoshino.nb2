@@ -162,7 +162,7 @@ class Chara:
             star = 6
         elif 3 <= self.star <= 5:
             star = 3
-        elif self.star == 1:
+        elif self.star in (1,2):
             star = 1
         else:
             for i in (6, 3, 1):

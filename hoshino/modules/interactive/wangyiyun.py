@@ -29,4 +29,4 @@ async def _(bot: Bot):
     if j['status'] !=1:
         await shanghao.finish("请求api失败")
     content=j['data']['content']['content']
-    await shanghao.finish(content,at_sender=True)
+    await shanghao.finish(content,call_header=True)

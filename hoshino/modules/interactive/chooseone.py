@@ -21,4 +21,4 @@ async def _(bot: Bot, event: Event):
     else:
         final = random.choice(choices)
         msgs.append(f'建议您选择: {final}')
-    await co.finish(Message('\n'.join(msgs)), at_sender=True)
+    await co.finish(Message('\n'.join(msgs)), call_header=True)
