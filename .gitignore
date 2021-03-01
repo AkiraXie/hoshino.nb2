@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 # Repository-customized
+.idea
 .vscode
 *.bak
 .env.*
