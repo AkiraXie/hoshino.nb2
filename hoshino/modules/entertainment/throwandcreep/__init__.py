@@ -15,7 +15,7 @@ async def _(bot: Bot, event: Event, state: T_State):
             break
     if qq == '' or qq== 'all':
         return
-    reply = await throw(qq) if state['action']=='throw' else await creep('qq')
+    reply = await throw(qq) if state['action']=='throw' else await creep(qq)
     if not reply==-1:
         await bot.send(event,reply)
     else:
