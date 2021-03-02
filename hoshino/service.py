@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-02-10 00:21:01
+LastEditTime: 2021-03-03 02:32:32
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -15,7 +15,6 @@ from nonebot.adapters.cqhttp.utils import escape
 from nonebot.matcher import current_bot, current_event
 from nonebot.typing import T_ArgsParser, T_Handler
 from nonebot.message import run_preprocessor, run_postprocessor
-from hoshino.log import wrap_logger
 from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment
 from hoshino.event import Event
 from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_request, on_shell_command
@@ -23,11 +22,10 @@ from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import get_bot_list
 from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
 from hoshino.typing import Dict, Iterable, Optional, Union, T_State, List, Type, FinishedException, PausedException, RejectedException
-
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
 _loaded_matchers: Dict["Type[Matcher]", "matcher_wrapper"] = {}
-
+from hoshino.log import wrap_logger
 
 def _save_service_data(service: "Service"):
     data_file = os.path.join(_service_dir, f'{service.name}.json')
@@ -404,5 +402,5 @@ async def _(matcher: Matcher, exception: Exception, bot: Bot, event: Event, stat
     if mw:
         if exception:
             mw.sv.logger.error(
-                f'Event handling failed from <lc>{mw}</>', False)
+                f'Event handling failed from <lc>{mw}</>',exception)
         mw.sv.logger.info(f'Event handling completed from <lc>{mw}</>')
