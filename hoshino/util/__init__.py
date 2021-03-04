@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-02-12 22:07:36
+LastEditTime: 2021-03-05 00:09:37
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -168,3 +168,21 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
                 ids.append(int(m))
     if ids:
         state['ids'] = ids.copy()
+
+
+def get_event_image(event: Event) -> List[str]:
+    msg=event.get_message()
+    imglist=[
+        s.data['file']
+        for s in msg
+        if s.type == 'image' and 'file' in s.data
+    ]
+    return imglist
+def get_event_imageurl(event: Event) -> List[str]:
+    msg=event.get_message()
+    imglist=[
+        s.data['url']
+        for s in msg
+        if s.type == 'image' and 'url' in s.data
+    ]
+    return imglist
