@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-22 02:35:32
 LastEditors: AkiraXie
-LastEditTime: 2021-03-03 02:32:05
+LastEditTime: 2021-03-04 22:23:41
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -17,11 +17,11 @@ class wrap_logger:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def exception(self, message: str, exception: True):
+    def exception(self, message: str, exception=True):
         return logger.opt(colors=True, exception=exception).exception(
             f"<r><ly>{self.name}</> | {message}</>")
 
-    def error(self, message: str, exception: True):
+    def error(self, message: str, exception=True):
         return logger.opt(colors=True, exception=exception).error(
             f"<r><ly>{self.name}</> | {message}</>")
 
@@ -50,6 +50,7 @@ class Filter:
     '''
     改自 ``nonebot.log.Filter``
     '''
+
     def __init__(self) -> None:
         self.level = "DEBUG"
 
@@ -66,7 +67,7 @@ log_root = 'logs/'
 os.makedirs(log_root, exist_ok=True)
 logger.remove()
 hoshino_filter = Filter()
-hoshino_filter.level = 'DEBUG'  if hsn_config.debug else "INFO"
+hoshino_filter.level = 'DEBUG' if hsn_config.debug else "INFO"
 default_format = (
     "<g>{time:MM-DD HH:mm:ss}</g> "
     "[<lvl>{level}</lvl>] "
