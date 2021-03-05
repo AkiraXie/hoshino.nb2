@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-13 22:24:20
 LastEditors: AkiraXie
-LastEditTime: 2021-03-04 00:24:34
+LastEditTime: 2021-03-05 01:01:39
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -13,7 +13,7 @@ sv = Service('antiqks', visible=False)
 
 
 async def check_gbf(url: str) -> dict:
-    resp = await aiohttpx.head(url, allow_redirects=False,timeout=5)
+    resp = await aiohttpx.head(url, allow_redirects=False, timeout=5)
     h, s = resp.headers, resp.status_code
     loc = h.get('Location', None)
     ret = {'flag': False, 'loc': None}
