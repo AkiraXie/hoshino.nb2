@@ -1,12 +1,10 @@
-multidict>=5.1.0
-pygtrie>=2.4.2
-loguru>=0.5.3
 peewee>=3.14.0
-pytz>=2020.5
 aiohttp>=3.7.3
 zhconv>=1.4.1
 requests>=2.25.1
-nonebot2>=2.00a10
+nonebot-adapter-cqhttp>=2.0.0a11.post2
+nonebot2>=2.0.0a11
+numpy>=1.20.1
 Pillow>=8.1.0
 nonebot-plugin-apscheduler>=0.1.2
 lxml>=4.6.2
