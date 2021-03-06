@@ -1,3 +1,11 @@
+'''
+Author: AkiraXie
+Date: 2021-02-19 02:22:27
+LastEditors: AkiraXie
+LastEditTime: 2021-03-07 02:22:03
+Description: 
+Github: http://github.com/AkiraXie/
+'''
 from typing import Dict
 from loguru import logger
 from hoshino import Service, Bot, Event, Message
@@ -31,7 +39,7 @@ class repeater:
 # 想了想要复现HoshinoBot的复读还是得有个全局字典来存数据F
 GROUP_STATE: Dict[int, repeater] = dict()
 
-
+@sv1.on_message(block=False)
 async def random_repeat(bot: Bot, event: Event):
     gid = event.group_id
     msg = event.raw_message
@@ -51,5 +59,3 @@ async def random_repeat(bot: Bot, event: Event):
             GROUP_STATE[gid] =  repeater(msg, False, p)
     else:
         GROUP_STATE[gid] =  repeater(msg, False, 0.0)
-# 优先级为0，为了避免被正常命令裁剪message
-sv1.on_message(priority=0,block=False).handle()(random_repeat)

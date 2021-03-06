@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-03-03 02:32:32
+LastEditTime: 2021-03-07 05:17:51
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -10,9 +10,11 @@ import asyncio
 import re
 import os
 import json
+from functools import wraps
 from collections import defaultdict
 from nonebot.adapters.cqhttp.utils import escape
 from nonebot.matcher import current_bot, current_event
+from typing import Mapping
 from nonebot.typing import T_ArgsParser, T_Handler
 from nonebot.message import run_preprocessor, run_postprocessor
 from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment
@@ -319,9 +321,87 @@ class matcher_wrapper:
             key: str,
             prompt: Optional[Union[str, "Message", "MessageSegment"]] = None,
             args_parser: Optional[T_ArgsParser] = None):
-        def deco(func: T_Handler):
-            return self.matcher.got(key, prompt, args_parser)(func)
-        return deco
+        '''
+        由于装饰器的特殊性，不能直接返回 ``self.matcher.got``,否则多级 ``got`` 的 ``handler`` 会乱序。
+        
+        目前先照抄 ``nonebot``
+        '''
+        async def _key_getter(bot: "Bot", event: "Event", state: T_State):
+            state["_current_key"] = key
+            if key not in state:
+                if prompt:
+                    if isinstance(prompt, str):
+                        await bot.send(event=event,
+                                       message=prompt.format(**state))
+                    elif isinstance(prompt, Mapping):
+                        if prompt.is_text():
+                            await bot.send(event=event,
+                                           message=str(prompt).format(**state))
+                        else:
+                            await bot.send(event=event, message=prompt)
+                    elif isinstance(prompt, Iterable):
+                        await bot.send(
+                            event=event,
+                            message=prompt.__class__(
+                                str(prompt).format(**state))  # type: ignore
+                        )
+                    else:
+                        self.sv.logger.warning("Unknown prompt type, ignored.")
+                raise PausedException
+            else:
+                state["_skip_key"] = True
+
+        async def _key_parser(bot: "Bot", event: "Event", state: T_State):
+            if key in state and state.get("_skip_key"):
+                del state["_skip_key"]
+                return
+            parser = args_parser or self.matcher._default_parser
+            if parser:
+                # parser = cast(T_ArgsParser["Bot", "Event"], parser)
+                await parser(bot, event, state)
+            else:
+                state[state["_current_key"]] = str(event.get_message())
+
+        self.matcher.append_handler(_key_getter)
+        self.matcher.append_handler(_key_parser)
+
+        def _decorator(func: T_Handler) -> T_Handler:
+            if not hasattr(self.matcher.handlers[-1], "__wrapped__"):
+                self.matcher.process_handler(func)
+                parser = self.matcher.handlers.pop()
+
+                @wraps(func)
+                async def wrapper(bot: "Bot", event: "Event", state: T_State,
+                                  matcher: Matcher):
+                    await matcher.run_handler(parser, bot, event, state)
+                    await matcher.run_handler(func, bot, event, state)
+                    if "_current_key" in state:
+                        del state["_current_key"]
+
+                self.matcher.append_handler(wrapper)
+
+                wrapper.__params__.update({
+                    "bot":
+                        func.__params__["bot"],
+                    "event":
+                        func.__params__["event"] or wrapper.__params__["event"]
+                })
+                _key_getter.__params__.update({
+                    "bot":
+                        func.__params__["bot"],
+                    "event":
+                        func.__params__["event"] or wrapper.__params__["event"]
+                })
+                _key_parser.__params__.update({
+                    "bot":
+                        func.__params__["bot"],
+                    "event":
+                        func.__params__["event"] or wrapper.__params__["event"]
+                })
+
+            return func
+
+        return _decorator
 
     async def reject(self,
                      prompt: Optional[Union[str, "Message",
@@ -362,8 +442,8 @@ class matcher_wrapper:
                 user_id=event.user_id,
                 no_cache=True
             )
-            for i in (info['title'],info['card'],info['nickname']):
-                if i :
+            for i in (info['title'], info['card'], info['nickname']):
+                if i:
                     header = f'>{escape(i)}\n'
                     break
         return await bot.send(event, header+message, at_sender=at_sender, **kwargs)
@@ -402,5 +482,5 @@ async def _(matcher: Matcher, exception: Exception, bot: Bot, event: Event, stat
     if mw:
         if exception:
             mw.sv.logger.error(
-                f'Event handling failed from <lc>{mw}</>',exception)
+                f'Event handling failed from <lc>{mw}</>', exception)
         mw.sv.logger.info(f'Event handling completed from <lc>{mw}</>')
