@@ -2,17 +2,18 @@
 Author: AkiraXie
 Date: 2021-03-06 00:37:42
 LastEditors: AkiraXie
-LastEditTime: 2021-03-06 03:21:16
+LastEditTime: 2021-03-06 14:14:17
 Description: 
 Github: http://github.com/AkiraXie/
 '''
+import asyncio
 from hoshino import Service, Bot, Event
 import websockets
 from brotli import decompress
 from json import loads
 from numpy import mean
 sv = Service('arc', visible=False, enable_on_default=False)
-aarc = sv.on_command('arc',aliases={'arcaea',''})
+aarc = sv.on_command('arc', aliases={'arcaea', 'ARC'})
 
 clear_list = ['Track Lost', 'Normal Clear', 'Full Recall',
               'Pure Memory', 'Easy Clear', 'Hard Clear']
@@ -34,14 +35,19 @@ async def _lookup(nickname: str):
 async def _query(id: str) -> tuple:
     data = ''
     scores = []
-    ws = await websockets.connect('wss://arc.estertion.win:616')
+    ws = await websockets.connect('wss://arc.estertion.win:616', ping_interval=None)
     await ws.send(id)
     while data != 'bye':
         try:
             data = await ws.recv()
         except:
             try:
-                await ws.send(await _lookup(id))
+                id = await _lookup(id)
+                if isinstance(id, str):
+                    ws = await websockets.connect('wss://arc.estertion.win:616', ping_interval=None)
+                    await ws.send(id)
+                else:
+                    return None
             except:
                 sv.logger.error('Query arc failed')
                 return None
@@ -53,7 +59,6 @@ async def _query(id: str) -> tuple:
                 scores.extend(de_data['data'])
             if de_data['cmd'] == 'userinfo':
                 userinfo = de_data['data']
-    await ws.close()
     scores.sort(key=lambda x: x['rating'], reverse=True)
     return song_title, scores, userinfo
 
@@ -79,11 +84,11 @@ async def query(id: str) -> str:
     reply.append(f'Best 30: {b30:.3f}')
     reply.append(f'Recent top 10: {r10:.3f}')
     score = userinfo['recent_score'][0]
-    reply.append(f'Recent play:\n {song_title[score["song_id"]]["ja"]}  ' +
+    reply.append(f'Recent play:\n{song_title[score["song_id"]]["en"]}  ' +
                  diff_list[score['difficulty']]+f'  {score["constant"]:.2f}')
-    reply.append(f'  Clear type: {clear_list[score["clear_type"]]}')
-    reply.append(f'  Score: {score["score"]}')
-    reply.append(f'  Rating: {score["rating"]:.3f}')
+    reply.append(f'~Clear type: {clear_list[score["clear_type"]]}')
+    reply.append(f'~Score: {score["score"]}')
+    reply.append(f'~Rating: {score["rating"]:.3f}')
     return '\n'.join(reply)
 
 
