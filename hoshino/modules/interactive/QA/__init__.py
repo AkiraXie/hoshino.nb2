@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-02 23:57:37
 LastEditors: AkiraXie
-LastEditTime: 2021-03-05 14:56:38
+LastEditTime: 2021-03-07 02:31:50
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -22,10 +22,7 @@ del_qa = sv.on_command('不要回答', aliases={'不再回答'}, only_group=Fals
 lookqa = sv.on_command('看看我问', aliases={'查看我问'}, only_group=False)
 lookgqa = sv.on_command('看看有人问', aliases={'看看大家问', '查看有人问'})
 ans = sv.on_message(only_group=False, priority=5)
-parser = ArgumentParser()
-parser.add_argument('question', type=str)
-parser.add_argument('user_id', type=int)
-del_pqa = sv.on_shell_command('删除我问', parser=parser, permission=ADMIN)
+del_pqa = sv.on_command('删除我问', permission=ADMIN)
 
 
 @group_ques.handle()
@@ -92,18 +89,7 @@ async def _(bot: Bot, event: Event):
         await del_qa.finish(Message('我不记得"{}"这个问题'.format(question)))
     else:
         await del_qa.finish(Message('我不再回答"{}"了'.format(question)))
-
-
-@del_pqa.handle()
-async def _(bot: Bot, event: Event, state: T_State):
-    state['gid'] = event.group_id
-    if isinstance(state['args'], Namespace):
-        state.update(**state['args'].__dict__)
-
-
-@del_pqa.got('question', '请输入要删除的问题')
-@del_pqa.got('user_id', '请输入要删除的人的id,在群聊中支持at哦')
-async def _(bot: Bot, event: Event, state: T_State):
+async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
     for m in event.get_message():
         if m.type == 'at' and m.data['qq'] != 'all':
             state['user_id'] = int(m.data['qq'])
@@ -111,6 +97,11 @@ async def _(bot: Bot, event: Event, state: T_State):
         elif m.type == 'text' and m.data['text'].isdigit():
             state['user_id'] = (int(m.data['text']))
             break
+
+@del_pqa.got('question', '请输入要删除的问题')
+@del_pqa.got('user_id','请输入要删除问题的id，支持at')
+async def _(bot: Bot, event: Event, state: T_State):
+    state['gid'] = event.group_id
     lquestion = state['question'].lower()
     num = Question.delete().where(
         fn.Lower(Question.question) == lquestion,
