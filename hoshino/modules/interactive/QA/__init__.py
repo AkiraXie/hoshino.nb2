@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-02 23:57:37
 LastEditors: AkiraXie
-LastEditTime: 2021-03-07 02:31:50
+LastEditTime: 2021-03-09 21:58:40
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -99,7 +99,7 @@ async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
             break
 
 @del_pqa.got('question', '请输入要删除的问题')
-@del_pqa.got('user_id','请输入要删除问题的id，支持at')
+@del_pqa.got('user_id','请输入要删除问题的id，支持at',parse_sin_qq)
 async def _(bot: Bot, event: Event, state: T_State):
     state['gid'] = event.group_id
     lquestion = state['question'].lower()
