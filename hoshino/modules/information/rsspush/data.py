@@ -2,12 +2,13 @@
 Author: AkiraXie
 Date: 2021-02-09 23:30:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-13 20:19:36
+LastEditTime: 2021-03-12 13:52:20
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from loguru import logger
-from hoshino.util import concat_pic, pic2b64
+from pytz import timezone
+from hoshino.util import pic2b64
 from io import BytesIO
 from hoshino import aiohttpx, db_dir, MessageSegment
 from PIL import Image
@@ -15,60 +16,55 @@ from bs4 import BeautifulSoup
 import peewee as pw
 from feedparser import FeedParserDict
 import feedparser
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Union
+from datetime import datetime
 import time
 import os
 BASE_URL = "https://rsshub.akiraxie.me/"
-
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 class Rss:
-    def __init__(self, url: str, limit: int = 1) -> None:
+    def __init__(self, url: str, limit: int = 8) -> None:
         super().__init__()
         self.url = url
         self.limit = limit
 
-    @property
-    async def feed(self) -> FeedParserDict:
+    @classmethod
+    async def new(cls, url: str, limit: int = 8) -> "Rss":
+        '''
+        `Rss` 类真正的构造函数
+        '''
+        self = cls(url, limit)
         ret = await aiohttpx.get(self.url, params={'limit': self.limit, 'timeout': 5})
-        return feedparser.parse(ret.content)
+        self.feed = feedparser.parse(ret.content)
+        self.link = self.feed.feed.link
+        return self
 
     @property
-    async def feed_entries(self) -> Optional[List]:
-        feed = await self.feed
+    def feed_entries(self) -> Optional[List]:
+        feed = self.feed
         if len(feed.entries) != 0:
             return feed.entries
         else:
             return
 
     @property
-    async def link(self) -> str:
-        feed = await self.feed
-        return feed.feed.link
-
-    @property
-    async def has_entries(self) -> bool:
-        return (await self.feed_entries) is not None
+    def has_entries(self) -> bool:
+        return self.feed_entries is not None
 
     @staticmethod
-    def format_time(timestr: str) -> str:
-        try:
-            struct_time = time.strptime(timestr, '%a, %d %b %Y %H:%M:%S %Z')
-        except:
-            struct_time = time.strptime(timestr, '%Y-%m-%dT%H:%M:%SZ')
-        dt = datetime.fromtimestamp(time.mktime(struct_time))
-        return str(dt+timedelta(hours=8))
+    def format_time(entry: FeedParserDict, flag:bool=False) -> Union[datetime, str]:
+        time_str = entry.get('updated_parsed', entry['published_parsed'])
+        ts=time.mktime(time_str)
+        dt = datetime.fromtimestamp(ts, tz=timezone('Asia/Shanghai'))
+        return dt.strftime(DATE_FORMAT) if flag else dt
 
     @staticmethod
     async def _get_rssdic(entry: FeedParserDict, flag: bool = False) -> Dict:
         ret = {'标题': entry.title,
-               '时间': entry.updated,
                '链接': entry.link, }
-        try:
-            ret['时间'] = Rss.format_time(ret['时间'])
-        except:
-            pass
+        ret['时间'] = Rss.format_time(entry,True)
         if flag:
             soup = BeautifulSoup(entry.summary, "lxml")
             imglist = []
@@ -86,7 +82,7 @@ class Rss:
 
     async def get_new_entry_info(self) -> Optional[Dict]:
         try:
-            entries = await self.feed_entries
+            entries = self.feed_entries
             return await Rss._get_rssdic(entries[0], True)
         except Exception as e:
             logger.exception(e)
@@ -94,7 +90,7 @@ class Rss:
     async def get_all_entry_info(self) -> Optional[List[Dict]]:
         try:
             ret = []
-            entries = await self.feed_entries
+            entries = self.feed_entries
             lmt = min(self.limit, len(entries))
             for entry in entries[:lmt]:
                 entrydic = await self._get_rssdic(entry)
@@ -103,11 +99,31 @@ class Rss:
         except Exception as e:
             logger.exception(e)
 
-    @property
-    async def last_update(self) -> Optional[str]:
+    async def get_interval_entry_info(self, otherdt: str) -> Optional[List[Dict]]:
         try:
-            entries = await self.feed_entries
-            res= entries[0].updated
+            otherdt=datetime.strptime(otherdt,DATE_FORMAT+'%z')
+            ret = []
+            entries = []
+            for entry in self.feed_entries:
+                dt = Rss.format_time(entry)
+                if dt > otherdt:
+                    entries.append(entry)
+                else:
+                    break
+            if not entries:
+                return None
+            for entry in entries:
+                entrydic = await self._get_rssdic(entry, True)
+                ret.append(entrydic)
+            return ret
+        except Exception as e:
+            logger.exception(e)
+
+    @property
+    def last_update(self) -> Optional[str]:
+        try:
+            entries = self.feed_entries
+            res = Rss.format_time(entries[0])
             return res
         except Exception as e:
             logger.exception(e)
@@ -120,12 +136,12 @@ db = pw.SqliteDatabase(db_path)
 class Rssdata(pw.Model):
     url = pw.TextField()
     name = pw.TextField()
-    date = pw.TextField()
+    date = pw.DateTimeField()
     group = pw.IntegerField()
 
     class Meta:
         database = db
-        primary_key = pw.CompositeKey('url', 'group')
+        primary_key = pw.CompositeKey('name', 'group')
 
 
 if not os.path.exists(db_path):

@@ -148,8 +148,12 @@ async def del_steam_ids(steam_id, group):
 
 @scheduled_job('cron', minute='*/2', id='推送steam',jitter=20)
 async def check_steam_status():
+    if not playing_state:
+        await update_game_status()
+        return
     old_state = playing_state.copy()
     await update_game_status()
+    await sleep(0.5)
     for key, val in playing_state.items():
         if val["gameextrainfo"] != old_state[key]["gameextrainfo"]:
             glist = set(sub["subscribes"][key]) & set((await sv.get_enable_groups()).keys())

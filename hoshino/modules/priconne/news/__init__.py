@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-11 00:00:55
 LastEditors: AkiraXie
-LastEditTime: 2021-02-11 00:31:09
+LastEditTime: 2021-03-12 00:42:43
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -30,7 +30,7 @@ async def news_poller(spider: BaseSpider, sv: Service, TAG):
 
 
 @scheduled_job('interval', id='推送新闻',minutes=5, jitter=20)
-async def bili_news_poller():
+async def biso_news_poller():
     await news_poller(SonetSpider, svtw, '台服官网')
     await news_poller(BiliSpider, svbl, 'B服官网')
 
