@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:30:52
 LastEditors: AkiraXie
-LastEditTime: 2021-03-12 13:52:20
+LastEditTime: 2021-03-12 17:23:53
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -68,6 +68,7 @@ class Rss:
         if flag:
             soup = BeautifulSoup(entry.summary, "lxml")
             imglist = []
+            videolist=[]
             ret['正文'] = soup.get_text()
             for i in soup.find_all('img'):
                 img = await aiohttpx.get(i['src'], timeout=5)
@@ -76,7 +77,14 @@ class Rss:
                     continue
                 else:
                     imglist.append(str(MessageSegment.image(pic2b64(img))))
+            for v in soup.find_all('video'):
+                poster=v['poster']
+                video=v['src']
+                videolist.append(MessageSegment.video(video))
+                imglist.append(str(MessageSegment.image(poster)))
+            ret['视频'] = videolist
             ret['图片'] = imglist
+            
 
         return ret
 

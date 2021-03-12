@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-03-07 05:17:51
+LastEditTime: 2021-03-12 18:04:15
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -284,6 +284,17 @@ class Service:
                         self.logger.error(f'{sid}在群{gid}投递{tag}失败')
 
 
+async def _permission_updater(matcher: Matcher, bot: Bot, event: Event, state: T_State, permission: Permission) -> Permission:
+    uid = event.get_user_id()
+    gid = event.group_id if 'group_id' in event.__dict__ else None
+
+    async def _permission(bot: Bot, event: Event):
+        flag = event.group_id == gid if 'group_id' in event.__dict__ else True
+        return flag and event.get_user_id() == uid and await permission(bot, event)
+    
+    return Permission(_permission)
+
+
 class matcher_wrapper:
     '''
     封装了 ``nonebot.matcher.Matcher`` ,使之可以受Service干预。
@@ -298,6 +309,7 @@ class matcher_wrapper:
         self.type = type
 
     def load_matcher(self, matcher: Type[Matcher]):
+        matcher.permission_updater(_permission_updater)
         self.matcher = matcher
 
     @staticmethod
@@ -323,7 +335,7 @@ class matcher_wrapper:
             args_parser: Optional[T_ArgsParser] = None):
         '''
         由于装饰器的特殊性，不能直接返回 ``self.matcher.got``,否则多级 ``got`` 的 ``handler`` 会乱序。
-        
+
         目前先照抄 ``nonebot``
         '''
         async def _key_getter(bot: "Bot", event: "Event", state: T_State):
