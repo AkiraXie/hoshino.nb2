@@ -2,26 +2,25 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-03-05 00:09:37
+LastEditTime: 2021-03-12 04:38:24
 Description: 
 Github: http://github.com/AkiraXie/
 '''
+import pytz
+import base64
+import zhconv
+import nonebot
+import unicodedata
+import time
+import os
 from typing import List, Optional, Tuple, Type
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
-import os
-import json
-import unicodedata
-import time
 from nonebot.adapters.cqhttp import MessageSegment
 from nonebot.adapters.cqhttp.event import Event, GroupMessageEvent, PrivateMessageEvent
 from nonebot.typing import T_State
-import pytz
-import base64
-import zhconv
-import nonebot
 from hoshino import R
 from nonebot.utils import run_sync
 from nonebot.adapters.cqhttp import Bot
@@ -171,18 +170,21 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
 
 
 def get_event_image(event: Event) -> List[str]:
-    msg=event.get_message()
-    imglist=[
+    msg = event.get_message()
+    imglist = [
         s.data['file']
         for s in msg
         if s.type == 'image' and 'file' in s.data
     ]
     return imglist
+
+
 def get_event_imageurl(event: Event) -> List[str]:
-    msg=event.get_message()
-    imglist=[
+    msg = event.get_message()
+    imglist = [
         s.data['url']
         for s in msg
         if s.type == 'image' and 'url' in s.data
     ]
     return imglist
+    
