@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-03-15 03:28:21
+LastEditTime: 2021-03-15 05:09:17
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,7 +11,7 @@ from hoshino.typing import List, T_State
 from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message, sucmd
 from hoshino.util import text2Seg
 from hoshino.rule import ArgumentParser
-from .data import Rss, Rssdata, BASE_URL, pw
+from .data import Rss, Rssdata, BASE_URL, pw,timezone
 sv = Service('rss', enable_on_default=False)
 parser = ArgumentParser()
 parser.add_argument('name')
@@ -43,13 +43,12 @@ async def _(bot: Bot, event: Event, state: T_State):
     if not args.url:
         ret = Rssdata.get_or_none(name=name)
         if ret:
-            url = ret.url.lower()
+            url = ret.url
         else:
             await addrss.finish(f'订阅{name}不存在，请后跟 -u 路由 重新输入')
     else:
         url: str = BASE_URL+args.url.lstrip('/') if args.rsshub else args.url
-        url = url.lower()
-    if r'/twitter/' in url:
+    if r'/twitter/' in url.lower():
         await addrss.finish('推特路由请用 添加推特')
     try:
         stats = await aiohttpx.head(url, timeout=5, allow_redirects=True)
@@ -134,7 +133,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     await queryrss.finish(Message('\n'.join(msg)))
 
 
-@scheduled_job('interval', minutes=3, jitter=20, id='推送rss')
+@scheduled_job('interval', minutes=2, jitter=20, id='推送rss')
 async def push_rss():
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
@@ -142,7 +141,7 @@ async def push_rss():
             res = Rssdata.select(Rssdata.url, Rssdata.name,
                                  Rssdata.date).where(Rssdata.group == gid)
             for r in res:
-                flag = r'/twitter/' in r.url
+                flag = r'/twitter/' in r.url.lower()
                 rss = await Rss.new(r.url)
                 if not (rss.has_entries):
                     continue
@@ -178,7 +177,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     rss = await Rss.new(r.url, 1)
     newinfo = await rss.get_new_entry_info()
     msg = [f'{name} 最新消息']
-    if not r'/twitter/' in r.url:
+    if not r'/twitter/' in r.url.lower():
         msg.append(info2pic(newinfo))
     else:
         infostr = f"正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
@@ -191,14 +190,13 @@ async def _(bot: Bot, event: Event, state: T_State):
             await querynewrss.send(v)
 
 
-updaterss = sucmd('updaterss')
+updaterss = sucmd('更新rss')
 
 
 @updaterss.handle()
 async def _(bot: Bot, event: Event, state: T_State):
     Rssdata.update(url=pw.fn.replace(
         Rssdata.url, r'rsshub.akiraxie.me', r'rsshub.akiraxie.cc')).execute()
-    Rssdata.update(url=pw.fn.lower(Rssdata.url)).execute()
     await updaterss.finish('update ok')
 
 parser2 = ArgumentParser()
