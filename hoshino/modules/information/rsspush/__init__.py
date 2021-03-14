@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-03-15 03:00:40
+LastEditTime: 2021-03-15 03:28:21
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -95,7 +95,7 @@ async def lookrsslist(bot: Bot, event: Event, state: T_State):
         for i in range(0, reslen, 5):
             j = min(reslen, i+5)
             if i == 0:
-                msg = ['本群订阅如下:']
+                msg = [f'本群{reslen}个订阅如下:']
             else:
                 msg = []
             for ij in range(i, j):
@@ -103,7 +103,6 @@ async def lookrsslist(bot: Bot, event: Event, state: T_State):
                 rss = await Rss.new(r.url, 1)
                 msg.append(f'订阅标题:{r.name}\n订阅链接:{rss.link}\n=====')
             await lookrss.send(Message('\n'.join(msg)))
-        await lookrss.send(f'共{reslen}个订阅')
     except Exception as e:
         sv.logger.exception(e)
         await lookrss.finish('查询订阅列表失败')
@@ -156,7 +155,7 @@ async def push_rss():
                     if not flag:
                         msg.append(info2pic(newinfo))
                     else:
-                        infostr = f"标题: {newinfo['标题']}\n\n正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
+                        infostr = f"正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
                         msg.append(infostr)
                     msg.extend(newinfo['图片'])
                     msg.append(f'链接: {newinfo["链接"]}')
@@ -178,11 +177,11 @@ async def _(bot: Bot, event: Event, state: T_State):
     r = res[0]
     rss = await Rss.new(r.url, 1)
     newinfo = await rss.get_new_entry_info()
-    msg = [f'订阅 {name} 最新消息']
+    msg = [f'{name} 最新消息']
     if not r'/twitter/' in r.url:
         msg.append(info2pic(newinfo))
     else:
-        infostr = f"标题: {newinfo['标题']}\n\n正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
+        infostr = f"正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
         msg.append(infostr)
     msg.extend(newinfo['图片'])
     msg.append(f'链接: {newinfo["链接"]}')
@@ -212,7 +211,7 @@ addtwi = sv.on_shell_command(
 @addtwi
 async def _(bot: Bot, event: Event, state: T_State):
     args = state['args']
-    id = args.id
+    id = args.id.lstrip('@')
     name = id if not args.name else args.name
     url = BASE_URL+f'twitter/user/{id}/excludeReplies=1&readable=1'
     try:
@@ -229,4 +228,4 @@ async def _(bot: Bot, event: Event, state: T_State):
     except Exception as e:
         sv.logger.exception(e)
         await addtwi.finish('推特添加失败')
-    await addtwi.finish(f'推特 {name} 添加成功')
+    await addtwi.finish(f'推特 {name}(@{id}) 添加成功')
