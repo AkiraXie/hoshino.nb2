@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:30:52
 LastEditors: AkiraXie
-LastEditTime: 2021-03-15 00:21:41
+LastEditTime: 2021-03-15 05:05:22
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -57,7 +57,7 @@ class Rss:
     def format_time(entry: FeedParserDict, flag:bool=False) -> Union[datetime, str]:
         time_str = entry.get('updated_parsed', entry['published_parsed'])
         ts=time.mktime(time_str)
-        dt = datetime.fromtimestamp(ts, tz=timezone('Asia/Shanghai'))
+        dt = datetime.fromtimestamp(ts).replace(tzinfo=timezone('UTC')).astimezone(timezone('Asia/Shanghai'))
         return dt.strftime(DATE_FORMAT) if flag else dt
 
     @staticmethod
@@ -107,9 +107,11 @@ class Rss:
         except Exception as e:
             logger.exception(e)
 
-    async def get_interval_entry_info(self, otherdt: str) -> Optional[List[Dict]]:
+    async def get_interval_entry_info(self, otherdt: Union[str,datetime]) -> Optional[List[Dict]]:
         try:
-            otherdt=datetime.strptime(otherdt,DATE_FORMAT+'%z')
+            if isinstance(otherdt,str):
+                otherdt=datetime.strptime(otherdt,DATE_FORMAT+'%z')
+            otherdt=otherdt.replace(tzinfo=timezone('UTC')).astimezone(timezone('Asia/Shanghai'))
             ret = []
             entries = []
             for entry in self.feed_entries:
@@ -128,7 +130,7 @@ class Rss:
             logger.exception(e)
 
     @property
-    def last_update(self) -> Optional[str]:
+    def last_update(self) -> Optional[datetime]:
         try:
             entries = self.feed_entries
             res = Rss.format_time(entries[0])

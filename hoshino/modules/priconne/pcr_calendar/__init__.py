@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-13 21:31:35
 LastEditors: AkiraXie
-LastEditTime: 2021-02-13 22:03:10
+LastEditTime: 2021-03-15 04:18:39
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -31,7 +31,7 @@ async def _():
     await svtw.broadcast(text2Seg(await db_message('tw')), 'calendar-tw')
 
 
-updatedb = sucmd('updatedb', rule.to_me())
+updatedb = sucmd('updatedb')
 
 
 @updatedb.handle()
