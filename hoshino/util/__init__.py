@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-03-12 04:38:24
+LastEditTime: 2021-03-14 21:35:52
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -124,7 +124,7 @@ def pic2b64(pic: Image.Image) -> str:
     buf = BytesIO()
     pic.save(buf, format='PNG')
     base64_str = base64.b64encode(
-        buf.getvalue()).decode()  # , encoding='utf8')
+        buf.getvalue()).decode()
     return 'base64://' + base64_str
 
 

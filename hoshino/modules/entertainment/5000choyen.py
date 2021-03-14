@@ -1,3 +1,11 @@
+'''
+Author: AkiraXie
+Date: 2021-02-16 17:46:05
+LastEditors: AkiraXie
+LastEditTime: 2021-03-15 02:35:32
+Description: 
+Github: http://github.com/AkiraXie/
+'''
 import urllib
 from hoshino import Service,Bot,MessageSegment
 from hoshino.rule import ArgumentParser
@@ -16,5 +24,5 @@ async def _(bot:Bot,state:T_State):
         pass
     upper=urllib.parse.quote(upper)
     lower=urllib.parse.quote(lower)
-    pic=f'https://api.akiraxie.me/5000choyen?upper={upper}&lower={lower}'
+    pic=f'https://api.akiraxie.cc/5000choyen?upper={upper}&lower={lower}'
     await choyen.finish(MessageSegment.image(pic))

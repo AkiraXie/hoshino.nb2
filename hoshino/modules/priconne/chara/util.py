@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:58
 LastEditors: AkiraXie
-LastEditTime: 2021-02-12 21:02:35
+LastEditTime: 2021-03-15 03:09:38
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -61,7 +61,7 @@ def download_card(id_: int, star: int):
 
 async def download_config():
     try:
-        dataget = await aiohttpx.get('http://api.akiraxie.me/pcr/config.json', timeout=5)
+        dataget = await aiohttpx.get('http://api.akiraxie.cc/pcr/config.json', timeout=5)
         datacon = dataget.content
     except Exception as e:
         logger.error(exc := f'下载配置失败. {type(e)}:{e}')
@@ -78,7 +78,7 @@ async def download_config():
 
 async def download_pcrdata():
     try:
-        dataget = await aiohttpx.get('http://api.akiraxie.me/pcr/_pcr_data.py', timeout=5)
+        dataget = await aiohttpx.get('http://api.akiraxie.cc/pcr/_pcr_data.py', timeout=5)
         datacon = dataget.content
     except Exception as e:
         logger.error(exc := f'下载角色数据失败. {type(e)}:{e}')

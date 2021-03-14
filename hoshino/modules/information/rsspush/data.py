@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:30:52
 LastEditors: AkiraXie
-LastEditTime: 2021-03-12 17:23:53
+LastEditTime: 2021-03-15 00:21:41
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -20,7 +20,7 @@ from typing import List, Dict, Optional, Union
 from datetime import datetime
 import time
 import os
-BASE_URL = "https://rsshub.akiraxie.me/"
+BASE_URL = "https://rsshub.akiraxie.cc/"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
