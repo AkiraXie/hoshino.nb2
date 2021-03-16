@@ -2,13 +2,12 @@
 Author: AkiraXie
 Date: 2021-03-16 13:25:18
 LastEditors: AkiraXie
-LastEditTime: 2021-03-16 15:02:18
+LastEditTime: 2021-03-16 22:38:39
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from .aiohttpx import post
 from hoshino import hsn_config
-from loguru import logger
 token :str = hsn_config.bitly_token if 'bitly_token' in hsn_config.dict() else ""
 guid :str = hsn_config.bitly_guid if 'bitly_guid' in hsn_config.dict() else ""
 
@@ -27,6 +26,5 @@ async def get_bitly_url(url: str) -> str:
         resp=await post('https://api-ssl.bitly.com/v4/shorten',json=data,headers=headers)
         j=resp.json
         return j['link']
-    except Exception as e:
-        logger.exception(f'{url} was not transferred {e}')
+    except:
         return url

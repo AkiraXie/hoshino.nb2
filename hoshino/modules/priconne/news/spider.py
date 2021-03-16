@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-11 00:00:55
 LastEditors: AkiraXie
-LastEditTime: 2021-03-16 14:44:45
+LastEditTime: 2021-03-16 22:36:07
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -10,7 +10,7 @@ import abc
 from bs4 import BeautifulSoup
 from dataclasses import dataclass
 from typing import List, Union
-from hoshino.util import aiohttpx,get_bitly_url
+from hoshino.util import aiohttpx
 
 
 @dataclass
@@ -55,7 +55,7 @@ class BaseSpider(abc.ABC):
         msgs = []
         for i, item in enumerate(items):
             msg = [f'News {i+1} | Time {item.time}',
-                   f'{item.content}', f'{await get_bitly_url(item.link)}', '=========']
+                   f'{item.content}', f'{item.link}', '=========']
             msg = '\n'.join(msg)
             msgs.append(msg)
         return f'{cls.src_name}新闻\n'+'\n'.join(msgs)
@@ -71,7 +71,7 @@ class SonetSpider(BaseSpider):
         return [
             Item(idx=dd.a["href"],
                  content=f"{dd.text}",
-                 link=f"http://www.princessconnect.so-net.tw{dd.a['href']}",
+                 link=f"www.princessconnect.so-net.tw{dd.a['href']}",
                  time=str(dd.previous_sibling.previous_sibling.get_text()).strip()[
                 :10].replace('.', '-')
             ) for dd in soup.find_all("dd")
@@ -88,7 +88,7 @@ class BiliSpider(BaseSpider):
         items = [
             Item(idx=n["id"],
                  content=f"{n['title']}",
-                 link="http://game.bilibili.com/pcr/news.html#detail={id}".format_map(
+                 link="game.bilibili.com/pcr/news.html#detail={id}".format_map(
                      n),
                  time=f"{n['ctime'][:11]}"
                  ) for n in content["data"]
