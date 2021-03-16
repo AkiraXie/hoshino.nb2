@@ -2,14 +2,14 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-03-15 05:09:17
+LastEditTime: 2021-03-15 13:21:04
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import asyncio
 from hoshino.typing import List, T_State
 from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message, sucmd
-from hoshino.util import text2Seg
+from hoshino.util import text2Seg,get_bitly_url
 from hoshino.rule import ArgumentParser
 from .data import Rss, Rssdata, BASE_URL, pw,timezone
 sv = Service('rss', enable_on_default=False)
@@ -133,7 +133,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     await queryrss.finish(Message('\n'.join(msg)))
 
 
-@scheduled_job('interval', minutes=2, jitter=20, id='推送rss')
+@scheduled_job('interval', minutes=3, jitter=20, id='推送rss')
 async def push_rss():
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
@@ -157,7 +157,7 @@ async def push_rss():
                         infostr = f"正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
                         msg.append(infostr)
                     msg.extend(newinfo['图片'])
-                    msg.append(f'链接: {newinfo["链接"]}')
+                    msg.append(f'链接: {await get_bitly_url(newinfo["链接"])}')
                     Rssdata.update(date=rss.last_update).where(
                         Rssdata.group == gid, Rssdata.name == r.name, Rssdata.url == r.url).execute()
                     await bot.send_group_msg(message=Message('\n'.join(msg)), group_id=gid)
@@ -183,7 +183,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         infostr = f"正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
         msg.append(infostr)
     msg.extend(newinfo['图片'])
-    msg.append(f'链接: {newinfo["链接"]}')
+    msg.append(f'链接: {await get_bitly_url(newinfo["链接"])}')
     await querynewrss.send(Message('\n'.join(msg)))
     if videos := newinfo['视频']:
         for v in videos:
