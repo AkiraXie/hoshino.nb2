@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-03-14 21:35:52
+LastEditTime: 2021-03-16 14:21:40
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -28,6 +28,7 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
+from .bitly import get_bitly_url
 DEFAULTFONT = ImageFont.truetype(
     R.img('priconne/gadget/SourceHanSerif-Regular.ttc'), size=48)
 
