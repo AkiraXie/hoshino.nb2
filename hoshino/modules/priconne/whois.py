@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-31 03:06:03
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 21:08:47
+LastEditTime: 2021-03-18 02:26:49
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -45,7 +45,7 @@ async def handle_whois(bot: Bot, event: Event, state: T_State):
 whois = sv.on_regex(r'^谁是(.{1,20})$',
                     handlers=[handle_whois], only_group=False)
 
-whoisr = sv.on_regex(r'^(.*?)是谁$',  only_group=False,
+whoisr = sv.on_regex(r'^(.{1,20})是谁$',  only_group=False,
                      priority=2, handlers=[handle_whois])
 
 
