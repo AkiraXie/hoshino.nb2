@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-03-16 22:53:09
+LastEditTime: 2021-03-17 21:32:15
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -11,7 +11,7 @@ from hoshino.typing import List, T_State
 from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message, sucmd
 from hoshino.util import text2Seg,get_bitly_url
 from hoshino.rule import ArgumentParser
-from .data import Rss, Rssdata, BASE_URL, pw,timezone
+from .data import Rss, Rssdata, BASE_URL, pw
 sv = Service('rss', enable_on_default=False)
 parser = ArgumentParser()
 parser.add_argument('name')
@@ -135,36 +135,41 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 @scheduled_job('interval', minutes=3, jitter=20, id='推送rss')
 async def push_rss():
+    
+    async def handle_r(r,bot):
+        flag = r'/twitter/' in r.url.lower()
+        rss = await Rss.new(r.url)
+        if not (rss.has_entries):
+            return
+        newinfos = await rss.get_interval_entry_info(r.date)
+        if not newinfos:
+            return
+        for newinfo in newinfos:
+            await asyncio.sleep(0.5)
+            msg = [f'{r.name} 更新啦！']
+            if not flag:
+                msg.append(info2pic(newinfo))
+                msg.append(f'{newinfo["链接"]}')
+            else:
+                infostr = f"正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
+                msg.append(infostr)
+                msg.append(f'{await get_bitly_url(newinfo["链接"])}')
+            msg.extend(newinfo['图片'])
+            Rssdata.update(date=rss.last_update).where(
+                Rssdata.group == gid, Rssdata.name == r.name, Rssdata.url == r.url).execute()
+            await bot.send_group_msg(message=Message('\n'.join(msg)), group_id=gid)
+            if videos := newinfo['视频']:
+                for v in videos:
+                    await bot.send_group_msg(message=v, group_id=gid)
+    
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
         for bot in glist[gid]:
             res = Rssdata.select(Rssdata.url, Rssdata.name,
                                  Rssdata.date).where(Rssdata.group == gid)
-            for r in res:
-                flag = r'/twitter/' in r.url.lower()
-                rss = await Rss.new(r.url)
-                if not (rss.has_entries):
-                    continue
-                await asyncio.sleep(0.5)
-                newinfos = await rss.get_interval_entry_info(r.date)
-                if not newinfos:
-                    continue
-                for newinfo in newinfos:
-                    msg = [f'{r.name} 更新啦！']
-                    if not flag:
-                        msg.append(info2pic(newinfo))
-                        msg.append(f'{newinfo["链接"]}')
-                    else:
-                        infostr = f"正文:\n{newinfo['正文']}\n时间: {newinfo['时间']}"
-                        msg.append(infostr)
-                        msg.append(f'{await get_bitly_url(newinfo["链接"])}')
-                    msg.extend(newinfo['图片'])
-                    Rssdata.update(date=rss.last_update).where(
-                        Rssdata.group == gid, Rssdata.name == r.name, Rssdata.url == r.url).execute()
-                    await bot.send_group_msg(message=Message('\n'.join(msg)), group_id=gid)
-                    if videos := newinfo['视频']:
-                        for v in videos:
-                            await bot.send_group_msg(message=v, group_id=gid)
+            tasks=list(handle_r(r,bot) for r in res)
+            await asyncio.gather(*tasks)
+            
 
 querynewrss = sv.on_command('看最新订阅', aliases=('查最新订阅', '查看最新订阅','看最新'))
 
