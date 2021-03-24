@@ -58,11 +58,11 @@ async def look_calendar(bot: Bot, event: Event, state: T_State):
     is_future = match.group(1) == '预定'
     is_all = not match.group(1)
     if is_now:
-        await bot.send(event, text2Seg(await db_message(state['region'], 'now')), at_sender=True)
+        await bot.send(event, text2Seg(await db_message(state['region'], 'now')), call_header=True)
     if is_future:
-        await bot.send(event, text2Seg(await db_message(state['region'], 'future')), at_sender=True)
+        await bot.send(event, text2Seg(await db_message(state['region'], 'future')), call_header=True)
     if is_all:
-        await bot.send(event, text2Seg(await db_message(state['region'], 'all')), at_sender=True)
+        await bot.send(event, text2Seg(await db_message(state['region'], 'all')), call_header=True)
 
 
 svtw.on_regex(r'^台服(当前|预定)?日程$', state={

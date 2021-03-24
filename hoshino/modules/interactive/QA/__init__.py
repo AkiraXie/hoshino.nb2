@@ -101,6 +101,8 @@ async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
 @del_pqa.got('question', '请输入要删除的问题')
 @del_pqa.got('user_id','请输入要删除问题的id，支持at',parse_sin_qq)
 async def _(bot: Bot, event: Event, state: T_State):
+    if not state.get('user_id',None):
+        return 
     state['gid'] = event.group_id
     lquestion = state['question'].lower()
     num = Question.delete().where(
