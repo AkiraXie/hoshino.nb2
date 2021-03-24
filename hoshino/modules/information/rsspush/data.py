@@ -38,7 +38,7 @@ class Rss:
         self = cls(url, limit)
         ret = await aiohttpx.get(self.url, params={'limit': self.limit, 'timeout': 5})
         self.feed = feedparser.parse(ret.content)
-        self.link = self.feed.feed.link
+        self.link = self.feed.feed.get('link','链接出错')
         return self
 
     @property
@@ -61,29 +61,26 @@ class Rss:
         return dt.strftime(DATE_FORMAT) if flag else dt
 
     @staticmethod
-    async def _get_rssdic(entry: FeedParserDict, flag: bool = False) -> Dict:
+    def _get_rssdic(entry: FeedParserDict, flag: bool = False) -> Dict:
         ret = {'标题': entry.title,
                '链接': entry.link, }
         ret['时间'] = Rss.format_time(entry,True)
-        if flag:
-            soup = BeautifulSoup(entry.summary, "lxml")
-            imglist = []
-            videolist=[]
-            ret['正文'] = soup.get_text()
-            for i in soup.find_all('img'):
-                img = await aiohttpx.get(i['src'], timeout=5)
-                img = Image.open(BytesIO(img.content)).convert('RGBA')
-                if img.width < 400 and img.height < 400:
-                    continue
-                else:
-                    imglist.append(str(MessageSegment.image(pic2b64(img))))
-            for v in soup.find_all('video'):
-                poster=v['poster']
-                video=v['src']
-                videolist.append(MessageSegment.video(video))
-                imglist.append(str(MessageSegment.image(poster)))
-            ret['视频'] = videolist
-            ret['图片'] = imglist
+        if not flag:
+            return ret
+    
+        soup = BeautifulSoup(entry.summary, "lxml")
+        imglist = []
+        videolist=[]
+        ret['正文'] = soup.get_text()
+        for i in soup.find_all('img'):
+            imglist.append(str(MessageSegment.image(i['src'])))
+        for v in soup.find_all('video'):
+            poster=v['poster']
+            video=v['src']
+            videolist.append(MessageSegment.video(video))
+            imglist.append(str(MessageSegment.image(poster)))
+        ret['视频'] = videolist
+        ret['图片'] = imglist
             
 
         return ret
@@ -91,7 +88,7 @@ class Rss:
     async def get_new_entry_info(self) -> Optional[Dict]:
         try:
             entries = self.feed_entries
-            return await Rss._get_rssdic(entries[0], True)
+            return Rss._get_rssdic(entries[0], True)
         except Exception as e:
             logger.exception(e)
 
@@ -101,7 +98,7 @@ class Rss:
             entries = self.feed_entries
             lmt = min(self.limit, len(entries))
             for entry in entries[:lmt]:
-                entrydic = await self._get_rssdic(entry)
+                entrydic = self._get_rssdic(entry)
                 ret.append(entrydic)
             return ret
         except Exception as e:
@@ -123,7 +120,7 @@ class Rss:
             if not entries:
                 return None
             for entry in entries:
-                entrydic = await self._get_rssdic(entry, True)
+                entrydic = self._get_rssdic(entry, True)
                 ret.append(entrydic)
             return ret
         except Exception as e:

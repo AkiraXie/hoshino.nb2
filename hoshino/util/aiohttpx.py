@@ -43,20 +43,26 @@ class Response(BaseResponse):
 
 async def get(url: str, *args, **kwargs) -> Response:
     kwargs.setdefault('verify_ssl', False)
+    kwargs.setdefault('timeout',5)
     async with ClientSession() as session:
         async with session.get(url, *args, **kwargs) as resp:
-            return Response(resp.url, await resp.read(), resp.status, resp.headers, resp.ok)
+            resp = Response(resp.url, await resp.read(), resp.status, resp.headers, resp.ok)
+    return resp
 
 
 async def post(url: str, *args, **kwargs) -> Response:
     kwargs.setdefault('verify_ssl', False)
+    kwargs.setdefault('timeout',5)
     async with ClientSession() as session:
         async with session.post(url, *args, **kwargs) as resp:
-            return Response(resp.url, await resp.read(), resp.status, resp.headers, resp.ok)
+            resp = Response(resp.url, await resp.read(), resp.status, resp.headers, resp.ok)
+    return resp
 
 
 async def head(url: str, *args, **kwargs) -> BaseResponse:
     kwargs.setdefault('verify_ssl', False)
+    kwargs.setdefault('timeout',5)
     async with ClientSession() as session:
         async with session.head(url, *args, **kwargs) as resp:
-            return BaseResponse(resp.url, resp.status, resp.headers, resp.ok)
+            resp = BaseResponse(resp.url, resp.status, resp.headers, resp.ok)
+    return resp
