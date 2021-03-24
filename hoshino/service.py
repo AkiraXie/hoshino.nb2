@@ -444,21 +444,7 @@ class matcher_wrapper:
                    **kwargs):
         bot = current_bot.get()
         event = current_event.get()
-        if "group_id" not in event.__dict__ or not call_header:
-            return await bot.send(event, message, at_sender=at_sender, **kwargs)
-        if event.user_id == 80000000:
-            header = '>???\n'
-        else:
-            info = await bot.get_group_member_info(
-                group_id=event.group_id,
-                user_id=event.user_id,
-                no_cache=True
-            )
-            for i in (info['title'], info['card'], info['nickname']):
-                if i:
-                    header = f'>{escape(i)}\n'
-                    break
-        return await bot.send(event, header+message, at_sender=at_sender, **kwargs)
+        return await bot.send(event, message, at_sender=at_sender, call_header=call_header, **kwargs)
 
     async def finish(self,
                      message: Optional[Union[str, "Message",

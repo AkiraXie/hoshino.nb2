@@ -39,13 +39,13 @@ async def parse_query(bot: Bot, event: Event, state: T_State):
     if unknown:
         await bot.send(event, f'无法识别"{unknown}",请仅输入角色名规范查询')
     if 5 != len(defen) and 0 != len(defen):
-        await bot.send(event, '由于pcrdfans.com的限制，编队必须为5个角色', at_sender=True)
+        await bot.send(event, '由于pcrdfans.com的限制，编队必须为5个角色', call_header=True)
         raise FinishedException
     if len(defen) != len(set(defen)):
-        await bot.send(event, '编队中出现重复角色', at_sender=True)
+        await bot.send(event, '编队中出现重复角色', call_header=True)
         raise FinishedException
     if 1004 in defen:
-        await bot.send(event, '\n⚠️您正在查询普通版炸弹人\n※万圣版可用万圣炸弹人/瓜炸等别称', at_sender=True)
+        await bot.send(event, '\n⚠️您正在查询普通版炸弹人\n※万圣版可用万圣炸弹人/瓜炸等别称', call_header=True)
     state['defen'] = defen
 
 
@@ -76,11 +76,11 @@ async def query(bot: Bot, event: Event, state: T_State):
     logger.info('Got response!')
     if res is None:
         await bot.send(event,
-                       '查询出错，请再次查询\n如果多次查询失败，请先移步pcrdfans.com进行查询，并可联系维护组', at_sender=True)
+                       '查询出错，请再次查询\n如果多次查询失败，请先移步pcrdfans.com进行查询，并可联系维护组', call_header=True)
         raise FinishedException
     if not len(res):
         await bot.send(event,
-                       '抱歉没有查询到解法\n※没有作业说明随便拆 发挥你的想象力～★\n作业上传请前往pcrdfans.com', at_sender=True)
+                       '抱歉没有查询到解法\n※没有作业说明随便拆 发挥你的想象力～★\n作业上传请前往pcrdfans.com', call_header=True)
         raise FinishedException
     res = res[:min(6, len(res))]
     logger.info('Arena generating picture...')
@@ -102,5 +102,5 @@ async def query(bot: Bot, event: Event, state: T_State):
     ]
     msg.append('Support by pcrdfans_com')
     logger.debug('Arena sending result...')
-    await bot.send(event, Message('\n'.join(msg)), at_sender=1)
+    await bot.send(event, Message('\n'.join(msg)), call_header=True)
     raise FinishedException

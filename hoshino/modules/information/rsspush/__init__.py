@@ -11,7 +11,7 @@ from hoshino.typing import List, T_State
 from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message, sucmd
 from hoshino.util import text2Seg,get_bitly_url
 from hoshino.rule import ArgumentParser
-from .data import Rss, Rssdata, BASE_URL, pw
+from .data import Rss, Rssdata, BASE_URL
 sv = Service('rss', enable_on_default=False)
 parser = ArgumentParser()
 parser.add_argument('name')
@@ -87,24 +87,23 @@ lookrss = sv.on_command('订阅列表', aliases=('查看本群订阅',))
 
 @lookrss.handle()
 async def lookrsslist(bot: Bot, event: Event, state: T_State):
-    try:
-        res = Rssdata.select(Rssdata.url, Rssdata.name).where(Rssdata.group ==
-                                                              event.group_id,)
-        reslen = len(res)
-        for i in range(0, reslen, 5):
-            j = min(reslen, i+5)
-            if i == 0:
-                msg = [f'本群{reslen}个订阅如下:']
-            else:
-                msg = []
-            for ij in range(i, j):
-                r = res[ij]
+    res = Rssdata.select(Rssdata.url, Rssdata.name).where(Rssdata.group ==
+                                                            event.group_id,)
+    reslen = len(res)
+    for i in range(0, reslen, 5):
+        j = min(reslen, i+5)
+        if i == 0:
+            msg = [f'本群{reslen}个订阅如下:']
+        else:
+            msg = []
+        for ij in range(i, j):
+            r = res[ij]
+            try:
                 rss = await Rss.new(r.url, 1)
                 msg.append(f'订阅标题:{r.name}\n订阅链接:{rss.link}\n=====')
-            await lookrss.send(Message('\n'.join(msg)))
-    except Exception as e:
-        sv.logger.exception(e)
-        await lookrss.finish('查询订阅列表失败')
+            except:
+                msg.append(f'订阅标题:{r.name}查看失败')
+        await lookrss.send(Message('\n'.join(msg)))
 
 parser1 = ArgumentParser()
 parser1.add_argument('name')
@@ -196,15 +195,6 @@ async def _(bot: Bot, event: Event, state: T_State):
         for v in videos:
             await querynewrss.send(v)
 
-
-updaterss = sucmd('更新rss')
-
-
-@updaterss.handle()
-async def _(bot: Bot, event: Event, state: T_State):
-    Rssdata.update(url=pw.fn.replace(
-        Rssdata.url, r'rsshub.akiraxie.me', r'rsshub.akiraxie.cc')).execute()
-    await updaterss.finish('update ok')
 
 parser2 = ArgumentParser()
 parser2.add_argument('-n', '--name', type=str)
