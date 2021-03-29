@@ -2,12 +2,11 @@
 Author: AkiraXie
 Date: 2021-02-19 02:22:27
 LastEditors: AkiraXie
-LastEditTime: 2021-03-07 02:22:03
+LastEditTime: 2021-03-30 03:53:13
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from typing import Dict
-from loguru import logger
 from hoshino import Service, Bot, Event, Message
 import random
 sv = Service('chat', visible=False)
@@ -33,10 +32,10 @@ class repeater:
         self.prob = prob
 
     def check(self, current_msg: str) -> bool:
-        return not self.repeated and current_msg == self.msg
+        return current_msg == self.msg
 
 
-# 想了想要复现HoshinoBot的复读还是得有个全局字典来存数据F
+# 想了想要复现HoshinoBot的复读还是得有个全局字典来存数据
 GROUP_STATE: Dict[int, repeater] = dict()
 
 @sv1.on_message(block=False)
@@ -48,12 +47,11 @@ async def random_repeat(bot: Bot, event: Event):
         return
     current_repeater = GROUP_STATE[gid]
     if current_repeater.check(msg):
+        if current_repeater.repeated:
+            return
         if  p :=current_repeater.prob > random.random():
-            try:
-                GROUP_STATE[gid] =  repeater(msg, True, 0.0)
-                await bot.send(event,Message(msg))
-            except Exception as e:
-                logger.exception(e)
+            GROUP_STATE[gid] =  repeater(msg, True, 0.0)
+            await bot.send(event,Message(msg))
         else:
             p = 1-(1-p) / 1.6
             GROUP_STATE[gid] =  repeater(msg, False, p)

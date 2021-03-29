@@ -2,16 +2,16 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-03-17 21:32:15
+LastEditTime: 2021-03-30 03:51:57
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import asyncio
 from hoshino.typing import List, T_State
-from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message, sucmd
-from hoshino.util import text2Seg,get_bitly_url
+from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message
+from hoshino.util import text2Seg, get_bitly_url
 from hoshino.rule import ArgumentParser
-from .data import Rss, Rssdata, BASE_URL,pw
+from .data import Rss, Rssdata, BASE_URL
 sv = Service('rss', enable_on_default=False)
 parser = ArgumentParser()
 parser.add_argument('name')
@@ -88,7 +88,7 @@ lookrss = sv.on_command('订阅列表', aliases=('查看本群订阅',))
 @lookrss.handle()
 async def lookrsslist(bot: Bot, event: Event, state: T_State):
     res = Rssdata.select(Rssdata.url, Rssdata.name).where(Rssdata.group ==
-                                                            event.group_id)
+                                                          event.group_id)
     reslen = len(res)
     for i in range(0, reslen, 5):
         j = min(reslen, i+5)
@@ -135,8 +135,8 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 @scheduled_job('interval', minutes=3, jitter=20, id='推送rss')
 async def push_rss():
-    
-    async def handle_r(r,bot):
+
+    async def handle_r(r, bot):
         '''
         并发网络请求一定要设置间隔，不然很容易一个session连接过多而超时。（debug一夜里终于悟了）
         '''
@@ -165,17 +165,17 @@ async def push_rss():
             if videos := newinfo['视频']:
                 for v in videos:
                     await bot.send_group_msg(message=v, group_id=gid)
-    
+
     glist = await sv.get_enable_groups()
     for gid in glist.keys():
         for bot in glist[gid]:
             res = Rssdata.select(Rssdata.url, Rssdata.name,
                                  Rssdata.date).where(Rssdata.group == gid)
-            tasks=list(handle_r(r,bot) for r in res)
+            tasks = list(handle_r(r, bot) for r in res)
             await asyncio.gather(*tasks)
-            
 
-querynewrss = sv.on_command('看最新订阅', aliases=('查最新订阅', '查看最新订阅','看最新'))
+
+querynewrss = sv.on_command('看最新订阅', aliases=('查最新订阅', '查看最新订阅', '看最新'))
 
 
 @querynewrss.handle()
