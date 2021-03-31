@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-31 03:06:03
 LastEditors: AkiraXie
-LastEditTime: 2021-03-18 02:26:49
+LastEditTime: 2021-03-31 10:44:04
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -10,7 +10,6 @@ Github: http://github.com/AkiraXie/
 from nonebot import require
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
-from nonebot.plugin import on_regex
 from hoshino import Service, Event, Message
 from nonebot.adapters.cqhttp import Bot
 from hoshino.typing import T_State
@@ -30,7 +29,10 @@ async def handle_whois(bot: Bot, event: Event, state: T_State):
     _lmt.start_cd(uid)
     match = state['match']
     name = match.group(1)
-    chara = Chara.fromname(name, star=0)
+    if name.isdigit():
+        chara = Chara.fromid(int(name),star=0)
+    else:
+        chara = Chara.fromname(name, star=0)
     if chara.id == Chara.UNKNOWN:
         msg = [f'兰德索尔似乎没有叫"{name}"的人']
         if not await SUPERUSER(bot, event):

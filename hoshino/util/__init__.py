@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-03-16 14:21:40
+LastEditTime: 2021-03-31 21:19:22
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -94,8 +94,11 @@ def get_text_size(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: T
     返回文本转图片的图片大小
 
     *`text`：用来转图的文本
+    
     *`font`：一个`ImageFont`实例
+    
     *`padding`：一个四元`int`元组，分别是左、右、上、下的留白大小
+    
     *`spacing`: 文本行间距
     '''
     with Image.new('RGBA', (1, 1), (255, 255, 255, 255)) as base:
@@ -109,8 +112,11 @@ def text2pic(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[
     返回一个文本转化后的`Image`实例
 
     *`text`：用来转图的文本
+    
     *`font`：一个`ImageFont`实例
+    
     *`padding`：一个四元`int`元组，分别是左、右、上、下的留白大小
+    
     *`spacing`: 文本行间距
     '''
     size = get_text_size(text, font, padding, spacing)

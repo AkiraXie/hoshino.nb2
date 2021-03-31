@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-03-12 18:04:15
+LastEditTime: 2021-03-31 21:19:30
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -442,8 +442,8 @@ class matcher_wrapper:
                    call_header: bool = False,
                    at_sender: bool = False,
                    **kwargs):
-        bot = current_bot.get()
-        event = current_event.get()
+        bot: Bot = current_bot.get()
+        event: Event = current_event.get()
         return await bot.send(event, message, at_sender=at_sender, call_header=call_header, **kwargs)
 
     async def finish(self,

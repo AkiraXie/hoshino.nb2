@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 18:24:41
 LastEditors: AkiraXie
-LastEditTime: 2021-01-31 23:51:09
+LastEditTime: 2021-03-31 10:36:09
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -43,8 +43,6 @@ byk = sv.on_command(
 
 @rank
 async def _(bot: Bot, event: Event, state: T_State):
-    match = re.compile(r'^([台国日btj]{1,3})服?([前中后]{0,3})rank表?$').search(
-        str(event.get_message()))
     match = state['match']
     pos = match.group(2)
     ser = match.group(1)
