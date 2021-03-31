@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-09 23:34:47
 LastEditors: AkiraXie
-LastEditTime: 2021-03-30 03:51:57
+LastEditTime: 2021-03-31 21:19:10
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -197,7 +197,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     msg.extend(newinfo['图片'])
     await querynewrss.send(Message('\n'.join(msg)))
     if videos := newinfo['视频']:
-        for v in videos:
+         for v in videos:
             await querynewrss.send(v)
 
 

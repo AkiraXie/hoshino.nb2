@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 15:02:48
 LastEditors: AkiraXie
-LastEditTime: 2021-01-30 20:55:02
+LastEditTime: 2021-03-31 10:29:45
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -31,13 +31,13 @@ class rhelper(str):
 
     `R.img.priconne`,`R.img('priconne')`,`R+"img"+"priconne"`是等效的 '''
 
-    def __init__(self, path=None) -> None:
+    def __init__(self, path: str = None) -> None:
         if not path:
             self.__rpath = STATIC
         else:
             self.__rpath = path
 
-    def __getattr__(self, key) :
+    def __getattr__(self, key):
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
         if not os.path.isdir(path) and not os.path.isfile(path):
@@ -69,7 +69,7 @@ class rhelper(str):
 
     def __imul__(self, key):
         raise UnsupportedOperation(
-            f'unsupported operand type(s) for *: "rhelper" and "{type(key)}"')
+            f'unsupported operand type(s) for *=: "rhelper" and "{type(key)}"')
 
     def __mul__(self, key):
         raise UnsupportedOperation(
@@ -97,14 +97,14 @@ class rhelper(str):
 
     def open(self) -> Image.Image:
         try:
-            return Image.open(self.path)
+            return Image.open(self.__rpath)
         except Exception as e:
             logger.exception(e)
 
     @property
     def CQcode(self) -> MessageSegment:
         try:
-            return MessageSegment.image('file:///'+os.path.abspath(self.path))
+            return MessageSegment.image('file:///'+os.path.abspath(self.__rpath))
         except Exception as e:
             logger.exception(e)
             return MessageSegment.text('[图片出错]')
