@@ -66,7 +66,7 @@ async def _(bot: Bot, event: Event):
         tm = userdic[uid][2]
         flagsql = f'''select * from Clan_challenge where is_continue=1 
             and challenge_pcrdate={pcrdate} and gid={gid} and bid={group_bid} 
-            and challenge_pcrtime>{tm}''' #判断尾刀是否有余刀
+            and challenge_pcrtime>{tm} and qqid={uid}''' #判断尾刀是否有余刀
         flagcur = conn.execute(flagsql)
         if len(list(flagcur)):
             continue
