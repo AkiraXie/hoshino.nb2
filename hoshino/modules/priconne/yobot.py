@@ -21,8 +21,11 @@ def pcr_datetime(area: str) -> int:
 
 
 sv = Service('yobot')
-cfg = sv.config
-dbpath: str = cfg['database_path']  # yobot数据库绝对路径
+try:
+    cfg = sv.config
+    dbpath: str = cfg['database_path'] # yobot数据库绝对路径
+except:
+    sv.logger.warning('识别不到yobot数据库')
 weidao = sv.on_command('查尾刀')
 
 

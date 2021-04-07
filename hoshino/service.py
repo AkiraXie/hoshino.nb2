@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-03-31 21:19:30
+LastEditTime: 2021-04-07 22:09:36
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -12,7 +12,6 @@ import os
 import json
 from functools import wraps
 from collections import defaultdict
-from nonebot.adapters.cqhttp.utils import escape
 from nonebot.matcher import current_bot, current_event
 from typing import Mapping
 from nonebot.typing import T_ArgsParser, T_Handler
