@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 12:56:12
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 23:05:25
+LastEditTime: 2021-04-05 15:04:08
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -10,7 +10,7 @@ from . import Bot, Event, T_State
 
 
 async def parse_service(bot: Bot, event: Event, state: T_State):
-    service_msgs = event.get_plaintext().split(' ')
+    service_msgs = event.get_plaintext().split()
     services = []
     for msg in service_msgs:
         if msg != '':
@@ -20,7 +20,7 @@ async def parse_service(bot: Bot, event: Event, state: T_State):
 
 
 async def parse_gid(bot: Bot, event: Event, state: T_State):
-    msgs = event.get_plaintext().split(' ')
+    msgs = event.get_plaintext().split()
     glist = list(g['group_id'] for g in await bot.get_group_list())
     failure = set()
     illegal = set()

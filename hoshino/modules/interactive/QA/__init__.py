@@ -2,16 +2,15 @@
 Author: AkiraXie
 Date: 2021-02-02 23:57:37
 LastEditors: AkiraXie
-LastEditTime: 2021-03-10 20:42:35
+LastEditTime: 2021-04-07 22:07:05
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from nonebot.typing import T_State
+import re
 from .data import Question
 from hoshino.permission import ADMIN
-from argparse import Namespace
 from hoshino import Service, Bot, Event, Message
-from nonebot.rule import ArgumentParser
 from peewee import fn
 sv = Service('QA')
 
@@ -27,30 +26,35 @@ del_pqa = sv.on_command('删除我问', permission=ADMIN)
 
 @group_ques.handle()
 async def _(bot: Bot, event: Event):
-    msg = str(event.get_message())
+    msg = event.raw_message
+    msg = re.sub(r'.*(有人问|大家问)', '', msg, 1)
     msgs = msg.split('你答', 1)
     if len(msgs) != 2:
         await group_ques.finish()
     if len(msgs[0]) == 0 or len(msgs[1]) == 0:
         await group_ques.finish('提问和回答都不可以是空!', at_sender=True)
     question, answer = msgs
+    question = question.lstrip()
     Question.replace(
         question=question,
         answer=answer,
-        group=event.group_id
+        group=event.group_id,
+        user=0
     ).execute()
     await group_ques.finish(Message(f'好的我记住{question}了'))
 
 
 @person_ques.handle()
 async def _(bot: Bot, event: Event):
-    msg = str(event.get_message())
+    msg = event.raw_message
+    msg = re.sub(r'.*我问', '', msg, 1)
     msgs = msg.split('你答', 1)
     if len(msgs) != 2:
         await person_ques.finish()
     if len(msgs[0]) == 0 or len(msgs[1]) == 0:
         await person_ques.finish('提问和回答都不可以是空!', at_sender=True)
     question, answer = msgs
+    question = question.lstrip()
     Question.replace(
         question=question,
         answer=answer,
@@ -62,7 +66,8 @@ async def _(bot: Bot, event: Event):
 
 @del_gqa.handle()
 async def _(bot: Bot, event: Event):
-    question = str(event.get_message())
+    msg = event.raw_message
+    question = re.sub(r'.*删除(有人问|大家问)', '', msg, 1)
     lquestion = question.lower()
     num = Question.delete().where(
         fn.Lower(Question.question) == lquestion,
@@ -77,7 +82,7 @@ async def _(bot: Bot, event: Event):
 
 @del_qa.handle()
 async def _(bot: Bot, event: Event):
-    question = str(event.get_message())
+    question = re.sub(r'.*不[要再]回答', '', event.raw_message, 1)
     lquestion = question.lower()
     gid = event.group_id if 'group_id' in event.__dict__ else 0
     num = Question.delete().where(
@@ -89,6 +94,12 @@ async def _(bot: Bot, event: Event):
         await del_qa.finish(Message('我不记得"{}"这个问题'.format(question)))
     else:
         await del_qa.finish(Message('我不再回答"{}"了'.format(question)))
+
+
+async def parse_question(bot: Bot, event: Event, state: T_State):
+    state['question'] = event.raw_message.strip()
+
+
 async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
     for m in event.get_message():
         if m.type == 'at' and m.data['qq'] != 'all':
@@ -98,11 +109,12 @@ async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
             state['user_id'] = (int(m.data['text']))
             break
 
-@del_pqa.got('question', '请输入要删除的问题')
-@del_pqa.got('user_id','请输入要删除问题的id，支持at',parse_sin_qq)
+
+@del_pqa.got('question', '请输入要删除的问题', parse_question)
+@del_pqa.got('user_id', '请输入要删除问题的id，支持at', parse_sin_qq)
 async def _(bot: Bot, event: Event, state: T_State):
-    if not state.get('user_id',None):
-        return 
+    if not state.get('user_id', None):
+        return
     state['gid'] = event.group_id
     lquestion = state['question'].lower()
     num = Question.delete().where(
