@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-03-31 21:19:22
+LastEditTime: 2021-04-10 14:37:09
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -76,7 +76,7 @@ def get_bot_list() -> List[Bot]:
     return list(nonebot.get_bots().values())
 
 
-def sucmd(name: str, only_to_me: bool = False, aliases: Optional[set] = None, **kwargs) -> Type[Matcher]:
+def sucmd(name: str, only_to_me: bool = True, aliases: Optional[set] = None, **kwargs) -> Type[Matcher]:
     kwargs['aliases'] = aliases
     kwargs['permission'] = SUPERUSER
     kwargs['rule'] = to_me() if only_to_me else Rule()
