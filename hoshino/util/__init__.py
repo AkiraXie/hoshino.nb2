@@ -42,8 +42,7 @@ class FreqLimiter:
         return bool(time.time() >= self.next_time[key])
 
     def start_cd(self, key, cd_time=0):
-        self.next_time[key] = time.time(
-        ) + cd_time if cd_time > 0 else self.default_cd
+        self.next_time[key] = time.time() + (cd_time if cd_time > 0 else self.default_cd)
 
 
 class DailyNumberLimiter:
