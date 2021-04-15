@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-04-07 22:09:36
+LastEditTime: 2021-04-10 23:59:00
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -21,7 +21,7 @@ from hoshino.event import Event
 from hoshino.matcher import Matcher, on_command, on_message,  on_startswith, on_endswith, on_notice, on_request, on_shell_command
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import get_bot_list
-from hoshino.rule import ArgumentParser, Rule, to_me, regex, keyword
+from hoshino.rule import ArgumentParser, Rule, fullmatch, to_me, regex, keyword
 from hoshino.typing import Dict, Iterable, Optional, Union, T_State, List, Type, FinishedException, PausedException, RejectedException
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
@@ -213,6 +213,26 @@ class Service:
         priority = kwargs.get('priority', 1)
         mw = matcher_wrapper(self,
                              'Message.keyword', priority, keywords=str(keywords), only_group=only_group)
+        mw.load_matcher(on_message(**kwargs))
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
+    
+    def on_fullmatch(self, keywords: Iterable, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+        if isinstance(keywords, str):
+            keywords = set([keywords])
+        elif not isinstance(keywords, set):
+            if keywords:
+                keywords = set([keywords]) if len(
+                    keywords) == 1 and isinstance(keywords, tuple) else set(keywords)
+            else:
+                keywords = set()
+        kwargs['permission'] = permission
+        rule = self.check_service(only_to_me, only_group)
+        kwargs['rule'] = fullmatch(*keywords, normal=normal) & rule
+        priority = kwargs.get('priority', 1)
+        mw = matcher_wrapper(self,
+                             'Message.fullmatch', priority, keywords=str(keywords), only_group=only_group)
         mw.load_matcher(on_message(**kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw

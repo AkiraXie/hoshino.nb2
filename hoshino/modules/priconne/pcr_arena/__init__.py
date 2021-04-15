@@ -2,10 +2,11 @@
 Author: AkiraXie
 Date: 2021-01-31 15:27:52
 LastEditors: AkiraXie
-LastEditTime: 2021-02-11 02:38:24
+LastEditTime: 2021-04-15 15:00:11
 Description: 
 Github: http://github.com/AkiraXie/
 '''
+from .arena import do_query
 from nonebot.exception import FinishedException
 from loguru import logger
 from nonebot.plugin import require
@@ -16,7 +17,6 @@ from hoshino.service import Service
 import re
 Chara = require('chara').Chara
 sv = Service('pcr-arena')
-from .arena import do_query
 
 lmt = FreqLimiter(5)
 
@@ -38,6 +38,7 @@ async def parse_query(bot: Bot, event: Event, state: T_State):
     defen, unknown = Chara.parse_team(argv)
     if unknown:
         await bot.send(event, f'无法识别"{unknown}",请仅输入角色名规范查询')
+        raise FinishedException
     if 5 != len(defen) and 0 != len(defen):
         await bot.send(event, '由于pcrdfans.com的限制，编队必须为5个角色', call_header=True)
         raise FinishedException
@@ -94,13 +95,12 @@ async def query(bot: Bot, event: Event, state: T_State):
     logger.info('Arena picture ready!')
     defen = state['defen']
     defen = [Chara.fromid(x).name for x in defen]
-    defen = f"防守方[{' '.join(defen)}]"
-
+    defen = f"防守方| {' '.join(defen)}"
     msg = [
         defen,
         str(atk_team),
     ]
-    msg.append('Support by pcrdfans_com')
+    msg.append('Supported by pcrdfans')
     logger.debug('Arena sending result...')
     await bot.send(event, Message('\n'.join(msg)), call_header=True)
     raise FinishedException
