@@ -2,13 +2,11 @@
 Author: AkiraXie
 Date: 2021-01-31 15:27:52
 LastEditors: AkiraXie
-LastEditTime: 2021-04-15 15:00:11
+LastEditTime: 2021-04-15 15:05:30
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from .arena import do_query
 from nonebot.exception import FinishedException
-from loguru import logger
 from nonebot.plugin import require
 from hoshino.typing import T_State
 from hoshino import Event, Bot, Message, MessageSegment
@@ -17,7 +15,7 @@ from hoshino.service import Service
 import re
 Chara = require('chara').Chara
 sv = Service('pcr-arena')
-
+from .arena import do_query
 lmt = FreqLimiter(5)
 
 aliases = {'怎么拆', '怎么解', '怎么打', '如何拆', '如何解', '如何打',
@@ -67,14 +65,14 @@ jjjc = sv.on_command('日竞技场查询', aliases=aliases_jp, only_to_me=False,
 async def query(bot: Bot, event: Event, state: T_State):
     if not state['defen']:
         raise FinishedException
-    logger.info('Doing query...')
+    sv.logger.info('Doing query...')
     try:
         res = await do_query(state['defen'], state['region'])
 
     except Exception as e:
-        logger.exception(e)
+        sv.logger.exception(e)
 
-    logger.info('Got response!')
+    sv.logger.info('Got response!')
     if res is None:
         await bot.send(event,
                        '查询出错，请再次查询\n如果多次查询失败，请先移步pcrdfans.com进行查询，并可联系维护组', call_header=True)
@@ -84,7 +82,7 @@ async def query(bot: Bot, event: Event, state: T_State):
                        '抱歉没有查询到解法\n※没有作业说明随便拆 发挥你的想象力～★\n作业上传请前往pcrdfans.com', call_header=True)
         raise FinishedException
     res = res[:min(6, len(res))]
-    logger.info('Arena generating picture...')
+    sv.logger.info('Arena generating picture...')
     atk_team = [Chara.gen_team_pic(team=entry['atk'], text="\n".join([
         f" {entry['up']} ",
         f" {entry['down']} ",
@@ -92,7 +90,7 @@ async def query(bot: Bot, event: Event, state: T_State):
     atk_team = concat_pic(atk_team)
     atk_team = pic2b64(atk_team)
     atk_team = MessageSegment.image(atk_team)
-    logger.info('Arena picture ready!')
+    sv.logger.info('Arena picture ready!')
     defen = state['defen']
     defen = [Chara.fromid(x).name for x in defen]
     defen = f"防守方| {' '.join(defen)}"
@@ -101,6 +99,6 @@ async def query(bot: Bot, event: Event, state: T_State):
         str(atk_team),
     ]
     msg.append('Supported by pcrdfans')
-    logger.debug('Arena sending result...')
+    sv.logger.debug('Arena sending result...')
     await bot.send(event, Message('\n'.join(msg)), call_header=True)
     raise FinishedException

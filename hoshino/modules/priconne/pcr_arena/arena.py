@@ -2,13 +2,12 @@
 Author: AkiraXie
 Date: 2021-01-31 15:28:12
 LastEditors: AkiraXie
-LastEditTime: 2021-02-03 13:57:29
+LastEditTime: 2021-04-15 15:05:13
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import time
 from hoshino.util import  aiohttpx
-from loguru import logger
 from . import sv,Chara
 
 
@@ -25,16 +24,16 @@ async def do_query(id_list, region=1):
     }
     payload = {"_sign": "a", "def": id_list, "nonce": "a",
                "page": 1, "sort": 1, "ts": int(time.time()), "region": region}
-    logger.debug(f'Arena query {payload=}')
+    sv.logger.debug(f'Arena query {payload=}')
     try:
         resp = await aiohttpx.post('https://api.pcrdfans.com/x/v1/search', headers=header, json=payload)
         res = resp.json
-        logger.debug(f'len(res)={len(res)}')
+        sv.logger.debug(f'len(res)={len(res)}')
     except Exception as e:
-        logger.exception(e)
+        sv.logger.exception(e)
         return None
     if res['code']:
-        logger.error(f"Arena query failed.\nResponse={res}\nPayload={payload}")
+        sv.logger.error(f"Arena query failed.\nResponse={res}\nPayload={payload}")
         return None
 
     res = res['data']['result']

@@ -2,13 +2,13 @@
 Author: AkiraXie
 Date: 2021-02-11 00:00:55
 LastEditors: AkiraXie
-LastEditTime: 2021-03-16 15:00:37
+LastEditTime: 2021-04-15 15:10:41
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from typing import Type
-from hoshino.matcher import Matcher
-from hoshino import Service, Bot,scheduled_job
+from hoshino.service import matcher_wrapper
+from hoshino import Service, Bot, scheduled_job, T_State
+from hoshino.rule import ArgumentParser
 from .spider import BaseSpider, BiliSpider, SonetSpider
 
 svtw = Service('pcr-news-tw', enable_on_default=False)
@@ -28,30 +28,34 @@ async def news_poller(spider: BaseSpider, sv: Service, TAG):
     await sv.broadcast(await spider.format_items(news), TAG, interval_time=0.5)
 
 
-@scheduled_job('interval', id='推送新闻',minutes=5, jitter=20)
+@scheduled_job('interval', id='推送新闻', minutes=5, jitter=20)
 async def biso_news_poller():
     await news_poller(SonetSpider, svtw, '台服官网')
     await news_poller(BiliSpider, svbl, 'B服官网')
 
 
-async def send_news(matcher: Type[Matcher], spider: BaseSpider, max_num=5):
+async def send_news(matcher: matcher_wrapper, spider: BaseSpider, max_num=8):
     if not spider.item_cache:
         await spider.get_update()
     news = spider.item_cache
     news = news[:min(max_num, len(news))]
     await matcher.send(await spider.format_items(news), at_sender=True)
 
-
-twnews = svtw.on_command('台服新闻', aliases=('台服活动',), only_group=False)
+parser = ArgumentParser()
+parser.add_argument('-l', '--limit', default=8, type=int)
+twnews = svtw.on_shell_command('台服新闻',  only_group=False, parser=parser)
 
 
 @twnews.handle()
-async def send_sonet_news(bot: Bot):
-    await send_news(twnews, SonetSpider)
+async def send_sonet_news(bot: Bot, state: T_State):
+    args = state['args']
+    await send_news(twnews, SonetSpider,args.limit)
 
-blnews = svbl.on_command('B服新闻', aliases=('b服新闻', '国服新闻'), only_group=False)
+blnews = svbl.on_shell_command('B服新闻', aliases=(
+    'b服新闻', '国服新闻'), only_group=False, parser=parser)
 
 
 @blnews.handle()
-async def send_bili_news(bot: Bot):
-    await send_news(blnews, BiliSpider)
+async def send_bili_news(bot: Bot, state: T_State):
+    args = state['args']
+    await send_news(blnews, BiliSpider,args.limit)
