@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-05 14:34:41
 LastEditors: AkiraXie
-LastEditTime: 2021-02-15 02:41:13
+LastEditTime: 2021-04-10 23:53:46
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -60,7 +60,7 @@ async def _(bot: Bot, event: Event, state: T_State):
                     return
                 block_uid(uid, timedelta(hours=12))
                 await bot.send(event, '拉黑了,再见了您~', at_sender=True)
-                return
+                raise IgnoredException('This user is blocked')
 
 lahei = sucmd('拉黑', True, aliases={'block', '封禁', 'ban',
                                    '禁言', '小黑屋', 'b了'}, handlers=[parse_qq])
