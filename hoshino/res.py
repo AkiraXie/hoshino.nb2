@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 15:02:48
 LastEditors: AkiraXie
-LastEditTime: 2021-03-31 10:29:45
+LastEditTime: 2021-05-16 17:27:26
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -83,7 +83,7 @@ class rhelper(str):
 
     @property
     def path(self) -> str:
-        return os.path.normpath(self.__rpath)
+        return os.path.abspath(self.__rpath)
 
     def __str__(self) -> str:
         return self.path
