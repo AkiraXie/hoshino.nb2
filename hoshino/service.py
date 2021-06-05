@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-04-17 23:41:47
+LastEditTime: 2021-06-05 12:18:54
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -353,7 +353,7 @@ class matcher_wrapper:
             prompt: Optional[Union[str, "Message", "MessageSegment"]] = None,
             args_parser: Optional[T_ArgsParser] = None):
         '''
-        由于装饰器的特殊性，不能直接返回 ``self.matcher.got``,否则多级 ``got`` 的 ``handler`` 会乱序。
+        由于没能惰性调用got，不能直接返回 ``self.matcher.got``,否则多级 ``got`` 的 ``handler`` 会乱序。
 
         目前先照抄 ``nonebot``
         '''

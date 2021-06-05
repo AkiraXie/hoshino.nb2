@@ -1,4 +1,10 @@
-from hoshino import sucmd, Bot, Event, Service, permission,Message
+'''
+Author: AkiraXie
+LastEditTime: 2021-05-23 16:01:34
+LastEditors: AkiraXie
+GitHub: https://github.com/AkiraXie
+'''
+from hoshino import sucmd, Service, permission,Bot,Event,Message
 from nonebot.adapters.cqhttp.utils import unescape
 
 async def handle_echo(bot: Bot, event: Event):
