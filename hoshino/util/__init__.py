@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-04-10 14:37:09
+LastEditTime: 2021-05-29 15:32:54
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -30,7 +30,7 @@ from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
 from .bitly import get_bitly_url
 DEFAULTFONT = ImageFont.truetype(
-    R.img('priconne/gadget/SourceHanSerif-Regular.ttc'), size=48)
+    R.img('priconne/gadget/SourceHanSans-Regular.ttc'), size=48)
 
 
 class FreqLimiter:
