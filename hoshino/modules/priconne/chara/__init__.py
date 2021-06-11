@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-02-13 01:10:06
+LastEditTime: 2021-06-12 03:50:27
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -13,7 +13,7 @@ import importlib
 from PIL import Image, ImageFont
 import nonebot
 from loguru import logger
-from hoshino import Bot, Event, R, rhelper, scheduled_job
+from hoshino import Bot, Event, R, RHelper, scheduled_job
 from hoshino.util import sucmd, get_text_size, text_to_img, run_sync
 from .util import download_card, download_chara_icon, download_config, download_pcrdata
 from hoshino.modules.priconne import _pcr_data
@@ -129,7 +129,7 @@ class Chara:
         return _pcr_data.CHARA_NAME[self.id][0] if self.id in _pcr_data.CHARA_NAME else _pcr_data.CHARA_NAME[Chara.UNKNOWN][0]
 
     @property
-    def icon(self) -> rhelper:
+    def icon(self) -> RHelper:
         res_path = R.img+'priconne/unit/'
         if self.star == 6:
             star = 6
