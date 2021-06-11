@@ -6,7 +6,7 @@ LastEditTime: 2021-04-15 15:10:41
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from hoshino.service import matcher_wrapper
+from hoshino.service import MatcherWrapper
 from hoshino import Service, Bot, scheduled_job, T_State
 from hoshino.rule import ArgumentParser
 from .spider import BaseSpider, BiliSpider, SonetSpider
@@ -34,7 +34,7 @@ async def biso_news_poller():
     await news_poller(BiliSpider, svbl, 'B服官网')
 
 
-async def send_news(matcher: matcher_wrapper, spider: BaseSpider, max_num=8):
+async def send_news(matcher: MatcherWrapper, spider: BaseSpider, max_num=8):
     if not spider.item_cache:
         await spider.get_update()
     news = spider.item_cache

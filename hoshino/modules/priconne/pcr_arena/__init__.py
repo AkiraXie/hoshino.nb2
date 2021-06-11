@@ -10,7 +10,7 @@ from nonebot.exception import FinishedException
 from nonebot.plugin import require
 from hoshino.typing import T_State
 from hoshino import Event, Bot, Message, MessageSegment
-from hoshino.util import concat_pic, pic2b64, FreqLimiter
+from hoshino.util import concat_pic, img_to_b64, FreqLimiter
 from hoshino.service import Service
 import re
 Chara = require('chara').Chara
@@ -88,7 +88,7 @@ async def query(bot: Bot, event: Event, state: T_State):
         f" {entry['down']} ",
     ])) for entry in res]
     atk_team = concat_pic(atk_team)
-    atk_team = pic2b64(atk_team)
+    atk_team = img_to_b64(atk_team)
     atk_team = MessageSegment.image(atk_team)
     sv.logger.info('Arena picture ready!')
     defen = state['defen']

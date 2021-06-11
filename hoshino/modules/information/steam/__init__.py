@@ -27,7 +27,7 @@ async def format_id(id: str) -> str:
         return xml.xpath('/profile/steamID64')[0].text
 adds = sv.on_command("添加steam订阅")
 dels = sv.on_command("取消steam订阅")
-looks = sv.on_command("steam订阅列表", aliases=('查看本群steam', '本群steam订阅', 'steam'))
+looks = sv.on_command("steam订阅列表", aliases=('查看本群steam', '本群steam订阅'))
 look = sv.on_command("查询steam账号", aliases=('查看steam', '查看steam订阅'))
 
 
@@ -146,7 +146,7 @@ async def del_steam_ids(steam_id, group):
     await update_game_status()
 
 
-@scheduled_job('cron', minute='*/2', id='推送steam',jitter=20)
+@scheduled_job('cron', minute='*/2', id='推送steam', jitter=20)
 async def check_steam_status():
     if not playing_state:
         await update_game_status()

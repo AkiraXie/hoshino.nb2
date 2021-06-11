@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-19 02:22:27
 LastEditors: AkiraXie
-LastEditTime: 2021-03-30 03:53:13
+LastEditTime: 2021-06-09 02:29:24
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -25,8 +25,8 @@ sv.on_command('我有个朋友说他好了', aliases=('我朋友说他好了', )
 sv1 = Service('repeat', visible=False)
 
 
-class repeater:
-    def __init__(self, msg: str , repeated: bool , prob: float) -> None:
+class Repeater:
+    def __init__(self, msg: str, repeated: bool, prob: float) -> None:
         self.msg = msg
         self.repeated = repeated
         self.prob = prob
@@ -36,24 +36,25 @@ class repeater:
 
 
 # 想了想要复现HoshinoBot的复读还是得有个全局字典来存数据
-GROUP_STATE: Dict[int, repeater] = dict()
+GROUP_STATE: Dict[int, Repeater] = dict()
+
 
 @sv1.on_message(block=False)
 async def random_repeat(bot: Bot, event: Event):
     gid = event.group_id
     msg = event.raw_message
     if gid not in GROUP_STATE:
-        GROUP_STATE[gid] =  repeater(msg, False, 0.0)
+        GROUP_STATE[gid] = Repeater(msg, False, 0.0)
         return
     current_repeater = GROUP_STATE[gid]
     if current_repeater.check(msg):
         if current_repeater.repeated:
             return
-        if  p :=current_repeater.prob > random.random():
-            GROUP_STATE[gid] =  repeater(msg, True, 0.0)
-            await bot.send(event,Message(msg))
+        if p := current_repeater.prob > random.random():
+            GROUP_STATE[gid] = Repeater(msg, True, 0.0)
+            await bot.send(event, Message(msg))
         else:
             p = 1-(1-p) / 1.6
-            GROUP_STATE[gid] =  repeater(msg, False, p)
+            GROUP_STATE[gid] = Repeater(msg, False, p)
     else:
-        GROUP_STATE[gid] =  repeater(msg, False, 0.0)
+        GROUP_STATE[gid] = Repeater(msg, False, 0.0)
