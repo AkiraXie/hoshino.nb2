@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 02:03:18
 LastEditors: AkiraXie
-LastEditTime: 2021-04-15 15:01:21
+LastEditTime: 2021-06-12 03:41:42
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -17,10 +17,10 @@ os.makedirs(db_dir,exist_ok=True)
 os.makedirs(service_dir,exist_ok=True)
 
 from .typing import Final,Any,Union
-from .res import rhelper
+from .res import RHelper
 from nonebot.adapters.cqhttp import Bot
 from nonebot.adapters.cqhttp.utils import escape
-from .message import MessageSegment, Message
+from .message import MessageSegment, Message, MessageBuilder
 from .event import Event
 
 
@@ -111,7 +111,7 @@ e.g：
     
 `R.img.priconne`==`R.img('priconne')`==`R+'img'+'priconne'`
 '''
-R: Final[rhelper] = rhelper()
+R: Final[RHelper] = RHelper()
 
 
 

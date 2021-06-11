@@ -8,7 +8,7 @@ Github: http://github.com/AkiraXie/
 '''
 from loguru import logger
 from pytz import timezone
-from hoshino.util import pic2b64
+from hoshino.util import img_to_b64
 from io import BytesIO
 from hoshino import aiohttpx, db_dir, MessageSegment
 from PIL import Image

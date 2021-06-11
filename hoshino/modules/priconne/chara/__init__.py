@@ -14,7 +14,7 @@ from PIL import Image, ImageFont
 import nonebot
 from loguru import logger
 from hoshino import Bot, Event, R, rhelper, scheduled_job
-from hoshino.util import sucmd, get_text_size, text2pic, run_sync
+from hoshino.util import sucmd, get_text_size, text_to_img, run_sync
 from .util import download_card, download_chara_icon, download_config, download_pcrdata
 from hoshino.modules.priconne import _pcr_data
 dlicon = sucmd('下载头像')
@@ -241,7 +241,7 @@ class Chara:
             tsize = get_text_size(text, TFONT, padding=(0, 20, 12, 36))
             des = Image.new(
                 'RGBA', (num*size+tsize[0]+48, size), (255, 255, 255, 255))
-            timg = text2pic(text, TFONT, padding=(0, 20, 12, 36), spacing=10)
+            timg = text_to_img(text, TFONT, padding=(0, 20, 12, 36), spacing=10)
             img = Image.new('RGBA', (40, 100), (255, 255, 255, 255))
             dislike.thumbnail((40, 40))
             like.thumbnail((40, 40))

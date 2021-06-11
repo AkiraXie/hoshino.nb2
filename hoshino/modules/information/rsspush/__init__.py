@@ -9,7 +9,7 @@ Github: http://github.com/AkiraXie/
 import asyncio
 from hoshino.typing import List, T_State
 from hoshino import Service, aiohttpx, Bot, Event, scheduled_job, Message
-from hoshino.util import text2Seg, get_bitly_url
+from hoshino.util import text_to_segment, get_bitly_url
 from hoshino.rule import ArgumentParser
 from .data import Rss, Rssdata, BASE_URL
 sv = Service('rss', enable_on_default=False)
@@ -25,12 +25,12 @@ def infos2pic(infos: List[dict]) -> str:
         text = f"标题: {info['标题']}\n时间: {info['时间']}\n======"
         texts.append(text)
     texts = '\n'.join(texts)
-    return str(text2Seg(texts))
+    return str(text_to_segment(texts))
 
 
 def info2pic(info: dict) -> str:
     text = f"标题: {info['标题']}\n\n正文:\n{info['正文']}\n时间: {info['时间']}"
-    return str(text2Seg(text))
+    return str(text_to_segment(text))
 
 
 addrss = sv.on_shell_command('添加订阅', aliases=('addrss', '增加订阅'), parser=parser)

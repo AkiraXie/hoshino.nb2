@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-29 15:02:48
 LastEditors: AkiraXie
-LastEditTime: 2021-05-16 17:27:26
+LastEditTime: 2021-06-09 02:30:07
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -17,7 +17,7 @@ STATIC = os.path.expanduser(hsn_config.static or 'static')
 os.makedirs(STATIC, exist_ok=1)
 
 
-class rhelper(str):
+class RHelper(str):
     '''
     资源访问类，但不推荐利用这个类构建对象，推荐使用`hoshino.R`这个全局常量来进行访问。
 
@@ -61,19 +61,19 @@ class rhelper(str):
         return __class__(path)
 
     def __setattr__(self, name: str, value) -> None:
-        if name != '_rhelper__rpath':
+        if name != '_RHelper__rpath':
             raise UnsupportedOperation(
-                f'unsupported operand type(s) for =: "rhelper" and "{type(value)}"')
+                f'unsupported operand type(s) for =: "RHelper" and "{type(value)}"')
         else:
             self.__dict__[name] = value
 
     def __imul__(self, key):
         raise UnsupportedOperation(
-            f'unsupported operand type(s) for *=: "rhelper" and "{type(key)}"')
+            f'unsupported operand type(s) for *=: "RHelper" and "{type(key)}"')
 
     def __mul__(self, key):
         raise UnsupportedOperation(
-            f'unsupported operand type(s) for *: "rhelper" and "{type(key)}"')
+            f'unsupported operand type(s) for *: "RHelper" and "{type(key)}"')
 
     def __call__(self, path, *paths):
         key = os.path.join(path, *paths)

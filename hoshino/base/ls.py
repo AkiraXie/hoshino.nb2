@@ -8,7 +8,7 @@ Github: http://github.com/AkiraXie/
 '''
 from hoshino.util import sucmds
 from hoshino import Bot, Event
-from hoshino.service import Service, matcher_wrapper
+from hoshino.service import Service, MatcherWrapper
 
 
 async def ls_group(bot: Bot, event: Event):
@@ -44,7 +44,7 @@ async def _(bot: Bot, event: Event):
 
 @cmd_am.handle()
 async def showall(bot: Bot):
-    mws = matcher_wrapper.get_loaded_matchers()
+    mws = MatcherWrapper.get_loaded_matchers()
     msg = ['该bot注册的matcher_wrapper如下:']
     msg.extend(mws)
     await cmd_am.finish('\n'.join(msg))

@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-06-05 12:18:54
+LastEditTime: 2021-06-09 02:10:31
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -25,8 +25,8 @@ from hoshino.rule import ArgumentParser, Rule, fullmatch, to_me, regex, keyword
 from hoshino.typing import Dict, Iterable, Optional, Union, T_State, List, Type, FinishedException, PausedException, RejectedException
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: Dict[str, "Service"] = {}
-_loaded_matchers: Dict["Type[Matcher]", "matcher_wrapper"] = {}
-from hoshino.log import wrap_logger
+_loaded_matchers: Dict["Type[Matcher]", "MatcherWrapper"] = {}
+from hoshino.log import LoggerWrapper
 
 def _save_service_data(service: "Service"):
     data_file = os.path.join(_service_dir, f'{service.name}.json')
@@ -75,7 +75,7 @@ class Service:
         data = _load_service_data(self.name)
         self.enable_group = set(data.get('enable_group', []))
         self.disable_group = set(data.get('disable_group', []))
-        self.logger = wrap_logger(self.name)
+        self.logger = LoggerWrapper(self.name)
         self.matchers = []
 
     @staticmethod
@@ -130,7 +130,7 @@ class Service:
             rule = rule & (to_me())
         return rule
 
-    def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         if isinstance(aliases, str):
             aliases = set([aliases])
         elif not isinstance(aliases, set):
@@ -144,7 +144,7 @@ class Service:
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.command', priority, command=name, only_group=only_group)
         matcher = on_command(name, **kwargs)
         mw.load_matcher(matcher)
@@ -152,7 +152,7 @@ class Service:
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_shell_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, parser: Optional[ArgumentParser] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_shell_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None, parser: Optional[ArgumentParser] = None, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         if isinstance(aliases, str):
             aliases = set([aliases])
         elif not isinstance(aliases, set):
@@ -167,38 +167,38 @@ class Service:
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.shell_command', priority, command=name, only_group=only_group)
         mw.load_matcher(on_shell_command(name, **kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_startswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_startswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.startswith', priority, startswith=msg, only_group=only_group)
         mw.load_matcher(on_startswith(msg, **kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_endswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_endswith(self, msg: str, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.endswith', priority, endswith=msg, only_group=only_group)
         mw.load_matcher(on_endswith(msg, **kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_keyword(self, keywords: Iterable, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_keyword(self, keywords: Iterable, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         if isinstance(keywords, str):
             keywords = set([keywords])
         elif not isinstance(keywords, set):
@@ -211,14 +211,14 @@ class Service:
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = keyword(*keywords, normal=normal) & rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.keyword', priority, keywords=str(keywords), only_group=only_group)
         mw.load_matcher(on_message(**kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
     
-    def on_fullmatch(self, keywords: Iterable, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_fullmatch(self, keywords: Iterable, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         if isinstance(keywords, str):
             keywords = set([keywords])
         elif not isinstance(keywords, set):
@@ -231,14 +231,14 @@ class Service:
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = fullmatch(*keywords, normal=normal) & rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.fullmatch', priority, keywords=str(keywords), only_group=only_group)
         mw.load_matcher(on_message(**kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_regex(self, pattern: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         '''
         根据正则表达式进行匹配。
         可以通过 ``state["_matched"]`` 获取正则表达式匹配成功的文本。
@@ -247,39 +247,39 @@ class Service:
         rule = self.check_service(only_to_me, only_group)
         rule = regex(pattern, flags, normal) & rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.regex', priority, pattern=str(pattern), flags=str(flags), only_group=only_group)
         self.matchers.append(str(mw))
         mw.load_matcher(on_message(rule, permission, **kwargs))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "matcher_wrapper":
+    def on_message(self,  only_to_me: bool = False, only_group: bool = True, permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Message.message', priority, only_group=only_group)
         self.matchers.append(str(mw))
         mw.load_matcher(on_message(**kwargs))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_notice(self,  only_group: bool = True, **kwargs) -> "matcher_wrapper":
+    def on_notice(self,  only_group: bool = True, **kwargs) -> "MatcherWrapper":
         rule = self.check_service(0, only_group)
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Notice', priority, only_group=only_group)
         self.matchers.append(str(mw))
         mw.load_matcher(on_notice(rule, **kwargs))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_request(self, only_group: bool = True, **kwargs) -> "matcher_wrapper":
+    def on_request(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
         rule = self.check_service(0, only_group)
         priority = kwargs.get('priority', 1)
-        mw = matcher_wrapper(self,
+        mw = MatcherWrapper(self,
                              'Request', priority, only_group=only_group)
         self.matchers.append(str(mw))
         mw.load_matcher(on_request(rule, **kwargs))
@@ -314,7 +314,7 @@ async def _permission_updater(matcher: Matcher, bot: Bot, event: Event, state: T
     return Permission(_permission)
 
 
-class matcher_wrapper:
+class MatcherWrapper:
     '''
     封装了 ``nonebot.matcher.Matcher`` ,使之可以受Service干预。
 

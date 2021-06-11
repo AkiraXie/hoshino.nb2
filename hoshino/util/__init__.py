@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-05-29 15:32:54
+LastEditTime: 2021-06-12 03:38:51
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -106,7 +106,7 @@ def get_text_size(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: T
     return ret[0]+padding[0]+padding[1], ret[1]+padding[2]+padding[3]
 
 
-def text2pic(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> Image.Image:
+def text_to_img(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> Image.Image:
     '''
     返回一个文本转化后的`Image`实例
 
@@ -126,7 +126,7 @@ def text2pic(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[
     return base
 
 
-def pic2b64(pic: Image.Image) -> str:
+def img_to_b64(pic: Image.Image) -> str:
     buf = BytesIO()
     pic.save(buf, format='PNG')
     base64_str = base64.b64encode(
@@ -134,8 +134,8 @@ def pic2b64(pic: Image.Image) -> str:
     return 'base64://' + base64_str
 
 
-def text2Seg(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> MessageSegment:
-    return MessageSegment.image(pic2b64(text2pic(text, font, padding, spacing)))
+def text_to_segment(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> MessageSegment:
+    return MessageSegment.image(img_to_b64(text_to_img(text, font, padding, spacing)))
 
 
 def concat_pic(pics, border=5):

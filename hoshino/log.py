@@ -13,7 +13,7 @@ from . import hsn_config
 from .service import _loaded_matchers
 
 
-class wrap_logger:
+class LoggerWrapper:
     def __init__(self, name: str) -> None:
         self.name = name
 

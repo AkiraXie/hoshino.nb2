@@ -9,7 +9,7 @@ Github: http://github.com/AkiraXie/
 from .util import check_ver, db_message
 from hoshino import Service,  sucmd, scheduled_job, rule, Bot, Event
 from hoshino.typing import T_State
-from hoshino.util import text2Seg
+from hoshino.util import text_to_segment
 
 
 svjp = Service('calendar-jp', enable_on_default=False)
@@ -26,9 +26,9 @@ async def db_check_ver():
 
 @scheduled_job('cron', hour='14', minute='15', jitter=30, id='推送日程')
 async def _():
-    await svjp.broadcast(text2Seg(await db_message('jp')), 'calendar-jp')
-    await svbl.broadcast(text2Seg(await db_message('bili')), 'calendar-bilibili')
-    await svtw.broadcast(text2Seg(await db_message('tw')), 'calendar-tw')
+    await svjp.broadcast(text_to_segment(await db_message('jp')), 'calendar-jp')
+    await svbl.broadcast(text_to_segment(await db_message('bili')), 'calendar-bilibili')
+    await svtw.broadcast(text_to_segment(await db_message('tw')), 'calendar-tw')
 
 
 updatedb = sucmd('updatedb')
@@ -58,11 +58,11 @@ async def look_calendar(bot: Bot, event: Event, state: T_State):
     is_future = match.group(1) == '预定'
     is_all = not match.group(1)
     if is_now:
-        await bot.send(event, text2Seg(await db_message(state['region'], 'now')), call_header=True)
+        await bot.send(event, text_to_segment(await db_message(state['region'], 'now')), call_header=True)
     if is_future:
-        await bot.send(event, text2Seg(await db_message(state['region'], 'future')), call_header=True)
+        await bot.send(event, text_to_segment(await db_message(state['region'], 'future')), call_header=True)
     if is_all:
-        await bot.send(event, text2Seg(await db_message(state['region'], 'all')), call_header=True)
+        await bot.send(event, text_to_segment(await db_message(state['region'], 'all')), call_header=True)
 
 
 svtw.on_regex(r'^台服(当前|预定)?日程$', state={

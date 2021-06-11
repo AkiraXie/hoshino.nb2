@@ -7,8 +7,8 @@ Description:
 Github: http://github.com/AkiraXie/
 '''
 from hoshino.typing import T_State
-from hoshino.service import matcher_wrapper
-from hoshino.util import DailyNumberLimiter, pic2b64, concat_pic, normalize_str, sucmd,parse_qq
+from hoshino.service import MatcherWrapper
+from hoshino.util import DailyNumberLimiter, img_to_b64, concat_pic, normalize_str, sucmd,parse_qq
 from hoshino import MessageSegment, Message, Service, permission, Bot, Event
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
@@ -43,16 +43,16 @@ showcol = sv.on_command('仓库',  aliases={
     '查看仓库', '我的仓库', '看看仓库'}, only_group=False)
 
 
-async def check_jewel_num(mathcer: matcher_wrapper, event: Event):
+async def check_jewel_num(matcher: MatcherWrapper, event: Event):
     uid = event.get_user_id()
     if not jewel_limit.check(int(uid)):
-        await mathcer.finish(JEWEL_EXCEED_NOTICE, call_header=True)
+        await matcher.finish(JEWEL_EXCEED_NOTICE, call_header=True)
 
 
-async def check_tenjo_num(mathcer: matcher_wrapper, event: Event):
+async def check_tenjo_num(matcher: MatcherWrapper, event: Event):
     uid = event.get_user_id()
     if not tenjo_limit.check(int(uid)):
-        await mathcer.finish(TENJO_EXCEED_NOTICE, call_header=True)
+        await matcher.finish(TENJO_EXCEED_NOTICE, call_header=True)
 
 
 async def lookup_handler(bot: Bot, event: Event):
@@ -173,7 +173,7 @@ async def _(bot: Bot, event: Event):
     res1 = Chara.gen_team_pic(result[:5], star_slot_verbose=False)
     res2 = Chara.gen_team_pic(result[5:], star_slot_verbose=False)
     res = concat_pic([res1, res2])
-    res = pic2b64(res)
+    res = img_to_b64(res)
     res = MessageSegment.image(res)
     result = [f'{c.name}{"★"*c.star}' for c in result]
     res1 = ' '.join(result[0:5])
@@ -212,7 +212,7 @@ async def _(bot: Bot, event: Event):
             j = min(lenth, i + step)
             pics.append(Chara.gen_team_pic(res[i:j], star_slot_verbose=False))
         res = concat_pic(pics)
-        res = pic2b64(res)
+        res = img_to_b64(res)
         res = MessageSegment.image(res)
     msg = [
         f"素敵な仲間が増えますよ！ {res}",
@@ -260,7 +260,7 @@ async def _(bot: Bot, event: Event):
         pics.append(Chara.gen_team_pic(
             result[i:j], star_slot_verbose=False))
     res = concat_pic(pics)
-    res = pic2b64(res)
+    res = img_to_b64(res)
     res = MessageSegment.image(res)
     msg = [
         f'仅展示三星角色~',

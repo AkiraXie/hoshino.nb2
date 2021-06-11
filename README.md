@@ -12,9 +12,9 @@
 ## 项目笔记
 2021/2/22凌晨 从nb2学到了可以让`Service`信息用`loguru`记录的方式，于是对日志进行了封装,并让`Service.logger`得以实现。
 
-同时，实现了对`nonebot.matcher`的封装，并命名为`matcher_wrapper`，`matcher_wrapper`联系了`matcher`和`Service`，记录了`matcher`的更为丰富的信息，而且终于`matcher_wrapper`成为了具体实例对象，梦寐以求的`matcher`**直接装饰函数**得以变相实现(等同于`handle()`)，梦回nb1, 撒花~。
+同时，实现了对`nonebot.matcher`的封装，并命名为`MatcherWrapper`，`MatcherWrapper`联系了`matcher`和`Service`，记录了`matcher`的更为丰富的信息，而且终于`MatcherWrapper`成为了具体实例对象，梦寐以求的`matcher`**直接装饰函数**得以变相实现(等同于`handle()`)，梦回nb1, 撒花~。
 
-利用nb2的`run_preprocessor`和`run_postprocessor`，结合`matcher_wrapper`, 使日志记录更多事件处理的信息。
+利用nb2的`run_preprocessor`和`run_postprocessor`，结合`MatcherWrapper`, 使日志记录更多事件处理的信息。
 
 这次更新之后，项目的核心架构真正稳定下来(但愿如此)。~~我真的不想折腾了。~~
 
