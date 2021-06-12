@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-06-09 02:10:31
+LastEditTime: 2021-06-12 21:22:59
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -478,7 +478,7 @@ class MatcherWrapper:
         raise FinishedException
 
     def __str__(self) -> str:
-        finfo = [f"{k}={v}" for k, v in self.info.items()]
+        finfo = [f"{k}={v}".replace("<","\<").replace(">","\>") for k, v in self.info.items()]
         return (f"<Matcher from Sevice {self.sv.name}, priority={self.priority}, type={self.type}, "
                 + ", ".join(finfo)+">")
 
