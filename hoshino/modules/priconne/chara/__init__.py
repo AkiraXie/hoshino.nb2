@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-30 01:14:50
 LastEditors: AkiraXie
-LastEditTime: 2021-06-12 03:50:27
+LastEditTime: 2021-06-17 00:29:45
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -123,6 +123,14 @@ class Chara:
         '''Create Chara from her name.'''
         id_ = Chara.name2id(name)
         return Chara(id_, star, equip)
+    
+    @property
+    def jpname(self):
+        return _pcr_data.CHARA_NAME[self.id][1] if self.id in _pcr_data.CHARA_NAME else _pcr_data.CHARA_NAME[Chara.UNKNOWN][0]
+    
+    @property
+    def enname(self):
+        return _pcr_data.CHARA_NAME[self.id][2] if self.id in _pcr_data.CHARA_NAME else _pcr_data.CHARA_NAME[Chara.UNKNOWN][0]
 
     @property
     def name(self):
