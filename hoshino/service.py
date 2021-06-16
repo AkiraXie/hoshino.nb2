@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-06-12 21:22:59
+LastEditTime: 2021-06-17 00:14:07
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -34,14 +34,17 @@ from hoshino.log import LoggerWrapper
 
 def _iter_to_set(words: Iterable) -> set:
     if isinstance(words, str):
-        keywords = set([words])
+        res = set([words])
     elif not isinstance(words, set):
         if words:
-            keywords = set([words]) if len(
+            res = set([words]) if len(
                 words) == 1 and isinstance(words, tuple) else set(words)
         else:
-            keywords = set()
-    return keywords
+            res = set()
+    else:
+        res=words
+    return res
+    
 
 
 def _save_service_data(service: "Service"):
