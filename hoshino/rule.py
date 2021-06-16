@@ -14,7 +14,7 @@ from nonebot.rule import ArgumentParser, Rule, to_me
 from hoshino.util import normalize_str
 
 
-def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) -> Rule:
+def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, full_match: bool = True) -> Rule:
     """
     :说明:
       改自`nonebot.rule.regex`
@@ -24,9 +24,8 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) 
     :参数:
       * ``regex: str``: 正则表达式
       * ``flags: Union[int, re.RegexFlag]``: 正则标志
-    \:\:\:tip 提示
-    正则表达式匹配使用 search 而非 match，如需从头匹配请使用 ``r"^xxx"`` 来确保匹配开头
-    \:\:\:
+      * ``normal: bool``: 是否规范字符串
+      * ``full_match: bool``: 是否全批评字符串
     """
 
     pattern = re.compile(regex, flags)
@@ -37,7 +36,7 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True) 
         text = str(event.get_message())
         if normal:
             text = normalize_str(text)
-        matched = pattern.search(text)
+        matched = pattern.search(text) if not full_match else pattern.fullmatch(text)
         if matched:
             state['match'] = matched
             state["_matched"] = matched.group()
@@ -74,7 +73,6 @@ def keyword(*keywords: str, normal: bool = True) -> Rule:
 
 
 def fullmatch(*keywords: str, normal: bool = True) -> Rule:
-
     async def _fullmatch(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
@@ -82,4 +80,5 @@ def fullmatch(*keywords: str, normal: bool = True) -> Rule:
         if normal:
             text = normalize_str(text)
         return bool(text and any(kw == text for kw in keywords))
+
     return Rule(_fullmatch)
