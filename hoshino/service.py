@@ -203,8 +203,7 @@ class Service:
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.endswith', priority, endswith=msg, only_group=only_group)
-        mw.load_matcher(on_endswith(msg, **kwargs))
+                            'Message.endswith', priority, on_endswith(msg, **kwargs), endswith=msg, only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
