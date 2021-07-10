@@ -175,7 +175,7 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
         state['ids'] = ids.copy()
 
 
-def get_event_image(event: Event) -> List[str]:
+def get_event_image(event: MessageEvent) -> List[str]:
     msg = event.get_message()
     imglist = [
         s.data['file']
