@@ -19,7 +19,7 @@ from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from nonebot.adapters.cqhttp import MessageSegment
-from nonebot.adapters.cqhttp.event import Event, GroupMessageEvent, PrivateMessageEvent
+from nonebot.adapters.cqhttp.event import Event, GroupMessageEvent, PrivateMessageEvent,MessageEvent
 from nonebot.typing import T_State
 from hoshino import R
 from nonebot.utils import run_sync
@@ -185,8 +185,8 @@ def get_event_image(event: Event) -> List[str]:
     return imglist
 
 
-def get_event_imageurl(event: Event) -> List[str]:
-    msg = event.get_message()
+def get_event_imageurl(event: MessageEvent) -> List[str]:
+    msg = event.message
     imglist = [
         s.data['url']
         for s in msg
