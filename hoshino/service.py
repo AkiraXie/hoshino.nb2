@@ -16,6 +16,7 @@ from nonebot.matcher import current_bot, current_event
 from typing import Mapping
 from nonebot.typing import T_ArgsParser, T_Handler
 from nonebot.message import run_preprocessor, run_postprocessor
+from nonebot.handler import Handler
 from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment
 from hoshino.event import Event
 from hoshino.matcher import Matcher, on_command, on_message, on_startswith, on_endswith, on_notice, on_request, \
@@ -42,9 +43,8 @@ def _iter_to_set(words: Iterable) -> set:
         else:
             res = set()
     else:
-        res=words
+        res = words
     return res
-    
 
 
 def _save_service_data(service: "Service"):
@@ -160,7 +160,7 @@ class Service:
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.command', priority,on_command(name, **kwargs),
+                            'Message.command', priority, on_command(name, **kwargs),
                             command=name, only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -203,7 +203,8 @@ class Service:
         kwargs['rule'] = rule
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.endswith', priority, on_endswith(msg, **kwargs), endswith=msg, only_group=only_group)
+                            'Message.endswith', priority, on_endswith(msg, **kwargs), endswith=msg,
+                            only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
@@ -270,7 +271,7 @@ class Service:
         rule = self.check_service(0, only_group)
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Notice', priority, on_notice(rule, **kwargs),only_group=only_group)
+                            'Notice', priority, on_notice(rule, **kwargs), only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
@@ -302,7 +303,7 @@ class Service:
                         self.logger.error(f'{sid}在群{gid}投递{tag}失败')
 
 
-async def _permission_updater(matcher: Matcher, bot: Bot, event: Event, state: T_State,
+async def _permission_updater(bot: Bot, event: Event, state: T_State,
                               permission: Permission) -> Permission:
     uid = event.get_user_id()
     gid = event.group_id if 'group_id' in event.__dict__ else None
@@ -387,49 +388,37 @@ class MatcherWrapper:
             if key in state and state.get("_skip_key"):
                 del state["_skip_key"]
                 return
-            parser = args_parser or self.matcher._default_parser
+            parser = args_parser or cls._default_parser
             if parser:
                 # parser = cast(T_ArgsParser["Bot", "Event"], parser)
                 await parser(bot, event, state)
             else:
                 state[state["_current_key"]] = str(event.get_message())
 
-        self.matcher.append_handler(_key_getter)
-        self.matcher.append_handler(_key_parser)
+        getter_handler = self.matcher.append_handler(_key_getter)
+        parser_handler = self.matcher.append_handler(_key_parser)
 
         def _decorator(func: T_Handler) -> T_Handler:
             if not hasattr(self.matcher.handlers[-1], "__wrapped__"):
-                self.matcher.process_handler(func)
                 parser = self.matcher.handlers.pop()
+                func_handler = Handler(func)
 
                 @wraps(func)
                 async def wrapper(bot: "Bot", event: "Event", state: T_State,
                                   matcher: Matcher):
-                    await matcher.run_handler(parser, bot, event, state)
-                    await matcher.run_handler(func, bot, event, state)
+                    await parser(matcher, bot, event, state)
+                    await func_handler(matcher, bot, event, state)
                     if "_current_key" in state:
                         del state["_current_key"]
 
-                self.matcher.append_handler(wrapper)
+                wrapper_handler = cls.append_handler(wrapper)
 
-                wrapper.__params__.update({
-                    "bot":
-                        func.__params__["bot"],
-                    "event":
-                        func.__params__["event"] or wrapper.__params__["event"]
-                })
-                _key_getter.__params__.update({
-                    "bot":
-                        func.__params__["bot"],
-                    "event":
-                        func.__params__["event"] or wrapper.__params__["event"]
-                })
-                _key_parser.__params__.update({
-                    "bot":
-                        func.__params__["bot"],
-                    "event":
-                        func.__params__["event"] or wrapper.__params__["event"]
-                })
+                getter_handler.update_signature(
+                    bot=wrapper_handler.bot_type,
+                    event=wrapper_handler.event_type)
+                parser_handler.update_signature(
+                    bot=wrapper_handler.bot_type,
+                    event=wrapper_handler.event_type)
 
             return func
 
@@ -480,7 +469,7 @@ class MatcherWrapper:
 
     def __str__(self) -> str:
         finfo = [f"{k}={v}".replace("<", "\<").replace(">", "\>") for k, v in self.info.items()]
-        return (f"<Matcher from Sevice {self.sv.name}, priority={self.priority}, type={self.type}, "
+        return (f"<Matcher from Service {self.sv.name}, priority={self.priority}, type={self.type}, "
                 + ", ".join(finfo) + ">")
 
     def __repr__(self) -> str:
