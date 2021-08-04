@@ -13,7 +13,7 @@ data
 logs
 static
 hoshino/service_config
-
+.DS_Store
 
 # C extensions
 *.so
