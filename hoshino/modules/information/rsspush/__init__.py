@@ -74,13 +74,11 @@ delrss = sv.on_command('删除订阅', aliases=('delrss', '取消订阅'))
 @delrss.handle()
 async def del_rss(bot: Bot, event: Event, state: T_State):
     name = event.get_plaintext().strip()
-    try:
-        Rssdata.delete().where(Rssdata.name == name, Rssdata.group ==
+    rows = Rssdata.delete().where(Rssdata.name == name, Rssdata.group ==
                                event.group_id).execute()
-    except Exception as e:
-        sv.logger.exception(e)
-        await delrss.finish('删除订阅失败')
-    await delrss.finish(f'删除订阅{name}成功')
+    if not rows:
+        await delrss.finish(f'订阅{name}删除失败，该订阅不存在')
+    await delrss.finish(f'订阅{name}删除成功')
 
 lookrss = sv.on_command('订阅列表', aliases=('查看本群订阅',))
 
