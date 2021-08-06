@@ -11,7 +11,6 @@ import pygtrie
 import zhconv
 import importlib
 from PIL import Image, ImageFont
-import nonebot
 from loguru import logger
 from hoshino import Bot, Event, R, RHelper, scheduled_job
 from hoshino.util import sucmd, get_text_size, text_to_img, run_sync
@@ -290,4 +289,3 @@ class Chara:
 
 
 Chara.gen_name2id()
-nonebot.export()['Chara'] = Chara
