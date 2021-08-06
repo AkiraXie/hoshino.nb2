@@ -12,8 +12,7 @@ from hoshino.util import DailyNumberLimiter, img_to_b64, concat_pic, normalize_s
 from hoshino import MessageSegment, Message, Service, permission, Bot, Event
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
-from nonebot.plugin import require
-Chara =require('chara')['Chara']
+from hoshino.modules.priconne.chara import Chara
 sv = Service('gacha')
 from .gacha import Gacha
 from .data import set_collection, set_pool, select_collection, get_pool

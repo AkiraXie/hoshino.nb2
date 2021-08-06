@@ -7,13 +7,12 @@ Description:
 Github: http://github.com/AkiraXie/
 '''
 from nonebot.exception import FinishedException
-from nonebot.plugin import require
 from hoshino.typing import T_State
 from hoshino import Event, Bot, Message, MessageSegment
 from hoshino.util import concat_pic, img_to_b64, FreqLimiter
 from hoshino.service import Service
 import re
-Chara = require('chara').Chara
+from hoshino.modules.priconne.chara import Chara
 sv = Service('pcr-arena')
 from .arena import do_query
 lmt = FreqLimiter(5)

@@ -14,7 +14,7 @@ from hoshino import Service, Event, Message
 from nonebot.adapters.cqhttp import Bot
 from hoshino.typing import T_State
 from hoshino.util import FreqLimiter
-Chara = require('chara').Chara
+from hoshino.modules.priconne.chara import Chara
 sv = Service('whois')
 _lmt = FreqLimiter(5)
 _lmt1 = FreqLimiter(5)

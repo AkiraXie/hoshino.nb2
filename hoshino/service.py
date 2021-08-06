@@ -388,7 +388,7 @@ class MatcherWrapper:
             if key in state and state.get("_skip_key"):
                 del state["_skip_key"]
                 return
-            parser = args_parser or cls._default_parser
+            parser = args_parser or self.matcher._default_parser
             if parser:
                 # parser = cast(T_ArgsParser["Bot", "Event"], parser)
                 await parser(bot, event, state)
@@ -411,7 +411,7 @@ class MatcherWrapper:
                     if "_current_key" in state:
                         del state["_current_key"]
 
-                wrapper_handler = cls.append_handler(wrapper)
+                wrapper_handler = self.matcher.append_handler(wrapper)
 
                 getter_handler.update_signature(
                     bot=wrapper_handler.bot_type,
