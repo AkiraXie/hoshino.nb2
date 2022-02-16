@@ -5,7 +5,7 @@ LastEditors: AkiraXie
 GitHub: https://github.com/AkiraXie
 '''
 from hoshino import sucmd, Service, permission,Bot,Event,Message
-from nonebot.adapters.cqhttp.utils import unescape
+from nonebot.adapters.onebot.v11.utils import unescape
 
 async def handle_echo(bot: Bot, event: Event):
     await bot.send(event, Message(unescape(str(event.get_message()))))

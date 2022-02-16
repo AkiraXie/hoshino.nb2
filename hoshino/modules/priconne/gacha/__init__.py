@@ -8,7 +8,7 @@ Github: http://github.com/AkiraXie/
 '''
 from hoshino.typing import T_State
 from hoshino.service import MatcherWrapper
-from hoshino.util import DailyNumberLimiter, img_to_b64, concat_pic, normalize_str, sucmd,parse_qq
+from hoshino.util import DailyNumberLimiter, img_to_bytes, concat_pic, normalize_str, sucmd,parse_qq
 from hoshino import MessageSegment, Message, Service, permission, Bot, Event
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
@@ -172,7 +172,7 @@ async def _(bot: Bot, event: Event):
     res1 = Chara.gen_team_pic(result[:5], star_slot_verbose=False)
     res2 = Chara.gen_team_pic(result[5:], star_slot_verbose=False)
     res = concat_pic([res1, res2])
-    res = img_to_b64(res)
+    res = img_to_bytes(res)
     res = MessageSegment.image(res)
     result = [f'{c.name}{"★"*c.star}' for c in result]
     res1 = ' '.join(result[0:5])
@@ -211,7 +211,7 @@ async def _(bot: Bot, event: Event):
             j = min(lenth, i + step)
             pics.append(Chara.gen_team_pic(res[i:j], star_slot_verbose=False))
         res = concat_pic(pics)
-        res = img_to_b64(res)
+        res = img_to_bytes(res)
         res = MessageSegment.image(res)
     msg = [
         f"素敵な仲間が増えますよ！ {res}",
@@ -259,7 +259,7 @@ async def _(bot: Bot, event: Event):
         pics.append(Chara.gen_team_pic(
             result[i:j], star_slot_verbose=False))
     res = concat_pic(pics)
-    res = img_to_b64(res)
+    res = img_to_bytes(res)
     res = MessageSegment.image(res)
     msg = [
         f'仅展示三星角色~',

@@ -4,6 +4,7 @@ from lxml import etree
 import json
 import os
 from hoshino import scheduled_job, Bot, Event, Service
+from hoshino.permission import ADMIN
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx
 
@@ -19,16 +20,16 @@ playing_state = {}
 
 
 async def format_id(id: str) -> str:
-    if id.startswith('76561198') and len(id) == 17:
+    if id.startswith('7656') and len(id) == 17 and id.isdigit():
         return id
     else:
         resp = await aiohttpx.get(f'https://steamcommunity.com/id/{id}?xml=1')
         xml = etree.XML(resp.content)
         return xml.xpath('/profile/steamID64')[0].text
-adds = sv.on_command("添加steam订阅")
-dels = sv.on_command("取消steam订阅")
-looks = sv.on_command("steam订阅列表", aliases=('查看本群steam', '本群steam订阅'))
-look = sv.on_command("查询steam账号", aliases=('查看steam', '查看steam订阅'))
+adds = sv.on_command("添加steam订阅",permission=ADMIN)
+dels = sv.on_command("取消steam订阅",permission=ADMIN)
+looks = sv.on_command("steam订阅列表",permission=ADMIN, aliases=('查看本群steam', '本群steam订阅'))
+look = sv.on_command("查询steam账号",permission=ADMIN, aliases=('查看steam', '查看steam订阅'))
 
 
 @adds.handle()

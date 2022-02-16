@@ -10,7 +10,7 @@ from loguru import logger
 from io import UnsupportedOperation
 from PIL import Image
 import os
-from nonebot.adapters.cqhttp.message import MessageSegment
+from nonebot.adapters.onebot.v11.message import MessageSegment
 from hoshino import hsn_config
 STATIC = os.path.expanduser(hsn_config.static or 'static')
 

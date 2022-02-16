@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-02-16 17:46:05
 LastEditors: AkiraXie
-LastEditTime: 2021-03-15 02:35:32
+LastEditTime: 2022-02-16 22:35:58
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -18,8 +18,8 @@ choyen=sv.on_shell_command('5k',aliases={'5000','5000choyen','5kchoyen'},parser=
 @choyen.handle()
 async def _(bot:Bot,state:T_State):
     try:
-        upper=state['args'].upper
-        lower=state['args'].lower
+        upper=state['_args'].upper
+        lower=state['_args'].lower
     except:
         pass
     upper=urllib.parse.quote(upper)

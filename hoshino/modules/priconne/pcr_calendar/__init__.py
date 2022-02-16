@@ -2,12 +2,12 @@
 Author: AkiraXie
 Date: 2021-02-13 21:31:35
 LastEditors: AkiraXie
-LastEditTime: 2021-03-15 04:18:39
+LastEditTime: 2022-02-16 22:43:29
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from .util import check_ver, db_message
-from hoshino import Service,  sucmd, scheduled_job, rule, Bot, Event
+from hoshino import Service,  sucmd, scheduled_job, Bot, Event
 from hoshino.typing import T_State
 from hoshino.util import text_to_segment
 

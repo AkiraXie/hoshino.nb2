@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
-LastEditTime: 2021-06-12 03:38:51
+LastEditTime: 2022-02-16 22:16:28
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -18,19 +18,21 @@ from io import BytesIO
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
-from nonebot.adapters.cqhttp import MessageSegment
-from nonebot.adapters.cqhttp.event import Event, GroupMessageEvent, PrivateMessageEvent,MessageEvent
+from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot.adapters.onebot.v11.event import Event, GroupMessageEvent, PrivateMessageEvent,MessageEvent
 from nonebot.typing import T_State
 from hoshino import R
 from nonebot.utils import run_sync
-from nonebot.adapters.cqhttp import Bot
+from nonebot.adapters.onebot.v11 import Bot
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
+from .aiohttpx import get
 from .bitly import get_bitly_url
+from .playwrights import get_bili_dynamic_screenshot
 DEFAULTFONT = ImageFont.truetype(
-    R.img('priconne/gadget/SourceHanSans-Regular.ttc'), size=48)
+     R.img('priconne/gadget/SourceHanSans-Regular.ttc'), size=48)
 
 
 class FreqLimiter:
@@ -74,17 +76,34 @@ class DailyNumberLimiter:
 def get_bot_list() -> List[Bot]:
     return list(nonebot.get_bots().values())
 
+async def _strip_cmd(bot: "Bot", event: "Event", state: T_State):
+        message = event.get_message()
+        segment = message.pop(0)
+        new_message = message.__class__(
+            str(segment)
+            [len(state["_prefix"]["raw_command"]):].strip())  # type: ignore
+        for new_segment in reversed(new_message):
+            message.insert(0, new_segment)
 
 def sucmd(name: str, only_to_me: bool = True, aliases: Optional[set] = None, **kwargs) -> Type[Matcher]:
     kwargs['aliases'] = aliases
     kwargs['permission'] = SUPERUSER
     kwargs['rule'] = to_me() if only_to_me else Rule()
-    return on_command(name, **kwargs)
+    handlers = kwargs.pop("handlers", [])
+    handlers.insert(0, _strip_cmd)
+    kwargs["handlers"] = handlers
+    kwargs.setdefault("block",True)
+    return on_command(name,_depth=1, **kwargs)
+
 
 
 def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
     kwargs['permission'] = SUPERUSER
     kwargs['rule'] = to_me() if only_to_me else Rule()
+    handlers = kwargs.pop("handlers", [])
+    handlers.insert(0, _strip_cmd)
+    kwargs["handlers"] = handlers
+    kwargs.setdefault("block",True)
     return CommandGroup(name, **kwargs)
 
 
@@ -126,16 +145,14 @@ def text_to_img(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tup
     return base
 
 
-def img_to_b64(pic: Image.Image) -> str:
+def img_to_bytes(pic: Image.Image) -> bytes:
     buf = BytesIO()
     pic.save(buf, format='PNG')
-    base64_str = base64.b64encode(
-        buf.getvalue()).decode()
-    return 'base64://' + base64_str
+    return buf.getvalue()
 
 
 def text_to_segment(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> MessageSegment:
-    return MessageSegment.image(img_to_b64(text_to_img(text, font, padding, spacing)))
+    return MessageSegment.image(img_to_bytes(text_to_img(text, font, padding, spacing)))
 
 
 def concat_pic(pics, border=5):
@@ -158,7 +175,7 @@ def normalize_str(string: str) -> str:
     return string
 
 
-async def parse_qq(bot: Bot, event: Event, state: T_State):
+async def parse_qq(event: Event, state: T_State):
     ids = []
     if isinstance(event, GroupMessageEvent):
         for m in event.get_message():
@@ -184,6 +201,20 @@ def get_event_image(event: MessageEvent) -> List[str]:
     ]
     return imglist
 
+async def save_img(url:str,name:str,fav:bool=False):
+    from hoshino import img_dir
+    from hoshino import fav_dir
+    if fav:
+        idir = fav_dir
+    else:
+        idir = img_dir
+    r = await aiohttpx.get(url)
+    b = BytesIO(r.content)
+    img = Image.open(b)
+    name = os.path.join(idir,name)
+    img.save(name)
+    b.close()
+    img.close()
 
 def get_event_imageurl(event: MessageEvent) -> List[str]:
     msg = event.message
@@ -193,4 +224,14 @@ def get_event_imageurl(event: MessageEvent) -> List[str]:
         if s.type == 'image' and 'url' in s.data
     ]
     return imglist
+    
+async def send_to_superuser(bot:Bot,msg):
+    sus=bot.config.superusers
+    for su in sus:
+        await bot.send_private_msg(user_id=su,message=msg)
+
+async def get_img_from_url(url: str) -> MessageSegment:
+    resp = await get(url)
+    return MessageSegment.image(resp.content)
+    
     

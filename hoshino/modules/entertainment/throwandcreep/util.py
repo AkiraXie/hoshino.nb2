@@ -1,4 +1,4 @@
-from hoshino.util import img_to_b64, aiohttpx, Image, ImageDraw, BytesIO, os
+from hoshino.util import img_to_bytes, aiohttpx, Image, ImageDraw, BytesIO, os
 from hoshino import R, MessageSegment
 import random
 base_path = R.img('throwandcreep/')
@@ -27,7 +27,7 @@ async def throw(qq: int):
     throw_img = Image.open(base_path('throw.jpg'))
     throw_img.paste(avatar.rotate(randomangle),
                     (17, 180), avatar.rotate(randomangle))
-    throw_img = img_to_b64(throw_img)
+    throw_img = img_to_bytes(throw_img)
     throw_img = MessageSegment.image(throw_img)
     return throw_img
 
@@ -43,6 +43,6 @@ async def creep(qq: int):
     creep_img = Image.open(base_path('pa', f'爬{cid}.jpg')).convert('RGBA')
     creep_img = creep_img.resize((500, 500), Image.ANTIALIAS)
     creep_img.paste(avatar, (0, 400, 100, 500), avatar)
-    creep_img = img_to_b64(creep_img)
+    creep_img = img_to_bytes(creep_img)
     creep_img = MessageSegment.image(creep_img)
     return creep_img

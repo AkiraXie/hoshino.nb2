@@ -11,9 +11,9 @@ from hoshino.util import aiohttpx
 import re
 headers = {
     "User-Agent": "Mozilla/5.0",
-    "Referer": "https://www.bilibili.com/"
+    "Referer": "https://www.bilibili.com/",
 }
-url = 'https://api.bilibili.com/x/web-interface/view'
+
 
 
 async def get_bvid(url: str) -> str:
@@ -27,12 +27,15 @@ async def get_bvid(url: str) -> str:
 
 
 async def get_resp(bvid: str):
+    url = 'https://api.bilibili.com/x/web-interface/view?bvid=' + bvid
     try:
-        resp = await aiohttpx.get(url, params={'bvid': bvid}, headers=headers)
+        resp = await aiohttpx.get(url, headers=headers)
     except:
         return None
     js = resp.json
-    data = js['data']
+    data = js.get("data")
+    if not data:
+        return None
     oj = dict()
     oj['封面'] = MessageSegment.image(data['pic'])
     oj['av号'] = f'av{data.get("aid")}'

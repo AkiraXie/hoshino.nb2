@@ -2,11 +2,10 @@
 Author: AkiraXie
 Date: 2021-01-29 18:24:41
 LastEditors: AkiraXie
-LastEditTime: 2021-03-31 10:36:09
+LastEditTime: 2022-02-16 22:42:46
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-import re
 from hoshino import R, Service, Bot, Event, Message
 from hoshino.typing import T_State
 p1 = R.img('priconne/quick/tqian.png')

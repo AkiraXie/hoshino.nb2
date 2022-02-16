@@ -2,14 +2,12 @@
 Author: AkiraXie
 Date: 2021-01-29 12:56:12
 LastEditors: AkiraXie
-LastEditTime: 2021-04-05 15:04:08
+LastEditTime: 2022-02-17 00:28:11
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 from . import Bot, Event, T_State
-
-
-async def parse_service(bot: Bot, event: Event, state: T_State):
+async def parse_service(bot: Bot,event: Event, state: T_State):
     service_msgs = event.get_plaintext().split()
     services = []
     for msg in service_msgs:

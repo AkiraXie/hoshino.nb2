@@ -2,11 +2,12 @@
 Author: AkiraXie
 Date: 2021-01-29 23:48:51
 LastEditors: AkiraXie
-LastEditTime: 2021-06-09 01:57:24
+LastEditTime: 2022-02-16 18:49:05
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from nonebot.adapters.cqhttp.message import MessageSegment, Message
+from nonebot.adapters.onebot.v11.message import MessageSegment, Message
+from nonebot.adapters import MessageTemplate
 from typing import Any, Optional, Union, Mapping, Iterable
 
 

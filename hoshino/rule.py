@@ -2,14 +2,15 @@
 Author: AkiraXie
 Date: 2021-01-28 14:10:09
 LastEditors: AkiraXie
-LastEditTime: 2021-04-10 23:59:55
+LastEditTime: 2022-02-16 22:47:11
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import re
 from typing import Union, Set
+from nonebot.rule import command,shell_command
 from nonebot.typing import T_State
-from nonebot.adapters.cqhttp import Bot, Event
+from nonebot.adapters.onebot.v11 import Bot, Event
 from nonebot.rule import ArgumentParser, Rule, to_me
 from hoshino.util import normalize_str
 
@@ -33,7 +34,7 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, 
     async def _regex(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
-        text = str(event.get_message())
+        text = str(event.raw_message)
         if normal:
             text = normalize_str(text)
         matched = pattern.search(text) if not full_match else pattern.fullmatch(text)
