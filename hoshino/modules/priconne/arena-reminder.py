@@ -2,11 +2,10 @@
 Author: AkiraXie
 Date: 2021-02-13 22:06:41
 LastEditors: AkiraXie
-LastEditTime: 2021-02-13 22:33:04
+LastEditTime: 2022-02-16 22:42:55
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from hoshino.util import sucmd
 from hoshino import Service,scheduled_job
 
 sv = Service('pcr-arena-reminder')

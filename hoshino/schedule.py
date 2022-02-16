@@ -1,6 +1,6 @@
 '''
 Author: AkiraXie
-LastEditTime: 2021-06-05 12:16:03
+LastEditTime: 2022-01-20 02:42:16
 LastEditors: AkiraXie
 GitHub: https://github.com/AkiraXie
 '''
@@ -36,6 +36,7 @@ def wrapper(func: Callable[[], Any], id: str, args: Optional[List] = None, kwarg
 
 def scheduled_job(trigger: str, args: Optional[List] = None, kwargs: Optional[Dict] = None, **triger_kwargs):
     def deco(func: Callable[[], Any]) -> Callable[[], Awaitable[Any]]:
+        triger_kwargs.setdefault('timezone','Asia/Shanghai')
         id = triger_kwargs.get('id', func.__name__)
         triger_kwargs['id'] = id
         return scheduler.scheduled_job(trigger, **triger_kwargs)(wrapper(func, id, args, kwargs))
@@ -43,6 +44,7 @@ def scheduled_job(trigger: str, args: Optional[List] = None, kwargs: Optional[Di
 
 
 def add_job(func: Callable[[], Any], trigger: str, args: Optional[List] = None, kwargs: Optional[Dict] = None, **triger_kwargs) -> job.Job:
+    triger_kwargs.setdefault('timezone','Asia/Shanghai')
     id = triger_kwargs.get('id', func.__name__)
     triger_kwargs['id'] = id
     return scheduler.add_job(wrapper(func, id, args, kwargs), trigger, **triger_kwargs)

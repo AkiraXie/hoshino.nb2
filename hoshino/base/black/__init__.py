@@ -2,15 +2,14 @@
 Author: AkiraXie
 Date: 2021-02-05 14:34:41
 LastEditors: AkiraXie
-LastEditTime: 2021-04-10 23:53:46
+LastEditTime: 2022-02-17 00:53:28
 Description: 
 Github: http://github.com/AkiraXie/
 '''
-from nonebot.adapters.cqhttp.event import MessageEvent
+from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import FinishedException, IgnoredException
 from nonebot.permission import SUPERUSER
-from nonebot.rule import to_me
 from hoshino import Bot, Event
 from hoshino.typing import T_State
 from hoshino.util import sucmd, parse_qq
@@ -57,29 +56,28 @@ async def _(bot: Bot, event: Event, state: T_State):
             if bw in event.get_plaintext():
                 if await SUPERUSER(bot, event):
                     await bot.send(event, '虽然你骂我但是我好像也不讨厌你~', at_sender=True)
-                    return
+                    raise IgnoredException('This user is blocked')
                 block_uid(uid, timedelta(hours=12))
                 await bot.send(event, '拉黑了,再见了您~', at_sender=True)
                 raise IgnoredException('This user is blocked')
-
 lahei = sucmd('拉黑', True, aliases={'block', '封禁', 'ban',
                                    '禁言', '小黑屋', 'b了'}, handlers=[parse_qq])
 jiefeng = sucmd('解封', True, aliases={'解禁'}, handlers=[parse_qq])
 
 
-@lahei.got('ids', prompt='请输入要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~', args_parser=parse_qq)
+@lahei.got('ids', prompt='请输入要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~',args_parser = parse_qq )
 @lahei.got('hours', '请输入要拉黑的小时数')
 async def _(bot: Bot, event: Event, state: T_State):
-    if not state['ids']:
+    if not state.get('ids'):
         raise FinishedException
     for uid in state['ids']:
         block_uid(uid, timedelta(hours=int(state['hours'])))
     await lahei.finish(f'已拉黑{len(state["ids"])}人{state["hours"]}小时~，嘿嘿嘿~')
 
 
-@jiefeng.got('ids', prompt='请输入要解封的id,并用空格隔开~\n在群聊中，还支持直接at哦~', args_parser=parse_qq)
+@jiefeng.got('ids', prompt='请输入要解封的id,并用空格隔开~\n在群聊中，还支持直接at哦~',args_parser = parse_qq)
 async def _(bot: Bot, event: Event, state: T_State):
-    if not state['ids']:
+    if not state.get('ids'):
         raise FinishedException
     for uid in state['ids']:
         unblock_uid(uid)

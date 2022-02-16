@@ -275,7 +275,7 @@ class Chara:
         NAME2ID.clear()
         for k, v in _pcr_data.CHARA_NAME.items():
             for s in v:
-                if s not in NAME2ID:
+                if Chara.normname(s) not in NAME2ID:
                     NAME2ID[Chara.normname(s)] = k
                 else:
                     logger.warning(

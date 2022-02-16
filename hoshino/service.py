@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2021-01-28 00:44:32
 LastEditors: AkiraXie
-LastEditTime: 2021-06-17 00:14:07
+LastEditTime: 2022-02-16 23:03:43
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -10,21 +10,19 @@ import asyncio
 import re
 import os
 import json
-from functools import wraps
 from collections import defaultdict
+import nonebot
+from nonebot.params import Depends
 from nonebot.matcher import current_bot, current_event
-from typing import Mapping
-from nonebot.typing import T_ArgsParser, T_Handler
 from nonebot.message import run_preprocessor, run_postprocessor
-from nonebot.handler import Handler
-from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment
+from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment, Matcher
+from hoshino.message import MessageTemplate
 from hoshino.event import Event
-from hoshino.matcher import Matcher, on_command, on_message, on_startswith, on_endswith, on_notice, on_request, \
-    on_shell_command
+from hoshino.matcher import on_message, on_startswith, on_endswith, on_notice, on_request
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
-from hoshino.util import get_bot_list
-from hoshino.rule import ArgumentParser, Rule, fullmatch, to_me, regex, keyword
-from hoshino.typing import Dict, Iterable, Optional, Union, T_State, List, Type, FinishedException, PausedException, \
+from hoshino.util import _strip_cmd
+from hoshino.rule import ArgumentParser, Rule, fullmatch, to_me, regex, keyword,command,shell_command
+from hoshino.typing import T_Handler,Dict, Iterable, Optional, T_ArgsParser, Union, T_State, List, Type, FinishedException, PausedException, \
     RejectedException
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
@@ -114,7 +112,7 @@ class Service:
 
     async def get_enable_groups(self) -> Dict[int, List[Bot]]:
         gl = defaultdict(list)
-        for bot in get_bot_list():
+        for bot in nonebot.get_bots().values():
             sgl = set(g['group_id'] for g in await bot.get_group_list())
             if self.enable_on_default:
                 sgl = sgl - self.disable_group
@@ -154,13 +152,17 @@ class Service:
     def on_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None,
                    only_group: bool = True, permission: Permission = NORMAL,
                    **kwargs) -> "MatcherWrapper":
-        kwargs["aliases"] = _iter_to_set(aliases)
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = rule
+        kwargs['rule'] = rule &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
+        handlers = kwargs.pop("handlers", [])
+        handlers.insert(0, _strip_cmd)
+        kwargs["handlers"] = handlers
+        commands = set([name]) | (_iter_to_set(aliases) or set())
+        kwargs['rule'] = kwargs['rule'] & command(*commands)
         mw = MatcherWrapper(self,
-                            'Message.command', priority, on_command(name, **kwargs),
+                            'Message.command', priority, on_message( _depth =2, **kwargs),
                             command=name, only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -169,15 +171,18 @@ class Service:
     def on_shell_command(self, name: str, only_to_me: bool = False, aliases: Optional[Iterable] = None,
                          parser: Optional[ArgumentParser] = None, only_group: bool = True,
                          permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
-        kwargs["aliases"] = _iter_to_set(aliases)
         kwargs['permission'] = permission
-        kwargs['parser'] = parser
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = rule
+        kwargs['rule'] = rule  &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
+        handlers = kwargs.pop("handlers", [])
+        handlers.insert(0, _strip_cmd)
+        kwargs["handlers"] = handlers
+        commands = set([name]) | (_iter_to_set(aliases) or set())
+        kwargs['rule'] = kwargs['rule'] & shell_command(*commands,parser=parser)
         mw = MatcherWrapper(self,
                             'Message.shell_command', priority,
-                            on_shell_command(name, **kwargs),
+                            on_message(_depth =2, **kwargs),
                             command=name, only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -187,10 +192,10 @@ class Service:
                       permission: Permission = NORMAL, **kwargs) -> "MatcherWrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = rule
+        kwargs['rule'] = rule  &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.startswith', priority, on_startswith(msg, **kwargs),
+                            'Message.startswith', priority, on_startswith(msg,_depth =2, **kwargs),
                             startswith=msg, only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -200,10 +205,10 @@ class Service:
                     **kwargs) -> "MatcherWrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = rule
+        kwargs['rule'] = rule  &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.endswith', priority, on_endswith(msg, **kwargs), endswith=msg,
+                            'Message.endswith', priority, on_endswith(msg,_depth =2, **kwargs), endswith=msg,
                             only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -214,11 +219,11 @@ class Service:
         keywords = _iter_to_set(keywords)
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = keyword(*keywords, normal=normal) & rule
+        kwargs['rule'] = keyword(*keywords, normal=normal) & rule &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
                             'Message.keyword', priority,
-                            on_message(**kwargs), keywords=str(keywords), only_group=only_group)
+                            on_message(_depth =2,**kwargs), keywords=str(keywords), only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
@@ -228,10 +233,10 @@ class Service:
         keywords = _iter_to_set(keywords)
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = fullmatch(*keywords, normal=normal) & rule
+        kwargs['rule'] = fullmatch(*keywords, normal=normal) & rule &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.fullmatch', priority, on_message(**kwargs),
+                            'Message.fullmatch', priority, on_message(_depth =2,**kwargs),
                             keywords=str(keywords), only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -246,10 +251,10 @@ class Service:
         可以通过 ``state["match"]`` 获取正则表达式匹配成功后的`match`
         '''
         rule = self.check_service(only_to_me, only_group)
-        rule = regex(pattern, flags, normal, full_match) & rule
+        rule = regex(pattern, flags, normal, full_match) & rule  &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.regex', priority, on_message(rule, permission, **kwargs), pattern=str(pattern),
+                            'Message.regex', priority, on_message(rule, permission,_depth =2, **kwargs), pattern=str(pattern),
                             flags=str(flags), only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -259,28 +264,28 @@ class Service:
                    **kwargs) -> "MatcherWrapper":
         kwargs['permission'] = permission
         rule = self.check_service(only_to_me, only_group)
-        kwargs['rule'] = rule
+        kwargs['rule'] = rule  &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Message.message', priority, on_message(**kwargs), only_group=only_group)
+                            'Message.message', priority, on_message(_depth =2,**kwargs), only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
     def on_notice(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
-        rule = self.check_service(0, only_group)
+        rule = self.check_service(0, only_group) &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Notice', priority, on_notice(rule, **kwargs), only_group=only_group)
+                            'Notice', priority, on_notice(rule,_depth =2, **kwargs), only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
 
     def on_request(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
-        rule = self.check_service(0, only_group)
+        rule = self.check_service(0, only_group)  &  kwargs.pop('rule',Rule())
         priority = kwargs.get('priority', 1)
         mw = MatcherWrapper(self,
-                            'Request', priority, on_request(rule, **kwargs),
+                            'Request', priority, on_request(rule,_depth =2, **kwargs),
                             only_group=only_group)
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
@@ -303,17 +308,6 @@ class Service:
                         self.logger.error(f'{sid}在群{gid}投递{tag}失败')
 
 
-async def _permission_updater(bot: Bot, event: Event, state: T_State,
-                              permission: Permission) -> Permission:
-    uid = event.get_user_id()
-    gid = event.group_id if 'group_id' in event.__dict__ else None
-
-    async def _permission(bot: Bot, event: Event):
-        flag = event.group_id == gid if 'group_id' in event.__dict__ else True
-        return flag and event.get_user_id() == uid and await permission(bot, event)
-
-    return Permission(_permission)
-
 
 class MatcherWrapper:
     '''
@@ -323,7 +317,6 @@ class MatcherWrapper:
     '''
 
     def __init__(self, sv: Service, type: str, priority: int, matcher: Type[Matcher], **info) -> None:
-        matcher.permission_updater(_permission_updater)
         self.matcher = matcher
         self.sv = sv
         self.priority = priority
@@ -334,95 +327,32 @@ class MatcherWrapper:
     def get_loaded_matchers() -> List[str]:
         return list(map(str, _loaded_matchers.values()))
 
-    def handle(self):
+    def handle(self,parameterless: Optional[list] = None):
         def deco(func: T_Handler):
-            return self.matcher.handle()(func)
+            return self.matcher.handle(parameterless)(func)
 
         return deco
 
     def __call__(self, func: T_Handler) -> T_Handler:
         return self.handle()(func)
 
-    def receive(self):
+    def receive(self,parameterless: Optional[list] = None):
         def deco(func: T_Handler):
-            return self.matcher.receive()(func)
+            return self.matcher.receive(parameterless)(func)
 
         return deco
+    
+    def got(
+        self,
+        key: str,
+        prompt: Optional[Union[str, Message, MessageSegment, MessageTemplate]] = None,
+        args_parser: Optional[T_ArgsParser] = None,
+        parameterless: Optional[list] = None,
+    ) :
+        def deco(func: T_Handler):
+            return self.matcher.got(key,prompt,args_parser,parameterless)(func)
 
-    def got(self,
-            key: str,
-            prompt: Optional[Union[str, "Message", "MessageSegment"]] = None,
-            args_parser: Optional[T_ArgsParser] = None):
-        '''
-        由于没能惰性调用got，不能直接返回 ``self.matcher.got``,否则多级 ``got`` 的 ``handler`` 会乱序。
-
-        目前先照抄 ``nonebot``
-        '''
-
-        async def _key_getter(bot: "Bot", event: "Event", state: T_State):
-            state["_current_key"] = key
-            if key not in state:
-                if prompt:
-                    if isinstance(prompt, str):
-                        await bot.send(event=event,
-                                       message=prompt.format(**state))
-                    elif isinstance(prompt, Mapping):
-                        if prompt.is_text():
-                            await bot.send(event=event,
-                                           message=str(prompt).format(**state))
-                        else:
-                            await bot.send(event=event, message=prompt)
-                    elif isinstance(prompt, Iterable):
-                        await bot.send(
-                            event=event,
-                            message=prompt.__class__(
-                                str(prompt).format(**state))  # type: ignore
-                        )
-                    else:
-                        self.sv.logger.warning("Unknown prompt type, ignored.")
-                raise PausedException
-            else:
-                state["_skip_key"] = True
-
-        async def _key_parser(bot: "Bot", event: "Event", state: T_State):
-            if key in state and state.get("_skip_key"):
-                del state["_skip_key"]
-                return
-            parser = args_parser or self.matcher._default_parser
-            if parser:
-                # parser = cast(T_ArgsParser["Bot", "Event"], parser)
-                await parser(bot, event, state)
-            else:
-                state[state["_current_key"]] = str(event.get_message())
-
-        getter_handler = self.matcher.append_handler(_key_getter)
-        parser_handler = self.matcher.append_handler(_key_parser)
-
-        def _decorator(func: T_Handler) -> T_Handler:
-            if not hasattr(self.matcher.handlers[-1], "__wrapped__"):
-                parser = self.matcher.handlers.pop()
-                func_handler = Handler(func)
-
-                @wraps(func)
-                async def wrapper(bot: "Bot", event: "Event", state: T_State,
-                                  matcher: Matcher):
-                    await parser(matcher, bot, event, state)
-                    await func_handler(matcher, bot, event, state)
-                    if "_current_key" in state:
-                        del state["_current_key"]
-
-                wrapper_handler = self.matcher.append_handler(wrapper)
-
-                getter_handler.update_signature(
-                    bot=wrapper_handler.bot_type,
-                    event=wrapper_handler.event_type)
-                parser_handler.update_signature(
-                    bot=wrapper_handler.bot_type,
-                    event=wrapper_handler.event_type)
-
-            return func
-
-        return _decorator
+        return deco
 
     async def reject(self,
                      prompt: Optional[Union[str, "Message",
@@ -432,7 +362,7 @@ class MatcherWrapper:
                      at_sender: bool = False,
                      **kwargs):
         if prompt:
-            await self.send(prompt, call_header=call_header, at_sender=at_sender, **kwargs)
+            await self.matcher.send(prompt, call_header=call_header, at_sender=at_sender, **kwargs)
         raise RejectedException
 
     async def pause(self,
@@ -477,14 +407,14 @@ class MatcherWrapper:
 
 
 @run_preprocessor
-async def _(matcher: Matcher, bot: Bot, event: Event, state: T_State):
+async def _(matcher: Matcher):
     mw = _loaded_matchers.get(matcher.__class__, None)
     if mw:
         mw.sv.logger.info(f'Event will be handled by <lc>{mw}</>')
 
 
 @run_postprocessor
-async def _(matcher: Matcher, exception: Exception, bot: Bot, event: Event, state: T_State):
+async def _(matcher: Matcher, exception: Exception):
     mw = _loaded_matchers.get(matcher.__class__, None)
     if mw:
         if exception:

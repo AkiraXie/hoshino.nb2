@@ -1,3 +1,11 @@
+'''
+Author: AkiraXie
+Date: 2021-02-19 16:20:56
+LastEditors: AkiraXie
+LastEditTime: 2022-01-20 02:35:58
+Description: 
+Github: http://github.com/AkiraXie/
+'''
 from loguru import logger
 from hoshino import sucmd, Bot, Event
 from hoshino.typing import T_State, FinishedException
@@ -11,10 +19,11 @@ async def _(bot: Bot):
     msg = ["现有定时任务如下: "]
     jobs = scheduler.get_jobs()
     for job in jobs:
-        id = job.id
+        _id = job.id
         trigger = job.trigger
         state = 'running' if job.next_run_time else 'pausing'
-        msg.append(f'ID: {id}\nTrigger: {trigger}\nstate: {state}\n======')
+        next_run = f'{job.next_run_time}'
+        msg.append(f'ID: {_id}\nTrigger: {trigger}\nstate: {state}\nnext_run: {next_run}======')
     await showjob.send('\n'.join(msg), at_sender=True)
 
 pausejob = sucmd('暂停定时任务', True, {'暂停任务', 'pausejob'}, state={'action': '暂停'})

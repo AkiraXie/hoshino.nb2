@@ -7,7 +7,7 @@ Description:
 Github: http://github.com/AkiraXie/
 '''
 from hoshino import Service, R, Bot, MessageSegment, Event
-from hoshino.util import ImageFont, Image, ImageDraw, img_to_b64
+from hoshino.util import ImageFont, Image, ImageDraw, img_to_bytes
 from re import S
 from hoshino.typing import T_State
 path = R.img('high_eq_image.png')
@@ -43,4 +43,4 @@ async def _(bot: Bot, event: Event, state: T_State):
     img_p = Image.open(path)
     draw_text(img_p, low, 0)
     draw_text(img_p, high, 400)
-    await bot.send(event, MessageSegment.image(img_to_b64(img_p)))
+    await bot.send(event, MessageSegment.image(img_to_bytes(img_p)))

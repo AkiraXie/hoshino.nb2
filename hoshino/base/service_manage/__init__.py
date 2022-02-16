@@ -2,10 +2,11 @@
 Author: AkiraXie
 Date: 2021-01-29 12:54:47
 LastEditors: AkiraXie
-LastEditTime: 2021-02-12 20:21:21
+LastEditTime: 2022-02-17 00:52:33
 Description:
 Github: http://github.com/AkiraXie/
 '''
+
 import re
 from functools import cmp_to_key
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
@@ -13,20 +14,21 @@ from hoshino import Service, Bot, Event
 from hoshino.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
 from hoshino.matcher import on_shell_command
-from hoshino.util import text_to_segment
+from hoshino.util import text_to_segment,_strip_cmd
 from hoshino.typing import T_State, FinishedException
 from .util import parse_gid, parse_service
 parser = ArgumentParser()
 parser.add_argument('-a', '--all', action='store_true')
 parser.add_argument('-p', '--picture', action='store_true')
+parser.add_argument('-i', '--invisible', action='store_true')
 parser1 = ArgumentParser()
 parser1.add_argument('-a', '--all', action='store_true')
 lssv = on_shell_command('lssv', to_me(), aliases={
-                        '服务列表', '功能列表'}, permission=ADMIN, parser=parser)
+                        '服务列表', '功能列表'}, permission=ADMIN, parser=parser,block=True,handlers=[_strip_cmd])
 enable = on_shell_command('enable', to_me(), aliases={
-                          '开启', '打开', '启用'}, parser=parser1, state={'action': '开启'})
+                          '开启', '打开', '启用'}, parser=parser1, state={'action': '开启'},block=True,handlers=[_strip_cmd])
 disable = on_shell_command('disable', to_me(), aliases={
-                           '关闭', '停用', '禁用'}, parser=parser1, state={'action': '关闭'})
+                           '关闭', '停用', '禁用'}, parser=parser1, state={'action': '关闭'},block=True,handlers=[_strip_cmd])
 
 
 @lssv.handle()
@@ -40,8 +42,9 @@ async def _(bot: Bot, event: Event, state: T_State):
     if not 'gids' in state:
         await bot.send(event, '无效输入')
         raise FinishedException
-    verbose_all = state['args'].all
-    as_pic = state['args'].picture
+    verbose_all = state['_args'].all
+    as_pic = state['_args'].picture
+    verbose_hide =state['_args'].invisible
     svs = Service.get_loaded_services().values()
     for gid in state['gids']:
         current_svs = map(lambda sv: (sv, sv.check_enabled(gid)), svs)
@@ -50,7 +53,14 @@ async def _(bot: Bot, event: Event, state: T_State):
         current_svs = sorted(current_svs, key=cmpfunc)
         reply = [f'群{gid}服务一览：']
         for sv, on in current_svs:
-            if sv.visible or verbose_all:
+            if verbose_all:
+                ox = 'O' if on else 'X'
+                reply.append(f"|{ox}| {sv.name}")
+            elif verbose_hide:
+                if not sv.visible:
+                    ox = 'O' if on else 'X'
+                    reply.append(f"|{ox}| {sv.name}")
+            elif sv.visible:
                 ox = 'O' if on else 'X'
                 reply.append(f"|{ox}| {sv.name}")
         await lssv.finish("\n".join(reply)) if not as_pic else await lssv.finish(text_to_segment("\n".join(reply)))
@@ -98,7 +108,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         raise FinishedException
     action = state['action']
     svs = Service.get_loaded_services()
-    if 'all' in state['args'].__dict__ and state['args'].all:
+    if 'all' in state['_args'].__dict__ and state['_args'].all:
         state['services'] = svs.keys()
     allsv = set(svs.keys())
     exclude, succ, notfound, succ_group = set(), set(), set(), set()

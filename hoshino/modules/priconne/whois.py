@@ -2,16 +2,14 @@
 Author: AkiraXie
 Date: 2021-01-31 03:06:03
 LastEditors: AkiraXie
-LastEditTime: 2021-06-17 00:36:15
+LastEditTime: 2022-02-16 22:42:30
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 
-from nonebot import require
 from nonebot.permission import SUPERUSER
 from nonebot.exception import FinishedException
-from hoshino import Service, Event, Message
-from nonebot.adapters.cqhttp import Bot
+from hoshino import Service, Event, Message, Bot
 from hoshino.typing import T_State
 from hoshino.util import FreqLimiter
 from hoshino.modules.priconne.chara import Chara
@@ -48,10 +46,6 @@ async def handle_whois(bot: Bot, event: Event, state: T_State):
 
 whois = sv.on_regex(r'^谁是(.{1,20})$',
                     handlers=[handle_whois], only_group=False)
-
-whoisr = sv.on_regex(r'^(.{1,20})是谁$',  only_group=False,
-                     priority=2, handlers=[handle_whois])
-
 
 async def handle_lookcard(bot: Bot, event: Event, state: T_State):
     uid = int(event.get_user_id())

@@ -48,7 +48,7 @@ twnews = svtw.on_shell_command('台服新闻',  only_group=False, parser=parser)
 
 @twnews.handle()
 async def send_sonet_news(bot: Bot, state: T_State):
-    args = state['args']
+    args = state['_args']
     await send_news(twnews, SonetSpider,args.limit)
 
 blnews = svbl.on_shell_command('B服新闻', aliases=(
@@ -57,5 +57,5 @@ blnews = svbl.on_shell_command('B服新闻', aliases=(
 
 @blnews.handle()
 async def send_bili_news(bot: Bot, state: T_State):
-    args = state['args']
+    args = state['_args']
     await send_news(blnews, BiliSpider,args.limit)

@@ -2,28 +2,34 @@
 Author: AkiraXie
 Date: 2021-01-28 02:03:18
 LastEditors: AkiraXie
-LastEditTime: 2021-06-12 03:41:42
+LastEditTime: 2022-02-17 00:50:55
 Description: 
 Github: http://github.com/AkiraXie/
 '''
 import nonebot
 import os
 
-
-hsn_config = nonebot.get_driver().config
+driver = nonebot.get_driver()
+hsn_config = driver.config
+fav_dir = os.path.join(hsn_config.data,'favorite/')
+img_dir = os.path.join(hsn_config.data,'image/')
 db_dir=os.path.join(hsn_config.data,'db/')
 service_dir=os.path.join(hsn_config.data,'service/')
+os.makedirs(fav_dir,exist_ok=True)
+os.makedirs(img_dir,exist_ok=True)
 os.makedirs(db_dir,exist_ok=True)
 os.makedirs(service_dir,exist_ok=True)
 
-from .typing import Final,Any,Union
+from .typing import Final,Any,Union,T_ArgsParser,T_Handler,Optional,Type
 from .res import RHelper
-from nonebot.adapters.cqhttp import Bot
-from nonebot.adapters.cqhttp.utils import escape
-from .message import MessageSegment, Message, MessageBuilder
+from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters.onebot.v11.utils import escape
+from nonebot.params import Depends
+from nonebot.matcher import Matcher,current_bot
+from .message import MessageSegment, Message, MessageBuilder, MessageTemplate
 from .event import Event
 
-
+# patch bot.send
 async def send(self:Bot, event: Event,
                    message: Union[str, Message, MessageSegment],
                    at_sender: bool = False,
@@ -32,7 +38,7 @@ async def send(self:Bot, event: Event,
     """
         :说明:
 
-        改自 ``cqhttp.bot.send``
+        改自 ``onebot.v11.bot.send``
 
         根据 ``event``  向触发事件的主体发送消息。
 
@@ -97,8 +103,63 @@ async def send(self:Bot, event: Event,
             
     return await self.send_msg(**params)
 
-Bot.send=send
+Bot.send = send
 
+#patch matcher.got
+
+@classmethod
+def got(
+    cls: Type[Matcher],
+    key: str,
+    prompt: Optional[Union[str, Message, MessageSegment, MessageTemplate]] = None,
+    args_parser: Optional[T_ArgsParser] = None,
+    parameterless: Optional[list] = None,
+) :
+    """改自 `nonebot.Matcher.got`
+    
+    装饰一个函数来指示 NoneBot 获取一个参数 `key`
+
+    当要获取的 `key` 不存在时接收用户新的一条消息再运行该函数，如果 `key` 已存在则直接继续运行
+
+    参数:
+        key: 参数名
+        prompt: 在参数不存在时向用户发送的消息
+        args_parser: 参数解析器
+        parameterless: 非参数类型依赖列表
+    """
+
+    async def _key_getter(event: Event, matcher: "Matcher"):
+        matcher.set_target(key)
+        if matcher.get_target() == key:
+            if not args_parser:
+                matcher.set_arg(key, event.get_plaintext())
+            else:
+                bot: Bot = current_bot.get()
+                await args_parser(bot,event,matcher.state)
+            return
+        if matcher.get_arg(key, ...) is not ...:
+            return
+        await matcher.reject(prompt)
+
+    _parameterless = [
+        Depends(_key_getter),
+        *(parameterless or []),
+    ]
+
+    def _decorator(func: T_Handler) -> T_Handler:
+
+        if cls.handlers and cls.handlers[-1].call is func:
+            func_handler = cls.handlers[-1]
+            for depend in reversed(_parameterless):
+                func_handler.prepend_parameterless(depend)
+        else:
+            cls.append_handler(func, parameterless=_parameterless)
+
+        return func
+
+    return _decorator
+
+Matcher.got = got
 
 '''
 `R`本身是一个字符串，并重载了`.`,`+`,`()`等运算符,但屏蔽了对字符串本身进行修改的一些操作。
