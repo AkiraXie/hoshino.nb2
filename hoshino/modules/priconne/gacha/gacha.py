@@ -1,18 +1,17 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-01-30 15:00:40
 LastEditors: AkiraXie
 LastEditTime: 2021-02-02 23:34:36
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 import random
 from typing import List, Tuple
 from . import Chara, sv
 
 
 class Gacha(object):
-
     def __init__(self, pool_name: str = "MIX"):
         super().__init__()
         self.load_pool(pool_name)
@@ -29,8 +28,10 @@ class Gacha(object):
         self.star2 = pool["star2"]
         self.star1 = pool["star1"]
 
-    def gacha_one(self, up_prob: int, s3_prob: int, s2_prob: int, s1_prob: int = None) -> Tuple[Chara, int]:
-        '''
+    def gacha_one(
+        self, up_prob: int, s3_prob: int, s2_prob: int, s1_prob: int = None
+    ) -> Tuple[Chara, int]:
+        """
         sx_prob: x星概率，要求和为1000
         up_prob: UP角色概率（从3星划出）
         up_chara: UP角色名列表
@@ -40,7 +41,7 @@ class Gacha(object):
         |up|      |  20  |   78   |
         |   ***   |  **  |    *   |
         ---------------------------
-        '''
+        """
         if s1_prob is None:
             s1_prob = 1000 - s3_prob - s2_prob
         total_ = s3_prob + s2_prob + s1_prob
@@ -61,18 +62,18 @@ class Gacha(object):
         s3 = self.s3_prob
         s2 = self.s2_prob
         s1 = 1000 - s3 - s2
-        for _ in range(9):    # 前9连
+        for _ in range(9):  # 前9连
             c, y = self.gacha_one(up, s3, s2, s1)
             result.append(c)
             hiishi += y if y != 100 else 50
-        c, y = self.gacha_one(up, s3, s2 + s1, 0)    # 保底第10抽
+        c, y = self.gacha_one(up, s3, s2 + s1, 0)  # 保底第10抽
         result.append(c)
         hiishi += y if y != 100 else 50
 
         return result, hiishi
 
     def gacha_tenjou(self) -> Tuple:
-        result = {'s3': [], 's2': [], 's1': []}
+        result = {"s3": [], "s2": [], "s1": []}
         first_up_pos = 999
         upnum = 0
         up = self.up_prob
@@ -80,32 +81,32 @@ class Gacha(object):
         s2 = self.s2_prob
         s1 = 1000 - s3 - s2
         for i in range(30):  # 三十个十连
-            for j in range(1, 10):    # 前9连
+            for j in range(1, 10):  # 前9连
                 c, y = self.gacha_one(up, s3, s2, s1)
                 if 100 == y:
-                    result['s3'].append(c)
-                    first_up_pos = min(i*10+j, first_up_pos)
+                    result["s3"].append(c)
+                    first_up_pos = min(i * 10 + j, first_up_pos)
                     upnum += 1
                 elif 50 == y:
-                    result['s3'].append(c)
+                    result["s3"].append(c)
                 elif 10 == y:
-                    result['s2'].append(c)
+                    result["s2"].append(c)
                 elif 1 == y:
-                    result['s1'].append(c)
+                    result["s1"].append(c)
                 else:
-                    pass    # should never reach here
-            c, y = self.gacha_one(up, s3, s2 + s1, 0)    # 保底第10抽
+                    pass  # should never reach here
+            c, y = self.gacha_one(up, s3, s2 + s1, 0)  # 保底第10抽
             if 100 == y:
-                result['s3'].append(c)
-                first_up_pos = min((i+1)*10, first_up_pos)
+                result["s3"].append(c)
+                first_up_pos = min((i + 1) * 10, first_up_pos)
                 upnum += 1
             elif 50 == y:
-                result['s3'].append(c)
+                result["s3"].append(c)
             elif 10 == y:
-                result['s2'].append(c)
+                result["s2"].append(c)
             elif 1 == y:
-                result['s1'].append(c)
+                result["s1"].append(c)
             else:
                 pass  # should never reach here
-        result['first_up_pos'] = first_up_pos
+        result["first_up_pos"] = first_up_pos
         return result, upnum

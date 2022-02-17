@@ -1,11 +1,11 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-01-28 14:29:01
 LastEditors: AkiraXie
 LastEditTime: 2022-02-16 22:16:28
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 import pytz
 import base64
 import zhconv
@@ -19,7 +19,12 @@ from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from nonebot.adapters.onebot.v11 import MessageSegment
-from nonebot.adapters.onebot.v11.event import Event, GroupMessageEvent, PrivateMessageEvent,MessageEvent
+from nonebot.adapters.onebot.v11.event import (
+    Event,
+    GroupMessageEvent,
+    PrivateMessageEvent,
+    MessageEvent,
+)
 from nonebot.typing import T_State
 from hoshino import R
 from nonebot.utils import run_sync
@@ -31,8 +36,10 @@ from nonebot.rule import Rule, to_me
 from .aiohttpx import get
 from .bitly import get_bitly_url
 from .playwrights import get_bili_dynamic_screenshot
+
 DEFAULTFONT = ImageFont.truetype(
-     R.img('priconne/gadget/SourceHanSans-Regular.ttc'), size=48)
+    R.img("priconne/gadget/SourceHanSans-Regular.ttc"), size=48
+)
 
 
 class FreqLimiter:
@@ -44,11 +51,13 @@ class FreqLimiter:
         return bool(time.time() >= self.next_time[key])
 
     def start_cd(self, key, cd_time=0):
-        self.next_time[key] = time.time() + (cd_time if cd_time > 0 else self.default_cd)
+        self.next_time[key] = time.time() + (
+            cd_time if cd_time > 0 else self.default_cd
+        )
 
 
 class DailyNumberLimiter:
-    tz = pytz.timezone('Asia/Shanghai')
+    tz = pytz.timezone("Asia/Shanghai")
 
     def __init__(self, max_num):
         self.today = -1
@@ -76,90 +85,106 @@ class DailyNumberLimiter:
 def get_bot_list() -> List[Bot]:
     return list(nonebot.get_bots().values())
 
-async def _strip_cmd(bot: "Bot", event: "Event", state: T_State):
-        message = event.get_message()
-        segment = message.pop(0)
-        new_message = message.__class__(
-            str(segment)
-            [len(state["_prefix"]["raw_command"]):].strip())  # type: ignore
-        for new_segment in reversed(new_message):
-            message.insert(0, new_segment)
 
-def sucmd(name: str, only_to_me: bool = True, aliases: Optional[set] = None, **kwargs) -> Type[Matcher]:
-    kwargs['aliases'] = aliases
-    kwargs['permission'] = SUPERUSER
-    kwargs['rule'] = to_me() if only_to_me else Rule()
+async def _strip_cmd(bot: "Bot", event: "Event", state: T_State):
+    message = event.get_message()
+    segment = message.pop(0)
+    new_message = message.__class__(
+        str(segment)[len(state["_prefix"]["raw_command"]) :].strip()
+    )  # type: ignore
+    for new_segment in reversed(new_message):
+        message.insert(0, new_segment)
+
+
+def sucmd(
+    name: str, only_to_me: bool = True, aliases: Optional[set] = None, **kwargs
+) -> Type[Matcher]:
+    kwargs["aliases"] = aliases
+    kwargs["permission"] = SUPERUSER
+    kwargs["rule"] = to_me() if only_to_me else Rule()
     handlers = kwargs.pop("handlers", [])
     handlers.insert(0, _strip_cmd)
     kwargs["handlers"] = handlers
-    kwargs.setdefault("block",True)
-    return on_command(name,_depth=1, **kwargs)
-
+    kwargs.setdefault("block", True)
+    return on_command(name, _depth=1, **kwargs)
 
 
 def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
-    kwargs['permission'] = SUPERUSER
-    kwargs['rule'] = to_me() if only_to_me else Rule()
+    kwargs["permission"] = SUPERUSER
+    kwargs["rule"] = to_me() if only_to_me else Rule()
     handlers = kwargs.pop("handlers", [])
     handlers.insert(0, _strip_cmd)
     kwargs["handlers"] = handlers
-    kwargs.setdefault("block",True)
+    kwargs.setdefault("block", True)
     return CommandGroup(name, **kwargs)
 
 
-def get_text_size(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> tuple:
-    '''
+def get_text_size(
+    text: str,
+    font: ImageFont.ImageFont = DEFAULTFONT,
+    padding: Tuple[int, int, int, int] = (20, 20, 20, 20),
+    spacing: int = 5,
+) -> tuple:
+    """
     返回文本转图片的图片大小
 
     *`text`：用来转图的文本
-    
+
     *`font`：一个`ImageFont`实例
-    
+
     *`padding`：一个四元`int`元组，分别是左、右、上、下的留白大小
-    
+
     *`spacing`: 文本行间距
-    '''
-    with Image.new('RGBA', (1, 1), (255, 255, 255, 255)) as base:
+    """
+    with Image.new("RGBA", (1, 1), (255, 255, 255, 255)) as base:
         dr = ImageDraw.ImageDraw(base)
     ret = dr.textsize(text, font=font, spacing=spacing)
-    return ret[0]+padding[0]+padding[1], ret[1]+padding[2]+padding[3]
+    return ret[0] + padding[0] + padding[1], ret[1] + padding[2] + padding[3]
 
 
-def text_to_img(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> Image.Image:
-    '''
+def text_to_img(
+    text: str,
+    font: ImageFont.ImageFont = DEFAULTFONT,
+    padding: Tuple[int, int, int, int] = (20, 20, 20, 20),
+    spacing: int = 5,
+) -> Image.Image:
+    """
     返回一个文本转化后的`Image`实例
 
     *`text`：用来转图的文本
-    
+
     *`font`：一个`ImageFont`实例
-    
+
     *`padding`：一个四元`int`元组，分别是左、右、上、下的留白大小
-    
+
     *`spacing`: 文本行间距
-    '''
+    """
     size = get_text_size(text, font, padding, spacing)
-    base = Image.new('RGBA', size, (255, 255, 255, 255))
+    base = Image.new("RGBA", size, (255, 255, 255, 255))
     dr = ImageDraw.ImageDraw(base)
-    dr.text((padding[0], padding[2]), text, font=font,
-            fill='#000000', spacing=spacing)
+    dr.text((padding[0], padding[2]), text, font=font, fill="#000000", spacing=spacing)
     return base
 
 
 def img_to_bytes(pic: Image.Image) -> bytes:
     buf = BytesIO()
-    pic.save(buf, format='PNG')
+    pic.save(buf, format="PNG")
     return buf.getvalue()
 
 
-def text_to_segment(text: str, font: ImageFont.ImageFont = DEFAULTFONT, padding: Tuple[int, int, int, int] = (20, 20, 20, 20), spacing: int = 5) -> MessageSegment:
+def text_to_segment(
+    text: str,
+    font: ImageFont.ImageFont = DEFAULTFONT,
+    padding: Tuple[int, int, int, int] = (20, 20, 20, 20),
+    spacing: int = 5,
+) -> MessageSegment:
     return MessageSegment.image(img_to_bytes(text_to_img(text, font, padding, spacing)))
 
 
 def concat_pic(pics, border=5):
     num = len(pics)
     w, h = pics[0].size
-    des = Image.new('RGBA', (w, num * h + (num-1) * border),
-                    (255, 255, 255, 255))
+    des = Image.new("RGBA", (w, num * h + (num - 1) * border), (255, 255, 255, 255))
     for i, pic in enumerate(pics):
         des.paste(pic, (0, i * (h + border)), pic)
     return des
@@ -169,9 +194,9 @@ def normalize_str(string: str) -> str:
     """
     规范化unicode字符串 并 转为小写 并 转为简体
     """
-    string = unicodedata.normalize('NFKC', string)
+    string = unicodedata.normalize("NFKC", string)
     string = string.lower()
-    string = zhconv.convert(string, 'zh-hans')
+    string = zhconv.convert(string, "zh-hans")
     return string
 
 
@@ -179,8 +204,8 @@ async def parse_qq(event: Event, state: T_State):
     ids = []
     if isinstance(event, GroupMessageEvent):
         for m in event.get_message():
-            if m.type == 'at' and m.data['qq'] != 'all':
-                ids.append(int(m.data['qq']))
+            if m.type == "at" and m.data["qq"] != "all":
+                ids.append(int(m.data["qq"]))
         for m in event.get_plaintext().split():
             if m.isdigit():
                 ids.append(int(m))
@@ -189,21 +214,19 @@ async def parse_qq(event: Event, state: T_State):
             if m.isdigit():
                 ids.append(int(m))
     if ids:
-        state['ids'] = ids.copy()
+        state["ids"] = ids.copy()
 
 
 def get_event_image(event: MessageEvent) -> List[str]:
     msg = event.get_message()
-    imglist = [
-        s.data['file']
-        for s in msg
-        if s.type == 'image' and 'file' in s.data
-    ]
+    imglist = [s.data["file"] for s in msg if s.type == "image" and "file" in s.data]
     return imglist
 
-async def save_img(url:str,name:str,fav:bool=False):
+
+async def save_img(url: str, name: str, fav: bool = False):
     from hoshino import img_dir
     from hoshino import fav_dir
+
     if fav:
         idir = fav_dir
     else:
@@ -211,27 +234,24 @@ async def save_img(url:str,name:str,fav:bool=False):
     r = await aiohttpx.get(url)
     b = BytesIO(r.content)
     img = Image.open(b)
-    name = os.path.join(idir,name)
+    name = os.path.join(idir, name)
     img.save(name)
     b.close()
     img.close()
 
+
 def get_event_imageurl(event: MessageEvent) -> List[str]:
     msg = event.message
-    imglist = [
-        s.data['url']
-        for s in msg
-        if s.type == 'image' and 'url' in s.data
-    ]
+    imglist = [s.data["url"] for s in msg if s.type == "image" and "url" in s.data]
     return imglist
-    
-async def send_to_superuser(bot:Bot,msg):
-    sus=bot.config.superusers
+
+
+async def send_to_superuser(bot: Bot, msg):
+    sus = bot.config.superusers
     for su in sus:
-        await bot.send_private_msg(user_id=su,message=msg)
+        await bot.send_private_msg(user_id=su, message=msg)
+
 
 async def get_img_from_url(url: str) -> MessageSegment:
     resp = await get(url)
     return MessageSegment.image(resp.content)
-    
-    

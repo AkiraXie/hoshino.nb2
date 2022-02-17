@@ -1,20 +1,22 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-01-28 02:32:32
 LastEditors: AkiraXie
 LastEditTime: 2022-02-17 00:29:16
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 from hoshino.matcher import get_matchers
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from hoshino.event import Event, get_event
-from hoshino import Bot, get_bot_list,sucmd
-test1 = sucmd('testgetbot', True)
-test2 = sucmd('testmatchers', True)
-test3 = sucmd('testevent', True)
-test4 = sucmd('forward')
+from hoshino import Bot, get_bot_list, sucmd
+
+test1 = sucmd("testgetbot", True)
+test2 = sucmd("testmatchers", True)
+test3 = sucmd("testevent", True)
+test4 = sucmd("forward")
+
 
 @test1.handle()
 async def _(bot: Bot):
@@ -29,8 +31,16 @@ async def _(bot: Bot):
 @test3.handle()
 async def _(bot: Bot, event: Event):
     await test3.finish(get_event(event))
-    
+
+
 @test4.handle()
-async def _(bot:Bot, event: GroupMessageEvent):
-    ms = MessageSegment("node", {"user_id": event.get_user_id(), "name": "test", "content": "testtest"+MessageSegment.face(233)})
-    await bot.send_group_forward_msg(group_id = event.group_id, messages = [ms])
+async def _(bot: Bot, event: GroupMessageEvent):
+    ms = MessageSegment(
+        "node",
+        {
+            "user_id": event.get_user_id(),
+            "name": "test",
+            "content": "testtest" + MessageSegment.face(233),
+        },
+    )
+    await bot.send_group_forward_msg(group_id=event.group_id, messages=[ms])

@@ -1,21 +1,26 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-01-28 14:10:09
 LastEditors: AkiraXie
 LastEditTime: 2022-02-16 22:47:11
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 import re
 from typing import Union, Set
-from nonebot.rule import command,shell_command
+from nonebot.rule import command, shell_command
 from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import Bot, Event
 from nonebot.rule import ArgumentParser, Rule, to_me
 from hoshino.util import normalize_str
 
 
-def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, full_match: bool = True) -> Rule:
+def regex(
+    regex: str,
+    flags: Union[int, re.RegexFlag] = 0,
+    normal: bool = True,
+    full_match: bool = True,
+) -> Rule:
     """
     :说明:
       改自`nonebot.rule.regex`
@@ -39,7 +44,7 @@ def regex(regex: str, flags: Union[int, re.RegexFlag] = 0, normal: bool = True, 
             text = normalize_str(text)
         matched = pattern.search(text) if not full_match else pattern.fullmatch(text)
         if matched:
-            state['match'] = matched
+            state["match"] = matched
             state["_matched"] = matched.group()
             state["_matched_groups"] = matched.groups()
             state["_matched_dict"] = matched.groupdict()

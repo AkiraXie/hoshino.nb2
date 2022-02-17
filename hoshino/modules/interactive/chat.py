@@ -1,28 +1,33 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-02-19 02:22:27
 LastEditors: AkiraXie
 LastEditTime: 2021-06-09 02:29:24
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 from typing import Dict
 from hoshino import Service, Bot, Event, Message
 import random
-sv = Service('chat', visible=False)
+
+sv = Service("chat", visible=False)
 
 
 async def nihaole(bot: Bot, event: Event):
-    await bot.send(event, '不许好,憋回去！')
-sv.on_command('我好了').handle()(nihaole)
+    await bot.send(event, "不许好,憋回去！")
+
+
+sv.on_command("我好了").handle()(nihaole)
 
 
 async def ddhaole(bot: Bot, event: Event):
-    await bot.send(event, '那个朋友是不是你弟弟？')
-sv.on_command('我有个朋友说他好了', aliases=('我朋友说他好了', )).handle()(ddhaole)
+    await bot.send(event, "那个朋友是不是你弟弟？")
 
 
-sv1 = Service('repeat', visible=False)
+sv.on_command("我有个朋友说他好了", aliases=("我朋友说他好了",)).handle()(ddhaole)
+
+
+sv1 = Service("repeat", visible=False)
 
 
 class Repeater:
@@ -54,7 +59,7 @@ async def random_repeat(bot: Bot, event: Event):
             GROUP_STATE[gid] = Repeater(msg, True, 0.0)
             await bot.send(event, Message(msg))
         else:
-            p = 1-(1-p) / 1.6
+            p = 1 - (1 - p) / 1.6
             GROUP_STATE[gid] = Repeater(msg, False, p)
     else:
         GROUP_STATE[gid] = Repeater(msg, False, 0.0)

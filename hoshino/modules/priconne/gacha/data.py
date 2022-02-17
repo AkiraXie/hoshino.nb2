@@ -1,17 +1,17 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-01-30 21:55:38
 LastEditors: AkiraXie
 LastEditTime: 2021-01-31 02:50:06
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 import peewee as pw
 import os
 from hoshino import db_dir
 
 
-db_path = os.path.join(db_dir, 'gacha.db')
+db_path = os.path.join(db_dir, "gacha.db")
 db = pw.SqliteDatabase(db_path)
 
 
@@ -21,7 +21,7 @@ class usercollection(pw.Model):
 
     class Meta:
         database = db
-        primary_key = pw.CompositeKey('id', 'chara')
+        primary_key = pw.CompositeKey("id", "chara")
 
 
 class grouppool(pw.Model):
@@ -30,11 +30,11 @@ class grouppool(pw.Model):
 
     class Meta:
         database = db
-        primary_key = pw.CompositeKey('id')
+        primary_key = pw.CompositeKey("id")
 
 
 def get_pool(gid: int) -> str:
-    ret,_= grouppool.get_or_create(id=gid, defaults={'pool': 'MIX'})
+    ret, _ = grouppool.get_or_create(id=gid, defaults={"pool": "MIX"})
     return ret.pool
 
 
@@ -43,8 +43,7 @@ def set_pool(gid: int, pool: str):
 
 
 def select_collection(uid: int) -> list:
-    ret = usercollection.select(usercollection.chara).where(
-        usercollection.id == uid)
+    ret = usercollection.select(usercollection.chara).where(usercollection.id == uid)
     retl = []
     for r in ret:
         retl.append(r.chara)

@@ -1,24 +1,25 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-01-29 15:02:48
 LastEditors: AkiraXie
 LastEditTime: 2021-06-09 02:30:07
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 from loguru import logger
 from io import UnsupportedOperation
 from PIL import Image
 import os
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from hoshino import hsn_config
-STATIC = os.path.expanduser(hsn_config.static or 'static')
+
+STATIC = os.path.expanduser(hsn_config.static or "static")
 
 os.makedirs(STATIC, exist_ok=1)
 
 
 class RHelper(str):
-    '''
+    """
     资源访问类，但不推荐利用这个类构建对象，推荐使用`hoshino.R`这个全局常量来进行访问。
 
     `R`本身是一个字符串，并重载了`.`,`+`,`()`,`/`,`//`运算符,但屏蔽了对字符串本身进行修改的一些操作。
@@ -29,7 +30,7 @@ class RHelper(str):
 
     e.g：
 
-    `R.img.priconne`,`R.img('priconne')`,`R+"img"+"priconne"`是等效的 '''
+    `R.img.priconne`,`R.img('priconne')`,`R+"img"+"priconne"`是等效的"""
 
     def __init__(self, path: str = None) -> None:
         if not path:
@@ -42,7 +43,8 @@ class RHelper(str):
         path = os.path.normpath(path)
         if not os.path.isdir(path) and not os.path.isfile(path):
             logger.warning(
-                f'{path} is not a directory and a file!\nif {key}.* or *.{key} is file or dir,please use + or () opearator.')
+                f"{path} is not a directory and a file!\nif {key}.* or *.{key} is file or dir,please use + or () opearator."
+            )
         return __class__(path)
 
     def __floordiv__(self, key):
@@ -61,19 +63,22 @@ class RHelper(str):
         return __class__(path)
 
     def __setattr__(self, name: str, value) -> None:
-        if name != '_RHelper__rpath':
+        if name != "_RHelper__rpath":
             raise UnsupportedOperation(
-                f'unsupported operand type(s) for =: "RHelper" and "{type(value)}"')
+                f'unsupported operand type(s) for =: "RHelper" and "{type(value)}"'
+            )
         else:
             self.__dict__[name] = value
 
     def __imul__(self, key):
         raise UnsupportedOperation(
-            f'unsupported operand type(s) for *=: "RHelper" and "{type(key)}"')
+            f'unsupported operand type(s) for *=: "RHelper" and "{type(key)}"'
+        )
 
     def __mul__(self, key):
         raise UnsupportedOperation(
-            f'unsupported operand type(s) for *: "RHelper" and "{type(key)}"')
+            f'unsupported operand type(s) for *: "RHelper" and "{type(key)}"'
+        )
 
     def __call__(self, path, *paths):
         key = os.path.join(path, *paths)
@@ -104,7 +109,7 @@ class RHelper(str):
     @property
     def CQcode(self) -> MessageSegment:
         try:
-            return MessageSegment.image('file:///'+os.path.abspath(self.__rpath))
+            return MessageSegment.image("file:///" + os.path.abspath(self.__rpath))
         except Exception as e:
             logger.exception(e)
-            return MessageSegment.text('[图片出错]')
+            return MessageSegment.text("[图片出错]")

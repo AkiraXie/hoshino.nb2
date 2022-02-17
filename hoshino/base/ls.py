@@ -1,11 +1,11 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-02-01 13:28:02
 LastEditors: AkiraXie
 LastEditTime: 2021-02-02 22:25:39
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 from hoshino.util import sucmds
 from hoshino import Bot, Event
 from hoshino.service import Service, MatcherWrapper
@@ -27,24 +27,24 @@ async def ls_friend(bot: Bot, event: Event):
     await bot.send(event, msg)
 
 
-lscmds = sucmds('ls',True)
-lscmds.command('group', aliases={'查看群聊'}, handlers=[ls_group])
-lscmds.command('friend', aliases={'查看好友'}, handlers=[ls_friend])
-cmd_m = lscmds.command('matcher', aliases={'查看响应器'})
-cmd_am = lscmds.command('allmatcher', aliases={'查看所有响应器'})
+lscmds = sucmds("ls", True)
+lscmds.command("group", aliases={"查看群聊"}, handlers=[ls_group])
+lscmds.command("friend", aliases={"查看好友"}, handlers=[ls_friend])
+cmd_m = lscmds.command("matcher", aliases={"查看响应器"})
+cmd_am = lscmds.command("allmatcher", aliases={"查看所有响应器"})
 
 
 @cmd_m.handle()
 async def _(bot: Bot, event: Event):
     svname = event.get_plaintext()
     sv = Service.get_loaded_services()[svname]
-    msg = '\n'.join(sv.matchers)
+    msg = "\n".join(sv.matchers)
     await cmd_m.finish(msg)
 
 
 @cmd_am.handle()
 async def showall(bot: Bot):
     mws = MatcherWrapper.get_loaded_matchers()
-    msg = ['该bot注册的matcher_wrapper如下:']
+    msg = ["该bot注册的matcher_wrapper如下:"]
     msg.extend(mws)
-    await cmd_am.finish('\n'.join(msg))
+    await cmd_am.finish("\n".join(msg))

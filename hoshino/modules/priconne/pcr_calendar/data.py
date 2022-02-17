@@ -104,16 +104,16 @@ class PcrdCampaignCategory(IntEnum):
 
 
 short_name = {
-    'manaDungeon': '地城',
-    'masterCoinNormal': '大师',
-    'dropAmountNormal': 'N 图',
-    'dropAmountHard': 'H 图',
-    'dropAmountEventNormal': '活动N图',
-    'dropAmountEventHard': '活动H图',
-    'dropAmountShrine': '圣迹',
-    'dropAmountTemple': '神殿',
-    'manaExploration': '探索',
-    'dropAmountVeryHard': 'VH图',
+    "manaDungeon": "地城",
+    "masterCoinNormal": "大师",
+    "dropAmountNormal": "N 图",
+    "dropAmountHard": "H 图",
+    "dropAmountEventNormal": "活动N图",
+    "dropAmountEventHard": "活动H图",
+    "dropAmountShrine": "圣迹",
+    "dropAmountTemple": "神殿",
+    "manaExploration": "探索",
+    "dropAmountVeryHard": "VH图",
 }
 
 
