@@ -1,11 +1,11 @@
-'''
+"""
 Author: AkiraXie
 Date: 2021-01-30 01:37:42
 LastEditors: AkiraXie
 LastEditTime: 2021-02-15 04:00:41
 Description: 
 Github: http://github.com/AkiraXie/
-'''
+"""
 from aiohttp import ClientSession
 from multidict import CIMultiDictProxy
 from yarl import URL
@@ -14,7 +14,9 @@ from json import loads
 
 
 class BaseResponse:
-    def __init__(self, url: URL, status_code: int, headers: CIMultiDictProxy[str], ok: bool) -> None:
+    def __init__(
+        self, url: URL, status_code: int, headers: CIMultiDictProxy[str], ok: bool
+    ) -> None:
         self.url: URL = url
         self.status_code: int = status_code
         self.headers: CIMultiDictProxy[str] = headers
@@ -22,7 +24,14 @@ class BaseResponse:
 
 
 class Response(BaseResponse):
-    def __init__(self, url: URL, content: bytes, status_code: int, headers: CIMultiDictProxy[str], ok: bool) -> None:
+    def __init__(
+        self,
+        url: URL,
+        content: bytes,
+        status_code: int,
+        headers: CIMultiDictProxy[str],
+        ok: bool,
+    ) -> None:
         super().__init__(url=url, status_code=status_code, headers=headers, ok=ok)
         self.content: bytes = content
 
@@ -42,26 +51,30 @@ class Response(BaseResponse):
 
 
 async def get(url: str, *args, **kwargs) -> Response:
-    kwargs.setdefault('verify_ssl', False)
-    kwargs.setdefault('timeout',5)
+    kwargs.setdefault("verify_ssl", False)
+    kwargs.setdefault("timeout", 5)
     async with ClientSession() as session:
         async with session.get(url, *args, **kwargs) as resp:
-            res = Response(resp.url, await resp.read(), resp.status, resp.headers, resp.ok)
+            res = Response(
+                resp.url, await resp.read(), resp.status, resp.headers, resp.ok
+            )
     return res
 
 
 async def post(url: str, *args, **kwargs) -> Response:
-    kwargs.setdefault('verify_ssl', False)
-    kwargs.setdefault('timeout',5)
+    kwargs.setdefault("verify_ssl", False)
+    kwargs.setdefault("timeout", 5)
     async with ClientSession() as session:
         async with session.post(url, *args, **kwargs) as resp:
-            res = Response(resp.url, await resp.read(), resp.status, resp.headers, resp.ok)
+            res = Response(
+                resp.url, await resp.read(), resp.status, resp.headers, resp.ok
+            )
     return res
 
 
 async def head(url: str, *args, **kwargs) -> BaseResponse:
-    kwargs.setdefault('verify_ssl', False)
-    kwargs.setdefault('timeout',5)
+    kwargs.setdefault("verify_ssl", False)
+    kwargs.setdefault("timeout", 5)
     async with ClientSession() as session:
         async with session.head(url, *args, **kwargs) as resp:
             res = BaseResponse(resp.url, resp.status, resp.headers, resp.ok)
