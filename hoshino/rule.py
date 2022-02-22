@@ -39,7 +39,7 @@ def regex(
     async def _regex(bot: Bot, event: Event, state: T_State) -> bool:
         if event.get_type() != "message":
             return False
-        text = str(event.raw_message)
+        text = event.get_plaintext()
         if normal:
             text = normalize_str(text)
         matched = pattern.search(text) if not full_match else pattern.fullmatch(text)

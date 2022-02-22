@@ -84,8 +84,8 @@ async def send(
             params["message_type"] = "group"
         elif params.get("user_id", None):
             params["message_type"] = "private"
-    else:
-        raise ValueError("Cannot guess message type to reply!")
+        else:
+            raise ValueError("Cannot guess message type to reply!")
 
     params["message"] = msg
     if params["message_type"] != "private":
