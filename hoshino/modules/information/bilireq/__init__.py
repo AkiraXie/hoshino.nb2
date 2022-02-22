@@ -174,6 +174,8 @@ async def _(bot: Bot, event: Event):
 async def _():
     groups = await sv.get_enable_groups()
     uids = [row.uid for row in LiveDB.select(LiveDB.uid).distinct()]
+    if not uids:
+        return
     dic = await get_live_status(uids)
     need_send = {}
     for uid in dic:
@@ -214,7 +216,7 @@ async def _():
                     await asyncio.sleep(0.6)
 
 
-from nonebot import get_driver, get_bot
+from nonebot import get_driver
 from hoshino.util import send_to_superuser
 
 startup = get_driver().on_bot_connect
