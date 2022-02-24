@@ -76,8 +76,7 @@ async def _(bot: Bot, event: Event):
 @scheduled_job("cron", hour="0,12", minute="18", jitter=20, id="检查卡池更新")
 async def check_data():
     code_1 = await download_pcrdata()
-    code_2 = await download_config()
-    if code_1 == 0 and code_2 == 0:
+    if code_1 == 0:
         try:
             importlib.reload(_pcr_data)
             Chara.gen_name2id()
@@ -89,8 +88,7 @@ async def check_data():
 @dldata.handle()
 async def _(bot: Bot, event: Event):
     code_1 = await download_pcrdata()
-    code_2 = await download_config()
-    if code_1 == 0 and code_2 == 0:
+    if code_1 == 0 :
         try:
             importlib.reload(_pcr_data)
             Chara.gen_name2id()
@@ -98,11 +96,9 @@ async def _(bot: Bot, event: Event):
             logger.exception(e)
             logger.error(f"重载花名册失败！{type(e)}")
             await dldata.finish(f"重载花名册失败！错误如下：\n{type(e)}, {e}")
-
         await dldata.finish("更新卡池和数据成功")
     else:
-        exc = filter(lambda x: x != 0, (code_1, code_2))
-        exc = "\n".join(exc)
+        exc = code_1
         await dldata.finish(f"更新卡池和数据失败，错误如下：\n {exc}")
 
 
