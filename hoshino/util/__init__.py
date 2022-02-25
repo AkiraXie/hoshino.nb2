@@ -200,7 +200,7 @@ def normalize_str(string: str) -> str:
     return string
 
 
-async def parse_qq(event: Event, state: T_State):
+async def parse_qq(bot: Bot, event: Event, state: T_State):
     ids = []
     if isinstance(event, GroupMessageEvent):
         for m in event.get_message():

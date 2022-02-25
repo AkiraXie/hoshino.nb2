@@ -30,7 +30,11 @@ async def format_id(id: str) -> str:
 
 adds = sv.on_command("添加steam订阅", permission=ADMIN)
 dels = sv.on_command("取消steam订阅", permission=ADMIN)
-looks = sv.on_command("steam订阅列表", permission=ADMIN, aliases=("查看本群steam", "本群steam订阅"))
+looks = sv.on_command(
+    "steam订阅列表",
+    permission=ADMIN,
+    aliases=("查看本群steam", "本群steam订阅", "steam列表", "谁在玩游戏", "看看steam", "kksteam"),
+)
 look = sv.on_command("查询steam账号", permission=ADMIN, aliases=("查看steam", "查看steam订阅"))
 
 

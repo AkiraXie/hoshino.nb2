@@ -6,8 +6,8 @@ LastEditTime: 2021-03-31 21:18:58
 Description: 
 Github: http://github.com/AkiraXie/
 """
+from nonebot.params import Depends
 from hoshino.typing import T_State
-from hoshino.service import MatcherWrapper
 from hoshino.util import (
     DailyNumberLimiter,
     img_to_bytes,
@@ -16,7 +16,7 @@ from hoshino.util import (
     sucmd,
     parse_qq,
 )
-from hoshino import MessageSegment, Message, Service, permission, Bot, Event
+from hoshino import MessageSegment, Message, Service, permission, Bot, Event, Matcher
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
 from hoshino.modules.priconne.chara import Chara
@@ -98,38 +98,43 @@ gacha_300_aliases = {"抽一井", "来一井", "来发井", "抽发井", "天井
 
 
 gacha1 = sv.on_command("gacha1", aliases=gacha_1_aliases, only_group=False)
-
 gacha10 = sv.on_command("gacha10", aliases=gacha_10_aliases, only_group=False)
 gacha300 = sv.on_command("gacha300", aliases=gacha_300_aliases, only_group=False)
 showcol = sv.on_command("仓库", aliases={"查看仓库", "我的仓库", "看看仓库"}, only_group=False)
 
 
-async def check_jewel_num(matcher: MatcherWrapper, event: Event):
+async def check_jewel_num(matcher: Matcher, event: Event):
     uid = event.get_user_id()
-    if not jewel_limit.check(int(uid)):
+    if not jewel_limit.check(uid):
         await matcher.finish(JEWEL_EXCEED_NOTICE, call_header=True)
 
 
-async def check_tenjo_num(matcher: MatcherWrapper, event: Event):
+async def check_tenjo_num(matcher: Matcher, event: Event):
     uid = event.get_user_id()
-    if not tenjo_limit.check(int(uid)):
+    if not tenjo_limit.check(uid):
         await matcher.finish(TENJO_EXCEED_NOTICE, call_header=True)
 
 
-async def lookup_handler(bot: Bot, event: Event):
-    if isinstance(event, GroupMessageEvent):
-        gid = event.group_id
-    elif isinstance(event, PrivateMessageEvent):
-        gid = event.user_id * 100
+def get_gacha():
+    async def inner(event: Event) -> Gacha:
+        if isinstance(event, GroupMessageEvent):
+            gid = event.group_id
+        elif isinstance(event, PrivateMessageEvent):
+            gid = event.user_id * 100
+        pool = get_pool(gid)
+        return Gacha(pool)
 
-    pool = get_pool(gid)
-    gacha = Gacha(pool)
+    return Depends(inner)
+
+
+async def lookup_handler(matcher: Matcher, gacha: Gacha = get_gacha()):
     up_chara = gacha.up
-    up_chara = map(lambda x: str(Chara.fromname(x).icon.CQcode) + x, up_chara)
+    up_chara = map(
+        lambda x: str(Chara.fromid(x).icon.CQcode) + Chara.fromid(x).name, up_chara
+    )
     up_chara = "\n".join(up_chara)
-    msg = f"本期{pool}卡池主打的角色：\n{up_chara}\nUP角色合计={(gacha.up_prob/10):.1f}% 3★出率={(gacha.s3_prob)/10:.1f}%"
-    await bot.send(event, Message(msg))
-    raise FinishedException
+    msg = f"本期{gacha.name}卡池主打的角色：\n{up_chara}\nUP角色合计={(gacha.up_prob/10):.1f}% 3★出率={(gacha.s3_prob)/10:.1f}%"
+    await matcher.finish(Message(msg))
 
 
 lookup = sv.on_command(
@@ -199,24 +204,17 @@ switchpool = sv.on_command(
 @switchpool.got(
     "pool", prompt="请输入要切换的卡池:\n> mix\n> jp\n> tw\n> bl", args_parser=parse_pool
 )
-async def _(bot: Bot, event: Event, state: T_State):
+async def _(matcher: Matcher, state: T_State):
     if state["pool"]:
         set_pool(state["gid"], state["pool"])
         await switchpool.send("卡池已切换为{}池".format(state["pool"]))
-        await lookup_handler(bot, event)
+        await lookup_handler(matcher, Gacha(state["pool"]))
 
 
-@gacha1.handle()
-async def _(bot: Bot, event: Event):
-    await check_jewel_num(gacha1, event)
-    uid = int(event.get_user_id())
+@gacha1.handle(parameterless=[Depends(check_jewel_num)])
+async def _(event: Event, gacha: Gacha = get_gacha()):
+    uid = event.get_user_id()
     jewel_limit.increase(uid, 150)
-    if isinstance(event, GroupMessageEvent):
-        gid = event.group_id
-    elif isinstance(event, PrivateMessageEvent):
-        gid = event.user_id * 100
-    pool = get_pool(gid)
-    gacha = Gacha(pool)
     chara, _ = gacha.gacha_one(gacha.up_prob, gacha.s3_prob, gacha.s2_prob)
     if chara.star == 3:
         set_collection(uid, chara.id)
@@ -224,18 +222,10 @@ async def _(bot: Bot, event: Event):
     await gacha1.finish(Message(f"素敵な仲間が増えますよ！\n{res}"), call_header=True)
 
 
-@gacha10.handle()
-async def _(bot: Bot, event: Event):
-    SUPER_LUCKY_LINE = 130
-    await check_jewel_num(gacha10, event)
-    uid = int(event.get_user_id())
+@gacha10.handle(parameterless=[Depends(check_jewel_num)])
+async def _(event: Event, gacha: Gacha = get_gacha()):
+    uid = event.get_user_id()
     jewel_limit.increase(uid, 1500)
-    if isinstance(event, GroupMessageEvent):
-        gid = event.group_id
-    elif isinstance(event, PrivateMessageEvent):
-        gid = event.user_id * 100
-    pool = get_pool(gid)
-    gacha = Gacha(pool)
     result, hiishi = gacha.gacha_ten()
     for c in result:
         if 3 == c.star:
@@ -249,22 +239,15 @@ async def _(bot: Bot, event: Event):
     res1 = " ".join(result[0:5])
     res2 = " ".join(result[5:])
     res = f"{res}\n{res1}\n{res2}"
-    if hiishi >= SUPER_LUCKY_LINE:
+    if hiishi >= 130:
         await gacha10.send("恭喜海豹！おめでとうございます！")
     await gacha10.finish(Message(f"素敵な仲間が増えますよ！\n{res}"), call_header=True)
 
 
-@gacha300.handle()
-async def _(bot: Bot, event: Event):
-    await check_tenjo_num(gacha300, event)
+@gacha300.handle([Depends(check_tenjo_num)])
+async def _(event: Event, gacha: Gacha = get_gacha()):
     uid = int(event.get_user_id())
     tenjo_limit.increase(uid)
-    if isinstance(event, GroupMessageEvent):
-        gid = event.group_id
-    elif isinstance(event, PrivateMessageEvent):
-        gid = event.user_id * 100
-    pool = get_pool(gid)
-    gacha = Gacha(pool)
     result, up = gacha.gacha_tenjou()
     s3 = len(result["s3"])
     s2 = len(result["s2"])
@@ -318,7 +301,7 @@ async def _(bot: Bot, event: Event):
 
 
 @showcol.handle()
-async def _(bot: Bot, event: Event):
+async def _(event: Event):
     uid = int(event.get_user_id())
     col = select_collection(uid)
     length = len(col)
@@ -341,11 +324,12 @@ kakin = sucmd("氪金", aliases={"充值"}, handlers=[parse_qq])
 
 
 @kakin.got("ids", prompt="请输入要充值的id,并用空格隔开~\n在群聊中，还支持直接at哦~", args_parser=parse_qq)
-async def _(bot: Bot, event: Event, state: T_State):
+async def _(state: T_State):
     if not state["ids"]:
         await kakin.finish()
     count = 0
     for id in state["ids"]:
+        id = str(id)
         jewel_limit.reset(id)
         tenjo_limit.reset(id)
         count += 1
