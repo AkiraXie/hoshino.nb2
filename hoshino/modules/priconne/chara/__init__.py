@@ -85,12 +85,12 @@ async def check_data():
             logger.exception(e)
             logger.error(f"重载花名册失败！{type(e)}")
     else:
-        exc = code_1
+        exc = code_1 or code_2
         await dldata.finish(f"更新卡池和数据失败，错误如下：\n {exc}")
 
 
 @dldata.handle()
-async def _(bot: Bot, event: Event):
+async def _():
     code_1 = await download_pcrdata()
     code_2 = await download_config()
     if code_1 == 0 and code_2 == 0:
@@ -103,7 +103,7 @@ async def _(bot: Bot, event: Event):
             await dldata.finish(f"重载花名册失败！错误如下：\n{type(e)}, {e}")
         await dldata.finish("更新卡池和数据成功")
     else:
-        exc = code_1
+        exc = code_1 or code_2
         await dldata.finish(f"更新卡池和数据失败，错误如下：\n {exc}")
 
 
