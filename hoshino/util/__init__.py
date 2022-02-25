@@ -34,7 +34,6 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
 from .aiohttpx import get
-from .bitly import get_bitly_url
 from .playwrights import get_bili_dynamic_screenshot
 
 DEFAULTFONT = ImageFont.truetype(
