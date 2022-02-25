@@ -26,7 +26,7 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11.utils import escape
 from nonebot.params import Depends
 from nonebot.matcher import Matcher, current_bot
-from .message import MessageSegment, Message, MessageBuilder, MessageTemplate
+from .message import MessageSegment, Message, MessageTemplate
 from .event import Event
 
 # patch bot.send

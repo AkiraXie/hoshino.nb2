@@ -6,6 +6,7 @@ LastEditTime: 2021-03-15 03:09:38
 Description: 
 Github: http://github.com/AkiraXie/
 """
+import json
 from loguru import logger
 import requests
 from hoshino import R
@@ -65,7 +66,7 @@ def download_card(id_: int, star: int):
 async def download_config():
     try:
         dataget = await aiohttpx.get(
-            "https://api.akiraxie.cc/pcr/config.json", timeout=5
+            "https://kkbllt.github.io/gacha/default_gacha.json", timeout=5
         )
         datacon = dataget.content
     except Exception as e:
@@ -75,8 +76,13 @@ async def download_config():
     if 200 != dataget.status_code:
         logger.error(exc := f"连接服务器失败,HTTP {dataget.status_code}")
         return exc
-    with open(jsonpath, "wb") as f:
-        f.write(datacon)
+    dic = json.loads(datacon)
+    dic["MIX"] = dic.pop("ALL")
+    dic["MIX"]["up"] = list(set(dic["BL"]["up"] + dic["JP"]["up"] + dic["TW"]["up"]))
+    dic["MIX"]["up_prob"] = max(dic["JP"]["up_prob"], dic["TW"]["up_prob"])
+    dic["MIX"]["s3_prob"] = max(dic["JP"]["s3_prob"], dic["TW"]["s3_prob"])
+    with open(jsonpath, "w") as f:
+        json.dump(dic, f)
     logger.info("下载卡池配置成功")
     return 0
 
