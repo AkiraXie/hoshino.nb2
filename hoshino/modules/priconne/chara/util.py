@@ -77,6 +77,9 @@ async def download_config():
         logger.error(exc := f"连接服务器失败,HTTP {dataget.status_code}")
         return exc
     dic = json.loads(datacon)
+    if all(dic["BL"]["up"],dic["JP"]["up"],dic["TW"]["up"]) == False:
+        logger.error(exc:="卡池状态异常，放弃更新")
+        return exc
     dic["MIX"] = dic.pop("ALL")
     dic["MIX"]["up"] = list(set(dic["BL"]["up"] + dic["JP"]["up"] + dic["TW"]["up"]))
     dic["MIX"]["up_prob"] = max(dic["JP"]["up_prob"], dic["TW"]["up_prob"])
