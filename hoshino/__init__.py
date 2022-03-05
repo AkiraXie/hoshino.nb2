@@ -100,11 +100,11 @@ async def send(
                 header = ">???\n"
             else:
                 info = await self.get_group_member_info(
-                    group_id=event.group_id, user_id=event.user_id, no_cache=True
+                    group_id=event.group_id, user_id=event.user_id
                 )
                 for i in (info["title"], info["card"], info["nickname"]):
                     if i:
-                        header = f">{escape(i)}\n"
+                        header = f">{escape(i,escape_comma=False)}\n"
                         break
             params["message"] = header + params["message"]
 
