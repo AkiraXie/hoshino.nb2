@@ -14,12 +14,11 @@ headers = {
     "User-Agent": "Mozilla/5.0",
     "Referer": "https://www.bilibili.com/",
 }
-
+pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
 
 async def get_bvid(url: str) -> str:
     resp = await aiohttpx.head(url, allow_redirects=False)
     loc = resp.headers["Location"]
-    pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
     if mat := pat.match(loc):
         return mat.group(1)
     else:
