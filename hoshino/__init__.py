@@ -184,7 +184,7 @@ e.g：
 """
 R: Final[RHelper] = RHelper()
 
-
+from .permission import SUPERUSER
 from .schedule import scheduled_job, add_job
 from .typing import T_State
 from .service import Service

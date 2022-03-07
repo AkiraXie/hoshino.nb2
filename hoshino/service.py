@@ -582,17 +582,14 @@ class MatcherWrapper:
         return self.__str__()
 
 
-@run_preprocessor
-async def _(matcher: Matcher):
+async def log_matcherwrapper(matcher: Matcher):
     mw = _loaded_matchers.get(matcher.__class__, None)
     if mw:
         mw.sv.logger.info(f"Event will be handled by <lc>{mw}</>")
+        yield 
+        mw.sv.logger.info(f"Event was completed handling by <lc>{mw}</>")
 
 
-@run_postprocessor
-async def _(matcher: Matcher, exception: Exception):
-    mw = _loaded_matchers.get(matcher.__class__, None)
-    if mw:
-        if exception:
-            mw.sv.logger.error(f"Event handling failed from <lc>{mw}</>", exception)
-        mw.sv.logger.info(f"Event handling completed from <lc>{mw}</>")
+@run_preprocessor
+async def _(mw = Depends(log_matcherwrapper,use_cache = False)):
+    ...
