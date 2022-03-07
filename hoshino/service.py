@@ -588,7 +588,8 @@ async def log_matcherwrapper(matcher: Matcher):
         mw.sv.logger.info(f"Event will be handled by <lc>{mw}</>")
         yield 
         mw.sv.logger.info(f"Event was completed handling by <lc>{mw}</>")
-
+    else:
+        yield
 
 @run_preprocessor
 async def _(mw = Depends(log_matcherwrapper,use_cache = False)):
