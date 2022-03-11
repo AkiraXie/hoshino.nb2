@@ -62,8 +62,6 @@ async def parse_query(bot: Bot, event: Event, state: T_State):
     if len(defen) != len(set(defen)):
         await bot.send(event, "编队中出现重复角色", call_header=True)
         raise FinishedException
-    if 1004 in defen:
-        await bot.send(event, "\n⚠️您正在查询普通版炸弹人\n※万圣版可用万圣炸弹人/瓜炸等别称", call_header=True)
     state["defen"] = defen
 
 
