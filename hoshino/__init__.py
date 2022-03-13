@@ -31,7 +31,6 @@ from .event import Event
 
 # patch bot.send
 
-
 async def send(
     self: Bot,
     event: Event,
