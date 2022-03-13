@@ -65,3 +65,11 @@ async def get_pcr_shidan(name: str) -> MessageSegment:
     await page.close()
     await ctx.close()
     return MessageSegment.image(img)
+
+from hoshino import driver
+from asyncio import sleep
+@driver.on_shutdown
+async def _():
+    browser: Browser = await get_browser()
+    await browser.close()
+    await sleep(0.5)

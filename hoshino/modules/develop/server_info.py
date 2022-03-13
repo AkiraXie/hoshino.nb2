@@ -1,11 +1,11 @@
-"""
+'''
 Author: AkiraXie
-Date: 2021-02-24 01:19:55
+Date: 2022-02-26 00:16:33
 LastEditors: AkiraXie
-LastEditTime: 2022-02-10 23:28:52
+LastEditTime: 2022-03-13 22:55:20
 Description: 
 Github: http://github.com/AkiraXie/
-"""
+'''
 
 
 from hoshino import sucmd, Bot, driver
@@ -15,8 +15,21 @@ import psutil
 
 showcmd = sucmd("info", aliases={"serverinfo", "stat"})
 p = psutil.Process()
+p1 :psutil.Process = None
 
-
+def get_gocq_process():
+    global p1
+    if p1:
+        return p1
+    else:
+        _p = None
+        for ps in psutil.process_iter():
+            if  "go-cq" in ps.name():
+                _p = psutil.Process(ps.pid)
+                break
+        p1 = _p
+        return p1
+    
 def get_stat():
     task_num = len(all_tasks())
     cpu_p = p.cpu_percent()
@@ -32,8 +45,14 @@ def get_stat():
         f"服务CPU使用: {cpu_p}%",
         f"服务内存使用: {memu:.2f}MB",
         f"磁盘使用: {dp}%  {du:.2f}GB/{dt:.2f}GB",
-        f"服务协程数量: {task_num}",
+        f"服务协程数量: {task_num}"
     ]
+    pp = get_gocq_process()
+    if not pp:
+        return "\n".join(msg)
+    cpu_p1 = pp.cpu_percent()
+    mem1 = pp.memory_full_info().uss / 1024.0 / 1024.0
+    msg.extend([f"go-cqhttp CPU使用: {cpu_p1}%", f"go-cqhttp 内存使用: {mem1:.2f}MB"])
     return "\n".join(msg)
 
 

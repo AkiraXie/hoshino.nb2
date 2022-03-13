@@ -6,6 +6,7 @@ LastEditTime: 2022-02-16 22:16:28
 Description: 
 Github: http://github.com/AkiraXie/
 """
+import random
 import pytz
 import base64
 import zhconv
@@ -233,11 +234,16 @@ async def save_img(url: str, name: str, fav: bool = False):
     r = await aiohttpx.get(url)
     b = BytesIO(r.content)
     img = Image.open(b)
+    random_modify_pixel(img)
     name = os.path.join(idir, name)
     img.save(name)
     b.close()
     img.close()
 
+def random_modify_pixel(img:Image.Image):
+    i,j = random.randint(0,img.size[0]),random.randint(0,img.size[1])
+    rand_color = random.choices(range(256), k=3)
+    img.putpixel((i,j),tuple(rand_color))
 
 def get_event_imageurl(event: MessageEvent) -> List[str]:
     msg = event.message
