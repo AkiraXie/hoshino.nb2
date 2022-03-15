@@ -1,11 +1,11 @@
-"""
+'''
 Author: AkiraXie
-Date: 2022-01-06 22:13:32
+Date: 2022-03-13 22:33:08
 LastEditors: AkiraXie
-LastEditTime: 2022-02-16 17:08:54
+LastEditTime: 2022-03-16 00:01:31
 Description: 
 Github: http://github.com/AkiraXie/
-"""
+'''
 from hoshino.typing import Optional
 from playwright.async_api import async_playwright, Browser
 from hoshino import MessageSegment
@@ -67,9 +67,11 @@ async def get_pcr_shidan(name: str) -> MessageSegment:
     return MessageSegment.image(img)
 
 from hoshino import driver
+from hoshino.log import logger
 from asyncio import sleep
 @driver.on_shutdown
 async def _():
     browser: Browser = await get_browser()
     await browser.close()
     await sleep(0.5)
+    logger.info("chromium driver has closed")

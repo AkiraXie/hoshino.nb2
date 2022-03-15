@@ -6,13 +6,15 @@ LastEditTime: 2022-02-17 00:53:28
 Description: 
 Github: http://github.com/AkiraXie/
 """
+import asyncio
 from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import FinishedException, IgnoredException
 from nonebot.permission import SUPERUSER
-from hoshino import Bot, Event
+from hoshino import Bot, Event, driver
 from hoshino.typing import T_State
 from hoshino.util import sucmd, parse_qq
+from hoshino.log import logger
 from datetime import datetime, timedelta
 from typing import Union
 from pytz import timezone
@@ -47,24 +49,29 @@ BANNED_WORD = {
     "爪巴",
 }
 
+_block_users = set()
+
+@driver.on_startup
+async def _():
+    date = datetime.now(timezone("Asia/Shanghai"))
+    rows = black.select(black.uid).where(black.due_time.to_timestamp()>date.timestamp())
+    for r in rows:
+        _block_users.add(r.uid)
+    logger.info("blocked users has recovered from db")
 
 def block_uid(uid: int, date: Union[datetime, timedelta]):
     if isinstance(date, timedelta):
+        sec = date.seconds
         date = datetime.now(timezone("Asia/Shanghai")) + date
-    black.replace(uid=uid, due_time=date).execute()
-
-
-def check_uid(uid: int, date: datetime) -> bool:
-    res = black.get_or_none(
-        black.uid == uid, black.due_time.to_timestamp() > date.timestamp()
-    )
-    if res:
-        return False
     else:
-        return True
-
+        sec = (date-datetime.now(timezone("Asia/Shanghai"))).seconds
+    _block_users.add(uid)
+    black.replace(uid=uid, due_time=date).execute()
+    loop = asyncio.get_event_loop()
+    loop.call_later(sec,lambda : _block_users.remove(uid))
 
 def unblock_uid(uid: int) -> bool:
+    _block_users.remove(uid)
     res = black.delete().where(black.uid == uid).execute()
     return bool(res)
 
@@ -74,15 +81,16 @@ async def _(bot: Bot, event: Event, state: T_State):
     if not isinstance(event, MessageEvent):
         return
     uid = int(event.user_id)
-    if not check_uid(uid, datetime.now(timezone("Asia/Shanghai"))):
+    if uid in _block_users:
         raise IgnoredException("This user is blocked")
     if event.is_tome():
+        text = event.get_plaintext()
         for bw in BANNED_WORD:
-            if bw in event.get_plaintext():
+            if bw in text:
                 if await SUPERUSER(bot, event):
                     await bot.send(event, "虽然你骂我但是我好像也不讨厌你~", at_sender=True)
                     raise IgnoredException("This user is blocked")
-                block_uid(uid, timedelta(hours=12))
+                block_uid(uid, timedelta(hours=8))
                 await bot.send(event, "拉黑了,再见了您~", at_sender=True)
                 raise IgnoredException("This user is blocked")
 
@@ -95,7 +103,7 @@ jiefeng = sucmd("解封", True, aliases={"解禁"}, handlers=[parse_qq])
 
 @lahei.got("ids", prompt="请输入要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~", args_parser=parse_qq)
 @lahei.got("hours", "请输入要拉黑的小时数")
-async def _(bot: Bot, event: Event, state: T_State):
+async def _(state: T_State):
     if not state.get("ids"):
         raise FinishedException
     for uid in state["ids"]:
@@ -104,7 +112,7 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 
 @jiefeng.got("ids", prompt="请输入要解封的id,并用空格隔开~\n在群聊中，还支持直接at哦~", args_parser=parse_qq)
-async def _(bot: Bot, event: Event, state: T_State):
+async def _(state: T_State):
     if not state.get("ids"):
         raise FinishedException
     for uid in state["ids"]:
