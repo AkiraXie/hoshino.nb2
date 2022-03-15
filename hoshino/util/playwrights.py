@@ -2,7 +2,7 @@
 Author: AkiraXie
 Date: 2022-03-13 22:33:08
 LastEditors: AkiraXie
-LastEditTime: 2022-03-16 00:01:31
+LastEditTime: 2022-03-16 00:12:33
 Description: 
 Github: http://github.com/AkiraXie/
 '''
@@ -67,7 +67,7 @@ async def get_pcr_shidan(name: str) -> MessageSegment:
     return MessageSegment.image(img)
 
 from hoshino import driver
-from hoshino.log import logger
+from nonebot.log import logger
 from asyncio import sleep
 @driver.on_shutdown
 async def _():

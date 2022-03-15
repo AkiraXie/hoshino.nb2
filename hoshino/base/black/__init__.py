@@ -54,9 +54,13 @@ _block_users = set()
 @driver.on_startup
 async def _():
     date = datetime.now(timezone("Asia/Shanghai"))
-    rows = black.select(black.uid).where(black.due_time.to_timestamp()>date.timestamp())
+    rows = black.select().where(black.due_time.to_timestamp()>date.timestamp())
+    loop = asyncio.get_event_loop()
     for r in rows:
         _block_users.add(r.uid)
+        due_date= datetime.strptime(r.due_time,"%Y-%m-%d %H:%M:%S.%f%z")
+        sec = (due_date-date).seconds
+        loop.call_later(sec,lambda : _block_users.remove(r.uid))
     logger.info("blocked users has recovered from db")
 
 def block_uid(uid: int, date: Union[datetime, timedelta]):
