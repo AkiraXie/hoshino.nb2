@@ -14,12 +14,12 @@ import nonebot
 import unicodedata
 import time
 import os
-from typing import List, Optional, Tuple, Type
+from typing import List, Optional, Tuple, Type, Union
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
-from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot.adapters.onebot.v11 import MessageSegment,Message
 from nonebot.adapters.onebot.v11.event import (
     Event,
     GroupMessageEvent,
@@ -30,7 +30,7 @@ from nonebot.typing import T_State
 from hoshino import R
 from nonebot.utils import run_sync
 from nonebot.adapters.onebot.v11 import Bot
-from nonebot.matcher import Matcher
+from nonebot.matcher import Matcher, current_matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
@@ -89,8 +89,9 @@ def get_bot_list() -> List[Bot]:
 async def _strip_cmd(bot: "Bot", event: "Event", state: T_State):
     message = event.get_message()
     segment = message.pop(0)
+    segment_text = str(segment).lstrip()
     new_message = message.__class__(
-        str(segment)[len(state["_prefix"]["raw_command"]) :].strip()
+        segment_text[len(state["_prefix"]["raw_command"]):].lstrip()
     )  # type: ignore
     for new_segment in reversed(new_message):
         message.insert(0, new_segment)
@@ -260,3 +261,23 @@ async def send_to_superuser(bot: Bot, msg):
 async def get_img_from_url(url: str) -> MessageSegment:
     resp = await get(url)
     return MessageSegment.image(resp.content)
+
+async def send(message: Union[str, "Message", "MessageSegment"],
+        *,
+        call_header: bool = False,
+        at_sender: bool = False,
+        **kwargs):
+    matcher = current_matcher.get(default=None)
+    if matcher is None:
+        raise ValueError("No running matcher found!")
+    await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
+
+async def finish(message: Union[str, "Message", "MessageSegment"],
+        *,
+        call_header: bool = False,
+        at_sender: bool = False,
+        **kwargs):
+    matcher = current_matcher.get(default=None)
+    if matcher is None:
+        raise ValueError("No running matcher found!")
+    await matcher.finish(message, call_header=call_header, at_sender=at_sender, **kwargs)
