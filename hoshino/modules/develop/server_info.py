@@ -17,17 +17,20 @@ showcmd = sucmd("info", aliases={"serverinfo", "stat"})
 p = psutil.Process()
 p1 :psutil.Process = None
 
-def get_gocq_process():
+def refresh_gocq_process():
     global p1
+    _p = None
+    for ps in psutil.process_iter():
+        if  "go-cq" in ps.name():
+            _p = psutil.Process(ps.pid)
+            break
+    p1 = _p
+
+def get_gocq_process():
     if p1:
         return p1
     else:
-        _p = None
-        for ps in psutil.process_iter():
-            if  "go-cq" in ps.name():
-                _p = psutil.Process(ps.pid)
-                break
-        p1 = _p
+        refresh_gocq_process()
         return p1
     
 def get_stat():
@@ -63,4 +66,5 @@ async def _(bot: Bot):
 
 @driver.on_bot_connect
 async def _(bot: Bot):
+    refresh_gocq_process()       
     await send_to_superuser(bot, get_stat())

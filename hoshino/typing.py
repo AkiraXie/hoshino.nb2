@@ -34,7 +34,3 @@ from argparse import Namespace
 
 if TYPE_CHECKING:
     from nonebot.adapters import Bot, Event
-
-T_ArgsParser = Callable[
-    ["Bot", "Event", T_State], Union[Awaitable[None], Awaitable[NoReturn]]
-]

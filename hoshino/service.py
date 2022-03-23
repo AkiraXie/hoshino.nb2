@@ -14,7 +14,7 @@ from collections import defaultdict
 import nonebot
 from nonebot.params import Depends
 from nonebot.matcher import current_bot, current_event
-from nonebot.message import run_preprocessor, run_postprocessor
+from nonebot.message import run_preprocessor
 from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment, Matcher
 from hoshino.message import MessageTemplate
 from hoshino.event import Event
@@ -42,7 +42,6 @@ from hoshino.typing import (
     Dict,
     Iterable,
     Optional,
-    T_ArgsParser,
     Union,
     T_State,
     List,
@@ -219,7 +218,7 @@ class Service:
             self,
             "Message.command",
             priority,
-            on_message(_depth=2, **kwargs),
+            on_message(  _depth=1, **kwargs),
             command=name,
             only_group=only_group,
         )
@@ -250,7 +249,7 @@ class Service:
             self,
             "Message.shell_command",
             priority,
-            on_message(_depth=2, **kwargs),
+            on_message(  _depth=1, **kwargs),
             command=name,
             only_group=only_group,
         )
@@ -274,7 +273,7 @@ class Service:
             self,
             "Message.startswith",
             priority,
-            on_startswith(msg, _depth=2, **kwargs),
+            on_startswith(msg,   _depth=1, **kwargs),
             startswith=msg,
             only_group=only_group,
         )
@@ -298,7 +297,7 @@ class Service:
             self,
             "Message.endswith",
             priority,
-            on_endswith(msg, _depth=2, **kwargs),
+            on_endswith(msg,   _depth=1, **kwargs),
             endswith=msg,
             only_group=only_group,
         )
@@ -326,7 +325,7 @@ class Service:
             self,
             "Message.keyword",
             priority,
-            on_message(_depth=2, **kwargs),
+            on_message(  _depth=1, **kwargs),
             keywords=str(keywords),
             only_group=only_group,
         )
@@ -354,7 +353,7 @@ class Service:
             self,
             "Message.fullmatch",
             priority,
-            on_message(_depth=2, **kwargs),
+            on_message(  _depth=1, **kwargs),
             keywords=str(keywords),
             only_group=only_group,
         )
@@ -389,7 +388,7 @@ class Service:
             self,
             "Message.regex",
             priority,
-            on_message(rule, permission, _depth=2, **kwargs),
+            on_message(rule, permission,   _depth=1, **kwargs),
             pattern=str(pattern),
             flags=str(flags),
             only_group=only_group,
@@ -413,7 +412,7 @@ class Service:
             self,
             "Message.message",
             priority,
-            on_message(_depth=2, **kwargs),
+            on_message(  _depth=1, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -427,7 +426,7 @@ class Service:
             self,
             "Notice",
             priority,
-            on_notice(rule, _depth=2, **kwargs),
+            on_notice(rule,   _depth=1, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -441,7 +440,7 @@ class Service:
             self,
             "Request",
             priority,
-            on_request(rule, _depth=2, **kwargs),
+            on_request(rule,   _depth=1, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -503,7 +502,7 @@ class MatcherWrapper:
         self,
         key: str,
         prompt: Optional[Union[str, Message, MessageSegment, MessageTemplate]] = None,
-        args_parser: Optional[T_ArgsParser] = None,
+        args_parser: Optional[T_Handler] = None,
         parameterless: Optional[list] = None,
     ):
         def deco(func: T_Handler):
