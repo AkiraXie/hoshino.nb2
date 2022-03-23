@@ -20,12 +20,13 @@ os.makedirs(img_dir, exist_ok=True)
 os.makedirs(db_dir, exist_ok=True)
 os.makedirs(service_dir, exist_ok=True)
 
-from .typing import Final, Any, Union, T_ArgsParser, T_Handler, Optional, Type
+from .typing import Final, Any, Union, T_Handler, Optional, Type
 from .res import RHelper
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11.utils import escape
-from nonebot.params import Depends
-from nonebot.matcher import Matcher, current_bot
+from nonebot.params import Depends, BotParam, EventParam, StateParam, MatcherParam
+from nonebot.dependencies import Dependent
+from nonebot.matcher import Matcher, current_bot,current_matcher
 from .message import MessageSegment, Message, MessageTemplate
 from .event import Event
 
@@ -114,13 +115,12 @@ Bot.send = send
 
 # patch matcher.got
 
-
 @classmethod
 def got(
     cls: Type[Matcher],
     key: str,
     prompt: Optional[Union[str, Message, MessageSegment, MessageTemplate]] = None,
-    args_parser: Optional[T_ArgsParser] = None,
+    args_parser: Optional[T_Handler] = None,
     parameterless: Optional[list] = None,
 ):
     """改自 `nonebot.Matcher.got`
@@ -135,7 +135,10 @@ def got(
         args_parser: 参数解析器
         parameterless: 非参数类型依赖列表
     """
-
+    if args_parser:
+        args_parser = Dependent[Any].parse(call=args_parser,
+                                           allow_types=[BotParam, EventParam, StateParam, MatcherParam])
+    
     async def _key_getter(event: Event, matcher: "Matcher"):
         matcher.set_target(key)
         if matcher.get_target() == key:
@@ -143,7 +146,7 @@ def got(
                 matcher.set_arg(key, event.get_plaintext())
             else:
                 bot: Bot = current_bot.get()
-                await args_parser(bot, event, matcher.state)
+                await args_parser(matcher=matcher, bot=bot, event=event, state=matcher.state)
             return
         if matcher.get_arg(key, ...) is not ...:
             return

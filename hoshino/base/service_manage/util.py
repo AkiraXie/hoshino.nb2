@@ -9,7 +9,7 @@ Github: http://github.com/AkiraXie/
 from . import Bot, Event, T_State
 
 
-async def parse_service(bot: Bot, event: Event, state: T_State):
+async def parse_service(event: Event, state: T_State):
     service_msgs = event.get_plaintext().split()
     services = []
     for msg in service_msgs:

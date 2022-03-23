@@ -54,7 +54,7 @@ disable = on_shell_command(
 
 
 @lssv.handle()
-async def _(bot: Bot, event: Event, state: T_State):
+async def _(event: Event, state: T_State):
     if isinstance(event, GroupMessageEvent):
         state["gids"] = [event.group_id]
 
@@ -95,7 +95,7 @@ async def _(bot: Bot, event: Event, state: T_State):
 async def handle_msg(bot: Bot, event: Event, state: T_State):
     if isinstance(event, GroupMessageEvent):
         state["gids"] = [event.group_id]
-        await parse_service(bot, event, state)
+        await parse_service(event, state)
 
     elif isinstance(event, PrivateMessageEvent):
         services = []
