@@ -33,8 +33,8 @@ jp_ver = _resource_path + "jp_ver.json"
 jplist = [jp_url, jp_verurl, jp_db, jp_ver, "日服日程"]
 # tw(sonet f**k you!)
 # 台服api由tngsohack提供，感谢！
-tw_url = "https://get.lolikon.icu/br/redive_tw.db.br"
-tw_verurl = "https://get.lolikon.icu/json/lastver_tw.json"
+tw_url = "https://api.redive.lolikon.icu/br/redive_tw.db.br"
+tw_verurl = "https://api.redive.lolikon.icu/json/lastver_tw.json"
 tw_db = _resource_path + "redive_tw.db"
 tw_ver = _resource_path + "tw_ver.json"
 twlist = [tw_url, tw_verurl, tw_db, tw_ver, "台服日程"]

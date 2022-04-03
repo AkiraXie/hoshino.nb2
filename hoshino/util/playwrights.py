@@ -73,5 +73,5 @@ from asyncio import sleep
 async def _():
     browser: Browser = await get_browser()
     await browser.close()
-    await sleep(0.5)
+    await sleep(0.35)
     logger.info("chromium driver has closed")

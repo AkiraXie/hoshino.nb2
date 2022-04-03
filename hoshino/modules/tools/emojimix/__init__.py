@@ -49,6 +49,8 @@ async def emojimatch(event: MessageEvent, state: T_State):
                     res.append((u,d))
             if ms.type=='face':
                 e = qqface.get(int(ms.data['id']))
+                if not e:
+                    continue
                 u = f"{e:x}"
                 d = emojis.get(u)
                 if d:

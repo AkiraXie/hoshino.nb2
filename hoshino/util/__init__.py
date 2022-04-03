@@ -27,7 +27,7 @@ from nonebot.adapters.onebot.v11.event import (
     MessageEvent,
 )
 from nonebot.typing import T_State
-from hoshino import R
+from hoshino import R,fav_dir,img_dir
 from nonebot.utils import run_sync
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.matcher import Matcher, current_matcher
@@ -225,16 +225,13 @@ def get_event_image(event: MessageEvent) -> List[str]:
 
 
 async def save_img(url: str, name: str, fav: bool = False):
-    from hoshino import img_dir
-    from hoshino import fav_dir
-
     if fav:
         idir = fav_dir
     else:
         idir = img_dir
     r = await aiohttpx.get(url)
     b = BytesIO(r.content)
-    img = Image.open(b)
+    img = Image.open(b).convert("RGB")
     random_modify_pixel(img)
     name = os.path.join(idir, name)
     img.save(name)
