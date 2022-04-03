@@ -6,6 +6,7 @@ LastEditTime: 2021-06-09 02:30:07
 Description: 
 Github: http://github.com/AkiraXie/
 """
+from pathlib import Path
 from loguru import logger
 from io import UnsupportedOperation
 from PIL import Image
@@ -106,6 +107,9 @@ class RHelper(str):
         except Exception as e:
             logger.exception(e)
 
+    def get_path(self) -> Path:
+        return Path(self.__rpath)
+    
     @property
     def CQcode(self) -> MessageSegment:
         try:

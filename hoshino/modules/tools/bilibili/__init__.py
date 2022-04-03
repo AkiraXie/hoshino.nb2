@@ -6,6 +6,7 @@ LastEditTime: 2022-02-16 22:32:20
 Description: 
 Github: http://github.com/AkiraXie/
 """
+import asyncio
 from hoshino import Service, Bot, Event, Message
 from hoshino.typing import T_State
 from .data import get_bvid, get_resp
@@ -39,6 +40,7 @@ async def _(state: T_State):
     if not res:
         await bv.finish()
     await bv.send("检测到b站视频，正在解析~")
+    await asyncio.sleep(0.3)
     msg = []
     for k, v in res.items():
         msg.append(f"{k}: {v}")

@@ -7,7 +7,7 @@ Description:
 Github: http://github.com/AkiraXie/
 """
 from nonebot.adapters.onebot.v11 import GROUP, GROUP_ADMIN, GROUP_OWNER, PRIVATE
-from nonebot.permission import SUPERUSER, Permission
+from nonebot.permission import SUPERUSER, Permission, USER
 
 ADMIN = SUPERUSER | GROUP_ADMIN | GROUP_OWNER
 PADMIN = SUPERUSER | GROUP_ADMIN | GROUP_OWNER | PRIVATE
