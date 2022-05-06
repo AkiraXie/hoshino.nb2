@@ -6,7 +6,6 @@ LastEditTime: 2021-03-06 14:14:17
 Description: 
 Github: http://github.com/AkiraXie/
 """
-import asyncio
 from hoshino import Service, Bot, Event
 import websockets
 from brotli import decompress
