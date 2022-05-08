@@ -6,10 +6,10 @@ LastEditTime: 2021-04-15 15:05:30
 Description: 
 Github: http://github.com/AkiraXie/
 """
-from nonebot.exception import FinishedException
+
 from hoshino.typing import T_State
 from hoshino import Event, Matcher, Message, MessageSegment
-from hoshino.util import concat_pic, img_to_bytes, FreqLimiter
+from hoshino.util import Cooldown, concat_pic, img_to_bytes
 from hoshino.service import Service
 import re
 from hoshino.modules.priconne.chara import Chara
@@ -17,7 +17,6 @@ from hoshino.modules.priconne.chara import Chara
 sv = Service("pcr-arena")
 from .arena import do_query
 
-lmt = FreqLimiter(5)
 
 aliases = {
     "怎么拆",
@@ -47,7 +46,7 @@ aliases_tw = set("台" + a for a in aliases) | set("台服" + a for a in aliases
 aliases_jp = set("日" + a for a in aliases) | set("日服" + a for a in aliases)
 
 
-async def parse_query(matcher: Matcher, event: Event, state: T_State):
+async def parse_query(matcher: Matcher, event: Event, state: T_State,_=Cooldown(30,prompt="您的查询将在30秒后可用")):
     argv = event.get_plaintext().strip()
     if not argv:
         return
@@ -102,7 +101,7 @@ jjjc = sv.on_command(
 @jjjc.got("defen", "请输入需要查询的防守队伍,无需空格隔开", parse_query)
 async def query(matcher: Matcher, state: T_State):
     if not state["defen"]:
-        raise FinishedException
+        await matcher.finish()
     sv.logger.info("Doing query...")
     try:
         res = await do_query(state["defen"], state["region"])
