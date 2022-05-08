@@ -8,18 +8,18 @@ Github: http://github.com/AkiraXie/
 """
 import random
 import pytz
-import base64
 import zhconv
 import nonebot
 import unicodedata
-import time
 import os
+from asyncio import get_running_loop
 from typing import List, Optional, Tuple, Type, Union
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from nonebot.adapters.onebot.v11 import MessageSegment,Message
+from nonebot.params import Depends
 from nonebot.adapters.onebot.v11.event import (
     Event,
     GroupMessageEvent,
@@ -42,18 +42,24 @@ DEFAULTFONT = ImageFont.truetype(
 )
 
 
-class FreqLimiter:
-    def __init__(self, default_cd_seconds):
-        self.next_time = defaultdict(float)
-        self.default_cd = default_cd_seconds
+def Cooldown(
+    cooldown: float = 10,
+    prompt: Optional[str] = None,
+) -> None:
+    
+    debounced = set()
+    
+    async def dependency(matcher: Matcher, event: MessageEvent, bot: Bot):
+        loop = get_running_loop()
+        key = event.user_id
+        if key in debounced and not await SUPERUSER(bot,event):
+            await matcher.finish(prompt)
+        else:
+            debounced.add(key)
+            loop.call_later(cooldown, lambda: debounced.remove(key))
+        return
 
-    def check(self, key) -> bool:
-        return bool(time.time() >= self.next_time[key])
-
-    def start_cd(self, key, cd_time=0):
-        self.next_time[key] = time.time() + (
-            cd_time if cd_time > 0 else self.default_cd
-        )
+    return Depends(dependency)
 
 
 class DailyNumberLimiter:

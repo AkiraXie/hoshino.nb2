@@ -24,7 +24,7 @@ from .typing import Final, Any, Union, T_Handler, Optional, Type
 from .res import RHelper
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.adapters.onebot.v11.utils import escape
-from nonebot.params import Depends, BotParam, EventParam, StateParam, MatcherParam
+from nonebot.params import Depends, BotParam, EventParam, StateParam, MatcherParam,DependParam
 from nonebot.dependencies import Dependent
 from nonebot.matcher import Matcher, current_bot,current_matcher
 from .message import MessageSegment, Message, MessageTemplate
@@ -137,7 +137,7 @@ def got(
     """
     if args_parser:
         args_parser = Dependent[Any].parse(call=args_parser,
-                                           allow_types=[BotParam, EventParam, StateParam, MatcherParam])
+                                           allow_types=[BotParam, EventParam, StateParam, MatcherParam, DependParam])
     
     async def _key_getter(event: Event, matcher: "Matcher"):
         matcher.set_target(key)
