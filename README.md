@@ -4,5 +4,12 @@
 
 ## 怎么用？
 1. 装依赖
-2. 复制service_config_sample到service_config, 然后自己改配置
-3. python run.py
+2. 复制 service_config_sample 到 service_config, 然后自己改配置
+3. 复制 env.prod.example 到 env.example
+4. python run.py
+
+## 特别感谢
+
+- [Ice-Cirno / HoshinoBot](https://github.com/Ice-Cirno/HoshinoBot)
+- [nonebot / nonebot2](https://github.com/nonebot/nonebot2)
+- [Mrs4s / go-cqhttp](https://github.com/Mrs4s/go-cqhttp)
