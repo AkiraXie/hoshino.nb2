@@ -52,11 +52,11 @@ def Cooldown(
     async def dependency(matcher: Matcher, event: MessageEvent, bot: Bot):
         loop = get_running_loop()
         key = event.user_id
-        if key in debounced and not await SUPERUSER(bot,event):
-            await matcher.finish(prompt)
+        if key in debounced :
+            await matcher.finish(prompt.format(cooldown))
         else:
             debounced.add(key)
-            loop.call_later(cooldown, lambda: debounced.remove(key))
+            loop.call_later(cooldown, lambda: debounced.discard(key))
         return
 
     return Depends(dependency)

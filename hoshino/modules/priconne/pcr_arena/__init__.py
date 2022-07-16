@@ -46,7 +46,7 @@ aliases_tw = set("台" + a for a in aliases) | set("台服" + a for a in aliases
 aliases_jp = set("日" + a for a in aliases) | set("日服" + a for a in aliases)
 
 
-async def parse_query(matcher: Matcher, event: Event, state: T_State,_=Cooldown(30,prompt="您的查询将在30秒后可用")):
+async def parse_query(matcher: Matcher, event: Event, state: T_State,_=Cooldown(10,prompt="您的查询将在{}秒后可用")):
     argv = event.get_plaintext().strip()
     if not argv:
         return

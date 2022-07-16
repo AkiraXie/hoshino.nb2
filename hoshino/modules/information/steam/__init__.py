@@ -159,7 +159,7 @@ async def del_steam_ids(steam_id, group):
     await update_game_status()
 
 
-@scheduled_job("cron", minute="*/2", id="推送steam", jitter=20)
+@scheduled_job("cron", minute="*/1", id="推送steam", jitter=10)
 async def check_steam_status():
     if not playing_state:
         await update_game_status()

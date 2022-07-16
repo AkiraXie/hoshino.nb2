@@ -22,7 +22,7 @@ class Dynamic:
         self.dynamic = dynamic
         self.type = dynamic["desc"]["type"]
         self.id = dynamic["desc"]["dynamic_id"]
-        self.url = "https://t.bilibili.com/" + str(self.id)
+        self.url = "http://m.bilibili.com/dynamic/" + str(self.id)
         self.time = dynamic["desc"]["timestamp"]
         self.uid = dynamic["desc"]["user_profile"]["info"]["uid"]
         self.name = dynamic["desc"]["user_profile"]["info"].get("uname")
@@ -37,13 +37,11 @@ class Dynamic:
             256: "发布了新音频",
         }
         msg = [self.name + type_msg.get(self.type, type_msg[0])]
-        for i in range(3):
-            try:
-                img = await get_bili_dynamic_screenshot(self.url)
+        for _ in range(3):
+            img = await get_bili_dynamic_screenshot(self.url)
+            if img:
                 msg.append(str(img))
                 break
-            except:
-                logger.exception("获取动态截图失败")
             await asyncio.sleep(0.2)
         msg.append(self.url)
         return Message("\n".join(msg))
