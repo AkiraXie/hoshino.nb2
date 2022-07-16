@@ -7,13 +7,14 @@ Description:
 Github: http://github.com/AkiraXie/
 """
 import os
+from nonebot import get_bot
 import pygtrie
 import zhconv
 import importlib
 from PIL import Image, ImageFont
 from loguru import logger
 from hoshino import Bot, Event, R, RHelper, scheduled_job
-from hoshino.util import sucmd, get_text_size, text_to_img, run_sync
+from hoshino.util import send_to_superuser, sucmd, get_text_size, text_to_img, run_sync
 from .util import download_card, download_chara_icon, download_config, download_pcrdata
 from hoshino.modules.priconne import _pcr_data
 
@@ -86,7 +87,7 @@ async def check_data():
             logger.error(f"重载花名册失败！{type(e)}")
     else:
         exc = code_1 or code_2
-        await dldata.finish(f"更新卡池和数据失败，错误如下：\n {exc}")
+        await send_to_superuser(get_bot(),f"更新卡池和数据失败，错误如下：\n {exc}")
 
 
 @dldata.handle()

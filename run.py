@@ -1,15 +1,7 @@
-"""
-Author: AkiraXie
-Date: 2021-01-27 22:29:46
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 22:54:41
-Description: 
-Github: http://github.com/AkiraXie/
-"""
+import imghdr
 import nonebot
 import os
 from nonebot.adapters.onebot.v11 import Adapter
-
 moduledir = "hoshino/modules/"
 base = "hoshino/base/"
 nonebot.init()

@@ -35,6 +35,8 @@ async def _(bot: Bot, event: Event):
     if len(msgs[0]) == 0 or len(msgs[1]) == 0:
         await group_ques.finish("提问和回答都不可以是空!", at_sender=True)
     question, answer = msgs
+    if answer == question:
+        await group_ques.finish()
     question = question.lstrip()
     Question.replace(
         question=question, answer=answer, group=event.group_id, user=0
@@ -53,6 +55,8 @@ async def _(bot: Bot, event: Event):
         await person_ques.finish("提问和回答都不可以是空!", at_sender=True)
     question, answer = msgs
     question = question.lstrip()
+    if answer == question:
+        await person_ques.finish("回答不能和问题一样!", at_sender=True)
     Question.replace(
         question=question,
         answer=answer,
@@ -117,7 +121,7 @@ async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
 
 
 @del_pqa.got("question", "请输入要删除的问题", parse_question)
-@del_pqa.got("user_id", "请输入要删除问题的id，支持at", parse_sin_qq)
+@del_pqa.got("user_id", "请输入要删除问题的id,支持at", parse_sin_qq)
 async def _(bot: Bot, event: Event, state: T_State):
     if not state.get("user_id", None):
         return

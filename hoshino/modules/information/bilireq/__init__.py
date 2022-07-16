@@ -82,7 +82,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, msg)
 
 
-@scheduled_job("cron", minute="*/4", jitter=10, id="推送bili动态")
+@scheduled_job("cron", minute="*/2", jitter=10, id="推送bili动态")
 async def _():
     groups = await sv.get_enable_groups()
     for gid in groups:
@@ -170,7 +170,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, f"{uid} 取消订阅直播失败")
 
 
-@scheduled_job("interval", minutes=2, jitter=3, id="推送bili直播")
+@scheduled_job("interval", minutes=1, jitter=3, id="推送bili直播")
 async def _():
     groups = await sv.get_enable_groups()
     uids = [row.uid for row in LiveDB.select(LiveDB.uid).distinct()]
