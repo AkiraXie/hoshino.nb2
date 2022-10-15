@@ -7,16 +7,16 @@ Description:
 Github: http://github.com/AkiraXie/
 """
 import os
+import json
 from nonebot import get_bot
 import pygtrie
 import zhconv
-import importlib
 from PIL import Image, ImageFont
 from loguru import logger
 from hoshino import Bot, Event, R, RHelper, scheduled_job
 from hoshino.util import send_to_superuser, sucmd, get_text_size, text_to_img, run_sync
 from .util import download_card, download_chara_icon, download_config, download_pcrdata
-from hoshino.modules.priconne import _pcr_data
+from hoshino.modules.priconne import pcrdatapath
 
 dlicon = sucmd("下载头像")
 dlcard = sucmd("下载卡面")
@@ -38,7 +38,7 @@ os.makedirs(R.img(f"priconne/gadget/").path, exist_ok=True)
 os.makedirs(R.img(f"priconne/card/").path, exist_ok=True)
 os.makedirs(R.img(f"priconne/unit/").path, exist_ok=True)
 NAME2ID = pygtrie.CharTrie()
-
+KV = {}
 
 @dlicon.handle()
 async def _(bot: Bot, event: Event):
@@ -80,7 +80,6 @@ async def check_data():
     code_2 = await download_config()
     if code_1 == 0 and code_2 == 0:
         try:
-            importlib.reload(_pcr_data)
             Chara.gen_name2id()
         except Exception as e:
             logger.exception(e)
@@ -96,7 +95,6 @@ async def _():
     code_2 = await download_config()
     if code_1 == 0 and code_2 == 0:
         try:
-            importlib.reload(_pcr_data)
             Chara.gen_name2id()
         except Exception as e:
             logger.exception(e)
@@ -130,25 +128,25 @@ class Chara:
     @property
     def jpname(self):
         return (
-            _pcr_data.CHARA_NAME[self.id][1]
-            if self.id in _pcr_data.CHARA_NAME
-            else _pcr_data.CHARA_NAME[Chara.UNKNOWN][0]
+            KV[self.id][1]
+            if self.id in KV
+            else KV[Chara.UNKNOWN][1]
         )
 
     @property
     def enname(self):
         return (
-            _pcr_data.CHARA_NAME[self.id][2]
-            if self.id in _pcr_data.CHARA_NAME
-            else _pcr_data.CHARA_NAME[Chara.UNKNOWN][0]
+            KV[self.id][2]
+            if self.id in KV
+            else KV[Chara.UNKNOWN][2]
         )
 
     @property
     def name(self):
         return (
-            _pcr_data.CHARA_NAME[self.id][0]
-            if self.id in _pcr_data.CHARA_NAME
-            else _pcr_data.CHARA_NAME[Chara.UNKNOWN][0]
+            KV[self.id][0]
+            if self.id in KV
+            else KV[Chara.UNKNOWN][0]
         )
 
     @property
@@ -289,10 +287,15 @@ class Chara:
     @staticmethod
     def gen_name2id():
         NAME2ID.clear()
-        for k, v in _pcr_data.CHARA_NAME.items():
+        KV.clear()
+        with open(pcrdatapath,"r",encoding="utf8") as f:
+            kv:dict = json.load(f) 
+        KV[1000] = ["未知角色", "未知キャラ", "Unknown"]  
+        for k, v in kv.items():
+            KV[int(k)]=v
             for s in v:
                 if Chara.normname(s) not in NAME2ID:
-                    NAME2ID[Chara.normname(s)] = k
+                    NAME2ID[Chara.normname(s)] = int(k)
                 else:
                     logger.warning(f"Chara.gen_name2id: 出现重名{s}于id{k}与id{NAME2ID[s]}")
 

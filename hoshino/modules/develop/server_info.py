@@ -8,22 +8,22 @@ Github: http://github.com/AkiraXie/
 '''
 
 
+import time
 from hoshino import sucmd, Bot, driver
 from hoshino.util import send_to_superuser
 from asyncio import all_tasks
+from datetime import datetime
 import psutil
-
 showcmd = sucmd("info", aliases={"serverinfo", "stat"})
 p = psutil.Process()
 p1 :psutil.Process = None
-
 def refresh_gocq_process():
     global p1
     _p = None
     for ps in psutil.process_iter():
         if  "go-cq" in ps.name():
             _p = psutil.Process(ps.pid)
-            break
+            break     
     p1 = _p
 
 def get_gocq_process():
@@ -44,23 +44,28 @@ def get_stat():
         disk.total / 1024 / 1024 / 1024,
         disk.percent,
     )
+    live_time = time.time() - p.create_time()
     msg = [
         f"服务CPU使用: {cpu_p}%",
         f"服务内存使用: {memu:.2f}MB",
         f"磁盘使用: {dp}%  {du:.2f}GB/{dt:.2f}GB",
-        f"服务协程数量: {task_num}"
+        f"服务协程数量: {task_num}",
+        f"服务运行时间: {datetime.utcfromtimestamp(live_time).strftime('%H:%M:%S')}"
     ]
     pp = get_gocq_process()
     if not pp:
         return "\n".join(msg)
     cpu_p1 = pp.cpu_percent()
     mem1 = pp.memory_full_info().uss / 1024.0 / 1024.0
-    msg.extend([f"go-cqhttp CPU使用: {cpu_p1}%", f"go-cqhttp 内存使用: {mem1:.2f}MB"])
+    gocq_live_time = time.time() - pp.create_time()
+    msg.extend([f"go-cqhttp CPU使用: {cpu_p1}%", 
+                f"go-cqhttp 内存使用: {mem1:.2f}MB",
+                f"go-cqhttp 运行时间: {datetime.utcfromtimestamp(gocq_live_time).strftime('%H:%M:%S')}"])
     return "\n".join(msg)
 
 
 @showcmd.handle()
-async def _(bot: Bot):
+async def _():
     await showcmd.finish(get_stat())
 
 
@@ -68,3 +73,4 @@ async def _(bot: Bot):
 async def _(bot: Bot):
     refresh_gocq_process()       
     await send_to_superuser(bot, get_stat())
+
