@@ -93,7 +93,7 @@ async def download_config():
 async def download_pcrdata():
     try:
         dataget = await aiohttpx.get(
-            "https://api.akiraxie.cc/pcr/_pcr_data.py", timeout=5
+            "https://pan.dihe.moe/Priconne/chara.json", timeout=5
         )
         datacon = dataget.content
     except Exception as e:
@@ -103,7 +103,14 @@ async def download_pcrdata():
     if 200 != dataget.status_code:
         logger.error(exc := f"连接服务器失败,HTTP {dataget.status_code}")
         return exc
-    with open(pcrdatapath, "wb") as f:
-        f.write(datacon)
+    li=json.loads(datacon)
+    di = {}
+    for item in li:
+        id_=item['id']
+        di[id_]=[item['zh_name'],item['original_name'],
+                 item['romanization'],*item['alias'],
+                 *item['alias_with_typo'],*item['abstract']]
+    with open(pcrdatapath,'w',encoding='utf8') as f:
+        json.dump(di,f,ensure_ascii=False,indent=4)
     logger.info("下载角色数据成功")
     return 0

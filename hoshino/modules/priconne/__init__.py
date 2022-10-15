@@ -10,7 +10,7 @@ Github: http://github.com/AkiraXie/
 import shutil
 import os
 
-pcrdatapath = os.path.join(os.path.dirname(__file__), "_pcr_data.py")
-spcrdatapath = os.path.join(os.path.dirname(__file__), "_pcr_data_sample.py")
+pcrdatapath = os.path.join(os.path.dirname(__file__), "chara.json")
+spcrdatapath = os.path.join(os.path.dirname(__file__), "chara_sample.json")
 if not os.path.exists(pcrdatapath):
     shutil.copy(spcrdatapath, pcrdatapath)

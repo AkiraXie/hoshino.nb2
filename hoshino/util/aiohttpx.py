@@ -36,7 +36,7 @@ class Response(BaseResponse):
         self.content: bytes = content
 
     @property
-    def json(self) -> dict:
+    def json(self):
         try:
             return loads(self.content)
         except Exception as e:

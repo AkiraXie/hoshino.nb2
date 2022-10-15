@@ -402,6 +402,7 @@ class Service:
         only_to_me: bool = False,
         only_group: bool = True,
         permission: Permission = NORMAL,
+        log:bool = False,
         **kwargs,
     ) -> "MatcherWrapper":
         kwargs["permission"] = permission
@@ -413,6 +414,7 @@ class Service:
             "Message.message",
             priority,
             on_message(  _depth=1, **kwargs),
+            log,
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -471,13 +473,14 @@ class MatcherWrapper:
     """
 
     def __init__(
-        self, sv: Service, type: str, priority: int, matcher: Type[Matcher], **info
+        self, sv: Service, type: str, priority: int, matcher: Type[Matcher],log:bool=True, **info
     ) -> None:
         self.matcher = matcher
         self.sv = sv
         self.priority = priority
         self.info = info
         self.type = type
+        self.log = log
 
     @staticmethod
     def get_loaded_matchers() -> List[str]:
@@ -583,7 +586,7 @@ class MatcherWrapper:
 
 async def log_matcherwrapper(matcher: Matcher):
     mw = _loaded_matchers.get(matcher.__class__, None)
-    if mw:
+    if mw and mw.log:
         mw.sv.logger.info(f"Event will be handled by <lc>{mw}</>")
         yield 
         mw.sv.logger.info(f"Event was completed handling by <lc>{mw}</>")
@@ -591,5 +594,5 @@ async def log_matcherwrapper(matcher: Matcher):
         yield
 
 @run_preprocessor
-async def _(mw = Depends(log_matcherwrapper,use_cache = False)):
+async def _(_ = Depends(log_matcherwrapper,use_cache = False)):
     ...
