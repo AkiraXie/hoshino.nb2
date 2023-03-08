@@ -39,7 +39,6 @@ async def get_resp(bvid: str):
     oj["封面"] = MessageSegment.image(data["pic"])
     oj["av号"] = f'av{data.get("aid")}'
     oj["标题"] = data["title"]
-    oj["简介"] = data["desc"]
     oj["UP主"] = data["owner"]["name"]
     oj["UP主空间"] = f"https://space.bilibili.com/{data['owner']['mid']}"
     oj["链接"] = f"https://bilibili.com/video/{bvid}"

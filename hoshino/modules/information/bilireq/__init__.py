@@ -82,7 +82,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, msg)
 
 
-@scheduled_job("cron", minute="*/2", jitter=10, id="推送bili动态")
+@scheduled_job("cron", minute="*", jitter=10, id="推送bili动态")
 async def _():
     groups = await sv.get_enable_groups()
     for gid in groups:
@@ -105,7 +105,7 @@ async def _():
 
 status_dic = {0: "未开播", 1: "直播中"}
 live_state = defaultdict(int)
-
+live_times = defaultdict(int)
 
 @sv.on_command("订阅直播", aliases=("添加直播", "直播订阅"))
 async def _(bot: Bot, event: Event):
@@ -113,9 +113,13 @@ async def _(bot: Bot, event: Event):
         uid = str(uid)
         info = dic[uid]
         status = 0 if info["live_status"] == 2 else info["live_status"]
+        desc = f"{info['uname']} {status_dic[status]}"
+        if status == 1:
+            dt=datetime.utcnow()-datetime.utcfromtimestamp(info['live_time'])
+            desc += f"\n直播时长:{int(dt.total_seconds()//3600)}小时{int(dt.total_seconds()%3600//60)}分{int(dt.total_seconds()%60)}秒"
+            live_times[uid]=info['live_time']
         live_state[uid] = status
-        return status
-
+        return desc
     gid = event.group_id
     uid = event.get_plaintext()
     try:
@@ -125,9 +129,9 @@ async def _(bot: Bot, event: Event):
         sv.logger.exception(e)
         await bot.send(event, f"UID {uid} 不合法")
     dic = await get_live_status([uid])
-    status = get_uid_status(uid, dic)
+    desc = get_uid_status(uid, dic)
     await bot.send(event, f"{name} 直播订阅成功")
-    await bot.send(event, f"{name} 直播状态:{status_dic[status]}")
+    await bot.send(event, desc)
     LiveDB.replace(uid=uid, name=name, group=gid).execute()
 
 
@@ -149,6 +153,10 @@ async def _(bot: Bot, event: Event):
             status = 0 if info["live_status"] == 2 else info["live_status"]
             live_state[uid] = status
             desc = status_dic[status]
+            if status == 1:
+                dt=datetime.utcnow()-datetime.utcfromtimestamp(info['live_time'])
+                desc += f"\n直播时长:{int(dt.total_seconds()//3600)}小时{int(dt.total_seconds()%3600//60)}分{int(dt.total_seconds()%60)}秒"
+                live_times[uid]=info['live_time']            
             room_id = info["short_id"] if info["short_id"] else info["room_id"]
             url = "https://live.bilibili.com/" + str(room_id)
             msgs.append(f"{name} 状态:{desc}\n{url}")
@@ -170,7 +178,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, f"{uid} 取消订阅直播失败")
 
 
-@scheduled_job("interval", minutes=1, jitter=3, id="推送bili直播")
+@scheduled_job("interval", seconds=30, jitter=3, id="推送bili直播")
 async def _():
     groups = await sv.get_enable_groups()
     uids = [row.uid for row in LiveDB.select(LiveDB.uid).distinct()]
@@ -187,8 +195,12 @@ async def _():
         elif status == 0:
             name = info["uname"]
             live_msg = f"{name} 下播了！"
+            if live_times[uid]!=0:
+                dt=datetime.utcnow()-datetime.utcfromtimestamp(live_times[uid])
+                live_msg+=f"\n直播时长:{int(dt.total_seconds()//3600)}小时{int(dt.total_seconds()%3600//60)}分{int(dt.total_seconds()%60)}秒"
             need_send[uid] = live_msg
             live_state[uid] = status
+            live_times[uid]= 0
         else:
             room_id = info["short_id"] if info["short_id"] else info["room_id"]
             url = "https://live.bilibili.com/" + str(room_id)
@@ -198,10 +210,11 @@ async def _():
                 info["cover_from_user"] if info["cover_from_user"] else info["keyframe"]
             )
             live_msg = (
-                f"开播啦！ {name}：\n{title}\n" + MessageSegment.image(cover) + f"\n{url}"
+                f"开播啦！ {name}\n{title}\n" + MessageSegment.image(cover) + f"\n{url}"
             )
             need_send[uid] = live_msg
             live_state[uid] = status
+            live_times[uid]=info['live_time']
     if need_send:
         for uid in need_send:
             gids = [
@@ -236,6 +249,10 @@ async def _(bot: Bot):
         status = 0 if info["live_status"] == 2 else info["live_status"]
         live_state[uid] = status
         desc = status_dic[status]
+        if status == 1:
+            dt=datetime.utcnow()-datetime.utcfromtimestamp(info['live_time'])
+            desc += f"\n直播时长:{int(dt.total_seconds()//3600)}小时{int(dt.total_seconds()%3600//60)}分{int(dt.total_seconds()%60)}秒"
+            live_times[uid]=info['live_time']
         room_id = info["short_id"] if info["short_id"] else info["room_id"]
         url = "https://live.bilibili.com/" + str(room_id)
         msgs.append(f"{name} 状态:{desc}\n{url}")

@@ -12,11 +12,12 @@ import time
 from hoshino import sucmd, Bot, driver
 from hoshino.util import send_to_superuser
 from asyncio import all_tasks
-from datetime import datetime
+from datetime import datetime,timedelta
 import psutil
 showcmd = sucmd("info", aliases={"serverinfo", "stat"})
 p = psutil.Process()
 p1 :psutil.Process = None
+epoch = datetime.utcfromtimestamp(0)
 def refresh_gocq_process():
     global p1
     _p = None
@@ -45,12 +46,13 @@ def get_stat():
         disk.percent,
     )
     live_time = time.time() - p.create_time()
+    td=datetime.utcfromtimestamp(live_time)-epoch
     msg = [
         f"服务CPU使用: {cpu_p}%",
         f"服务内存使用: {memu:.2f}MB",
         f"磁盘使用: {dp}%  {du:.2f}GB/{dt:.2f}GB",
         f"服务协程数量: {task_num}",
-        f"服务运行时间: {datetime.utcfromtimestamp(live_time).strftime('%H:%M:%S')}"
+        f"服务运行时间: {datetime.utcfromtimestamp(live_time)-epoch}",
     ]
     pp = get_gocq_process()
     if not pp:
@@ -60,7 +62,7 @@ def get_stat():
     gocq_live_time = time.time() - pp.create_time()
     msg.extend([f"go-cqhttp CPU使用: {cpu_p1}%", 
                 f"go-cqhttp 内存使用: {mem1:.2f}MB",
-                f"go-cqhttp 运行时间: {datetime.utcfromtimestamp(gocq_live_time).strftime('%H:%M:%S')}"])
+                f"go-cqhttp 运行时间: {datetime.utcfromtimestamp(gocq_live_time)-epoch}"])
     return "\n".join(msg)
 
 
