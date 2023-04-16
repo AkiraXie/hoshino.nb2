@@ -196,6 +196,33 @@ class Service:
             rule = rule & (to_me())
         return rule
 
+    @staticmethod
+    def add_nonebot_plugin(
+        plugin_name:str,        
+        manage_perm: Permission = ADMIN,
+        enable_on_default: bool = True,
+        visible: bool = True) -> "Service":
+        plugin = nonebot.load_plugin(plugin_name)
+        sv = Service(plugin_name.replace("nonebot_plugin_",""),manage_perm,enable_on_default,visible)
+        if matchers := plugin.matcher :
+            for matcher in matchers:
+               sv.add_nonebot_plugin_matcher(matcher)    
+        return sv
+
+    def add_nonebot_plugin_matcher(self,matcher: Type[Matcher], permission: Permission = NORMAL) -> "MatcherWrapper":
+        rule =  self.check_service(False,False)
+        matcher.rule = matcher.rule & rule
+        matcher.permission = permission
+        mw = MatcherWrapper(
+            self,
+            f"{matcher.type}.from_nonebot_plugin",
+            matcher.priority,
+            matcher,
+        )
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
+    
     def on_command(
         self,
         name: str,
