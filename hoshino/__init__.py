@@ -158,11 +158,17 @@ def got(
     ]
 
     def _decorator(func: T_Handler) -> T_Handler:
-
         if cls.handlers and cls.handlers[-1].call is func:
             func_handler = cls.handlers[-1]
-            for depend in reversed(_parameterless):
-                func_handler.prepend_parameterless(depend)
+            new_handler = Dependent(
+                call=func_handler.call,
+                params=func_handler.params,
+                parameterless=Dependent.parse_parameterless(
+                    tuple(_parameterless), cls.HANDLER_PARAM_TYPES
+                )
+                + func_handler.parameterless,
+            )
+            cls.handlers[-1] = new_handler
         else:
             cls.append_handler(func, parameterless=_parameterless)
 
@@ -191,3 +197,5 @@ from .schedule import scheduled_job, add_job
 from .typing import T_State
 from .service import Service
 from .util import aiohttpx, get_bot_list, sucmd, sucmds
+
+Service.add_nonebot_plugin("nonebot_plugin_cocdicer",enable_on_default=False)
