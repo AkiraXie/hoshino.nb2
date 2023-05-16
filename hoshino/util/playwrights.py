@@ -62,9 +62,11 @@ async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
         card = await page.query_selector(
             ".opus-modules" if "opus" in page.url else ".dyn-card"
         )
-        assert card
+        if not card:
+            return None
         clip = await card.bounding_box()
-        assert clip
+        if not clip:
+            return None
 
         image = await page.screenshot(clip=clip, full_page=True)
         await page.close()
