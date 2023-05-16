@@ -22,27 +22,20 @@ async def _(state: T_State):
     bvid = await get_bvid(url)
     if not bvid:
         await bl.finish()
-    res = await get_resp(bvid)
-    if not res:
+    msg = await get_resp(bvid)
+    if not msg:
         await bl.finish()
-    await bl.send("检测到b站视频短链接或小程序，正在解析~")
-    msg = []
-    for k, v in res.items():
-        msg.append(f"{k}: {v}")
-    msg = "\n".join(msg)
-    await bl.finish(Message(msg))
+    await bl.send("检测到b站视频，正在解析~")
+    await asyncio.sleep(0.3)
+    await bl.finish(msg)
 
 
 @bv
 async def _(state: T_State):
     bvid = state["_matched"]
-    res = await get_resp(bvid)
-    if not res:
+    msg = await get_resp(bvid)
+    if not msg:
         await bv.finish()
     await bv.send("检测到b站视频，正在解析~")
     await asyncio.sleep(0.3)
-    msg = []
-    for k, v in res.items():
-        msg.append(f"{k}: {v}")
-    msg = "\n".join(msg)
-    await bv.finish(Message(msg))
+    await bv.finish(msg)

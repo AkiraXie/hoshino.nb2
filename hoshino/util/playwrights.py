@@ -1,5 +1,6 @@
+from pathlib import Path
 from hoshino.typing import Optional
-from playwright.async_api import async_playwright, Browser,Playwright
+from playwright.async_api import async_playwright, Browser,Playwright,Page
 from hoshino import MessageSegment
 from hoshino import driver
 from nonebot.log import logger
@@ -7,7 +8,7 @@ from asyncio import sleep
 ## thansks to github.com/SK-415/HarukaBot
 _browser: Optional[Browser] = None
 ap: Optional[Playwright] = None
-
+mobilejs = Path(__file__).parent.joinpath("mobile.js")
 async def get_browser() -> Browser:
     global _browser,ap
     if not ap or not _browser or not _browser.is_connected():
@@ -25,6 +26,7 @@ async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
         "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
     ),
+    viewport={"width": 460, "height": 780},
 )
         
     page = None
@@ -44,23 +46,22 @@ async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
         # clip["height"] = bar_bound["y"] - clip["y"]
 
         # 移动端
-        page = await ctx.new_page()
-        await page.set_viewport_size({"width": 360, "height": 780})
-        await page.goto(url, wait_until="networkidle", timeout=10000)
+        page :Page = await ctx.new_page()
+        await page.goto(url, wait_until="networkidle", timeout=30000)
         if page.url == "https://m.bilibili.com/404":
+            await page.close()
+            await ctx.close()
             return None
         await page.add_script_tag(
-            content=
-            # 去除打开app按钮
-            "document.getElementsByClassName('m-dynamic-float-openapp').forEach(v=>v.remove());"
-            # 去除关注按钮
-            "document.getElementsByClassName('dyn-header__following').forEach(v=>v.remove());"
-            # 修复字体与换行问题
-            "const dyn=document.getElementsByClassName('dyn-card')[0];"
-            "dyn.style.fontFamily='Noto Sans CJK SC, sans-serif';"
-            "dyn.style.overflowWrap='break-word'"
+            path=mobilejs
         )
-        card = await page.query_selector(".dyn-card")
+        await page.wait_for_function("getMobileStyle()")
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_function("imageComplete()")
+        card = await page.query_selector(
+            ".opus-modules" if "opus" in page.url else ".dyn-card"
+        )
         assert card
         clip = await card.bounding_box()
         assert clip

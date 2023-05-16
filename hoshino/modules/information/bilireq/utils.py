@@ -10,9 +10,6 @@ info_url = "https://api.bilibili.com/x/space/acc/info?mid={uid}"
 dynamic_url = "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}&offset_dynamic_id=0&need_top=0"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
 headers = {
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)\
-             AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88\
-              Safari/537.36 Edg/87.0.664.60",
     "Referer": "https://www.bilibili.com/",
 }
 
@@ -60,7 +57,7 @@ async def get_dynamic(uid: int, ts: int) -> List[Dynamic]:
     url = dynamic_url.format(uid=uid)
     res = await aiohttpx.get(url, headers=headers)
     data = res.json["data"]
-    dyn = data.get("cards")[4::-1]
+    dyn = data.get("cards",[])[4::-1]
     dyns = list(map(Dynamic, dyn))
     dyns = [d for d in dyns if d.time > ts.timestamp()]
     return dyns

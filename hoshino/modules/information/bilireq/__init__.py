@@ -82,7 +82,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, msg)
 
 
-@scheduled_job("cron", minute="*", jitter=10, id="推送bili动态")
+@scheduled_job("cron", minute="*/2", jitter=10, id="推送bili动态")
 async def _():
     groups = await sv.get_enable_groups()
     for gid in groups:
@@ -97,10 +97,10 @@ async def _():
             for dyn in dyns:
                 await asyncio.sleep(0.5)
                 bot = groups[gid][0]
+                db.replace(group=gid, uid=uid, time=dyn.time, name=row.name).execute()
                 await bot.send_group_msg(
                     group_id=gid, message=await dyn.get_message(sv.logger)
                 )
-                db.replace(group=gid, uid=uid, time=dyn.time, name=row.name).execute()
 
 
 status_dic = {0: "未开播", 1: "直播中"}
