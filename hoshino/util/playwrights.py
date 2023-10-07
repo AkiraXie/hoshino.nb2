@@ -47,20 +47,22 @@ async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
 
         # 移动端
         page :Page = await ctx.new_page()
-        await page.goto(url, wait_until="networkidle", timeout=30000)
+        await page.goto(url, wait_until="networkidle", timeout=10000)
         if page.url == "https://m.bilibili.com/404":
             await page.close()
             await ctx.close()
             return None
+        await page.wait_for_load_state(state="domcontentloaded",timeout=10000)
+        await page.wait_for_selector(".b-img__inner, .dyn-header__author__face", state="visible",timeout=10000)
         await page.add_script_tag(
             path=mobilejs
         )
-        await page.wait_for_function("getMobileStyle()")
-        await page.wait_for_load_state("networkidle")
-        await page.wait_for_load_state("domcontentloaded")
-        await page.wait_for_function("imageComplete()")
+        await page.wait_for_function("getMobileStyle('true')",timeout=10000)
+        await page.wait_for_load_state("networkidle",timeout=10000)
+        await page.wait_for_load_state("domcontentloaded",timeout=10000)
+        await page.wait_for_function("imageComplete()",timeout=10000)
         card = await page.query_selector(
-            ".opus-modules" if "opus" in page.url else ".dyn-card"
+            ".opus-modules" if "opus" in page.url else ".dyn-card",timeout=10000
         )
         if not card:
             return None

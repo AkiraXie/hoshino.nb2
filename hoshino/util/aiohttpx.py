@@ -50,11 +50,11 @@ class Response(BaseResponse):
             logger.exception(e)
 
 
-async def get(url: str, *args, **kwargs) -> Response:
+async def get(url: str,*,cookies:dict = {}, **kwargs) -> Response:
     kwargs.setdefault("verify_ssl", False)
     kwargs.setdefault("timeout", 5)
-    async with ClientSession() as session:
-        async with session.get(url, *args, **kwargs) as resp:
+    async with ClientSession(cookies=cookies) as session:
+        async with session.get(url, **kwargs) as resp:
             res = Response(
                 resp.url, await resp.read(), resp.status, resp.headers, resp.ok
             )
