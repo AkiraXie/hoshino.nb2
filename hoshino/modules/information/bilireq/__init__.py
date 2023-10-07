@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import List
 from async_timeout import asyncio
 from hoshino.schedule import scheduled_job
 from hoshino import Service, Bot, Event, MessageSegment
@@ -64,7 +65,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, "\n".join(msg))
 
 
-@sv.on_command("查看最新动态")
+@sv.on_command("查看最新动态",aliases={'看动态','看最新动态','查动态'})
 async def _(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext()
@@ -82,25 +83,33 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, msg)
 
 
-@scheduled_job("cron", minute="*/2", jitter=10, id="推送bili动态")
+@scheduled_job("interval", minutes=1, jitter=10, id="推送bili动态")
 async def _():
     groups = await sv.get_enable_groups()
-    for gid in groups:
-        rows = db.select().where(db.group == gid)
+    uids = [row.uid for row in db.select(db.uid).distinct()]
+    sv.logger.info(f"uids: {uids}")
+    if not uids:
+        await asyncio.sleep(0.5)
+        return
+    for uid in uids:
+        rows : List[db] = db.select().where(db.uid == uid)
         if not rows:
             continue
-        for row in rows:
-            await asyncio.sleep(0.3)
-            ts = row.time
-            uid = row.uid
-            dyns = await get_dynamic(uid, ts)
-            for dyn in dyns:
-                await asyncio.sleep(0.5)
+        time_rows = sorted(rows,key=lambda x:x.time,reverse=True)
+        gids = [row.group for row in rows]
+        gids = list(filter(lambda x: x in groups,gids))
+        min_ts = time_rows[0].time
+        dyns = await get_dynamic(uid, min_ts)
+        for dyn in dyns:
+            msg = await dyn.get_message(sv.logger)
+            for gid in gids:
                 bot = groups[gid][0]
-                db.replace(group=gid, uid=uid, time=dyn.time, name=row.name).execute()
-                await bot.send_group_msg(
-                    group_id=gid, message=await dyn.get_message(sv.logger)
-                )
+                db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
+                try:
+                    await bot.send_group_msg(group_id=gid,message=msg)
+                except Exception as e:
+                    sv.logger(f"发送 bili 动态失败: {e}")    
+    await asyncio.sleep(0.5)            
 
 
 status_dic = {0: "未开播", 1: "直播中"}
