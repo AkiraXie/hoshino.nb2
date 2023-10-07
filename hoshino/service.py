@@ -202,8 +202,12 @@ class Service:
         manage_perm: Permission = ADMIN,
         enable_on_default: bool = True,
         visible: bool = True) -> "Service":
+        names = nonebot.get_available_plugin_names()
+        if plugin_name in names:
+            return
         plugin = nonebot.load_plugin(plugin_name)
-        sv = Service(plugin_name.replace("nonebot_plugin_",""),manage_perm,enable_on_default,visible)
+        svname = plugin_name.replace("nonebot_plugin_","").replace("nonebot-plugin-","")
+        sv = Service(svname,manage_perm,enable_on_default,visible)
         if matchers := plugin.matcher :
             for matcher in matchers:
                sv.add_nonebot_plugin_matcher(matcher)    

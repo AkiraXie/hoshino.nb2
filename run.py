@@ -14,6 +14,5 @@ if modules := config.modules:
         module = os.path.join(moduledir, module)
         nonebot.load_plugins(module)
 
-
 if __name__ == "__main__":
     nonebot.run()
