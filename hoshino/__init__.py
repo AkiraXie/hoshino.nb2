@@ -199,3 +199,4 @@ from .service import Service
 from .util import aiohttpx, get_bot_list, sucmd, sucmds
 
 Service.add_nonebot_plugin("nonebot_plugin_cocdicer",enable_on_default=False)
+#Service.add_nonebot_plugin("nonebot_plugin_mystool",enable_on_default=False)
