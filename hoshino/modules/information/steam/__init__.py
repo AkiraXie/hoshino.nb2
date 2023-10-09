@@ -134,6 +134,8 @@ async def update_game_status() -> None:
     except Exception as e:
         logger.exception(e)
         logger.error(type(e))
+        return
+    
     if not resp.ok:
         logger.exception(f'steam api return error {resp.status_code}')
         return

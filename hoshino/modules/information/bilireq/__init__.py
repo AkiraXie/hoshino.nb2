@@ -1,3 +1,4 @@
+from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from typing import List
 from async_timeout import asyncio
@@ -6,6 +7,7 @@ from hoshino import Service, Bot, Event, MessageSegment
 from datetime import datetime
 from hoshino.typing import FinishedException
 from .utils import (
+    Dynamic,
     DynamicDB as db,
     LiveDB,
     get_dynamic,
@@ -14,6 +16,26 @@ from .utils import (
     get_user_name,
 )
 from pytz import timezone
+from asyncio import Queue
+
+class DynamicQueue(Queue):
+        def __init__(self, maxsize: int = 0) -> None:
+            super().__init__(maxsize)
+            self._set = set()
+        def put(self, item: Dynamic) -> None:
+            if item.id not in self._set:
+                sv.logger.info(f"get dyn: {item.id},{item.name}")
+                self._set.add(item.id)
+                super().put_nowait(item)
+                loop = asyncio.get_event_loop()
+                loop.call_later(7200, self._set.remove, item.id)
+        def get(self) -> Dynamic:
+            if self.empty():
+                return None
+            item = super().get_nowait()
+            return item
+        
+dyn_queue = DynamicQueue()
 
 sv = Service("bilireq", enable_on_default=False)
 tz = timezone("Asia/Shanghai")
@@ -83,32 +105,46 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, msg)
 
 
-@scheduled_job("interval", minutes=1, jitter=10, id="推送bili动态")
-async def _():
-    groups = await sv.get_enable_groups()
+@scheduled_job("interval", seconds=20, jitter=5, id="获取bili动态")
+async def get_bili_dyn():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     sv.logger.info(f"uids: {uids}")
     if not uids:
         await asyncio.sleep(0.5)
         return
     for uid in uids:
+        sv.logger.info(f"get uid dyn: {uid}")
         rows : List[db] = db.select().where(db.uid == uid)
         if not rows:
             continue
         time_rows = sorted(rows,key=lambda x:x.time,reverse=True)
-        gids = [row.group for row in rows]
-        gids = list(filter(lambda x: x in groups,gids))
         min_ts = time_rows[0].time
         dyns = await get_dynamic(uid, min_ts)
         for dyn in dyns:
-            msg = await dyn.get_message(sv.logger)
-            for gid in gids:
-                bot = groups[gid][0]
-                db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
-                try:
-                    await bot.send_group_msg(group_id=gid,message=msg)
-                except Exception as e:
-                    sv.logger(f"发送 bili 动态失败: {e}")    
+            dyn_queue.put(dyn)
+    await asyncio.sleep(0.5)
+
+@scheduled_job("interval", seconds=30, jitter=10, id="推送bili动态")
+async def push_bili_dyn():
+    groups = await sv.get_enable_groups()
+    dyn = dyn_queue.get()
+    if not dyn:
+        await asyncio.sleep(0.5)
+        return
+    msg = await dyn.get_message(sv.logger)
+    sv.logger.info(f"push dyn: {dyn},msg: {msg}")
+    uid = dyn.uid
+    rows : List[db] = db.select().where(db.uid == uid)
+    gids = [row.group for row in rows]
+    gids = list(filter(lambda x: x in groups,gids))
+    for gid in gids:
+        await asyncio.sleep(0.35) 
+        bot = groups[gid][0]
+        db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
+        try:
+            await bot.send_group_msg(group_id=gid,message=msg)
+        except Exception as e:
+            sv.logger(f"发送 bili 动态失败: {e}")    
     await asyncio.sleep(0.5)            
 
 

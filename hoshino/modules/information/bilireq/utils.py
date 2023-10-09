@@ -109,7 +109,7 @@ class Dynamic:
             if img:
                 msg.append(str(img))
                 break
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
         msg.append(self.url)
         return Message("\n".join(msg))
 
