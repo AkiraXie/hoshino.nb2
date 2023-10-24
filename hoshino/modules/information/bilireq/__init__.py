@@ -131,12 +131,15 @@ async def push_bili_dyn():
     if not dyn:
         await asyncio.sleep(0.5)
         return
-    msg = await dyn.get_message(sv.logger)
-    sv.logger.info(f"push dyn: {dyn},msg: {msg}")
     uid = dyn.uid
     rows : List[db] = db.select().where(db.uid == uid)
     gids = [row.group for row in rows]
     gids = list(filter(lambda x: x in groups,gids))
+    if not gids:
+        await asyncio.sleep(0.5)
+        return
+    msg = await dyn.get_message(sv.logger)
+    sv.logger.info(f"push dyn: {dyn},msg: {msg}")
     for gid in gids:
         await asyncio.sleep(0.35) 
         bot = groups[gid][0]

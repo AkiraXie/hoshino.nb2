@@ -7,6 +7,7 @@ import os
 from hoshino import db_dir, Message
 from hoshino.util import get_bili_dynamic_screenshot, aiohttpx
 from functools import reduce
+# from .render import get_dynamic_img
 import time
 import urllib.parse
 from hashlib import md5
@@ -105,6 +106,7 @@ class Dynamic:
         }
         msg = [self.name + type_msg.get(self.type, type_msg[0])]
         for _ in range(3):
+            #img = await get_dynamic_img(self.id)
             img = await get_bili_dynamic_screenshot(self.url)
             if img:
                 msg.append(str(img))
@@ -123,10 +125,12 @@ async def get_new_dynamic(uid: int) -> Dynamic:
     return dyn
 
 
-async def get_dynamic(uid: int, ts: int) -> List[Dynamic]:
+async def get_dynamic(uid: int,ts) -> List[Dynamic]:
     url = dynamic_url.format(uid=uid)
     res = await aiohttpx.get(url,cookies=await get_cookies(), headers=headers)
     data = res.json["data"]
+    if not data:
+        return []
     dyn = data.get("cards",[])[4::-1]
     dyns = list(map(Dynamic, dyn))
     dyns = [d for d in dyns if d.time > ts.timestamp()]

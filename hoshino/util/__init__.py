@@ -178,6 +178,9 @@ def img_to_bytes(pic: Image.Image) -> bytes:
     pic.save(buf, format="PNG")
     return buf.getvalue()
 
+def img_to_segment(pic: Image.Image) -> MessageSegment:
+    return MessageSegment.image(img_to_bytes(pic))
+
 
 def text_to_segment(
     text: str,
