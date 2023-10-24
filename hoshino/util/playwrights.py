@@ -4,7 +4,8 @@ from playwright.async_api import async_playwright, BrowserContext,Playwright,Pag
 from hoshino import MessageSegment
 from hoshino import R
 from nonebot.log import logger
-
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 ## thansks to github.com/SK-415/HarukaBot
 _ctx: Optional[BrowserContext] = None
 mobilejs = Path(__file__).parent.joinpath("mobile.js")
@@ -14,6 +15,7 @@ async def get_ctx() -> BrowserContext:
     if not _ctx:
         ap = await async_playwright().start()   
         _ctx = await ap.chromium.launch_persistent_context(   
+            ignore_https_errors=True,
         user_data_dir=user_data,
         device_scale_factor=2,
         timeout=30000,
