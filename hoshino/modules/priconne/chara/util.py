@@ -93,7 +93,7 @@ async def download_config():
 async def download_pcrdata():
     try:
         dataget = await aiohttpx.get(
-            "https://pan.dihe.moe/Priconne/chara.json", timeout=5
+            "https://pan.dihe.moe/Priconne/chara.json", timeout=30
         )
         datacon = dataget.content
     except Exception as e:
