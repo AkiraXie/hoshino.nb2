@@ -1,34 +1,35 @@
 from pathlib import Path
 from hoshino.typing import Optional
-from playwright.async_api import async_playwright, BrowserContext,Playwright,Page
+from playwright.async_api import async_playwright, Browser,Playwright,Page
 from hoshino import MessageSegment
-from hoshino import R
+from hoshino import scheduled_job
 from nonebot.log import logger
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 ## thansks to github.com/SK-415/HarukaBot
-_ctx: Optional[BrowserContext] = None
+ap: Optional[Playwright] = None
+_b: Optional[Browser] = None
 mobilejs = Path(__file__).parent.joinpath("mobile.js")
-async def get_ctx() -> BrowserContext:
-    user_data = R / "playwright"
-    global _ctx
-    if not _ctx:
-        ap = await async_playwright().start()   
-        _ctx = await ap.chromium.launch_persistent_context(   
-            ignore_https_errors=True,
-        user_data_dir=user_data,
-        device_scale_factor=2,
-        timeout=30000,
-        user_agent=(
-        "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
-        ),
-        viewport={"width": 460, "height": 780},)
-    return _ctx
+async def get_b() -> Browser:
+    global ap,_b
+    if not ap or not _b: 
+        ap = await async_playwright().start()
+        _b = await ap.chromium.launch(timeout=10000)
+    return _b
 
+
+@scheduled_job("cron", hour="*/2",jitter=60,id="refresh_playwright")
+async def refresh_playwright():
+    global ap,_b
+    if _b:
+        await _b.close()
+    if ap:
+        await ap.stop()
+    ap = await async_playwright().start()
+    _b = await ap.chromium.launch(timeout=10000)
 
 async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
-    ctx = await get_ctx()        
+    b :Browser = await get_b()        
     page = None
     try:
         # 电脑端
@@ -46,7 +47,13 @@ async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
         # clip["height"] = bar_bound["y"] - clip["y"]
 
         # 移动端
-        page :Page = await ctx.new_page()
+        page :Page = await b.new_page(user_agent=(
+        "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
+        ),
+        viewport={"width": 460, "height": 780},
+        device_scale_factor=2,
+        )
         await page.goto(url, wait_until="networkidle")
         if page.url == "https://m.bilibili.com/404":
             await page.close()

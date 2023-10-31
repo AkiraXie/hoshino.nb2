@@ -105,13 +105,11 @@ class Dynamic:
             256: "发布了新音频",
         }
         msg = [self.name + type_msg.get(self.type, type_msg[0])]
-        for _ in range(3):
-            #img = await get_dynamic_img(self.id)
-            img = await get_bili_dynamic_screenshot(self.url)
-            if img:
-                msg.append(str(img))
-                break
-            await asyncio.sleep(0.5)
+        #img = await get_dynamic_img(self.id)
+        img = await get_bili_dynamic_screenshot(self.url)
+        if img:
+            msg.append(str(img))
+        await asyncio.sleep(0.5)
         msg.append(self.url)
         return Message("\n".join(msg))
 
