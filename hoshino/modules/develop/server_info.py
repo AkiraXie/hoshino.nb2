@@ -22,7 +22,7 @@ def refresh_gocq_process():
     global p1
     _p = None
     for ps in psutil.process_iter():
-        if  "go-cq" in ps.name():
+        if  "go-cq" in ps.name() or "gocq" in ps.name():
             _p = psutil.Process(ps.pid)
             break     
     p1 = _p
@@ -35,7 +35,7 @@ def get_gocq_process():
         return p1
     
 def get_stat():
-    task_num = len(all_tasks())
+    tasks = all_tasks()
     cpu_p = p.cpu_percent()
     mem = p.memory_full_info()
     memu = mem.uss / 1024.0 / 1024.0
@@ -46,12 +46,11 @@ def get_stat():
         disk.percent,
     )
     live_time = time.time() - p.create_time()
-    td=datetime.utcfromtimestamp(live_time)-epoch
     msg = [
         f"服务CPU使用: {cpu_p}%",
         f"服务内存使用: {memu:.2f}MB",
         f"磁盘使用: {dp}%  {du:.2f}GB/{dt:.2f}GB",
-        f"服务协程数量: {task_num}",
+        f"服务协程数量: {len(tasks)}",
         f"服务运行时间: {datetime.utcfromtimestamp(live_time)-epoch}",
     ]
     pp = get_gocq_process()
@@ -74,5 +73,5 @@ async def _():
 @driver.on_bot_connect
 async def _(bot: Bot):
     refresh_gocq_process()       
-    await send_to_superuser(bot, get_stat())
+    #await send_to_superuser(bot, get_stat())
 

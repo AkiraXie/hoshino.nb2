@@ -1,4 +1,3 @@
-from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from typing import List
 from async_timeout import asyncio
@@ -28,13 +27,15 @@ class DynamicQueue(Queue):
                 self._set.add(item.id)
                 super().put_nowait(item)
                 loop = asyncio.get_event_loop()
-                loop.call_later(7200, self._set.remove, item.id)
+                loop.call_later(3600, self._set.discard, item.id)
         def get(self) -> Dynamic:
             if self.empty():
                 return None
             item = super().get_nowait()
             return item
-        
+        def remove_id(self,id: int) -> None:
+            self._set.discard(id)
+
 dyn_queue = DynamicQueue()
 
 sv = Service("bilireq", enable_on_default=False)
@@ -133,9 +134,13 @@ async def push_bili_dyn():
         return
     uid = dyn.uid
     rows : List[db] = db.select().where(db.uid == uid)
-    gids = [row.group for row in rows]
-    gids = list(filter(lambda x: x in groups,gids))
+    _gids = [row.group for row in rows]
+    gids = list(filter(lambda x: x in groups,_gids))
     if not gids:
+        for gid in _gids:
+            await asyncio.sleep(0.1) 
+            db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
+        dyn_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
     msg = await dyn.get_message(sv.logger)
@@ -147,7 +152,8 @@ async def push_bili_dyn():
         try:
             await bot.send_group_msg(group_id=gid,message=msg)
         except Exception as e:
-            sv.logger(f"发送 bili 动态失败: {e}")    
+            sv.logger(f"发送 bili 动态失败: {e}") 
+    dyn_queue.remove_id(dyn.id)
     await asyncio.sleep(0.5)            
 
 
