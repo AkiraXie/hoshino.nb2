@@ -23,7 +23,6 @@ class DynamicQueue(Queue):
             self._set = set()
         def put(self, item: Dynamic) -> None:
             if item.id not in self._set:
-                sv.logger.info(f"get dyn: {item.id},{item.name}")
                 self._set.add(item.id)
                 super().put_nowait(item)
                 loop = asyncio.get_event_loop()
@@ -109,12 +108,10 @@ async def _(bot: Bot, event: Event):
 @scheduled_job("interval", seconds=20, jitter=5, id="获取bili动态")
 async def get_bili_dyn():
     uids = [row.uid for row in db.select(db.uid).distinct()]
-    sv.logger.info(f"uids: {uids}")
     if not uids:
         await asyncio.sleep(0.5)
         return
     for uid in uids:
-        sv.logger.info(f"get uid dyn: {uid}")
         rows : List[db] = db.select().where(db.uid == uid)
         if not rows:
             continue
@@ -144,7 +141,6 @@ async def push_bili_dyn():
         await asyncio.sleep(0.5)
         return
     msg = await dyn.get_message(sv.logger)
-    sv.logger.info(f"push dyn: {dyn},msg: {msg}")
     for gid in gids:
         await asyncio.sleep(0.35) 
         bot = groups[gid][0]
@@ -152,7 +148,7 @@ async def push_bili_dyn():
         try:
             await bot.send_group_msg(group_id=gid,message=msg)
         except Exception as e:
-            sv.logger(f"发送 bili 动态失败: {e}") 
+            sv.logger.error(f"发送 bili 动态失败: {e}") 
     dyn_queue.remove_id(dyn.id)
     await asyncio.sleep(0.5)            
 
