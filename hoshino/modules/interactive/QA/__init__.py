@@ -6,12 +6,64 @@ LastEditTime: 2021-04-07 22:07:05
 Description: 
 Github: http://github.com/AkiraXie/
 """
+
 from nonebot.typing import T_State
-import re
+from typing import Tuple
+from nonebot.params import Depends
 from .data import Question
 from hoshino.permission import ADMIN
-from hoshino import Service, Bot, Event, Message
+from hoshino import Service, Bot, Event, Message,MessageSegment,R,Matcher
+from hoshino.event import MessageEvent
 from peewee import fn
+from hoshino.util.aiohttpx import get
+
+img_dir = R.img("QA/").get_path()
+img_dir.mkdir(parents=True, exist_ok=True)
+
+
+async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str,str]:
+    msg = event.message.copy()
+    msgs = str(msg).split("你答", 1)
+    if len(msgs) != 2:
+        await matcher.finish()
+    if len(msgs[0]) == 0 or len(msgs[1]) == 0:
+        await matcher.finish()
+    question, answer = msgs
+    question = question.lstrip()    
+    answer = answer.lstrip() 
+    if answer == question:
+        await matcher.finish()
+    sid = event.get_session_id()
+    answer_msg = Message(answer)
+    for i, s in enumerate(answer_msg):
+        if s.type == "image":
+            url = s.data.get("url",s.data.get("file"))
+            s = "{}-{}".format(sid,(url.split("/")[-2]).split("-")[-1])
+            f = img_dir / s
+            img = await get(url,timeout=60)
+            f.write_bytes(img.content)
+            answer_msg[i] = MessageSegment.image(f)
+    return (question,str(answer_msg))
+
+
+set_qa_dep = Depends(event_image_in_local)
+
+
+async def answer_qa_rule(event: Event, state: T_State):
+    gid = event.group_id if "group_id" in event.__dict__ else 0
+    uid = event.user_id
+    msg = str(event.get_message())
+    question = msg.lower()
+    answer = Question.get_or_none(
+        fn.Lower(Question.question) == question, group=gid, user=uid
+    ) or Question.get_or_none(
+        fn.Lower(Question.question) == question, group=gid, user=0
+    )
+    if answer:
+        state["answer"] = answer.answer
+        return True
+    else:
+        return False
 
 sv = Service("QA")
 
@@ -21,42 +73,22 @@ del_gqa = sv.on_command("删除有人问", aliases={"删除大家问"}, permissi
 del_qa = sv.on_command("不要回答", aliases={"不再回答"}, only_group=False)
 lookqa = sv.on_command("看看我问", aliases={"查看我问"}, only_group=False)
 lookgqa = sv.on_command("看看有人问", aliases={"看看大家问", "查看有人问"})
-ans = sv.on_message(only_group=False, priority=5)
+ans = sv.on_message(only_group=False,rule=answer_qa_rule,priority=5,log=True)
 del_pqa = sv.on_command("删除我问", permission=ADMIN)
 
 
 @group_ques.handle()
-async def _(bot: Bot, event: Event):
-    msg = event.raw_message
-    msg = re.sub(r".*(有人问|大家问)", "", msg, 1)
-    msgs = msg.split("你答", 1)
-    if len(msgs) != 2:
-        await group_ques.finish()
-    if len(msgs[0]) == 0 or len(msgs[1]) == 0:
-        await group_ques.finish("提问和回答都不可以是空!", at_sender=True)
-    question, answer = msgs
-    if answer == question:
-        await group_ques.finish()
-    question = question.lstrip()
+async def _(event: Event,msg:Tuple[str,str] = set_qa_dep ):
+    question, answer = msg
     Question.replace(
-        question=question, answer=answer, group=event.group_id, user=0
+        question=question, answer=answer , group=event.group_id, user=0
     ).execute()
     await group_ques.finish(Message(f"好的我记住{question}了"))
 
 
 @person_ques.handle()
-async def _(bot: Bot, event: Event):
-    msg = event.raw_message
-    msg = re.sub(r".*我问", "", msg, 1)
-    msgs = msg.split("你答", 1)
-    if len(msgs) != 2:
-        await person_ques.finish()
-    if len(msgs[0]) == 0 or len(msgs[1]) == 0:
-        await person_ques.finish("提问和回答都不可以是空!", at_sender=True)
-    question, answer = msgs
-    question = question.lstrip()
-    if answer == question:
-        await person_ques.finish("回答不能和问题一样!", at_sender=True)
+async def _(event: Event,msg:Tuple[str,str] = set_qa_dep):
+    question, answer = msg
     Question.replace(
         question=question,
         answer=answer,
@@ -68,8 +100,7 @@ async def _(bot: Bot, event: Event):
 
 @del_gqa.handle()
 async def _(bot: Bot, event: Event):
-    msg = event.raw_message
-    question = re.sub(r".*删除(有人问|大家问)", "", msg, 1)
+    question = str(event.get_message())
     lquestion = question.lower()
     num = (
         Question.delete()
@@ -88,7 +119,7 @@ async def _(bot: Bot, event: Event):
 
 @del_qa.handle()
 async def _(bot: Bot, event: Event):
-    question = re.sub(r".*不[要再]回答", "", event.raw_message, 1)
+    question = str(event.get_message())
     lquestion = question.lower()
     gid = event.group_id if "group_id" in event.__dict__ else 0
     num = (
@@ -106,8 +137,8 @@ async def _(bot: Bot, event: Event):
         await del_qa.finish(Message('我不再回答"{}"了'.format(question)))
 
 
-async def parse_question(bot: Bot, event: Event, state: T_State):
-    state["question"] = event.raw_message.strip()
+async def parse_question( state: T_State,event: Event):
+    state["question"] = str(event.get_message())
 
 
 async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
@@ -169,14 +200,7 @@ async def _(bot: Bot, event: Event):
 
 
 @ans.handle()
-async def _(bot: Bot, event: Event):
-    gid = event.group_id if "group_id" in event.__dict__ else 0
-    uid = event.user_id
-    question = event.raw_message.lower()
-    answer = Question.get_or_none(
-        fn.Lower(Question.question) == question, group=gid, user=uid
-    ) or Question.get_or_none(
-        fn.Lower(Question.question) == question, group=gid, user=0
-    )
-    if answer:
-        await ans.finish(Message(answer.answer))
+async def _(state: T_State):
+    if answer:=state["answer"]:
+        msg = Message(answer)
+        await ans.finish(msg)

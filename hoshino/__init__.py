@@ -22,7 +22,7 @@ os.makedirs(service_dir, exist_ok=True)
 
 from .typing import Final, Any, Union, T_Handler, Optional, Type
 from .res import RHelper
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.adapters.onebot.v11 import Adapter,Bot
 from nonebot.adapters.onebot.v11.utils import escape
 from nonebot.params import Depends, BotParam, EventParam, StateParam, MatcherParam,DependParam
 from nonebot.dependencies import Dependent
@@ -107,11 +107,11 @@ async def send(
                         header = f">{escape(i,escape_comma=False)}\n"
                         break
             params["message"] = header + params["message"]
+        return await self.send_group_msg(group_id=params["group_id"], message=params["message"],auto_escape=params.get("auto_escape",False))
+    return await self.send_private_msg(user_id=params["user_id"], message=params["message"],auto_escape=params.get("auto_escape",False))
 
-    return await self.send_msg(**params)
 
-
-Bot.send = send
+Adapter.custom_send(send)
 
 # patch matcher.got
 

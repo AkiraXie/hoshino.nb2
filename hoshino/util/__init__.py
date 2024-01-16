@@ -254,16 +254,15 @@ def random_modify_pixel(img:Image.Image):
 
 def get_event_imageurl(event: MessageEvent) -> List[str]:
     msg = event.message
-    imglist = [s.data["url"] for s in msg if s.type == "image" and "url" in s.data]
+    imglist = [s.data.get("url",s.data.get("file")) for s in msg if s.type == "image"]
     return imglist
-
 
 async def send_to_superuser(bot: Optional[Bot] = None, msg=""):
     if not bot:
         bot = nonebot.get_bot()
     sus = bot.config.superusers
     for su in sus:
-        await bot.send_private_msg(user_id=su, message=msg)
+        await bot.send_private_msg(user_id=int(su), message=msg)
 
 
 async def get_img_from_url(url: str) -> MessageSegment:
