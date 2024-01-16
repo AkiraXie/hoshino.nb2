@@ -46,22 +46,22 @@ class RHelper(str):
             logger.warning(
                 f"{path} is not a directory and a file!\nif {key}.* or *.{key} is file or dir,please use + or () opearator."
             )
-        return __class__(path)
+        return RHelper(path)
 
     def __floordiv__(self, key):
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return __class__(path)
+        return RHelper(path)
 
     def __truediv__(self, key):
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return __class__(path)
+        return RHelper(path)
 
     def __add__(self, key):
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return __class__(path)
+        return RHelper(path)
 
     def __setattr__(self, name: str, value) -> None:
         if name != "_RHelper__rpath":
@@ -85,7 +85,7 @@ class RHelper(str):
         key = os.path.join(path, *paths)
         path = os.path.join(self.__rpath, key)
         path = os.path.normpath(path)
-        return __class__(path)
+        return RHelper(path)
 
     @property
     def path(self) -> str:
