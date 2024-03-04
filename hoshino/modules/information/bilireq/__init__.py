@@ -1,6 +1,6 @@
+import asyncio
 from collections import defaultdict
 from typing import List
-from async_timeout import asyncio
 from hoshino.schedule import scheduled_job
 from hoshino import Service, Bot, Event, MessageSegment
 from datetime import datetime
