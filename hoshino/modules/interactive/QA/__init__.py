@@ -75,7 +75,7 @@ lookqa = sv.on_command("看看我问", aliases={"查看我问"}, only_group=Fals
 lookgqa = sv.on_command("看看有人问", aliases={"看看大家问", "查看有人问"})
 ans = sv.on_message(only_group=False,rule=answer_qa_rule,priority=5,log=True)
 del_pqa = sv.on_command("删除我问", permission=ADMIN)
-
+del_allqa = sv.on_command("删除所有问答",aliases={"delallqa"}, permission=ADMIN)
 
 @group_ques.handle()
 async def _(event: Event,msg:Tuple[str,str] = set_qa_dep ):
@@ -204,3 +204,17 @@ async def _(state: T_State):
     if answer:=state["answer"]:
         msg = Message(answer)
         await ans.finish(msg)
+
+
+@del_allqa.handle()
+async def _(event: Event):
+    gid = event.group_id
+    num = (
+        Question.delete()
+        .where(Question.group == gid)
+        .execute()
+    )
+    if num == 0:
+        await del_allqa.finish(Message("该群没有设置任何问答"))
+    else:
+        await del_allqa.finish(Message("已删除该群的所有问答"))
