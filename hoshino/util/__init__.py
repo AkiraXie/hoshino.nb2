@@ -38,7 +38,7 @@ from .aiohttpx import get
 from .playwrights import get_bili_dynamic_screenshot
 
 DEFAULTFONT = ImageFont.truetype(
-    R.img("priconne/gadget/SourceHanSans-Regular.ttc"), size=48
+    R.img("gadget/SourceHanSans-Regular.ttc"), size=48
 )
 
 

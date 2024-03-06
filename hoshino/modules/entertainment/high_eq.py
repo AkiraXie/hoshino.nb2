@@ -17,12 +17,12 @@ sv = Service("high-eq", enable_on_default=False)
 
 def draw_text(img_pil: Image.Image, text: str, offset_x: int):
     draw = ImageDraw.ImageDraw(img_pil)
-    font = ImageFont.truetype(R.img("priconne/gadget/SourceHanSerif-Regular.ttc"), 48)
+    font = ImageFont.truetype(R.img("gadget/SourceHanSerif-Regular.ttc"), 48)
     width, height = draw.textsize(text, font)
     x = 5
     if width > 390:
         font = ImageFont.truetype(
-            R.img("priconne/gadget/SourceHanSerif-Regular.ttc"), int(390 * 48 / width)
+            R.img("gadget/SourceHanSerif-Regular.ttc"), int(390 * 48 / width)
         )
         width, height = draw.textsize(text, font)
     else:

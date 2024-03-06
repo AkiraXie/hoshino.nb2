@@ -22,9 +22,12 @@ dlicon = sucmd("下载头像")
 dlcard = sucmd("下载卡面")
 dldata = sucmd("更新卡池", aliases={"更新数据"})
 STARS = [1, 3, 6]
-TFONT = ImageFont.truetype(R.img("priconne/gadget/SourceHanSerif-Light.ttc"), 40)
 UNKNOWN = 1000
 try:
+    os.makedirs(R.img(f"priconne/gadget/").path, exist_ok=True)
+    os.makedirs(R.img(f"priconne/card/").path, exist_ok=True)
+    os.makedirs(R.img(f"priconne/unit/").path, exist_ok=True)
+    TFONT = ImageFont.truetype(R.img("gadget/SourceHanSerif-Light.ttc"), 40)
     gadget_equip = R.img("priconne/gadget/equip.png").open()
     gadget_star = R.img("priconne/gadget/star.png").open()
     gadget_star_dis = R.img("priconne/gadget/star_disabled.png").open()
@@ -34,9 +37,6 @@ try:
     dislike = R.img("priconne/gadget/dislike.png").open()
 except Exception as e:
     logger.exception(e)
-os.makedirs(R.img(f"priconne/gadget/").path, exist_ok=True)
-os.makedirs(R.img(f"priconne/card/").path, exist_ok=True)
-os.makedirs(R.img(f"priconne/unit/").path, exist_ok=True)
 NAME2ID = pygtrie.CharTrie()
 KV = {}
 
