@@ -16,7 +16,7 @@ from hoshino import Service, Bot, Event, Message,MessageSegment,R,Matcher
 from hoshino.event import MessageEvent
 from peewee import fn
 from hoshino.util.aiohttpx import get
-
+from PIL import Image
 img_dir = R.img("QA/").get_path()
 img_dir.mkdir(parents=True, exist_ok=True)
 
@@ -38,9 +38,18 @@ async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str
     for i, s in enumerate(answer_msg):
         if s.type == "image":
             url = s.data.get("url",s.data.get("file"))
-            s = "{}-{}".format(sid,(url.split("/")[-2]).split("-")[-1])
-            f = img_dir / s
             img = await get(url,timeout=60)
+            im=Image.open(img.content)
+            fmt = im.get_format_mimetype()
+            ext = ""
+            if fmt == "image/webp":
+                ext = ".webp"
+            elif fmt == "image/jpeg":
+                ext = ".jpg"
+            elif fmt == "image/png":
+                ext = ".png"    
+            s = "{}-{}{}".format(sid,(url.split("/")[-2]).split("-")[-1],ext)
+            f = img_dir / s
             f.write_bytes(img.content)
             answer_msg[i] = MessageSegment.image(f)
     return (question,str(answer_msg))
