@@ -6,7 +6,7 @@ LastEditTime: 2021-04-07 22:07:05
 Description: 
 Github: http://github.com/AkiraXie/
 """
-
+from io import BytesIO
 from nonebot.typing import T_State
 from typing import Tuple
 from nonebot.params import Depends
@@ -24,6 +24,7 @@ img_dir.mkdir(parents=True, exist_ok=True)
 async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str,str]:
     msg = event.message.copy()
     msgs = str(msg).split("你答", 1)
+    
     if len(msgs) != 2:
         await matcher.finish()
     if len(msgs[0]) == 0 or len(msgs[1]) == 0:
@@ -37,10 +38,15 @@ async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str
     answer_msg = Message(answer)
     for i, s in enumerate(answer_msg):
         if s.type == "image":
+            
             url = s.data.get("url",s.data.get("file"))
             img = await get(url,timeout=60)
-            im=Image.open(img.content)
+            
+            im=Image.open(BytesIO(img.content))
+        
+            
             fmt = im.get_format_mimetype()
+            print(fmt)
             ext = ""
             if fmt == "image/webp":
                 ext = ".webp"
@@ -49,6 +55,7 @@ async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str
             elif fmt == "image/png":
                 ext = ".png"    
             s = "{}-{}{}".format(sid,(url.split("/")[-2]).split("-")[-1],ext)
+            print(s)
             f = img_dir / s
             f.write_bytes(img.content)
             answer_msg[i] = MessageSegment.image(f)
