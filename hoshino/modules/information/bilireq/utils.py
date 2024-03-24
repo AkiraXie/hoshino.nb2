@@ -116,8 +116,13 @@ class Dynamic:
 
 async def get_new_dynamic(uid: int) -> Dynamic:
     url = dynamic_url.format(uid=uid)
-    res = await aiohttpx.get(url,cookies=await get_cookies(), headers=headers)
+    res = await aiohttpx.get(url, headers=headers)
     data = res.json["data"]
+    if not data:
+        return []
+    cards = data.get("cards",[])
+    if not cards:
+        return []
     dyn = data.get("cards")[0]
     dyn = Dynamic(dyn)
     return dyn
@@ -125,11 +130,14 @@ async def get_new_dynamic(uid: int) -> Dynamic:
 
 async def get_dynamic(uid: int,ts) -> List[Dynamic]:
     url = dynamic_url.format(uid=uid)
-    res = await aiohttpx.get(url,cookies=await get_cookies(), headers=headers)
+    res = await aiohttpx.get(url, headers=headers)
     data = res.json["data"]
     if not data:
         return []
-    dyn = data.get("cards",[])[4::-1]
+    cards = data.get("cards",[])
+    if not cards:
+        return []
+    dyn = cards[4::-1]
     dyns = list(map(Dynamic, dyn))
     dyns = [d for d in dyns if d.time > ts.timestamp()]
     return dyns
