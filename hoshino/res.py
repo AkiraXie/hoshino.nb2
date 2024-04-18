@@ -113,7 +113,7 @@ class RHelper(str):
     @property
     def CQcode(self) -> MessageSegment:
         try:
-            return MessageSegment.image("file:///" + os.path.abspath(self.__rpath))
+            return MessageSegment.image(self.get_path())
         except Exception as e:
             logger.exception(e)
             return MessageSegment.text("[图片出错]")
