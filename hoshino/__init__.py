@@ -192,6 +192,10 @@ e.g：
 """
 R: Final[RHelper] = RHelper()
 
+
+on_startup = driver.on_startup
+on_shutdown = driver.on_shutdown
+
 from .permission import SUPERUSER
 from .schedule import scheduled_job, add_job
 from .typing import T_State

@@ -5,7 +5,7 @@ import peewee as pw
 import os
 from hoshino import db_dir, Message, scheduled_job
 from hoshino.util import get_bili_dynamic_screenshot, aiohttpx
-from .buvid import update_buvid_params
+from .cookies import check_cookies, refresh_cookies
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}&dm_cover_img_str=QU5HTEUgKEdvb2dsZSwgVnVsa2FuIDEuMy4wIChTd2lmdFNoYWRlciBEZXZpY2UgKFN1Ynplcm8pICgweDAwMDBDMFhYKSksIFN3aWZ0U2hhZGVyIGRyaXZlcilHb29nbGUgSW5jLiAoR29vZ2xlKQ"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
@@ -21,18 +21,12 @@ headers = {
 
 cookies = {}
 async def get_cookies() :
-    if not cookies:
-        cookies.update(await update_buvid_params())
-    return cookies            
-        
-
-
-@scheduled_job("interval", hours=2, jitter=30, id="更新 b 站 cookies")
-async def _():
     global cookies
-    cookies = await update_buvid_params()
-
-
+    if not cookies:
+        cookies = json.load(open("cookies.json").read())
+    if not await check_cookies(cookies):
+        cookies = await refresh_cookies(cookies)
+    return cookies            
 
 
 class Dynamic:
