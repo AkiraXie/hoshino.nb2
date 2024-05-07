@@ -51,8 +51,8 @@ class Dynamic:
 
 
 async def get_new_dynamic(uid: int) -> Dynamic:
-    res = await user.User(uid,credential=await get_credential()).get_dynamics_new()
-    data = res.get("data",{})
+    data = await user.User(uid,credential=await get_credential()).get_dynamics_new()
+
     if not data:
         return None
     cards = data.get("items",[])
@@ -63,8 +63,7 @@ async def get_new_dynamic(uid: int) -> Dynamic:
 
 
 async def get_dynamic(uid: int,ts) -> List[Dynamic]:
-    res = await user.User(uid,credential=await get_credential()).get_dynamics_new()
-    data = res.get("data",{})
+    data = await user.User(uid,credential=await get_credential()).get_dynamics_new()
     if not data:
         return []
     cards = data.get("items",[])
