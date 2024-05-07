@@ -21,6 +21,7 @@ headers = {
 
 cred : Optional[Credential] = None
 async def get_credential():
+    global cred
     if not cred:
         cookies = json.load(open(os.path.dirname(__file__)+"/cookies.json"))
         cred = Credential(cookies["SESSDATA"],cookies["bili_jct"],cookies["DedeUserID"],cookies["ac_time_value"])
