@@ -25,13 +25,16 @@ async def get_credential():
     if not cred:
         cookies = json.load(open(os.path.dirname(__file__)+"/cookies.json"))
         cred = Credential.from_cookies(cookies)
-    if not await cred.check_refresh():
-        await cred.refresh()
-        f = open(os.path.dirname(__file__)+"/cookies.json","w")
-        c=cred.get_cookies()
-        json.dump(c,f)
     return cred           
 
+
+@scheduled_job("cron", hour="*/24",jitter=30)
+async def refresh_credential():
+    if not await cred.check_refresh():
+        await cred.refresh()
+    f = open(os.path.dirname(__file__)+"/cookies.json","w")
+    c=cred.get_cookies()
+    json.dump(c,f)
 
 class Dynamic:
     def __init__(self, dynamic: dict):
