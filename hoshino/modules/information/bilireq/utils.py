@@ -23,7 +23,7 @@ cookies = {}
 async def get_cookies() :
     global cookies
     if not cookies:
-        cookies = json.load(open("cookies.json").read())
+        cookies = json.load(open(os.path.dirname(__file__)+"/cookies.json"))
     if not await check_cookies(cookies):
         cookies = await refresh_cookies(cookies)
     return cookies            
