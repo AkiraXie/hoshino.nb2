@@ -6,6 +6,13 @@ import binascii
 import time
 from hoshino.util.aiohttpx import get, post
 
+headers = {
+    "user-agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        " AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88"
+        " Safari/537.36 Edg/87.0.664.60"
+    ),
+}
 
 
 key = RSA.importKey('''\
@@ -25,13 +32,17 @@ def getCorrespondPath():
 ## 修改它为从 cookie 直接查询的方式
 
 async def check_cookies(cookies) -> bool:
+    h = headers.copy()
+    h.update({
+            'origin': 'https://passport.bilibili.com',
+            'referer': 'https://passport.bilibili.com/'
+        })
     api = "https://passport.bilibili.com/x/passport-login/web/cookie/info"
-    c = {}
-    c["SESSDATA"] = cookies.get("SESSDATA")
     csrf = cookies.get("bili_jct")
-    if not c["SESSDATA"] or not csrf:
+    if not cookies["SESSDATA"] or not csrf:
         return False
-    resp = await get(api, cookies=c,params={"csrf":csrf})
+    resp = await get(api, cookies=cookies,params={"csrf":csrf})
+    print(resp.json)
     data = resp.json.get("data")
     if data:
         return data["refresh"]
@@ -39,12 +50,11 @@ async def check_cookies(cookies) -> bool:
 
 
 async def get_refresh_csrf(cookies) -> str:
-    """
-    获取刷新 Cookies 的 csrf
-
-    Return:
-        str: csrf
-    """
+    h = headers.copy()
+    h.update({
+            'origin': 'https://www.bilibili.com',
+            'referer': 'https://www.bilibili.com/'
+        })
     cookies = cookies.copy()
     correspond_path = getCorrespondPath()
     api = f"https://www.bilibili.com/correspond/1/{correspond_path}"
@@ -73,6 +83,11 @@ async def refresh_cookies(cookies) -> dict:
     Return:
         Credential: 新的用户凭证
     """
+    h = headers.copy()
+    h.update({
+            'origin': 'https://passport.bilibili.com',
+            'referer': 'https://passport.bilibili.com/'
+        })
     api = "https://passport.bilibili.com/x/passport-login/web/cookie/refresh"
     refresh_csrf = await get_refresh_csrf(cookies)
     data = {
