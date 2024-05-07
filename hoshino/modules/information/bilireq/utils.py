@@ -27,7 +27,7 @@ async def get_cookies() :
         
 
 
-@scheduled_job("interval", hours=24, jitter=30, id="更新 b 站 cookies")
+@scheduled_job("interval", hours=2, jitter=30, id="更新 b 站 cookies")
 async def _():
     global cookies
     cookies = await update_buvid_params()
