@@ -27,6 +27,9 @@ async def get_credential():
         cred = Credential.from_cookies(cookies)
     if not await cred.check_refresh():
         await cred.refresh()
+        f = open(os.path.dirname(__file__)+"/cookies.json","w")
+        c=cred.get_cookies()
+        json.dump(c,f)
     return cred           
 
 
