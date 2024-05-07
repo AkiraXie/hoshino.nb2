@@ -24,6 +24,7 @@ brotli = "^1.0.9"
 psutil = "^5.8.0"
 playwright = "~1.14"
 pypinyin = "^0.50.0"
+pycryptodome = "^3.20.0"
 
 
 [build-system]

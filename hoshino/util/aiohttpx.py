@@ -31,10 +31,11 @@ class Response(BaseResponse):
         status_code: int,
         headers: CIMultiDictProxy[str],
         ok: bool,
+        cookies: dict = {},
     ) -> None:
         super().__init__(url=url, status_code=status_code, headers=headers, ok=ok)
         self.content: bytes = content
-
+        self.cookies = cookies
     @property
     def json(self):
         try:
@@ -56,7 +57,7 @@ async def get(url: str,*,cookies:dict = {}, **kwargs) -> Response:
     async with ClientSession(cookies=cookies) as session:
         async with session.get(url, **kwargs) as resp:
             res = Response(
-                resp.url, await resp.read(), resp.status, resp.headers, resp.ok
+                resp.url, await resp.read(), resp.status, resp.headers, resp.ok,cookies=resp.cookies
             )
     return res
 
@@ -67,7 +68,7 @@ async def post(url: str, *args, cookies:dict = {},**kwargs) -> Response:
     async with ClientSession(cookies=cookies) as session:
         async with session.post(url, *args, **kwargs) as resp:
             res = Response(
-                resp.url, await resp.read(), resp.status, resp.headers, resp.ok
+                resp.url, await resp.read(), resp.status, resp.headers, resp.ok,cookies=resp.cookies
             )
     return res
 
