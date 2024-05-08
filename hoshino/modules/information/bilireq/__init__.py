@@ -13,6 +13,7 @@ from .utils import (
     get_live_status,
     get_new_dynamic,
     get_user_name,
+    refresh_credential
 )
 from pytz import timezone
 from asyncio import Queue
@@ -40,6 +41,8 @@ dyn_queue = DynamicQueue()
 sv = Service("bilireq", enable_on_default=False)
 tz = timezone("Asia/Shanghai")
 
+
+sv.on_command("refreshbili", aliases=("刷新bili", "刷新bilibili"))(refresh_credential)
 
 @sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅"))
 async def _(bot: Bot, event: Event):
@@ -105,7 +108,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, msg)
 
 
-@scheduled_job("interval", seconds=20, jitter=5, id="获取bili动态")
+@scheduled_job("interval", seconds=135, jitter=5, id="获取bili动态")
 async def get_bili_dyn():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -120,6 +123,7 @@ async def get_bili_dyn():
         dyns = await get_dynamic(uid, min_ts)
         for dyn in dyns:
             dyn_queue.put(dyn)
+        await asyncio.sleep(2)
     await asyncio.sleep(0.5)
 
 @scheduled_job("interval", seconds=30, jitter=10, id="推送bili动态")
