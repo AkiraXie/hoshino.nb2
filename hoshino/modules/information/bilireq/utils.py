@@ -66,7 +66,7 @@ async def get_new_dynamic(uid: int) -> Dynamic:
     cards = data.get("items",[])
     if not cards:
         return None
-    dyn = Dynamic(cards[-1])
+    dyn = Dynamic(cards[0])
     return dyn
 
 

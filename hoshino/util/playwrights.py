@@ -38,7 +38,7 @@ async def get_bili_dynamic_screenshot(url: str,cookies={}) -> MessageSegment:
         device_scale_factor=2,)
     cks = []
     for k,v in cookies.items():
-        cks.append({"name":k,"value":v})
+        cks.append({"name":k,"value":v,"domain":".bilibili.com","path":"/"})
     await c.add_cookies(cks)  
     page = None
     try:
