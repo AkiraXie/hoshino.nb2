@@ -28,8 +28,16 @@ async def refresh_playwright():
     ap = await async_playwright().start()
     _b = await ap.chromium.launch(timeout=10000)
 
-async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
-    b :Browser = await get_b()        
+async def get_bili_dynamic_screenshot(url: str,cookies={}) -> MessageSegment:
+    b :Browser = await get_b()      
+    c = await b.new_context(user_agent=(
+        "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
+        ),
+        viewport={"width": 460, "height": 780},
+        device_scale_factor=2,)
+    cks = [cookies]
+    await c.add_cookies(cks)  
     page = None
     try:
         # 电脑端
@@ -47,12 +55,7 @@ async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
         # clip["height"] = bar_bound["y"] - clip["y"]
 
         # 移动端
-        page :Page = await b.new_page(user_agent=(
-        "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
-        ),
-        viewport={"width": 460, "height": 780},
-        device_scale_factor=2,
+        page :Page = await c.new_page(
         )
         await page.goto(url, wait_until="networkidle")
         if page.url == "https://m.bilibili.com/404":
@@ -82,11 +85,13 @@ async def get_bili_dynamic_screenshot(url: str) -> MessageSegment:
     except Exception as e:
         if page:
             await page.close()
+            await c.close()
         logger.error(f"get_bili_dynamic_screenshot error: {e}")
         return None
     finally:
         if page:
             await page.close()
+            await c.close()
 
 
 # async def get_pcr_shidan(name: str) -> MessageSegment:

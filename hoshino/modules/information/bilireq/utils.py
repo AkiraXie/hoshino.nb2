@@ -48,7 +48,9 @@ class Dynamic:
 
     async def get_message(self, logger) -> Message:
         msg = [self.name + self.type]
-        img = await get_bili_dynamic_screenshot(self.url)
+        crd = await get_credential()
+        cookies = crd.get_cookies()
+        img = await get_bili_dynamic_screenshot(self.url,cookies=cookies)
         if img:
             msg.append(str(img))
         await asyncio.sleep(0.5)
