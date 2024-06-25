@@ -28,7 +28,7 @@ async def get_credential():
     return cred           
 
 
-@scheduled_job("interval", hours=24,jitter=30)
+#@scheduled_job("interval", hours=24,jitter=30)
 async def refresh_credential():
     if not await cred.check_refresh():
         await cred.refresh()
