@@ -36,7 +36,9 @@ async def get_bili_dynamic_screenshot(url: str,cookies={}) -> MessageSegment:
         ),
         viewport={"width": 460, "height": 780},
         device_scale_factor=2,)
-    cks = [cookies]
+    cks = []
+    for k,v in cookies.items():
+        cks.append({"name":k,"value":v})
     await c.add_cookies(cks)  
     page = None
     try:
