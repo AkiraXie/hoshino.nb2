@@ -24,7 +24,6 @@ img_dir.mkdir(parents=True, exist_ok=True)
 async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str,str]:
     msg = event.message.copy()
     msgs = str(msg).split("你答", 1)
-    
     if len(msgs) != 2:
         await matcher.finish()
     if len(msgs[0]) == 0 or len(msgs[1]) == 0:
@@ -40,7 +39,7 @@ async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str
         if s.type == "image":
             
             url = s.data.get("url",s.data.get("file"))
-            img = await get(url,timeout=60)
+            img = await get(url,timeout=120)
             
             im=Image.open(BytesIO(img.content))
         
