@@ -6,21 +6,21 @@ LastEditTime: 2021-02-15 04:00:41
 Description: 
 Github: http://github.com/AkiraXie/
 """
-from aiohttp import ClientSession
-from multidict import CIMultiDictProxy
-from yarl import URL
+from httpx import AsyncClient
+import httpx
+from httpx import URL
 from loguru import logger
 from json import loads
 
 
 class BaseResponse:
     def __init__(
-        self, url: URL, status_code: int, headers: CIMultiDictProxy[str], ok: bool
+        self, url: URL, status_code: int, headers: httpx.Headers
     ) -> None:
         self.url: URL = url
         self.status_code: int = status_code
-        self.headers: CIMultiDictProxy[str] = headers
-        self.ok: bool = ok
+        self.headers: httpx.Headers = headers
+        self.ok: bool = 200 <= status_code < 300
 
 
 class Response(BaseResponse):
@@ -29,11 +29,10 @@ class Response(BaseResponse):
         url: URL,
         content: bytes,
         status_code: int,
-        headers: CIMultiDictProxy[str],
-        ok: bool,
+        headers: httpx.Headers,
         cookies: dict = {},
     ) -> None:
-        super().__init__(url=url, status_code=status_code, headers=headers, ok=ok)
+        super().__init__(url=url, status_code=status_code, headers=headers)
         self.content: bytes = content
         self.cookies = cookies
     @property
@@ -51,32 +50,29 @@ class Response(BaseResponse):
             logger.exception(e)
 
 
-async def get(url: str,*,cookies:dict = {}, **kwargs) -> Response:
-    kwargs.setdefault("verify_ssl", False)
-    kwargs.setdefault("timeout", 10)
-    async with ClientSession(cookies=cookies) as session:
-        async with session.get(url, **kwargs) as resp:
-            res = Response(
-                resp.url, await resp.read(), resp.status, resp.headers, resp.ok,cookies=resp.cookies
+async def get(url: str,*,timeout=10, cookies:dict = {}, **kwargs) -> Response:
+    async with AsyncClient(cookies=cookies,timeout=httpx.Timeout(timeout)) as session:
+        resp = await session.get(url,**kwargs) 
+        res = Response(
+                resp.url, resp.content, resp.status_code, resp.headers,cookies=resp.cookies
             )
     return res
 
 
-async def post(url: str, *args, cookies:dict = {},**kwargs) -> Response:
-    kwargs.setdefault("verify_ssl", False)
-    kwargs.setdefault("timeout", 10)
-    async with ClientSession(cookies=cookies) as session:
-        async with session.post(url, *args, **kwargs) as resp:
-            res = Response(
-                resp.url, await resp.read(), resp.status, resp.headers, resp.ok,cookies=resp.cookies
+async def post(url: str, *args, timeout=10, cookies:dict = {},**kwargs) -> Response:
+    async with AsyncClient(cookies=cookies,timeout=httpx.Timeout(timeout)) as session:
+        resp = await session.post(url,**kwargs) 
+        res = Response(
+                resp.url, resp.content, resp.status_code, resp.headers,cookies=resp.cookies
             )
     return res
 
 
-async def head(url: str, *args, **kwargs) -> BaseResponse:
-    kwargs.setdefault("verify_ssl", False)
-    kwargs.setdefault("timeout", 5)
-    async with ClientSession() as session:
-        async with session.head(url, *args, **kwargs) as resp:
-            res = BaseResponse(resp.url, resp.status, resp.headers, resp.ok)
+async def head(url: str, *args, timeout=10, cookies:dict = {},**kwargs) -> BaseResponse:
+    async with AsyncClient(cookies=cookies,timeout=httpx.Timeout(timeout)) as session:
+        resp = await session.head(url,**kwargs) 
+        res = BaseResponse(
+                resp.url,  resp.status_code, resp.headers
+            )
     return res
+
