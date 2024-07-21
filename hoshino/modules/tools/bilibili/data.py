@@ -18,7 +18,7 @@ headers = {
 pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
 
 async def get_bvid(url: str) -> str:
-    resp = await aiohttpx.head(url, allow_redirects=False)
+    resp = await aiohttpx.head(url, follow_redirects=False)
     loc = resp.headers["Location"]
     if mat := pat.match(loc):
         return mat.group(1)

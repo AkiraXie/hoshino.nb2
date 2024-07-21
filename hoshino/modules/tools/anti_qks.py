@@ -14,7 +14,7 @@ sv = Service("antiqks", visible=False)
 
 
 async def check_gbf(url: str) -> dict:
-    resp = await aiohttpx.head(url, allow_redirects=False, timeout=5)
+    resp = await aiohttpx.head(url, follow_redirects=False, timeout=5)
     h, s = resp.headers, resp.status_code
     loc = h.get("Location", None)
     ret = {"flag": False, "loc": None}
