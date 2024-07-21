@@ -77,10 +77,10 @@ def get_stat():
     if not pp and not pl:
         return "\n".join(msg)
     name = "go-cqhttp" if pp else "Lagrange"
-    p = pp if pp else pl
-    cpu_p1 = p.cpu_percent(1)
-    mem1 = p.memory_full_info().uss / 1024.0 / 1024.0
-    p_live_time = time.time() - p.create_time()
+    ppp = pp if pp else pl
+    cpu_p1 = ppp.cpu_percent(1)
+    mem1 = ppp.memory_full_info().uss / 1024.0 / 1024.0
+    p_live_time = time.time() - ppp.create_time()
     msg.extend([f"{name} CPU使用: {cpu_p1}%", 
                 f"{name} 内存使用: {mem1:.2f}MB",
                 f"{name} 运行时间: {datetime.fromtimestamp(p_live_time,UTC)-epoch}"])
