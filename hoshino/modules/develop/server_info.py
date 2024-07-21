@@ -15,45 +15,27 @@ from asyncio import all_tasks
 from datetime import datetime,timedelta,UTC
 import psutil
 showcmd = sucmd("info", aliases={"serverinfo", "stat"})
-p = psutil.Process()
-p1 :psutil.Process = None
-p2 :psutil.Process = None
 epoch = datetime.fromtimestamp(0,UTC)
-def refresh_gocq_process():
-    global p1
+def get_gocq_process():
     _p = None
     for ps in psutil.process_iter():
         if  "go-cq" in ps.name() or "gocq" in ps.name():
             _p = psutil.Process(ps.pid)
             break     
-    p1 = _p
+    return _p
 
-def refresh_lag_process():
-    global p2
+def get_lag_process():
     _p = None
     for ps in psutil.process_iter():
         if  "Lagrange" in ps.name() :
             _p = psutil.Process(ps.pid)
             break     
-    p2 = _p
+    return _p
 
 
-def get_gocq_process():
-    if p1:
-        return p1
-    else:
-        refresh_gocq_process()
-        return p1
-
-
-def get_lag_process():
-    if p2:
-        return p2
-    else:
-        refresh_lag_process()
-        return p2
 
 def get_stat():
+    p = psutil.Process()
     tasks = all_tasks()
     cpu_p = p.cpu_percent(1)
     mem = p.memory_full_info()
@@ -93,7 +75,6 @@ async def _():
 
 
 @driver.on_bot_connect
-async def _(bot: Bot):
-    refresh_gocq_process()       
+async def _(bot: Bot):    
     await send_to_superuser(bot, get_stat())
 
