@@ -100,7 +100,7 @@ async def send(
                 header = ">???\n"
             else:
                 info = await self.get_group_member_info(
-                    group_id=event.group_id, user_id=event.user_id
+                    group_id=event.group_id, user_id=event.user_id,no_cache=True
                 )
                 for i in (info["title"], info["card"], info["nickname"]):
                     if i:
