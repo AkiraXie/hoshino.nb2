@@ -39,7 +39,6 @@ async def _(state: T_State):
     msg = await get_resp(bvid)
     if not msg:
         return
-    await bvjson.send("检测到b站视频，正在解析~")
     await asyncio.sleep(0.3)
     await bvjson.finish(msg)
 
@@ -53,7 +52,6 @@ async def _(state: T_State):
     msg = await get_resp(bvid)
     if not msg:
         await bl.finish()
-    await bl.send("检测到b站视频，正在解析~")
     await asyncio.sleep(0.3)
     await bl.finish(msg)
 
@@ -64,6 +62,5 @@ async def _(state: T_State):
     msg = await get_resp(bvid)
     if not msg:
         await bv.finish()
-    await bv.send("检测到b站视频，正在解析~")
     await asyncio.sleep(0.3)
     await bv.finish(msg)
