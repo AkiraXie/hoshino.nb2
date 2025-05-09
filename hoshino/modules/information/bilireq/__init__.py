@@ -13,7 +13,6 @@ from .utils import (
     get_live_status,
     get_new_dynamic,
     get_user_name,
-    refresh_credential
 )
 from pytz import timezone
 from asyncio import Queue
