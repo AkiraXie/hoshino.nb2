@@ -209,14 +209,13 @@ class Service:
         svname = plugin_name.replace("nonebot_plugin_","").replace("nonebot-plugin-","")
         sv = Service(svname,manage_perm,enable_on_default,visible)
         if matchers := plugin.matcher :
-            for matcher in matchers:
-               sv.add_nonebot_plugin_matcher(matcher)    
+            for m in matchers:
+               sv.add_nonebot_plugin_matcher(m)    
         return sv
 
-    def add_nonebot_plugin_matcher(self,matcher: Type[Matcher], permission: Permission = NORMAL) -> "MatcherWrapper":
+    def add_nonebot_plugin_matcher(self,matcher: Type[Matcher]) -> "MatcherWrapper":
         rule =  self.check_service(False,False)
         matcher.rule = matcher.rule & rule
-        matcher.permission = permission
         mw = MatcherWrapper(
             self,
             f"{matcher.type}.from_nonebot_plugin",

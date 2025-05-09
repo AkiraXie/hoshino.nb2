@@ -140,6 +140,8 @@ def got(
                                            allow_types=[BotParam, EventParam, StateParam, MatcherParam, DependParam])
     
     async def _key_getter(event: Event, matcher: "Matcher"):
+        ARG_KEY = "{key}"
+        key = ARG_KEY.format(key=key)
         matcher.set_target(key)
         if matcher.get_target() == key:
             if not args_parser:

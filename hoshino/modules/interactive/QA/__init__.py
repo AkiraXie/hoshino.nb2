@@ -166,8 +166,8 @@ async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
             break
 
 
-@del_pqa.got("question", "请输入要删除的问题", parse_question)
-@del_pqa.got("user_id", "请输入要删除问题的id,支持at", parse_sin_qq)
+@del_pqa.got("question", "请输入要删除的问题", args_parser=parse_question)
+@del_pqa.got("user_id", "请输入要删除问题的id,支持at", args_parser=parse_sin_qq)
 async def _(bot: Bot, event: Event, state: T_State):
     if not state.get("user_id", None):
         return
