@@ -6,11 +6,11 @@ sv = Service("bihua", visible=False, enable_on_default=False)
 
 
 
-m = sv.on_command("bihua",aliases=("壁画", "b话"))
+m = sv.on_command("bihua",aliases=("b话"))
 
 
-@m
-async def _( event : Event ,_=Cooldown(10,"查询太快了")):
+@m.handle()
+async def _( event : Event):
     msg = event.get_plaintext()
     if not msg:
         await m.finish()
@@ -18,13 +18,13 @@ async def _( event : Event ,_=Cooldown(10,"查询太快了")):
     link = quote(link, safe=":/")
     link2 = "https://bihua.bleatingsheep.org/meme/{}.png".format(msg)
     link2 = quote(link2, safe=":/")
-    res = await aiohttpx.get(link,allow_redirects=True)
+    res = await aiohttpx.get(link,follow_redirects=True)
     if not res.ok:
-        res = await aiohttpx.get(link2,allow_redirects=True)
+        res = await aiohttpx.get(link2,follow_redirects=True)
         if not res.ok:
-            await m.finish("")
+            await m.finish()
     data = res.content
     if not data:
-        await m.finish("")
+        await m.finish()
     await m.send(MessageSegment.image(data))
  
