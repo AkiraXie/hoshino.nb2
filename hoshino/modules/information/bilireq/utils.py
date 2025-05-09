@@ -1,13 +1,13 @@
 import asyncio
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 import peewee as pw
 import os
-from hoshino import db_dir, Message, scheduled_job
+from hoshino import db_dir, Message
 from hoshino.util import get_bili_dynamic_screenshot, aiohttpx
-from bilibili_api import user,Credential
+
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
-dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}&dm_cover_img_str=QU5HTEUgKEdvb2dsZSwgVnVsa2FuIDEuMy4wIChTd2lmdFNoYWRlciBEZXZpY2UgKFN1Ynplcm8pICgweDAwMDBDMFhYKSksIFN3aWZ0U2hhZGVyIGRyaXZlcilHb29nbGUgSW5jLiAoR29vZ2xlKQ"
+dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
 
 headers = {
@@ -18,23 +18,6 @@ headers = {
     ),
 }
 
-
-cred : Optional[Credential] = None
-async def get_credential():
-    global cred
-    if not cred:
-        cookies = json.load(open(os.path.dirname(__file__)+"/cookies.json"))
-        cred = Credential.from_cookies(cookies)
-    return cred           
-
-
-#@scheduled_job("interval", hours=24,jitter=30)
-async def refresh_credential():
-    if not await cred.check_refresh():
-        await cred.refresh()
-    f = open(os.path.dirname(__file__)+"/cookies.json","w")
-    c=cred.get_cookies()
-    json.dump(c,f)
 
 class Dynamic:
     def __init__(self, dynamic: dict):
@@ -48,9 +31,7 @@ class Dynamic:
 
     async def get_message(self, logger) -> Message:
         msg = [self.name + self.type]
-        crd = await get_credential()
-        cookies = crd.get_cookies()
-        img = await get_bili_dynamic_screenshot(self.url,cookies=cookies)
+        img = await get_bili_dynamic_screenshot(self.url)
         if img:
             msg.append(str(img))
         await asyncio.sleep(0.5)
@@ -59,8 +40,15 @@ class Dynamic:
 
 
 async def get_new_dynamic(uid: int) -> Dynamic:
-    data = await user.User(uid,credential=await get_credential()).get_dynamics_new()
-
+    url = dynamic_url.format(uid=uid)
+    h = headers.copy()
+    h.update({
+            'origin': 'https://t.bilibili.com',
+            'referer': 'https://t.bilibili.com/'
+        })
+    
+    res = await aiohttpx.get(url, headers=h)
+    data = res.json.get("data",{})
     if not data:
         return None
     cards = data.get("items",[])
@@ -71,7 +59,16 @@ async def get_new_dynamic(uid: int) -> Dynamic:
 
 
 async def get_dynamic(uid: int,ts) -> List[Dynamic]:
-    data = await user.User(uid,credential=await get_credential()).get_dynamics_new()
+    url = dynamic_url.format(uid=uid)
+    h = headers.copy()
+    h.update({
+            'origin': 'https://t.bilibili.com',
+            'referer': 'https://t.bilibili.com/'
+        })
+    
+    res = await aiohttpx.get(url, headers=h)
+    data = res.json.get("data",{})
+
     if not data:
         return []
     cards = data.get("items",[])
