@@ -540,8 +540,7 @@ class MatcherWrapper:
         parameterless: Optional[list] = None,
     ):
         def deco(func: T_Handler):
-            return self.matcher.got(key, prompt, args_parser, parameterless)(func)
-
+            return self.matcher.got(key, prompt, parameterless,args_parser)(func)
         return deco
 
     async def reject(

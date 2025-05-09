@@ -120,8 +120,8 @@ def got(
     cls: Type[Matcher],
     key: str,
     prompt: Optional[Union[str, Message, MessageSegment, MessageTemplate]] = None,
-    args_parser: Optional[T_Handler] = None,
     parameterless: Optional[list] = None,
+    args_parser: Optional[T_Handler] = None,
 ):
     """改自 `nonebot.Matcher.got`
 
