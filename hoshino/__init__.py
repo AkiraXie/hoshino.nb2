@@ -140,12 +140,12 @@ def got(
                                            allow_types=[BotParam, EventParam, StateParam, MatcherParam, DependParam])
     
     async def _key_getter(event: Event, matcher: "Matcher"):
-        ARG_KEY = "{key}"
-        key = ARG_KEY.format(key=key)
+        ARG_KEY = "{}"
+        key = ARG_KEY.format(key)
         matcher.set_target(key)
         if matcher.get_target() == key:
             if not args_parser:
-                matcher.set_arg(key, event.get_plaintext())
+                matcher.set_arg(key, event.get_message())
             else:
                 bot: Bot = current_bot.get()
                 await args_parser(matcher=matcher, bot=bot, event=event, state=matcher.state)
@@ -154,10 +154,7 @@ def got(
             return
         await matcher.reject(prompt)
 
-    _parameterless = [
-        Depends(_key_getter),
-        *(parameterless or []),
-    ]
+    _parameterless = (Depends(_key_getter), *(parameterless or ()))
 
     def _decorator(func: T_Handler) -> T_Handler:
         if cls.handlers and cls.handlers[-1].call is func:
