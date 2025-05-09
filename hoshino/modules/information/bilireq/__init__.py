@@ -40,9 +40,6 @@ dyn_queue = DynamicQueue()
 sv = Service("bilireq", enable_on_default=False)
 tz = timezone("Asia/Shanghai")
 
-
-sv.on_command("refreshbili", aliases=("刷新bili", "刷新bilibili"))(refresh_credential)
-
 @sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅"))
 async def _(bot: Bot, event: Event):
     gid = event.group_id
