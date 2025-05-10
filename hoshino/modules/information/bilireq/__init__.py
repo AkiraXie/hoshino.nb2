@@ -86,7 +86,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, "\n".join(msg))
 
 
-@sv.on_command("查看最新动态",aliases={'看动态','看最新动态','查动态',"查看动态","seedyn"})
+@sv.on_command("查看最新动态",aliases={'看动态','看最新动态','查动态',"查看动态","seedyn","kkdyn","kkbl"})
 async def _(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext()

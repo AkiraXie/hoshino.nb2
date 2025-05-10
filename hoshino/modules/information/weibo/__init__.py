@@ -4,7 +4,7 @@ from typing import List
 from hoshino import  Bot, Event
 from hoshino.schedule import scheduled_job
 from hoshino.typing import FinishedException
-from .utils import get_sub_list,sv,WeiboDB as db,Post
+from .utils import get_sub_list,sv,WeiboDB as db,Post,get_sub_new
 from asyncio import Queue
 class PostQueue(Queue):
         def __init__(self, maxsize: int = 0) -> None:
@@ -32,8 +32,7 @@ async def add_subscription(bot: Bot, event: Event):
     gid = event.group_id
     uid = event.get_plaintext().strip()
     try:
-        posts = await get_sub_list(uid, 0)
-        post = posts[0]
+        post = await get_sub_new(uid, 0)
     except Exception as e:
         sv.logger.exception(e)
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
@@ -69,7 +68,7 @@ async def list_subscriptions(bot: Bot, event: Event):
         msg += f"UID: {uid}, 昵称: {name}, 上次更新时间: {ts}\n"
     await bot.send(event, msg)
 
-@sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo"))
+@sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo","kkwb"))
 async def see_weibo(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext().strip()
@@ -81,8 +80,7 @@ async def see_weibo(bot: Bot, event: Event):
         await bot.send(event, f"没有订阅{arg}微博")
     else:
         uid = rows[0].uid
-        dyns = await get_sub_list(uid, 0)
-        post = dyns[0]
+        post = await get_sub_new(uid, 0)
         msg = post.get_msg()
         if not msg:
             await bot.send(event, f"没有获取到{arg}微博")
