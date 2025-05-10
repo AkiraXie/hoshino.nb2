@@ -29,19 +29,23 @@ async def refresh_playwright():
     _b = await ap.chromium.launch(timeout=10000)
 
 async def get_weibo_screenshot(mid: str) -> MessageSegment:
-    url = f"https://m.weibo.cn/u/{mid}"
+    url = f"https://m.weibo.cn/detail/{mid}"
     b :Browser = await get_b()      
     c = await b.new_context(user_agent=(
         "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
         ),
-        viewport={"width": 1080, "height": 1920},
+        viewport={"width": 480, "height": 800},
         device_scale_factor=2,)
     page = None
     try:
         page :Page = await c.new_page(
         )
         await page.goto(url, wait_until="networkidle")
+        await page.wait_for_load_state(state="domcontentloaded")
+        await page.add_script_tag(content='''
+    document.querySelector('.wrap')?.remove();
+''')
         await page.wait_for_load_state(state="domcontentloaded")
         card = await page.query_selector(
             ".f-weibo"

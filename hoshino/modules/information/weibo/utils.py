@@ -63,10 +63,13 @@ class Post:
         msg = []
         immsg = []
         if self.nickname:
-            msg.append(self.nickname+ "微博~\n")
+            msg.append(self.nickname+ "微博~")
         if self.id:
             ms = await get_weibo_screenshot(self.id)
-            msg.append(ms)
+            if ms:
+                msg.append(str(ms))
+            else:
+                return self.get_msg()
         if self.repost:
             if self.repost.images:
                 for img in self.repost.images:
@@ -76,8 +79,8 @@ class Post:
                 immsg.append(MessageSegment.image(img))
         
         if self.url:
-            msg.append("\nurl:"+self.url)
-        res = [Message(msg)]
+            msg.append("url:"+self.url)
+        res = [Message('\n'.join(msg))]
         if immsg:
             for i in immsg:
                 res.append(Message(i))
