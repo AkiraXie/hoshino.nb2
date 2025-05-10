@@ -24,6 +24,9 @@ psutil = "^5.8.0"
 playwright = "~1.48.0"
 pypinyin = "^0.50.0"
 cython = "<3.0.0"
+lxml = "^5.4.0"
+httpx = "^0.28.1"
+pytz = "^2025.2"
 
 
 [build-system]
