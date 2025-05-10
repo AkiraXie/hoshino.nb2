@@ -38,7 +38,7 @@ async def add_subscription(bot: Bot, event: Event):
         sv.logger.exception(e)
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
         raise FinishedException
-    db.replace(group=gid, uid=uid, name=post.nickname, time=post.timestamp)
+    db.replace(group=gid, uid=uid, name=post.nickname, time=post.timestamp).execute()
     await bot.send(event, f"成功订阅微博用户：{post.nickname} UID: {uid}")
 
 @sv.on_command("删除微博订阅", aliases=("取消微博", "删除微博","rmweibo","删除weibo","rmwb"))
@@ -59,7 +59,7 @@ async def list_subscriptions(bot: Bot, event: Event):
     gid = event.group_id
     rows = db.select().where(db.group == gid).execute()
     if not rows:
-        await bot.send(event, "本群没有订阅的微博用户")
+        await bot.send(event, "本群没有订阅微博用户")
         return
     msg = "当前订阅的微博用户：\n"
     for row in rows:
@@ -74,9 +74,9 @@ async def see_weibo(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext().strip()
     if arg.isdecimal():
-        rows = db.select().where(db.group == gid, db.uid == arg)
+        rows = db.select().where(db.group == gid, db.uid == arg).execute()
     else:
-        rows = db.select().where(db.group == gid, db.name == arg)
+        rows = db.select().where(db.group == gid, db.name == arg).execute()
     if not rows:
         await bot.send(event, f"没有订阅{arg}微博")
     else:
@@ -98,7 +98,7 @@ async def fetch_weibo_updates():
         await asyncio.sleep(0.5)
         return
     for uid in uids:
-        rows : List[db] = db.select().where(db.uid == uid)
+        rows : List[db] = db.select().where(db.uid == uid).execute()
         if not rows:
             continue
         time_rows = sorted(rows,key=lambda x:x.time,reverse=True)
