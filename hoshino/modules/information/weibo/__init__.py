@@ -107,7 +107,7 @@ async def fetch_weibo_updates():
         await asyncio.sleep(2)
     await asyncio.sleep(0.5)
 
-@scheduled_job("interval", seconds=20, id="推送微博更新",jitter=2)
+@scheduled_job("interval", seconds=30, id="推送微博更新",jitter=2)
 async def push_weibo_updates():
     groups = await sv.get_enable_groups()
     dyn = weibo_queue.get()
