@@ -56,7 +56,7 @@ async def _(bot: Bot, event: Event):
     await bot.send(event, f"{name} 订阅动态成功")
 
 
-@sv.on_command("删除订阅动态", aliases=("取消订阅动态", "关闭订阅动态", "删除动态", "取消动态"))
+@sv.on_command("删除订阅动态", aliases=("取消订阅动态", "关闭订阅动态", "删除动态", "取消动态","adddyn"))
 async def _(bot: Bot, event: Event):
     gid = event.group_id
     uid = event.get_plaintext()
@@ -71,7 +71,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, f"{uid} 删除订阅动态失败")
 
 
-@sv.on_command("本群动态订阅", aliases={"订阅动态列表", "动态订阅列表", "动态列表"})
+@sv.on_command("本群动态订阅", aliases={"订阅动态列表", "动态订阅列表", "动态列表","listdyn","lsdyn"})
 async def _(bot: Bot, event: Event):
     gid = event.group_id
     rows = db.select().where(db.group == gid).execute()
@@ -86,7 +86,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, "\n".join(msg))
 
 
-@sv.on_command("查看最新动态",aliases={'看动态','看最新动态','查动态',"查看动态"})
+@sv.on_command("查看最新动态",aliases={'看动态','看最新动态','查动态',"查看动态","seedyn"})
 async def _(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext()
