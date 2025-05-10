@@ -79,7 +79,7 @@ class Post:
                 immsg.append(MessageSegment.image(img))
         
         if self.url:
-            msg.append("url:"+self.url)
+            msg.append("详情: "+self.url)
         res = [Message('\n'.join(msg))]
         if immsg:
             for i in immsg:
@@ -95,9 +95,9 @@ class Post:
             msg.append(self.content)
         if self.repost:
             msg.append("------------")
-            msg.append("转发自"+ self.repost.nickname+ ":")
+            msg.append("转发自 "+ self.repost.nickname+ ":")
             msg.append(self.repost.content)
-            msg.append("转发url："+self.repost.url)
+            msg.append("转发详情: "+self.repost.url)
             msg.append("------------")
             if self.repost.images:
                 for img in self.repost.images:
@@ -108,7 +108,7 @@ class Post:
                 immsg.append(MessageSegment.image(img))
         
         if self.url:
-            msg.append("url："+self.url)
+            msg.append("详情: "+self.url)
         res = [Message("\n".join(msg))]
         if immsg:
             for i in immsg:
