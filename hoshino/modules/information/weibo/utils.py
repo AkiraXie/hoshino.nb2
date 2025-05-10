@@ -89,6 +89,7 @@ class Post:
 
 async def get_sub_list(target: str,ts:float) -> list[Post]:
     header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
+    header.update(_HEADER)
     params = {"containerid": "107603" + target}
     res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=4.0)
     res_data = res.json
@@ -158,7 +159,9 @@ async def _parse_weibo_card(info: dict) -> Post:
         )
     pics = []
     for pic_url in pic_urls:
-        async with AsyncClient(headers={"referer": "https://weibo.com"}) as client:
+        h = _HEADER.copy()
+        h["referer"] = "https://weibo.com"
+        async with AsyncClient(headers=h,follow_redirects=True) as client:
             res = await client.get(pic_url)
             res.raise_for_status()
             pics.append(res.content)
