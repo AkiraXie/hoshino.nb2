@@ -81,7 +81,7 @@ async def see_weibo(bot: Bot, event: Event):
     else:
         uid = rows[0].uid
         post = await get_sub_new(uid, 0)
-        msg = post.get_msg()
+        msg = await post.get_msg_with_screenshot()
         if not msg:
             await bot.send(event, f"没有获取到{arg}微博")
             return
@@ -125,7 +125,7 @@ async def push_weibo_updates():
         weibo_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msgs = dyn.get_msg()
+    msgs = await dyn.get_msg_with_screenshot()
     for gid in gids:
         await asyncio.sleep(0.35) 
         bot = groups[gid][0]
