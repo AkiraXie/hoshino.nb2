@@ -16,7 +16,7 @@ from asyncio import get_running_loop
 from typing import List, Optional, Tuple, Type, Union
 from io import BytesIO
 from collections import defaultdict
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from datetime import datetime, timedelta
 from nonebot.adapters.onebot.v11 import MessageSegment,Message
 from nonebot.params import Depends
@@ -36,11 +36,6 @@ from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
 from .aiohttpx import get
 from .playwrights import get_bili_dynamic_screenshot
-
-DEFAULTFONT = ImageFont.truetype(
-    R.img("gadget/SourceHanSans-Regular.ttc"), size=48
-)
-
 
 def Cooldown(
     cooldown: float = 10,
@@ -126,52 +121,6 @@ def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
     return CommandGroup(name, **kwargs)
 
 
-def get_text_size(
-    text: str,
-    font: ImageFont.ImageFont = DEFAULTFONT,
-    padding: Tuple[int, int, int, int] = (20, 20, 20, 20),
-    spacing: int = 5,
-) -> tuple:
-    """
-    返回文本转图片的图片大小
-
-    *`text`：用来转图的文本
-
-    *`font`：一个`ImageFont`实例
-
-    *`padding`：一个四元`int`元组，分别是左、右、上、下的留白大小
-
-    *`spacing`: 文本行间距
-    """
-    with Image.new("RGBA", (1, 1), (255, 255, 255, 255)) as base:
-        dr = ImageDraw.ImageDraw(base)
-    ret = dr.textsize(text, font=font, spacing=spacing)
-    return ret[0] + padding[0] + padding[1], ret[1] + padding[2] + padding[3]
-
-
-def text_to_img(
-    text: str,
-    font: ImageFont.ImageFont = DEFAULTFONT,
-    padding: Tuple[int, int, int, int] = (20, 20, 20, 20),
-    spacing: int = 5,
-) -> Image.Image:
-    """
-    返回一个文本转化后的`Image`实例
-
-    *`text`：用来转图的文本
-
-    *`font`：一个`ImageFont`实例
-
-    *`padding`：一个四元`int`元组，分别是左、右、上、下的留白大小
-
-    *`spacing`: 文本行间距
-    """
-    size = get_text_size(text, font, padding, spacing)
-    base = Image.new("RGBA", size, (255, 255, 255, 255))
-    dr = ImageDraw.ImageDraw(base)
-    dr.text((padding[0], padding[2]), text, font=font, fill="#000000", spacing=spacing)
-    return base
-
 
 def img_to_bytes(pic: Image.Image) -> bytes:
     buf = BytesIO()
@@ -180,16 +129,6 @@ def img_to_bytes(pic: Image.Image) -> bytes:
 
 def img_to_segment(pic: Image.Image) -> MessageSegment:
     return MessageSegment.image(img_to_bytes(pic))
-
-
-def text_to_segment(
-    text: str,
-    font: ImageFont.ImageFont = DEFAULTFONT,
-    padding: Tuple[int, int, int, int] = (20, 20, 20, 20),
-    spacing: int = 5,
-) -> MessageSegment:
-    return MessageSegment.image(img_to_bytes(text_to_img(text, font, padding, spacing)))
-
 
 def concat_pic(pics, border=5):
     num = len(pics)
