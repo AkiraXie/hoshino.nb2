@@ -12,6 +12,7 @@ from lxml.etree import HTML
 from yarl import URL
 from urllib.parse import unquote
 from httpx import AsyncClient
+from hoshino.util.playwrights import get_weibo_screenshot
 sv = Service("weibo", enable_on_default=False,visible=False)
 
 _HEADER = {
@@ -57,12 +58,36 @@ class Post:
     """发布者个性签名等"""
     repost: "Post | None" = None
     """转发的Post"""
+    async def get_msg_with_screenshot(self) -> list[Message]:
+        """获取消息"""
+        msg = []
+        immsg = []
+        if self.nickname:
+            msg.append(self.nickname+ "微博~\n")
+        if self.id:
+            ms = await get_weibo_screenshot(self.id)
+            msg.append(ms)
+        if self.repost:
+            if self.repost.images:
+                for img in self.repost.images:
+                    immsg.append(MessageSegment.image(img))
+        if self.images:
+            for img in self.images:
+                immsg.append(MessageSegment.image(img))
+        
+        if self.url:
+            msg.append("\nurl:"+self.url)
+        res = [Message(msg)]
+        if immsg:
+            for i in immsg:
+                res.append(Message(i))
+        return res
     def get_msg(self) -> list[Message]:
         """获取消息"""
         msg = []
         immsg = []
         if self.nickname:
-            msg.append(self.nickname+ "微博：")
+            msg.append(self.nickname+ "微博~")
         if self.content:
             msg.append(self.content)
         if self.repost:

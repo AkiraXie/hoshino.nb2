@@ -28,6 +28,47 @@ async def refresh_playwright():
     ap = await async_playwright().start()
     _b = await ap.chromium.launch(timeout=10000)
 
+async def get_weibo_screenshot(mid: str) -> MessageSegment:
+    url = f"https://m.weibo.cn/u/{mid}"
+    b :Browser = await get_b()      
+    c = await b.new_context(user_agent=(
+        "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
+        ),
+        viewport={"width": 1080, "height": 1920},
+        device_scale_factor=2,)
+    page = None
+    try:
+        page :Page = await c.new_page(
+        )
+        await page.goto(url, wait_until="networkidle")
+        await page.wait_for_load_state(state="domcontentloaded")
+        card = await page.query_selector(
+            ".f-weibo"
+        )
+        if not card:
+            await page.close()
+            return None
+        clip = await card.bounding_box()
+        if not clip:
+            await page.close()
+            return None
+
+        image = await page.screenshot(clip=clip, full_page=True, type="jpeg", quality=98)
+        await page.close()
+        return MessageSegment.image(image)
+    except Exception as e:
+        if page:
+            await page.close()
+            await c.close()
+        logger.error(f"get_weibo_screenshot error: {e}")
+        return None
+    finally:
+        if page:
+            await page.close()
+            await c.close()
+
+
 async def get_bili_dynamic_screenshot(url: str,cookies={}) -> MessageSegment:
     b :Browser = await get_b()      
     c = await b.new_context(user_agent=(
