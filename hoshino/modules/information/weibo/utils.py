@@ -1,8 +1,9 @@
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+import functools
 import json
-from typing import Dict, List
+from typing import Dict, List,Optional
 import peewee as pw
 import os
 from hoshino import db_dir, Message,Service,MessageSegment
@@ -97,19 +98,58 @@ async def get_sub_list(target: str,ts:float) -> list[Post]:
         return []
 
     def custom_filter(d) -> bool:
-        return d["card_type"] == 9
-
+        created = d["mblog"]["created_at"]
+        if created:
+            t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
+            b = t > ts
+        return d["card_type"] == 9 and b
+    def cmp(d1,d2) -> bool:
+        created1 = d1["mblog"]["created_at"]
+        created2 = d2["mblog"]["created_at"]
+        t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
+        t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
+        return t1-t2
+    k = functools.cmp_to_key(cmp)
     l=list(filter(custom_filter, res_data["data"]["cards"]))
+    l.sort(key=k, reverse=True)
     if not l:
         return []
-    
     res = []
     for i in l:
         post = await parse_weibo_card(i)
         if post.timestamp > ts:
             res.append(post)
-    res.sort(key=lambda x: x.timestamp, reverse=True)
     return res
+
+async def get_sub_new(target: str,ts:float) -> Optional[Post]:
+    header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
+    header.update(_HEADER)
+    params = {"containerid": "107603" + target}
+    res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=4.0)
+    res_data = res.json
+    if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
+        return []
+
+    def custom_filter(d) -> bool:
+        created = d["mblog"]["created_at"]
+        if created:
+            t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
+            b = t > ts
+        return d["card_type"] == 9 and b
+    def cmp(d1,d2) -> bool:
+        created1 = d1["mblog"]["created_at"]
+        created2 = d2["mblog"]["created_at"]
+        t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
+        t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
+        return t1-t2
+    k = functools.cmp_to_key(cmp)
+    l=list(filter(custom_filter, res_data["data"]["cards"]))
+    if not l:
+        return None
+    l.sort(key=k, reverse=True)
+    post = await parse_weibo_card(l[0])
+
+    return post
 
 async def _get_long_weibo(weibo_id: str) -> dict:
     try:
