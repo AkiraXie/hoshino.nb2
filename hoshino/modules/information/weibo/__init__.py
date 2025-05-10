@@ -88,6 +88,7 @@ async def see_weibo(bot: Bot, event: Event):
         else:
             for m in msg:
                 await bot.send(event, m)
+                await asyncio.sleep(0.25)
 
 @scheduled_job("interval", seconds=114, id="获取微博更新",jitter=5)
 async def fetch_weibo_updates():
