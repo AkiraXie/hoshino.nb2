@@ -38,7 +38,7 @@ async def add_subscription(bot: Bot, event: Event):
         sv.logger.exception(e)
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
         raise FinishedException
-    db.replace(group=gid, uid=uid, name=post.nickname, ts=post.timestamp)
+    db.replace(group=gid, uid=uid, name=post.nickname, time=post.timestamp)
     await bot.send(event, f"成功订阅微博用户：{post.nickname} UID: {uid}")
 
 @sv.on_command("删除微博订阅", aliases=("取消微博", "删除微博","rmweibo","删除weibo","rmwb"))
