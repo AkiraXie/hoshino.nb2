@@ -91,7 +91,7 @@ async def get_sub_list(target: str,ts:float) -> list[Post]:
     header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
     params = {"containerid": "107603" + target}
     res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=4.0)
-    res_data = res.json()
+    res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
         return []
 
@@ -117,7 +117,7 @@ async def _get_long_weibo(weibo_id: str) -> dict:
             params={"id": weibo_id},
             headers=_HEADER,
         )
-        weibo_info = weibo_info.json()
+        weibo_info = weibo_info.json
         if not weibo_info or weibo_info["ok"] != 1:
             return {}
         return weibo_info["data"]
