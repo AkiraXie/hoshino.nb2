@@ -74,7 +74,7 @@ async def see_weibo(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext().strip()
     if arg.isdecimal():
-        rows = db.select().where(db.group == gid, db.uid == uid)
+        rows = db.select().where(db.group == gid, db.uid == arg)
     else:
         rows = db.select().where(db.group == gid, db.name == arg)
     if not rows:
