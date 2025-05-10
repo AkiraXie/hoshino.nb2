@@ -14,7 +14,7 @@ from hoshino import Service, Bot, Event
 from hoshino.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
 from hoshino.matcher import on_shell_command
-from hoshino.util import text_to_segment, _strip_cmd
+from hoshino.util import _strip_cmd
 from hoshino.typing import T_State, FinishedException
 from .util import parse_gid, parse_service
 
@@ -87,9 +87,7 @@ async def _(bot: Bot, event: Event, state: T_State):
             elif sv.visible:
                 ox = "O" if on else "X"
                 reply.append(f"|{ox}| {sv.name}")
-        await lssv.finish("\n".join(reply)) if not as_pic else await lssv.finish(
-            text_to_segment("\n".join(reply))
-        )
+        await lssv.finish("\n".join(reply))
 
 
 async def handle_msg(bot: Bot, event: Event, state: T_State):
