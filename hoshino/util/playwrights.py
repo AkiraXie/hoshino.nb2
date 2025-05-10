@@ -42,11 +42,10 @@ async def get_weibo_screenshot(mid: str) -> MessageSegment:
         page :Page = await c.new_page(
         )
         await page.goto(url, wait_until="networkidle")
-        await page.wait_for_load_state(state="domcontentloaded")
         await page.add_script_tag(content='''
     document.querySelector('.wrap')?.remove();
 ''')
-        await page.wait_for_load_state(state="domcontentloaded")
+        await page.wait_for_load_state(state="networkidle")
         card = await page.query_selector(
             ".f-weibo"
         )
