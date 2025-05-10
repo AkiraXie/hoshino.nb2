@@ -107,6 +107,7 @@ async def get_sub_list(target: str,ts:float) -> list[Post]:
     for i in l:
         post = await parse_weibo_card(i)
         if post.timestamp > ts:
+            print(post.content)
             res.append(post)
     res.sort(key=lambda x: x.timestamp, reverse=True)
     return res
