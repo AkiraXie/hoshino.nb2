@@ -142,7 +142,7 @@ async def get_sub_list(target: str,ts:float) -> list[Post]:
         return t1-t2
     k = functools.cmp_to_key(cmp)
     l=list(filter(custom_filter, res_data["data"]["cards"]))
-    l.sort(key=k, reverse=True)
+    l.sort(key=k)
     if not l:
         return []
     res = []
