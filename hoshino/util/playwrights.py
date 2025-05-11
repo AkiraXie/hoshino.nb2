@@ -28,7 +28,7 @@ async def refresh_playwright():
     ap = await async_playwright().start()
     _b = await ap.chromium.launch(timeout=10000)
 
-async def get_weibo_screenshot(mid: str) -> MessageSegment:
+async def  get_weibo_screenshot(mid: str) -> MessageSegment:
     url = f"https://m.weibo.cn/detail/{mid}"
     b :Browser = await get_b()      
     c = await b.new_context(user_agent=(

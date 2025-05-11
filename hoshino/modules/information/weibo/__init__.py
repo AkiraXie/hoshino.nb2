@@ -33,15 +33,25 @@ weibo_queue = PostQueue()
 @sv.on_command("添加微博订阅", aliases=("订阅微博", "新增微博","添加微博","添加weibo","addweibo","addwb"))
 async def add_subscription(bot: Bot, event: Event):
     gid = event.group_id
-    uid = event.get_plaintext().strip()
+    msg = event.get_plaintext().strip()
     try:
-        post = await get_sub_new(uid, 0)
+        msg = msg.split(" ")
+        if len(msg) == 1:
+            uid = msg[0]
+        else:
+            uid = msg[0]
+            keywords = msg[1:]
+        post = await get_sub_new(uid, 0,keywords=keywords)
     except Exception as e:
         sv.logger.exception(e)
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
         raise FinishedException
-    db.replace(group=gid, uid=uid, name=post.nickname, time=post.timestamp).execute()
-    await bot.send(event, f"成功订阅微博用户：{post.nickname} UID: {uid}")
+    kw = '-_-'.join(keywords) if keywords else ''
+    db.replace(group=gid, uid=uid, name=post.nickname, time=post.timestamp,keyword=kw).execute()
+    if keywords:
+        await bot.send(event, f"成功订阅微博用户：{post.nickname} UID: {uid} 关键词: {kw}")
+    else:
+        await bot.send(event, f"成功订阅微博用户：{post.nickname} UID: {uid}")
 
 @sv.on_command("删除微博订阅", aliases=("取消微博", "删除微博","rmweibo","删除weibo","rmwb"))
 async def remove_subscription(bot: Bot, event: Event):
@@ -83,7 +93,12 @@ async def see_weibo(bot: Bot, event: Event):
         await bot.send(event, f"没有订阅{arg}微博")
     else:
         uid = rows[0].uid
-        post = await get_sub_new(uid, 0)
+        keywords = rows[0].keyword
+        if keywords:
+            keywords = keywords.split('-_-')
+        else:
+            keywords = []
+        post = await get_sub_new(uid, 0,keywords=keywords)
         msg = await post.get_msg_with_screenshot()
         if not msg:
             await bot.send(event, f"没有获取到{arg}微博")
@@ -106,7 +121,12 @@ async def fetch_weibo_updates():
             continue
         time_rows = sorted(rows,key=lambda x:x.time,reverse=True)
         min_ts = time_rows[0].time
-        dyns = await get_sub_list(uid, min_ts)
+        kw = time_rows[0].keyword
+        if kw:
+            kw = kw.split('-_-')
+        else:
+            kw = []
+        dyns = await get_sub_list(uid, min_ts,kw)
         for dyn in dyns:
 
             b = weibo_queue.put(dyn)
