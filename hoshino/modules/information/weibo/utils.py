@@ -65,14 +65,6 @@ class Post:
         """获取消息"""
         msg = []
         immsg = []
-        if self.nickname:
-            msg.append(self.nickname+ "微博~")
-        if self.id:
-            ms = await get_weibo_screenshot(self.id)
-            if ms:
-                msg.append(str(ms))
-            else:
-                return self.get_msg()
         if self.repost:
             if self.repost.images:
                 for img in self.repost.images:
@@ -80,14 +72,21 @@ class Post:
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
-        
-        if self.url:
-            msg.append("详情: "+self.url)
-        res = [Message('\n'.join(msg))]
-        if immsg:
-            for i in immsg:
-                res.append(Message(i))
-        return res
+        if not immsg:
+            if self.nickname:
+                msg.append(self.nickname+ "微博~")
+            if self.id:
+                ms = await get_weibo_screenshot(self.id)
+                if ms:
+                    msg.append(str(ms))
+                else:
+                    return self.get_msg()
+            if self.url:
+                msg.append("详情: "+self.url)
+            res = [Message('\n'.join(msg))]
+            return res
+        else:
+            return self.get_msg()
     def get_msg(self) -> list[Message]:
         """获取消息"""
         msg = []

@@ -11,12 +11,14 @@ class PostQueue(Queue):
         def __init__(self, maxsize: int = 0) -> None:
             super().__init__(maxsize)
             self._set = set()
-        def put(self, item: Post) -> None:
+        def put(self, item: Post) -> bool:
             if item.id not in self._set:
                 self._set.add(item.id)
                 super().put_nowait(item)
                 loop = asyncio.get_event_loop()
                 loop.call_later(3600, self._set.discard, item.id)
+                return True
+            return False
         def get(self) -> Post:
             if self.empty():
                 return None
@@ -106,8 +108,10 @@ async def fetch_weibo_updates():
         min_ts = time_rows[0].time
         dyns = await get_sub_list(uid, min_ts)
         for dyn in dyns:
-            sv.logger.info(f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
-            weibo_queue.put(dyn)
+
+            b = weibo_queue.put(dyn)
+            if b:
+                sv.logger.info(f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
         await asyncio.sleep(0.5)
     await asyncio.sleep(0.5)
 
@@ -130,7 +134,7 @@ async def push_weibo_updates():
         weibo_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msgs = dyn.get_msg()
+    msgs = await dyn.get_msg_with_screenshot()
     for gid in gids:
         await asyncio.sleep(0.35) 
         bot = groups[gid][0]
