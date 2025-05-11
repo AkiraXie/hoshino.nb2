@@ -1,7 +1,8 @@
 import asyncio
 from datetime import datetime
 from typing import List
-from hoshino import  Bot, Event
+import random
+from hoshino import  Bot, Event,on_startup
 from hoshino.schedule import scheduled_job
 from hoshino.typing import FinishedException
 from .utils import get_sub_list,sv,WeiboDB as db,Post,get_sub_new
@@ -91,6 +92,7 @@ async def see_weibo(bot: Bot, event: Event):
                 await asyncio.sleep(0.25)
 
 @scheduled_job("interval", seconds=114, id="获取微博更新",jitter=5)
+@on_startup
 async def fetch_weibo_updates():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -106,17 +108,17 @@ async def fetch_weibo_updates():
         for dyn in dyns:
             sv.logger.info(f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
             weibo_queue.put(dyn)
-        await asyncio.sleep(0.7)
+        await asyncio.sleep(0.5)
     await asyncio.sleep(0.5)
 
-@scheduled_job("interval", seconds=40, id="推送微博更新",jitter=5)
+@scheduled_job("interval", seconds=20, id="推送微博更新",jitter=5)
 async def push_weibo_updates():
     groups = await sv.get_enable_groups()
     dyn = weibo_queue.get()
-    sv.logger.info(f"推送微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
     if not dyn:
         await asyncio.sleep(0.5)
         return
+    sv.logger.info(f"推送微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
     uid = dyn.uid
     rows : List[db] = db.select().where(db.uid == uid)
     _gids = [row.group for row in rows]
@@ -136,7 +138,8 @@ async def push_weibo_updates():
         try:
             for msg in msgs:
                 await bot.send_group_msg(group_id=gid,message=msg)
-                await asyncio.sleep(0.25)   
+                rand = random.random()
+                await asyncio.sleep(rand * 0.5 + 0.1)   
         except Exception as e:
             sv.logger.error(f"发送 weibo post 失败: {e}") 
     weibo_queue.remove_id(dyn.id)
