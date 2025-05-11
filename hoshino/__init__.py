@@ -190,8 +190,8 @@ e.g：
 R: Final[RHelper] = RHelper()
 
 
-on_startup = driver.on_startup
-on_shutdown = driver.on_shutdown
+on_startup = driver.on_bot_connect
+on_shutdown = driver.on_bot_disconnect
 
 from .permission import SUPERUSER
 from .schedule import scheduled_job, add_job
