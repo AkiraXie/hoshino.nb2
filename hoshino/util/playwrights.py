@@ -59,6 +59,7 @@ async def get_weibo_screenshot(mid: str) -> MessageSegment:
 
         image = await page.screenshot(clip=clip, full_page=True, type="jpeg", quality=98)
         await page.close()
+        await c.close()
         return MessageSegment.image(image)
     except Exception as e:
         if page:
@@ -129,6 +130,7 @@ async def get_bili_dynamic_screenshot(url: str,cookies={}) -> MessageSegment:
 
         image = await page.screenshot(clip=clip, full_page=True, type="jpeg", quality=98)
         await page.close()
+        await c.close()
         return MessageSegment.image(image)
     except Exception as e:
         if page:
@@ -139,7 +141,7 @@ async def get_bili_dynamic_screenshot(url: str,cookies={}) -> MessageSegment:
     finally:
         if page:
             await page.close()
-            await c.close()
+        await c.close()
 
 
 # async def get_pcr_shidan(name: str) -> MessageSegment:

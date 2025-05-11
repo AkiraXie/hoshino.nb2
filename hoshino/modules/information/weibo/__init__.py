@@ -126,7 +126,7 @@ async def push_weibo_updates():
         weibo_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msgs = await dyn.get_msg_with_screenshot()
+    msgs = dyn.get_msg()
     for gid in gids:
         await asyncio.sleep(0.35) 
         bot = groups[gid][0]
