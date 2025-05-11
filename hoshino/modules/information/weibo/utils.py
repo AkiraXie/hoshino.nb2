@@ -118,7 +118,7 @@ class Post:
         return res
     
 
-async def get_sub_list(target: str,ts:float) -> list[Post]:
+async def get_sub_list(target: str,ts:float=0.0,keywords:list[str] = list()) -> list[Post]:
     header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
     header.update(_HEADER)
     params = {"containerid": "107603" + target}
@@ -128,11 +128,17 @@ async def get_sub_list(target: str,ts:float) -> list[Post]:
         return []
 
     def custom_filter(d) -> bool:
+        text = d["mblog"]["text"]
+        kb = False if keywords else True
+        if keywords:
+            for keyword in keywords:
+                if keyword in text:
+                    kb = True
         created = d["mblog"]["created_at"]
         if created:
             t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
             b = t > ts
-        return d["card_type"] == 9 and b
+        return d["card_type"] == 9 and b and kb
     def cmp(d1,d2) -> bool:
         created1 = d1["mblog"]["created_at"]
         created2 = d2["mblog"]["created_at"]
@@ -151,7 +157,7 @@ async def get_sub_list(target: str,ts:float) -> list[Post]:
             res.append(post)
     return res
 
-async def get_sub_new(target: str,ts:float) -> Optional[Post]:
+async def get_sub_new(target: str,ts:float=0.0,keywords:list[str] = list()) -> Optional[Post]:
     header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
     header.update(_HEADER)
     params = {"containerid": "107603" + target}
@@ -161,11 +167,17 @@ async def get_sub_new(target: str,ts:float) -> Optional[Post]:
         return []
 
     def custom_filter(d) -> bool:
+        text = d["mblog"]["text"]
+        kb = False if keywords else True
+        if keywords:
+            for keyword in keywords:
+                if keyword in text:
+                    kb = True
         created = d["mblog"]["created_at"]
         if created:
             t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
             b = t > ts
-        return d["card_type"] == 9 and b
+        return d["card_type"] == 9 and b and kb
     def cmp(d1,d2) -> bool:
         created1 = d1["mblog"]["created_at"]
         created2 = d2["mblog"]["created_at"]
@@ -262,7 +274,7 @@ class WeiboDB(pw.Model):
     group = pw.IntegerField()
     time = pw.FloatField()
     name = pw.TextField()
-
+    keyword = pw.TextField(default="")
     class Meta:
         database = db
         primary_key = pw.CompositeKey("uid", "group")
