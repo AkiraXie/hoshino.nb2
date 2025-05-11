@@ -34,6 +34,7 @@ weibo_queue = PostQueue()
 async def add_subscription(bot: Bot, event: Event):
     gid = event.group_id
     msg = event.get_plaintext().strip()
+    keywords = []
     try:
         msg = msg.split(" ")
         if len(msg) == 1:
@@ -42,6 +43,8 @@ async def add_subscription(bot: Bot, event: Event):
             uid = msg[0]
             keywords = msg[1:]
         post = await get_sub_new(uid, 0,keywords=keywords)
+        if not post:
+            post = await get_sub_new(uid, 0)
     except Exception as e:
         sv.logger.exception(e)
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")

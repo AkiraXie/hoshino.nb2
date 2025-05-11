@@ -164,7 +164,7 @@ async def get_sub_new(target: str,ts:float=0.0,keywords:list[str] = list()) -> O
     res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=4.0)
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
-        return []
+        return None
 
     def custom_filter(d) -> bool:
         text = d["mblog"]["text"]
