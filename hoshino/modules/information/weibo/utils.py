@@ -219,20 +219,20 @@ async def _parse_weibo_card(info: dict) -> Post:
     parsed_text = _get_text(info["text"])
     raw_pics_list = info.get("pics", [])
     pic_urls = [img["large"]["url"] for img in raw_pics_list]
-    # 视频cover
-    if "page_info" in info and info["page_info"].get("type") == "video":
-        crop_url = info["page_info"]["page_pic"]["url"]
-        pic_urls.append(
-            f"{URL(crop_url).scheme}://{URL(crop_url).host}/large/{info['page_info']['page_pic']['pid']}"
-        )
-    pics = []
-    for pic_url in pic_urls:
-        h = _HEADER.copy()
-        h["referer"] = "https://weibo.com"
-        async with AsyncClient(headers=h,follow_redirects=True) as client:
-            res = await client.get(pic_url)
-            res.raise_for_status()
-            pics.append(res.content)
+    # # 视频cover
+    # if "page_info" in info and info["page_info"].get("type") == "video":
+    #     crop_url = info["page_info"]["page_pic"]["url"]
+    #     pic_urls.append(
+    #         f"{URL(crop_url).scheme}://{URL(crop_url).host}/large/{info['page_info']['page_pic']['pid']}"
+    #     )
+    # pics = []
+    # for pic_url in pic_urls:
+    #     h = _HEADER.copy()
+    #     h["referer"] = "https://weibo.com"
+    #     async with AsyncClient(headers=h,follow_redirects=True) as client:
+    #         res = await client.get(pic_url)
+    #         res.raise_for_status()
+    #         pics.append(res.content)
     detail_url = f"https://weibo.com/{info['user']['id']}/{info['bid']}"
     ts = info["created_at"]
     created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
@@ -241,7 +241,7 @@ async def _parse_weibo_card(info: dict) -> Post:
         timestamp=created_at.timestamp(),
         content=parsed_text,
         url=detail_url,
-        images=pics,
+        images=pic_urls,
         nickname=info["user"]["screen_name"],
     )
 
