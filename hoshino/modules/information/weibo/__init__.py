@@ -106,17 +106,18 @@ async def fetch_weibo_updates():
         for dyn in dyns:
             sv.logger.info(f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
             weibo_queue.put(dyn)
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.7)
     await asyncio.sleep(0.5)
 
 @scheduled_job("interval", seconds=40, id="推送微博更新",jitter=5)
 async def push_weibo_updates():
     groups = await sv.get_enable_groups()
     dyn = weibo_queue.get()
+    sv.logger.info(f"推送微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
     if not dyn:
         await asyncio.sleep(0.5)
         return
-    uid = dyn.id
+    uid = dyn.uid
     rows : List[db] = db.select().where(db.uid == uid)
     _gids = [row.group for row in rows]
     gids = list(filter(lambda x: x in groups,_gids))

@@ -41,7 +41,10 @@ class Post:
     对于更特殊的需要，可以考虑另外实现一个Post
     """
     """来源平台"""
+    uid: str
+    """用户ID"""
     id: str
+    """微博ID"""
     content: str
     """文本内容"""
     title: str | None = None
@@ -237,6 +240,7 @@ async def _parse_weibo_card(info: dict) -> Post:
     ts = info["created_at"]
     created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
     return Post(
+        uid=info["user"]["id"],
         id=info["mid"],
         timestamp=created_at.timestamp(),
         content=parsed_text,
