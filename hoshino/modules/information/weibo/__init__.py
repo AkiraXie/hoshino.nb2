@@ -104,6 +104,7 @@ async def fetch_weibo_updates():
         min_ts = time_rows[0].time
         dyns = await get_sub_list(uid, min_ts)
         for dyn in dyns:
+            sv.logger.info(f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
             weibo_queue.put(dyn)
         await asyncio.sleep(2)
     await asyncio.sleep(0.5)
