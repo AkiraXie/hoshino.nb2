@@ -129,13 +129,17 @@ async def fetch_weibo_updates():
             kw = kw.split('-_-')
         else:
             kw = []
-        dyns = await get_sub_list(uid, min_ts,kw)
-        for dyn in dyns:
-
-            b = weibo_queue.put(dyn)
-            if b:
-                sv.logger.info(f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
-        await asyncio.sleep(0.5)
+        try:
+            dyns = await get_sub_list(uid, min_ts,kw)
+            for dyn in dyns:
+                b = weibo_queue.put(dyn)
+                if b:
+                    sv.logger.info(f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            sv.logger.error(f"获取微博更新失败: {e}")
+            await asyncio.sleep(0.3)
+            continue
     await asyncio.sleep(0.5)
 
 @scheduled_job("interval", seconds=20, id="推送微博更新",jitter=5)
