@@ -153,7 +153,7 @@ async def push_weibo_updates():
     if not gids:
         for gid in _gids:
             await asyncio.sleep(0.1) 
-            db.replace(group=gid, uid=uid, time=dyn.timestamp, name=dyn.nickname).execute()
+            db.update(time=dyn.timestamp,name=dyn.nickname).where(db.uid == uid,db.group==gid).execute()
         weibo_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
@@ -161,7 +161,7 @@ async def push_weibo_updates():
     for gid in gids:
         await asyncio.sleep(0.35) 
         bot = groups[gid][0]
-        db.replace(group=gid, uid=uid, time=dyn.timestamp, name=dyn.nickname).execute()
+        db.update(time=dyn.timestamp,name=dyn.nickname).where(db.uid == uid,db.group==gid).execute()
         try:
             for msg in msgs:
                 await bot.send_group_msg(group_id=gid,message=msg)
