@@ -7,7 +7,7 @@ sv = Service("bihua", visible=False, enable_on_default=False)
 
 bihuas = set()
 configurl = "https://bihua.bleatingsheep.org/static/scripts/config.js"
-prefix = "https://bihua.bleatingsheep.org/"
+prefix = "https://bihua.bleatingsheep.org/meme/"
 m = sv.on_command("bihua", aliases=("b话", "壁画"), block=True)
 r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=True)
 
@@ -16,6 +16,7 @@ r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=T
 @on_startup
 async def fetch_bihua_config():
     try:
+        global bihuas
         bi_copy = bihuas.copy()
         resp = await aiohttpx.get(configurl, timeout=10, follow_redirects=True)
         if resp.ok:
@@ -23,9 +24,9 @@ async def fetch_bihua_config():
             lines = content.splitlines()
             content_lines = lines[2:-3]
             for line in content_lines:
-                line = line.strip().removeprefix('"').removesuffix('",')
+                line = line.strip().removeprefix('"meme/').removesuffix('",')
                 bi_copy.add(line)
-        bihuas.update(bi_copy)
+        bihuas = bi_copy
     except Exception:
         sv.logger.error(f"Error fetching config: {resp.status_code}")
 
