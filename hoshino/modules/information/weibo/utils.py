@@ -122,7 +122,7 @@ async def get_sub_list(target: str,ts:float=0.0,keywords:list[str] = list()) -> 
     header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
     header.update(_HEADER)
     params = {"containerid": "107603" + target}
-    res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=4.0)
+    res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=8.0)
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
         return []
