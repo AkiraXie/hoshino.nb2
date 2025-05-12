@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-28 14:10:09
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 22:47:11
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 import re
 from typing import Union, Set
 from nonebot.rule import command, shell_command

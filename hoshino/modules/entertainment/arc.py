@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-03-06 00:37:42
-LastEditors: AkiraXie
-LastEditTime: 2021-03-06 14:14:17
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from hoshino import Service, Bot, Event
 import websockets
 from brotli import decompress
@@ -87,19 +79,19 @@ async def query(id: str) -> str:
     song_title, scores, userinfo = res
     ptt = userinfo["rating"] / 100
     b30, r10 = await _calc_30_10(ptt, scores)
-    reply.append(f'Player: {userinfo["name"]}')
+    reply.append(f"Player: {userinfo['name']}")
     reply.append(f"Potential: {ptt}")
     reply.append(f"Best 30: {b30:.3f}")
     reply.append(f"Recent top 10: {r10:.3f}")
     score = userinfo["recent_score"][0]
     reply.append(
-        f'Recent play:\n{song_title[score["song_id"]]["en"]}  '
+        f"Recent play:\n{song_title[score['song_id']]['en']}  "
         + diff_list[score["difficulty"]]
-        + f'  {score["constant"]:.2f}'
+        + f"  {score['constant']:.2f}"
     )
-    reply.append(f'~Clear type: {clear_list[score["clear_type"]]}')
-    reply.append(f'~Score: {score["score"]}')
-    reply.append(f'~Rating: {score["rating"]:.3f}')
+    reply.append(f"~Clear type: {clear_list[score['clear_type']]}")
+    reply.append(f"~Score: {score['score']}")
+    reply.append(f"~Rating: {score['rating']:.3f}")
     return "\n".join(reply)
 
 

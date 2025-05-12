@@ -1,9 +1,3 @@
-"""
-Author: AkiraXie
-LastEditTime: 2022-01-20 02:42:16
-LastEditors: AkiraXie
-GitHub: https://github.com/AkiraXie
-"""
 from functools import wraps
 from nonebot_plugin_apscheduler import scheduler
 from loguru import logger
@@ -49,8 +43,8 @@ def scheduled_job(
 ):
     def deco(func: Callable[[], Any]) -> Callable[[], Awaitable[Any]]:
         triger_kwargs.setdefault("timezone", "Asia/Shanghai")
-        triger_kwargs.setdefault("misfire_grace_time",60)
-        triger_kwargs.setdefault("coalesce",True)
+        triger_kwargs.setdefault("misfire_grace_time", 60)
+        triger_kwargs.setdefault("coalesce", True)
         id = triger_kwargs.get("id", func.__name__)
         triger_kwargs["id"] = id
         return scheduler.scheduled_job(trigger, **triger_kwargs)(
@@ -68,8 +62,8 @@ def add_job(
     **triger_kwargs,
 ) -> job.Job:
     triger_kwargs.setdefault("timezone", "Asia/Shanghai")
-    triger_kwargs.setdefault("misfire_grace_time",60)
-    triger_kwargs.setdefault("coalesce",True)
+    triger_kwargs.setdefault("misfire_grace_time", 60)
+    triger_kwargs.setdefault("coalesce", True)
     id = triger_kwargs.get("id", func.__name__)
     triger_kwargs["id"] = id
     return scheduler.add_job(wrapper(func, id, args, kwargs), trigger, **triger_kwargs)

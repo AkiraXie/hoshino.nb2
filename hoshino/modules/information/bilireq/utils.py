@@ -7,7 +7,9 @@ from hoshino import db_dir, Message
 from hoshino.util import get_bili_dynamic_screenshot, aiohttpx
 
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
-dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}"
+dynamic_url = (
+    "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}"
+)
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
 
 headers = {
@@ -42,36 +44,30 @@ class Dynamic:
 async def get_new_dynamic(uid: int) -> Dynamic:
     url = dynamic_url.format(uid=uid)
     h = headers.copy()
-    h.update({
-            'origin': 'https://t.bilibili.com',
-            'referer': 'https://t.bilibili.com/'
-        })
-    
+    h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
+
     res = await aiohttpx.get(url, headers=h)
-    data = res.json.get("data",{})
+    data = res.json.get("data", {})
     if not data:
         return None
-    cards = data.get("items",[])
+    cards = data.get("items", [])
     if not cards:
         return None
     dyn = Dynamic(cards[0])
     return dyn
 
 
-async def get_dynamic(uid: int,ts) -> List[Dynamic]:
+async def get_dynamic(uid: int, ts) -> List[Dynamic]:
     url = dynamic_url.format(uid=uid)
     h = headers.copy()
-    h.update({
-            'origin': 'https://t.bilibili.com',
-            'referer': 'https://t.bilibili.com/'
-        })
-    
+    h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
+
     res = await aiohttpx.get(url, headers=h)
-    data = res.json.get("data",{})
+    data = res.json.get("data", {})
 
     if not data:
         return []
-    cards = data.get("items",[])
+    cards = data.get("items", [])
     if not cards:
         return []
     dyn = cards[4::-1]

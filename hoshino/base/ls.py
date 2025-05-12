@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-02-01 13:28:02
-LastEditors: AkiraXie
-LastEditTime: 2021-02-02 22:25:39
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from hoshino.util import sucmds
 from hoshino import Bot, Event
 from hoshino.service import Service, MatcherWrapper

@@ -5,8 +5,9 @@ import peewee as pw
 from hoshino import Message, MessageSegment, db_dir, img_dir
 from nonebot.log import logger
 from hoshino.typing import List, Optional
-from hoshino.util import aiohttpx, save_img,random_modify_pixel
+from hoshino.util import aiohttpx, save_img, random_modify_pixel
 from PIL import Image
+
 headers = {
     "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAAFdRVQEAAAAAsOIu8wyV5KfjsXkCjdD4jfmEJF0"
     "%3D7aB2up2cXoThqTdOSNjh6TPTwL6nTIKuaZOo9Y973cSSMB1jKh",
@@ -55,7 +56,7 @@ class Tweet:
 
     def get_msg(self) -> Message:
         a = "Retweet" if self.rt else "Tweet"
-        msg = ["{} {} Tweeter:".format(self.uname, a), self.text,self.url]
+        msg = ["{} {} Tweeter:".format(self.uname, a), self.text, self.url]
         if self.media:
             for m in self.media:
                 msg.append(str(MessageSegment.image(m)))
@@ -258,7 +259,7 @@ async def get_tweets(uid: int, ptid: Optional[int] = None) -> List["Tweet"]:
                     logger.exception(f"保存图片{imname}失败:\n{e}")
                 await asyncio.sleep(0.25)
         if v != len(mediass) or ptid is None:
-            twt = Tweet(tid, uname, name, text, mediass,rt)
+            twt = Tweet(tid, uname, name, text, mediass, rt)
             tweets.append(twt)
     return tweets
 

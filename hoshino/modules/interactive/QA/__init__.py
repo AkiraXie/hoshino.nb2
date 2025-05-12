@@ -1,27 +1,22 @@
-"""
-Author: AkiraXie
-Date: 2021-02-02 23:57:37
-LastEditors: AkiraXie
-LastEditTime: 2021-04-07 22:07:05
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from io import BytesIO
 from nonebot.typing import T_State
 from typing import Tuple
 from nonebot.params import Depends
 from .data import Question
 from hoshino.permission import ADMIN
-from hoshino import Service, Bot, Event, Message,MessageSegment,R,Matcher
+from hoshino import Service, Bot, Event, Message, MessageSegment, R, Matcher
 from hoshino.event import MessageEvent
 from peewee import fn
 from hoshino.util.aiohttpx import get
 from PIL import Image
+
 img_dir = R.img("QA/").get_path()
 img_dir.mkdir(parents=True, exist_ok=True)
 
 
-async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str,str]:
+async def event_image_in_local(
+    matcher: Matcher, event: MessageEvent
+) -> Tuple[str, str]:
     msg = event.message.copy()
     msgs = str(msg).split("你答", 1)
     if len(msgs) != 2:
@@ -29,21 +24,19 @@ async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str
     if len(msgs[0]) == 0 or len(msgs[1]) == 0:
         await matcher.finish()
     question, answer = msgs
-    question = question.lstrip()    
-    answer = answer.lstrip() 
+    question = question.lstrip()
+    answer = answer.lstrip()
     if answer == question:
         await matcher.finish()
     sid = event.get_session_id()
     answer_msg = Message(answer)
     for i, s in enumerate(answer_msg):
         if s.type == "image":
-            
-            url = s.data.get("url",s.data.get("file"))
-            img = await get(url,timeout=120)
-            
-            im=Image.open(BytesIO(img.content))
-        
-            
+            url = s.data.get("url", s.data.get("file"))
+            img = await get(url, timeout=120)
+
+            im = Image.open(BytesIO(img.content))
+
             fmt = im.get_format_mimetype()
             print(fmt)
             ext = ""
@@ -52,13 +45,13 @@ async def event_image_in_local(matcher:Matcher,event: MessageEvent) -> Tuple[str
             elif fmt == "image/jpeg":
                 ext = ".jpg"
             elif fmt == "image/png":
-                ext = ".png"    
-            s = "{}-{}{}".format(sid,(url.split("/")[-2]).split("-")[-1],ext)
+                ext = ".png"
+            s = "{}-{}{}".format(sid, (url.split("/")[-2]).split("-")[-1], ext)
             print(s)
             f = img_dir / s
             f.write_bytes(img.content)
             answer_msg[i] = MessageSegment.image(f)
-    return (question,str(answer_msg))
+    return (question, str(answer_msg))
 
 
 set_qa_dep = Depends(event_image_in_local)
@@ -80,6 +73,7 @@ async def answer_qa_rule(event: Event, state: T_State):
     else:
         return False
 
+
 sv = Service("QA")
 
 group_ques = sv.on_command("有人问", aliases={"大家问"}, permission=ADMIN)
@@ -88,21 +82,22 @@ del_gqa = sv.on_command("删除有人问", aliases={"删除大家问"}, permissi
 del_qa = sv.on_command("不要回答", aliases={"不再回答"}, only_group=False)
 lookqa = sv.on_command("看看我问", aliases={"查看我问"}, only_group=False)
 lookgqa = sv.on_command("看看有人问", aliases={"看看大家问", "查看有人问"})
-ans = sv.on_message(only_group=False,rule=answer_qa_rule,priority=5,log=True)
+ans = sv.on_message(only_group=False, rule=answer_qa_rule, priority=5, log=True)
 del_pqa = sv.on_command("删除我问", permission=ADMIN)
-del_allqa = sv.on_command("删除所有问答",aliases={"delallqa"}, permission=ADMIN)
+del_allqa = sv.on_command("删除所有问答", aliases={"delallqa"}, permission=ADMIN)
+
 
 @group_ques.handle()
-async def _(event: Event,msg:Tuple[str,str] = set_qa_dep ):
+async def _(event: Event, msg: Tuple[str, str] = set_qa_dep):
     question, answer = msg
     Question.replace(
-        question=question, answer=answer , group=event.group_id, user=0
+        question=question, answer=answer, group=event.group_id, user=0
     ).execute()
     await group_ques.finish(Message(f"好的我记住{question}了"))
 
 
 @person_ques.handle()
-async def _(event: Event,msg:Tuple[str,str] = set_qa_dep):
+async def _(event: Event, msg: Tuple[str, str] = set_qa_dep):
     question, answer = msg
     Question.replace(
         question=question,
@@ -152,7 +147,7 @@ async def _(bot: Bot, event: Event):
         await del_qa.finish(Message('我不再回答"{}"了'.format(question)))
 
 
-async def parse_question( state: T_State,event: Event):
+async def parse_question(state: T_State, event: Event):
     state["question"] = str(event.get_message())
 
 
@@ -185,7 +180,9 @@ async def _(bot: Bot, event: Event, state: T_State):
     if num == 0:
         await del_pqa.finish(Message('我不记得"{}"这个问题'.format(state["question"])))
     else:
-        await del_pqa.finish(Message('我不再回答"{}"这个问题了'.format(state["question"])))
+        await del_pqa.finish(
+            Message('我不再回答"{}"这个问题了'.format(state["question"]))
+        )
 
 
 @lookqa.handle()
@@ -211,12 +208,14 @@ async def _(bot: Bot, event: Event):
     msg = []
     for res in result:
         msg.append(res.question)
-    await lookgqa.finish(Message('该群设置的"有人问"有: ' + " | ".join(msg)), at_sender=True)
+    await lookgqa.finish(
+        Message('该群设置的"有人问"有: ' + " | ".join(msg)), at_sender=True
+    )
 
 
 @ans.handle()
 async def _(state: T_State):
-    if answer:=state["answer"]:
+    if answer := state["answer"]:
         msg = Message(answer)
         await ans.finish(msg)
 
@@ -224,11 +223,7 @@ async def _(state: T_State):
 @del_allqa.handle()
 async def _(event: Event):
     gid = event.group_id
-    num = (
-        Question.delete()
-        .where(Question.group == gid)
-        .execute()
-    )
+    num = Question.delete().where(Question.group == gid).execute()
     if num == 0:
         await del_allqa.finish(Message("该群没有设置任何问答"))
     else:

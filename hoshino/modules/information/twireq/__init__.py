@@ -121,7 +121,9 @@ rand30img = sv.on_command(
 @rand30img
 async def _(bot: Bot, event: Event):
     def get_node(m):
-        c = MessageSegment("node", {"uin": bot.self_id, "name": "女菩萨bot", "content": m})
+        c = MessageSegment(
+            "node", {"uin": bot.self_id, "name": "女菩萨bot", "content": m}
+        )
         return c
 
     imgs = gen_imgs(50)
@@ -132,7 +134,7 @@ async def _(bot: Bot, event: Event):
     await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=msg)
 
 
-deltwi = sv.on_command("删除推特", aliases={"取消推特", "sctt", 'dt'})
+deltwi = sv.on_command("删除推特", aliases={"取消推特", "sctt", "dt"})
 
 
 @deltwi
@@ -149,7 +151,9 @@ async def _(event: Event):
     else:
         await deltwi.finish(f"{uname} 删除推特失败")
 
-BANWORDS = {"少妇","sm","SM","绿帽","约炮","必备","刺激","女神"}
+
+BANWORDS = {"少妇", "sm", "SM", "绿帽", "约炮", "必备", "刺激", "女神"}
+
 
 @scheduled_job("interval", id="推特推送", minutes=3, jitter=25)
 async def _():
@@ -176,12 +180,13 @@ async def _():
                 except Exception as e:
                     sv.logger.exception(e)
                 db.replace(
-                        gid=gid,
-                        uid=uid,
-                        tid=dyn.tid,
-                        name=dyn.name,
-                        uname=dyn.uname,
-                        ).execute()
+                    gid=gid,
+                    uid=uid,
+                    tid=dyn.tid,
+                    name=dyn.name,
+                    uname=dyn.uname,
+                ).execute()
+
 
 import os
 import re
@@ -213,7 +218,11 @@ async def _(bot: Bot, event: Event, state: T_State):
         return
     msg = event.reply.message
     m = msg.extract_plain_text().strip()
-    if m.startswith(("RandomTweet", "tweet@")) or "TID:" in m or "https://twitter.com/" in m:
+    if (
+        m.startswith(("RandomTweet", "tweet@"))
+        or "TID:" in m
+        or "https://twitter.com/" in m
+    ):
         state[MSG] = m
 
 
@@ -248,7 +257,7 @@ handlet = sv.on_message(
     SUPERUSER,
     priority=0,
     block=False,
-    rule=keyword("TID:","https://twitter.com/",normal=False),
+    rule=keyword("TID:", "https://twitter.com/", normal=False),
 )
 deletesth = sv.on_command("deletetwi", permission=SUPERUSER)
 
@@ -286,7 +295,9 @@ fav = sv.on_command("kf", aliases={"kkf", "看看收藏"}, permission=SUPERUSER)
 @fav.handle()
 async def _(bot: Bot, event: Event, state: T_State):
     def get_node(m):
-        c = MessageSegment("node", {"uin": bot.self_id, "name": "女菩萨bot", "content": m})
+        c = MessageSegment(
+            "node", {"uin": bot.self_id, "name": "女菩萨bot", "content": m}
+        )
         return c
 
     msg = []
@@ -419,18 +430,20 @@ async def _(bot: Bot, event: Event):
             await bot.send(event, f"推特{row.uname} + {row.name} 删除成功")
             await asyncio.sleep(0.5)
 
+
 @sv.on_command("deleteimg", permission=SUPERUSER)
 async def _():
     img_d = Path(img_dir)
     imgs = [i for i in img_d.iterdir()]
     imgs.sort(key=sort_key)
-    rmlen = len(imgs)//2
+    rmlen = len(imgs) // 2
     for img in imgs[:rmlen]:
         os.remove(img)
     await addtwi.send("1/2 img dir删除成功")
 
-@sv.on_command('updatetwi', permission=SUPERUSER)
-async def _(event:Event):
+
+@sv.on_command("updatetwi", permission=SUPERUSER)
+async def _(event: Event):
     rows = db.select().where(db.gid == event.group_id)
     cnt = 0
     lr = len(rows)
@@ -439,9 +452,9 @@ async def _(event:Event):
     for r in rows:
         tid = await get_new_tweetid(r.uid)
         if not tid:
-            await addtwi.send(f'{r.uname} {r.name}失效')
-            await asyncio.sleep(.4)
+            await addtwi.send(f"{r.uname} {r.name}失效")
+            await asyncio.sleep(0.4)
             continue
         db.replace(uid=r.uid, gid=event.group_id, tid=tid).execute()
-        await asyncio.sleep(.2)
-    await addtwi.send(f'更新了{cnt}个twi，{lr-cnt}个推更新失败或失效')
+        await asyncio.sleep(0.2)
+    await addtwi.send(f"更新了{cnt}个twi，{lr - cnt}个推更新失败或失效")

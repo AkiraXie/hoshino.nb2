@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-28 23:36:14
-LastEditors: AkiraXie
-LastEditTime: 2021-03-15 02:40:42
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from hoshino import Bot, hsn_config as config
 from nonebot import get_driver
 

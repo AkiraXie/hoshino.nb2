@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-02-03 00:10:02
-LastEditors: AkiraXie
-LastEditTime: 2021-03-05 13:55:14
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 import peewee as pw
 from hoshino import db_dir
 import os

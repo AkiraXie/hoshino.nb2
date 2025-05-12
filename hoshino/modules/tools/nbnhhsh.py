@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-02-11 02:47:12
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 18:31:52
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from nonebot.typing import T_State
 from hoshino import Service, aiohttpx
 

@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-29 12:56:12
-LastEditors: AkiraXie
-LastEditTime: 2022-02-17 00:28:11
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from . import Bot, Event, T_State
 
 
@@ -38,6 +30,6 @@ async def parse_gid(bot: Bot, event: Event, state: T_State):
     if illegal:
         await bot.send(event, f'"{"，".join(illegal)}"无效，群ID只能为纯数字')
     if failure:
-        await bot.send(event, f'bot未入群 {"，".join(failure)}')
+        await bot.send(event, f"bot未入群 {'，'.join(failure)}")
     if len(gids) != 0:
         state["gids"] = gids.copy()
