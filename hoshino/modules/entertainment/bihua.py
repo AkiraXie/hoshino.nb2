@@ -4,7 +4,7 @@ from urllib.parse import quote
 sv = Service("bihua", visible=False, enable_on_default=False)
 
 bihuas = set()
-configurl = 'https://github.com/b11p/bihua/blob/main/static/scripts/config.js'
+configurl = 'https://bihua.bleatingsheep.org/static/scripts/config.js'
 prefix = "https://bihua.bleatingsheep.org/"
 m = sv.on_command("bihua",aliases=("b话"))
 
@@ -12,15 +12,16 @@ m = sv.on_command("bihua",aliases=("b话"))
 @on_startup
 async def fetch_bihua_config():
     try:
-        bihuas.clear()
-        resp = await aiohttpx.get(configurl, timeout=10)
+        bi_copy = bihuas.copy()
+        resp = await aiohttpx.get(configurl, timeout=10,follow_redirects=True)
         if resp.ok:
             content = resp.text
             lines = content.splitlines()
             content_lines = lines[2:-3]
             for line in content_lines:
                 line = line.strip().removeprefix('"').removesuffix('",')
-                bihuas.add(line)
+                bi_copy.add(line)
+        bihuas.update(bi_copy)
     except Exception :   
         sv.logger.error(f"Error fetching config: {resp.status_code}")
 
