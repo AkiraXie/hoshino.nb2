@@ -5,7 +5,7 @@ import random
 
 sv = Service("bihua", visible=False, enable_on_default=False)
 
-bihuas = set()
+bihuas = dict()
 configurl = "https://bihua.bleatingsheep.org/static/scripts/config.js"
 prefix = "https://bihua.bleatingsheep.org/meme/"
 m = sv.on_command("bihua", aliases=("b话", "壁画"), block=True)
@@ -25,7 +25,11 @@ async def fetch_bihua_config():
             content_lines = lines[2:-3]
             for line in content_lines:
                 line = line.strip().removeprefix('"meme/').removesuffix('",')
-                bi_copy.add(line)
+                for ext in [".jpg", ".png", ".jpeg"]:
+                    if line.endswith(ext):
+                        line = line[:-len(ext)]
+                        bi_copy[line] = ext
+                        break
         bihuas = bi_copy
     except Exception:
         sv.logger.error(f"Error fetching config: {resp.status_code}")
@@ -62,5 +66,5 @@ async def _(event: Event):
     if not matching_bihua:
         await m.finish()
     link = prefix + matching_bihua
-    link2 = quote(link, safe=":/")
+    link2 = quote(link, safe=":/")+bihuas[matching_bihua]
     await m.send(MessageSegment.image(link2))
