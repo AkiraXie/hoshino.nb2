@@ -6,7 +6,7 @@ sv = Service("bihua", visible=False, enable_on_default=False)
 bihuas = set()
 configurl = 'https://bihua.bleatingsheep.org/static/scripts/config.js'
 prefix = "https://bihua.bleatingsheep.org/"
-m = sv.on_command("bihua",aliases=("b话"))
+m = sv.on_command("bihua",aliases=("b话","壁画"),block=True)
 
 @scheduled_job("interval", seconds=120, id="bihua_config",jitter=5)
 @on_startup
