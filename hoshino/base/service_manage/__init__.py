@@ -1,12 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-29 12:54:47
-LastEditors: AkiraXie
-LastEditTime: 2022-02-17 00:52:33
-Description:
-Github: http://github.com/AkiraXie/
-"""
-
 import re
 from functools import cmp_to_key
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
@@ -112,7 +103,7 @@ async def handle_msg(bot: Bot, event: Event, state: T_State):
             elif msg != "":
                 services.append(msg)
         if failure:
-            await enable.send(f'bot未入群 {", ".join(failure)}')
+            await enable.send(f"bot未入群 {', '.join(failure)}")
         if len(gids) != 0:
             state["gids"] = gids.copy()
         if len(services) != 0:
@@ -152,7 +143,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         else:
             notfound.add(name)
     if not succ and notfound:
-        await bot.send(event, f'未找到服务: {", ".join(notfound)}')
+        await bot.send(event, f"未找到服务: {', '.join(notfound)}")
         raise FinishedException
     succ = succ if not exclude else allsv - exclude
     for gid in state["gids"]:
@@ -162,10 +153,10 @@ async def _(bot: Bot, event: Event, state: T_State):
         succ_group.add(str(gid))
     reply = []
     if isinstance(event, GroupMessageEvent):
-        reply.append(f'已{action}服务: {", ".join(succ)}')
+        reply.append(f"已{action}服务: {', '.join(succ)}")
     else:
-        reply.append(f'已在群 {", ".join(succ_group)}{action}服务: {", ".join(succ)}')
+        reply.append(f"已在群 {', '.join(succ_group)}{action}服务: {', '.join(succ)}")
     if notfound:
-        reply.append(f'未找到服务: {", ".join(notfound)}')
+        reply.append(f"未找到服务: {', '.join(notfound)}")
     await bot.send(event, "\n".join(reply))
     raise FinishedException

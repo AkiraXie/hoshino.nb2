@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-02-19 16:20:56
-LastEditors: AkiraXie
-LastEditTime: 2022-01-20 02:35:58
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from loguru import logger
 from hoshino import sucmd, Bot, Event
 from hoshino.typing import T_State, FinishedException
@@ -30,9 +22,14 @@ async def _(bot: Bot):
     await showjob.send("\n".join(msg), at_sender=True)
 
 
-pausejob = sucmd("暂停定时任务", True, {"暂停任务", "pausejob"}, state={"action": "暂停"})
+pausejob = sucmd(
+    "暂停定时任务", True, {"暂停任务", "pausejob"}, state={"action": "暂停"}
+)
 resumejob = sucmd(
-    "恢复定时任务", True, {"恢复任务", "resumejob", "继续任务", "继续定时任务"}, state={"action": "恢复"}
+    "恢复定时任务",
+    True,
+    {"恢复任务", "resumejob", "继续任务", "继续定时任务"},
+    state={"action": "恢复"},
 )
 
 

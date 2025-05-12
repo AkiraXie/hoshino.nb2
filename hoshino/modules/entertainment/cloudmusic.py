@@ -12,13 +12,10 @@ async def query_music(name: str) -> int:
     return data["result"]["songs"][0]["id"]
 
 
-
-
 m = sv.on_command("点歌")
 
 
 @m
-async def _(event: Event, _=Cooldown(30,"点歌太快了！")):
+async def _(event: Event, _=Cooldown(30, "点歌太快了！")):
     name = event.get_plaintext()
     await m.send(MessageSegment.music(163, await query_music(name)))
-

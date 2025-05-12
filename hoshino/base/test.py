@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-28 02:32:32
-LastEditors: AkiraXie
-LastEditTime: 2022-02-17 00:29:16
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from hoshino.matcher import get_matchers
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent

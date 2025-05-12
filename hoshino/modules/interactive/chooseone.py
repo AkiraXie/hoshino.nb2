@@ -15,7 +15,7 @@ async def _(bot: Bot, event: Event):
     if not choices:
         await co.finish("选项不能全为空！", at_sender=True)
     msgs = ["您的选项是:"]
-    idchoices = list(f"{i+1}. {choice}" for i, choice in enumerate(choices))
+    idchoices = list(f"{i + 1}. {choice}" for i, choice in enumerate(choices))
     msgs.extend(idchoices)
     if random.randrange(1000) <= 76:
         msgs.append("建议您选择: “我全都要”")

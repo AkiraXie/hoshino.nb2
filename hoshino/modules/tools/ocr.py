@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-03-05 00:03:27
-LastEditors: AkiraXie
-LastEditTime: 2021-03-05 00:21:43
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from hoshino import Service, Bot, Event
 from hoshino.util import get_event_image
 
@@ -24,7 +16,7 @@ async def _(bot: Bot, event: Event):
         except:
             sv.logger.error("Failed to call ocr-api")
             await ocrm.finish("请求ocrAPI失败")
-        reply = [f"第{i+1}张图片的ocr结果是:"]
+        reply = [f"第{i + 1}张图片的ocr结果是:"]
         texts = res["texts"]
         for t in texts:
             reply.append(t["text"])

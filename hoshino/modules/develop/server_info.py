@@ -1,37 +1,30 @@
-'''
-Author: AkiraXie
-Date: 2022-02-26 00:16:33
-LastEditors: AkiraXie
-LastEditTime: 2022-03-13 22:55:20
-Description: 
-Github: http://github.com/AkiraXie/
-'''
-
-
 import time
 from hoshino import sucmd, Bot, driver
 from hoshino.util import send_to_superuser
 from asyncio import all_tasks
-from datetime import datetime,timedelta,UTC
+from datetime import datetime, timedelta, UTC
 import psutil
+
 showcmd = sucmd("info", aliases={"serverinfo", "stat"})
-epoch = datetime.fromtimestamp(0,UTC)
+epoch = datetime.fromtimestamp(0, UTC)
+
+
 def get_gocq_process():
     _p = None
     for ps in psutil.process_iter():
-        if  "go-cq" in ps.name() or "gocq" in ps.name():
+        if "go-cq" in ps.name() or "gocq" in ps.name():
             _p = psutil.Process(ps.pid)
-            break     
+            break
     return _p
+
 
 def get_lag_process():
     _p = None
     for ps in psutil.process_iter():
-        if  "Lagrange" in ps.name() :
+        if "Lagrange" in ps.name():
             _p = psutil.Process(ps.pid)
-            break     
+            break
     return _p
-
 
 
 def get_stat():
@@ -51,7 +44,7 @@ def get_stat():
         f"服务CPU使用: {cpu_p}%",
         f"服务内存使用: {memu:.2f}MB",
         f"服务协程数量: {len(tasks)}",
-        f"服务运行时间: {datetime.fromtimestamp(live_time,UTC)-epoch}",
+        f"服务运行时间: {datetime.fromtimestamp(live_time, UTC) - epoch}",
         f"磁盘使用: {dp}%  {du:.2f}GB/{dt:.2f}GB",
     ]
     pp = get_gocq_process()
@@ -63,9 +56,13 @@ def get_stat():
     cpu_p1 = ppp.cpu_percent(1)
     mem1 = ppp.memory_full_info().uss / 1024.0 / 1024.0
     p_live_time = time.time() - ppp.create_time()
-    msg.extend([f"{name} CPU使用: {cpu_p1}%", 
-                f"{name} 内存使用: {mem1:.2f}MB",
-                f"{name} 运行时间: {datetime.fromtimestamp(p_live_time,UTC)-epoch}"])
+    msg.extend(
+        [
+            f"{name} CPU使用: {cpu_p1}%",
+            f"{name} 内存使用: {mem1:.2f}MB",
+            f"{name} 运行时间: {datetime.fromtimestamp(p_live_time, UTC) - epoch}",
+        ]
+    )
     return "\n".join(msg)
 
 
@@ -75,6 +72,5 @@ async def _():
 
 
 @driver.on_bot_connect
-async def _(bot: Bot):    
+async def _(bot: Bot):
     await send_to_superuser(bot, get_stat())
-

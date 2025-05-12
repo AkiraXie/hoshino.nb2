@@ -1,6 +1,7 @@
 import nonebot
 import os
 from nonebot.adapters.onebot.v11 import Adapter
+
 moduledir = "hoshino/modules/"
 base = "hoshino/base/"
 nonebot.init()

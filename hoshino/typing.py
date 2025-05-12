@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-28 14:24:11
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 22:11:31
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from typing import (
     List,
     Set,

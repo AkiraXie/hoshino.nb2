@@ -1,37 +1,32 @@
-"""
-Author: AkiraXie
-Date: 2021-02-04 02:33:21
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 22:32:20
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 import asyncio
 from hoshino import Service, Bot, Event, Message
 from hoshino.typing import T_State
 from .data import get_bvid, get_resp
 from json import loads
+
 sv = Service("bilibili")
 bl = sv.on_regex(r"b23.tv\\?/([A-Za-z0-9]{6,7})", normal=False, full_match=False)
 bv = sv.on_regex(r"BV[A-Za-z0-9]{10}", normal=False, full_match=False)
 
-async def check_bvjson(ev:Event,state:T_State) -> bool:
+
+async def check_bvjson(ev: Event, state: T_State) -> bool:
     for s in ev.get_message():
         if s.type == "json":
-            data = loads(s.data.get("data","{}"))
+            data = loads(s.data.get("data", "{}"))
             meta = data.get("meta")
-            if meta and (c:=meta.get("detail_1")):
-                if q:=c.get("qqdocurl"):
+            if meta and (c := meta.get("detail_1")):
+                if q := c.get("qqdocurl"):
                     state["bvurl"] = q
                     return True
     return False
+
 
 bvjson = sv.on_message(rule=check_bvjson)
 
 
 @bvjson.handle()
 async def _(state: T_State):
-    if not (url:=state.get("bvurl")):
+    if not (url := state.get("bvurl")):
         return
     bvid = await get_bvid(url)
     if not bvid:

@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-28 00:44:32
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 23:03:43
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 import asyncio
 import re
 import os
@@ -119,9 +111,9 @@ class Service:
 
         *`visible` : 默认可见状态
         """
-        assert (
-            not _illegal_char.search(name) or not name.isdigit()
-        ), 'Service name cannot contain character in [\\/:*?"<>|.] or be pure number'
+        assert not _illegal_char.search(name) or not name.isdigit(), (
+            'Service name cannot contain character in [\\/:*?"<>|.] or be pure number'
+        )
         assert manage_perm in (
             ADMIN,
             OWNER,
@@ -131,9 +123,9 @@ class Service:
         self.manage_perm = manage_perm
         self.enable_on_default = enable_on_default
         self.visible = visible
-        assert (
-            self.name not in _loaded_services
-        ), f'Service name "{self.name}" already exist!'
+        assert self.name not in _loaded_services, (
+            f'Service name "{self.name}" already exist!'
+        )
         _loaded_services[self.name] = self
         data = _load_service_data(self.name)
         self.enable_group = set(data.get("enable_group", []))
@@ -198,23 +190,26 @@ class Service:
 
     @staticmethod
     def add_nonebot_plugin(
-        plugin_name:str,        
+        plugin_name: str,
         manage_perm: Permission = ADMIN,
         enable_on_default: bool = True,
-        visible: bool = True) -> "Service":
+        visible: bool = True,
+    ) -> "Service":
         names = nonebot.get_available_plugin_names()
         if plugin_name in names:
             return
         plugin = nonebot.load_plugin(plugin_name)
-        svname = plugin_name.replace("nonebot_plugin_","").replace("nonebot-plugin-","")
-        sv = Service(svname,manage_perm,enable_on_default,visible)
-        if matchers := plugin.matcher :
+        svname = plugin_name.replace("nonebot_plugin_", "").replace(
+            "nonebot-plugin-", ""
+        )
+        sv = Service(svname, manage_perm, enable_on_default, visible)
+        if matchers := plugin.matcher:
             for m in matchers:
-               sv.add_nonebot_plugin_matcher(m)    
+                sv.add_nonebot_plugin_matcher(m)
         return sv
 
-    def add_nonebot_plugin_matcher(self,matcher: Type[Matcher]) -> "MatcherWrapper":
-        rule =  self.check_service(False,False)
+    def add_nonebot_plugin_matcher(self, matcher: Type[Matcher]) -> "MatcherWrapper":
+        rule = self.check_service(False, False)
         matcher.rule = matcher.rule & rule
         mw = MatcherWrapper(
             self,
@@ -225,7 +220,7 @@ class Service:
         self.matchers.append(str(mw))
         _loaded_matchers[mw.matcher] = mw
         return mw
-    
+
     def on_command(
         self,
         name: str,
@@ -248,7 +243,7 @@ class Service:
             self,
             "Message.command",
             priority,
-            on_message(  _depth=1, **kwargs),
+            on_message(_depth=1, **kwargs),
             command=name,
             only_group=only_group,
         )
@@ -279,7 +274,7 @@ class Service:
             self,
             "Message.shell_command",
             priority,
-            on_message(  _depth=1, **kwargs),
+            on_message(_depth=1, **kwargs),
             command=name,
             only_group=only_group,
         )
@@ -303,7 +298,7 @@ class Service:
             self,
             "Message.startswith",
             priority,
-            on_startswith(msg,   _depth=1, **kwargs),
+            on_startswith(msg, _depth=1, **kwargs),
             startswith=msg,
             only_group=only_group,
         )
@@ -327,7 +322,7 @@ class Service:
             self,
             "Message.endswith",
             priority,
-            on_endswith(msg,   _depth=1, **kwargs),
+            on_endswith(msg, _depth=1, **kwargs),
             endswith=msg,
             only_group=only_group,
         )
@@ -355,7 +350,7 @@ class Service:
             self,
             "Message.keyword",
             priority,
-            on_message(  _depth=1, **kwargs),
+            on_message(_depth=1, **kwargs),
             keywords=str(keywords),
             only_group=only_group,
         )
@@ -383,7 +378,7 @@ class Service:
             self,
             "Message.fullmatch",
             priority,
-            on_message(  _depth=1, **kwargs),
+            on_message(_depth=1, **kwargs),
             keywords=str(keywords),
             only_group=only_group,
         )
@@ -418,7 +413,7 @@ class Service:
             self,
             "Message.regex",
             priority,
-            on_message(rule, permission,   _depth=1, **kwargs),
+            on_message(rule, permission, _depth=1, **kwargs),
             pattern=str(pattern),
             flags=str(flags),
             only_group=only_group,
@@ -432,7 +427,7 @@ class Service:
         only_to_me: bool = False,
         only_group: bool = True,
         permission: Permission = NORMAL,
-        log:bool = False,
+        log: bool = False,
         **kwargs,
     ) -> "MatcherWrapper":
         kwargs["permission"] = permission
@@ -443,7 +438,7 @@ class Service:
             self,
             "Message.message",
             priority,
-            on_message(  _depth=1, **kwargs),
+            on_message(_depth=1, **kwargs),
             log,
             only_group=only_group,
         )
@@ -458,7 +453,7 @@ class Service:
             self,
             "Notice",
             priority,
-            on_notice(rule,   _depth=1, **kwargs),
+            on_notice(rule, _depth=1, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -472,7 +467,7 @@ class Service:
             self,
             "Request",
             priority,
-            on_request(rule,   _depth=1, **kwargs),
+            on_request(rule, _depth=1, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -503,7 +498,13 @@ class MatcherWrapper:
     """
 
     def __init__(
-        self, sv: Service, type: str, priority: int, matcher: Type[Matcher],log:bool=True, **info
+        self,
+        sv: Service,
+        type: str,
+        priority: int,
+        matcher: Type[Matcher],
+        log: bool = True,
+        **info,
     ) -> None:
         self.matcher = matcher
         self.sv = sv
@@ -539,7 +540,8 @@ class MatcherWrapper:
         parameterless: Optional[list] = None,
     ):
         def deco(func: T_Handler):
-            return self.matcher.got(key, prompt, parameterless,args_parser)(func)
+            return self.matcher.got(key, prompt, parameterless, args_parser)(func)
+
         return deco
 
     async def reject(
@@ -617,11 +619,11 @@ async def log_matcherwrapper(matcher: Matcher):
     mw = _loaded_matchers.get(matcher.__class__, None)
     if mw and mw.log:
         mw.sv.logger.info(f"Event will be handled by <lc>{mw}</>")
-        yield 
+        yield
         mw.sv.logger.info(f"Event was completed handling by <lc>{mw}</>")
     else:
         yield
 
+
 @run_preprocessor
-async def _(_ = Depends(log_matcherwrapper,use_cache = False)):
-    ...
+async def _(_=Depends(log_matcherwrapper, use_cache=False)): ...

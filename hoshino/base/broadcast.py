@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-02-10 00:22:20
-LastEditors: AkiraXie
-LastEditTime: 2021-04-10 02:20:13
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from loguru import logger
 from hoshino.util import sucmd
 from hoshino import Bot, Event

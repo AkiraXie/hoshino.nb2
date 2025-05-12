@@ -32,9 +32,18 @@ adds = sv.on_command("添加steam订阅", permission=ADMIN)
 dels = sv.on_command("取消steam订阅", permission=ADMIN)
 looks = sv.on_command(
     "steam订阅列表",
-    aliases=("查看本群steam", "本群steam订阅", "steam列表", "谁在玩游戏", "看看steam", "kksteam"),
+    aliases=(
+        "查看本群steam",
+        "本群steam订阅",
+        "steam列表",
+        "谁在玩游戏",
+        "看看steam",
+        "kksteam",
+    ),
 )
-look = sv.on_command("查询steam账号", permission=ADMIN, aliases=("查看steam", "查看steam订阅"))
+look = sv.on_command(
+    "查询steam账号", permission=ADMIN, aliases=("查看steam", "查看steam订阅")
+)
 
 
 @adds.handle()
@@ -108,7 +117,7 @@ async def get_account_status(id) -> dict:
         logger.exception(e)
         logger.error(type(e))
     if not resp.ok:
-        logger.exception(f'steam api return error {resp.status_code}')
+        logger.exception(f"steam api return error {resp.status_code}")
         return
     rsp = resp.json
     friend = rsp["response"]["players"][0]
@@ -135,9 +144,9 @@ async def update_game_status() -> None:
         logger.exception(e)
         logger.error(type(e))
         return
-    
+
     if not resp.ok:
-        logger.exception(f'steam api return error {resp.status_code}')
+        logger.exception(f"steam api return error {resp.status_code}")
         return
     rsp = resp.json
     for friend in rsp["response"]["players"]:
@@ -190,7 +199,8 @@ async def check_steam_status():
                 )
             else:
                 await broadcast(
-                    glist, "%s 开始游玩 %s ！" % (val["personaname"], val["gameextrainfo"])
+                    glist,
+                    "%s 开始游玩 %s ！" % (val["personaname"], val["gameextrainfo"]),
                 )
 
 

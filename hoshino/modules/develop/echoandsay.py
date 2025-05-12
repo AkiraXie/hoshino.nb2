@@ -1,9 +1,3 @@
-"""
-Author: AkiraXie
-LastEditTime: 2021-05-23 16:01:34
-LastEditors: AkiraXie
-GitHub: https://github.com/AkiraXie
-"""
 from hoshino import sucmd, Service, permission, Bot, Event, Message
 from nonebot.adapters.onebot.v11.utils import unescape
 

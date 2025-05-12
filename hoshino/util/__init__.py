@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-28 14:29:01
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 22:16:28
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 import random
 import pytz
 import zhconv
@@ -18,7 +10,7 @@ from io import BytesIO
 from collections import defaultdict
 from PIL import Image
 from datetime import datetime, timedelta
-from nonebot.adapters.onebot.v11 import MessageSegment,Message
+from nonebot.adapters.onebot.v11 import MessageSegment, Message
 from nonebot.params import Depends
 from nonebot.adapters.onebot.v11.event import (
     Event,
@@ -27,7 +19,7 @@ from nonebot.adapters.onebot.v11.event import (
     MessageEvent,
 )
 from nonebot.typing import T_State
-from hoshino import R,fav_dir,img_dir
+from hoshino import R, fav_dir, img_dir
 from nonebot.utils import run_sync
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.matcher import Matcher, current_matcher
@@ -37,17 +29,17 @@ from nonebot.rule import Rule, to_me
 from .aiohttpx import get
 from .playwrights import get_bili_dynamic_screenshot
 
+
 def Cooldown(
     cooldown: float = 10,
     prompt: Optional[str] = None,
 ) -> None:
-    
     debounced = set()
-    
+
     async def dependency(matcher: Matcher, event: MessageEvent, bot: Bot):
         loop = get_running_loop()
         key = event.user_id
-        if key in debounced :
+        if key in debounced:
             await matcher.finish(prompt.format(cooldown))
         else:
             debounced.add(key)
@@ -92,7 +84,7 @@ async def _strip_cmd(bot: "Bot", event: "Event", state: T_State):
     segment = message.pop(0)
     segment_text = str(segment).lstrip()
     new_message = message.__class__(
-        segment_text[len(state["_prefix"]["raw_command"]):].lstrip()
+        segment_text[len(state["_prefix"]["raw_command"]) :].lstrip()
     )  # type: ignore
     for new_segment in reversed(new_message):
         message.insert(0, new_segment)
@@ -121,14 +113,15 @@ def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
     return CommandGroup(name, **kwargs)
 
 
-
 def img_to_bytes(pic: Image.Image) -> bytes:
     buf = BytesIO()
     pic.save(buf, format="PNG")
     return buf.getvalue()
 
+
 def img_to_segment(pic: Image.Image) -> MessageSegment:
     return MessageSegment.image(img_to_bytes(pic))
+
 
 def concat_pic(pics, border=5):
     num = len(pics)
@@ -186,15 +179,18 @@ async def save_img(url: str, name: str, fav: bool = False):
     b.close()
     img.close()
 
-def random_modify_pixel(img:Image.Image):
-    i,j = random.randint(0,img.size[0]),random.randint(0,img.size[1])
+
+def random_modify_pixel(img: Image.Image):
+    i, j = random.randint(0, img.size[0]), random.randint(0, img.size[1])
     rand_color = random.choices(range(256), k=3)
-    img.putpixel((i,j),tuple(rand_color))
+    img.putpixel((i, j), tuple(rand_color))
+
 
 def get_event_imageurl(event: MessageEvent) -> List[str]:
     msg = event.message
-    imglist = [s.data.get("url",s.data.get("file")) for s in msg if s.type == "image"]
+    imglist = [s.data.get("url", s.data.get("file")) for s in msg if s.type == "image"]
     return imglist
+
 
 async def send_to_superuser(bot: Optional[Bot] = None, msg=""):
     if not bot:
@@ -208,22 +204,30 @@ async def get_img_from_url(url: str) -> MessageSegment:
     resp = await get(url)
     return MessageSegment.image(resp.content)
 
-async def send(message: Union[str, "Message", "MessageSegment"],
-        *,
-        call_header: bool = False,
-        at_sender: bool = False,
-        **kwargs):
+
+async def send(
+    message: Union[str, "Message", "MessageSegment"],
+    *,
+    call_header: bool = False,
+    at_sender: bool = False,
+    **kwargs,
+):
     matcher = current_matcher.get(default=None)
     if matcher is None:
         raise ValueError("No running matcher found!")
     await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
 
-async def finish(message: Union[str, "Message", "MessageSegment"],
-        *,
-        call_header: bool = False,
-        at_sender: bool = False,
-        **kwargs):
+
+async def finish(
+    message: Union[str, "Message", "MessageSegment"],
+    *,
+    call_header: bool = False,
+    at_sender: bool = False,
+    **kwargs,
+):
     matcher = current_matcher.get(default=None)
     if matcher is None:
         raise ValueError("No running matcher found!")
-    await matcher.finish(message, call_header=call_header, at_sender=at_sender, **kwargs)
+    await matcher.finish(
+        message, call_header=call_header, at_sender=at_sender, **kwargs
+    )

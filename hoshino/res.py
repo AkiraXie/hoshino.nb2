@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-01-29 15:02:48
-LastEditors: AkiraXie
-LastEditTime: 2021-06-09 02:30:07
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from pathlib import Path
 from loguru import logger
 from io import UnsupportedOperation
@@ -109,7 +101,7 @@ class RHelper(str):
 
     def get_path(self) -> Path:
         return Path(self.__rpath)
-    
+
     @property
     def CQcode(self) -> MessageSegment:
         try:

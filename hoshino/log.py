@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-02-22 02:35:32
-LastEditors: AkiraXie
-LastEditTime: 2022-01-13 22:34:02
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 from nonebot.log import logger, default_format
 import os
 import sys

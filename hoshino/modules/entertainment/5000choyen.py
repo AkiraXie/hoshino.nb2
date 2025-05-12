@@ -1,11 +1,3 @@
-"""
-Author: AkiraXie
-Date: 2021-02-16 17:46:05
-LastEditors: AkiraXie
-LastEditTime: 2022-02-16 22:35:58
-Description: 
-Github: http://github.com/AkiraXie/
-"""
 import urllib
 from hoshino import Service, Bot, MessageSegment
 from hoshino.rule import ArgumentParser

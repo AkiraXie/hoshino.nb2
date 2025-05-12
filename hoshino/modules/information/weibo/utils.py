@@ -3,17 +3,18 @@ from dataclasses import dataclass
 from datetime import datetime
 import functools
 import json
-from typing import Dict, List,Optional
+from typing import Dict, List, Optional
 import peewee as pw
 import os
-from hoshino import db_dir, Message,Service,MessageSegment
-from hoshino.util import  aiohttpx
+from hoshino import db_dir, Message, Service, MessageSegment
+from hoshino.util import aiohttpx
 from lxml.etree import HTML
 from yarl import URL
 from urllib.parse import unquote
 from httpx import AsyncClient
 from hoshino.util.playwrights import get_weibo_screenshot
-sv = Service("weibo", enable_on_default=False,visible=False)
+
+sv = Service("weibo", enable_on_default=False, visible=False)
 
 _HEADER = {
     "accept": (
@@ -34,12 +35,14 @@ _HEADER = {
     ),
 }
 
+
 @dataclass
 class Post:
     """最通用的Post，理论上包含所有常用的数据
 
     对于更特殊的需要，可以考虑另外实现一个Post
     """
+
     """来源平台"""
     uid: str
     """用户ID"""
@@ -49,7 +52,7 @@ class Post:
     """文本内容"""
     title: str | None = None
     """标题"""
-    images: list[str | bytes ] | None = None
+    images: list[str | bytes] | None = None
     """图片列表"""
     timestamp: float | None = None
     """发布/获取时间戳, 秒"""
@@ -61,6 +64,7 @@ class Post:
     """发布者个性签名等"""
     repost: "Post | None" = None
     """转发的Post"""
+
     async def get_msg_with_screenshot(self) -> list[Message]:
         """获取消息"""
         msg = []
@@ -74,7 +78,7 @@ class Post:
                 immsg.append(MessageSegment.image(img))
         if not immsg:
             if self.nickname:
-                msg.append(self.nickname+ "微博~")
+                msg.append(self.nickname + "微博~")
             if self.id:
                 ms = await get_weibo_screenshot(self.id)
                 if ms:
@@ -82,24 +86,25 @@ class Post:
                 else:
                     return self.get_msg()
             if self.url:
-                msg.append("详情: "+self.url)
-            res = [Message('\n'.join(msg))]
+                msg.append("详情: " + self.url)
+            res = [Message("\n".join(msg))]
             return res
         else:
             return self.get_msg()
+
     def get_msg(self) -> list[Message]:
         """获取消息"""
         msg = []
         immsg = []
         if self.nickname:
-            msg.append(self.nickname+ "微博~")
+            msg.append(self.nickname + "微博~")
         if self.content:
             msg.append(self.content)
         if self.repost:
             msg.append("------------")
-            msg.append("转发自 "+ self.repost.nickname+ ":")
+            msg.append("转发自 " + self.repost.nickname + ":")
             msg.append(self.repost.content)
-            msg.append("转发详情: "+self.repost.url)
+            msg.append("转发详情: " + self.repost.url)
             msg.append("------------")
             if self.repost.images:
                 for img in self.repost.images:
@@ -108,21 +113,32 @@ class Post:
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
-        
+
         if self.url:
-            msg.append("详情: "+self.url)
+            msg.append("详情: " + self.url)
         res = [Message("\n".join(msg))]
         if immsg:
             for i in immsg:
                 res.append(Message(i))
         return res
-    
 
-async def get_sub_list(target: str,ts:float=0.0,keywords:list[str] = list()) -> list[Post]:
-    header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
+
+async def get_sub_list(
+    target: str, ts: float = 0.0, keywords: list[str] = list()
+) -> list[Post]:
+    header = {
+        "Referer": f"https://m.weibo.cn/u/{target}",
+        "MWeibo-Pwa": "1",
+        "X-Requested-With": "XMLHttpRequest",
+    }
     header.update(_HEADER)
     params = {"containerid": "107603" + target}
-    res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=8.0)
+    res = await aiohttpx.get(
+        "https://m.weibo.cn/api/container/getIndex?",
+        headers=header,
+        params=params,
+        timeout=8.0,
+    )
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
         return []
@@ -139,14 +155,16 @@ async def get_sub_list(target: str,ts:float=0.0,keywords:list[str] = list()) -> 
             t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
             b = t > ts
         return d["card_type"] == 9 and b and kb
-    def cmp(d1,d2) -> bool:
+
+    def cmp(d1, d2) -> bool:
         created1 = d1["mblog"]["created_at"]
         created2 = d2["mblog"]["created_at"]
         t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
         t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        return t1-t2
+        return t1 - t2
+
     k = functools.cmp_to_key(cmp)
-    l=list(filter(custom_filter, res_data["data"]["cards"]))
+    l = list(filter(custom_filter, res_data["data"]["cards"]))
     l.sort(key=k)
     if not l:
         return []
@@ -157,11 +175,23 @@ async def get_sub_list(target: str,ts:float=0.0,keywords:list[str] = list()) -> 
             res.append(post)
     return res
 
-async def get_sub_new(target: str,ts:float=0.0,keywords:list[str] = list()) -> Optional[Post]:
-    header = {"Referer": f"https://m.weibo.cn/u/{target}", "MWeibo-Pwa": "1", "X-Requested-With": "XMLHttpRequest"}
+
+async def get_sub_new(
+    target: str, ts: float = 0.0, keywords: list[str] = list()
+) -> Optional[Post]:
+    header = {
+        "Referer": f"https://m.weibo.cn/u/{target}",
+        "MWeibo-Pwa": "1",
+        "X-Requested-With": "XMLHttpRequest",
+    }
     header.update(_HEADER)
     params = {"containerid": "107603" + target}
-    res = await aiohttpx.get("https://m.weibo.cn/api/container/getIndex?", headers=header, params=params, timeout=4.0)
+    res = await aiohttpx.get(
+        "https://m.weibo.cn/api/container/getIndex?",
+        headers=header,
+        params=params,
+        timeout=4.0,
+    )
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
         return None
@@ -178,20 +208,23 @@ async def get_sub_new(target: str,ts:float=0.0,keywords:list[str] = list()) -> O
             t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
             b = t > ts
         return d["card_type"] == 9 and b and kb
-    def cmp(d1,d2) -> bool:
+
+    def cmp(d1, d2) -> bool:
         created1 = d1["mblog"]["created_at"]
         created2 = d2["mblog"]["created_at"]
         t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
         t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        return t1-t2
+        return t1 - t2
+
     k = functools.cmp_to_key(cmp)
-    l=list(filter(custom_filter, res_data["data"]["cards"]))
+    l = list(filter(custom_filter, res_data["data"]["cards"]))
     if not l:
         return None
     l.sort(key=k, reverse=True)
     post = await parse_weibo_card(l[0])
 
     return post
+
 
 async def _get_long_weibo(weibo_id: str) -> dict:
     try:
@@ -208,24 +241,29 @@ async def _get_long_weibo(weibo_id: str) -> dict:
         sv.logger.info(f"detail message error: https://m.weibo.cn/detail/{weibo_id}")
     return {}
 
+
 def _get_text(raw_text: str) -> str:
-        text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
-        selector = HTML(text, parser=None)
-        if selector is None:
-            return text
-        url_elems = selector.xpath("//a[@href]/span[@class='surl-text']")
-        for br in selector.xpath("br"):
-            br.tail = "\n" + br.tail
-        for elem in url_elems:
-            url = elem.getparent().get("href")
-            if (
-                not elem.text.startswith("#")
-                and not elem.text.endswith("#")
-                and (url.startswith("https://weibo.cn/sinaurl?u=") or url.startswith("https://video.weibo.com"))
-            ):
-                url = unquote(url.replace("https://weibo.cn/sinaurl?u=", ""))
-                elem.text = f"{elem.text}( {url} )"
-        return selector.xpath("string(.)")
+    text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
+    selector = HTML(text, parser=None)
+    if selector is None:
+        return text
+    url_elems = selector.xpath("//a[@href]/span[@class='surl-text']")
+    for br in selector.xpath("br"):
+        br.tail = "\n" + br.tail
+    for elem in url_elems:
+        url = elem.getparent().get("href")
+        if (
+            not elem.text.startswith("#")
+            and not elem.text.endswith("#")
+            and (
+                url.startswith("https://weibo.cn/sinaurl?u=")
+                or url.startswith("https://video.weibo.com")
+            )
+        ):
+            url = unquote(url.replace("https://weibo.cn/sinaurl?u=", ""))
+            elem.text = f"{elem.text}( {url} )"
+    return selector.xpath("string(.)")
+
 
 async def _parse_weibo_card(info: dict) -> Post:
     if info["isLongText"] or info["pic_num"] > 9:
@@ -260,6 +298,7 @@ async def _parse_weibo_card(info: dict) -> Post:
         nickname=info["user"]["screen_name"],
     )
 
+
 async def parse_weibo_card(raw: dict) -> Post:
     info = raw["mblog"]
     post = await _parse_weibo_card(info)
@@ -267,17 +306,22 @@ async def parse_weibo_card(raw: dict) -> Post:
         post.repost = await _parse_weibo_card(info["retweeted_status"])
     return post
 
+
 db_path = os.path.join(db_dir, "weibodata.db")
 db = pw.SqliteDatabase(db_path)
+
+
 class WeiboDB(pw.Model):
     uid = pw.TextField()
     group = pw.IntegerField()
     time = pw.FloatField()
     name = pw.TextField()
     keyword = pw.TextField(default="")
+
     class Meta:
         database = db
         primary_key = pw.CompositeKey("uid", "group")
+
 
 if not os.path.exists(db_path):
     db.connect()
