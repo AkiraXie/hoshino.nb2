@@ -1,5 +1,5 @@
-from hoshino import Service, Event, MessageSegment,scheduled_job
-from hoshino.util import Cooldown, aiohttpx
+from hoshino import Service, Event, MessageSegment,scheduled_job,on_startup
+from hoshino.util import aiohttpx
 from urllib.parse import quote
 sv = Service("bihua", visible=False, enable_on_default=False)
 
@@ -9,6 +9,7 @@ prefix = "https://bihua.bleatingsheep.org/"
 m = sv.on_command("bihua",aliases=("b话"))
 
 @scheduled_job("interval", seconds=120, id="bihua_config",jitter=5)
+@on_startup
 async def fetch_bihua_config():
     try:
         bihuas.clear()
