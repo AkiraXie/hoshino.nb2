@@ -40,9 +40,10 @@ async def _():
     ra = random.SystemRandom()
     if not bihuas:
         await r.finish()
-    ls = list(bihuas)
-    link = prefix + ra.choice(ls)
-    link2 = quote(link, safe=":/")
+    ls = list(bihuas.keys())
+    matching_bihua = ra.choice(ls)
+    link = prefix + matching_bihua
+    link2 = quote(link, safe=":/")+bihuas[matching_bihua]
     await r.send(MessageSegment.image(link2))
 
 
