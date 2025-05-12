@@ -279,32 +279,3 @@ async def _():
                     await asyncio.sleep(0.6)
 
 
-from nonebot import get_driver
-from hoshino.util import send_to_superuser
-
-startup = get_driver().on_bot_connect
-
-
-@startup
-async def _(bot: Bot):
-    uids = [row.uid for row in LiveDB.select(LiveDB.uid).distinct()]
-    dic = await get_live_status(uids)
-    msgs = []
-    num = len(uids)
-    msgs.append(f"共订阅了{num}个bilibili直播:")
-    for uid in uids:
-        uid = str(uid)
-        info = dic[uid]
-        name = info["uname"]
-        status = 0 if info["live_status"] == 2 else info["live_status"]
-        live_state[uid] = status
-        desc = status_dic[status]
-        if status == 1:
-            dt=datetime.utcnow()-datetime.utcfromtimestamp(info['live_time'])
-            desc += f"\n直播时长:{int(dt.total_seconds()//3600)}小时{int(dt.total_seconds()%3600//60)}分{int(dt.total_seconds()%60)}秒"
-            live_times[uid]=info['live_time']
-        room_id = info["short_id"] if info["short_id"] else info["room_id"]
-        url = "https://live.bilibili.com/" + str(room_id)
-        msgs.append(f"{name} 状态:{desc}\n{url}")
-    await asyncio.sleep(0.5)
-    await send_to_superuser(bot, "\n".join(msgs))
