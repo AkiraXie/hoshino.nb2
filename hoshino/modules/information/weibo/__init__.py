@@ -7,7 +7,7 @@ from hoshino.schedule import scheduled_job
 from hoshino.typing import FinishedException
 from .utils import get_sub_list, sv, WeiboDB as db, Post, get_sub_new
 from asyncio import Queue
-
+import re
 
 class PostQueue(Queue):
     def __init__(self, maxsize: int = 0) -> None:
@@ -51,6 +51,13 @@ async def add_subscription(bot: Bot, event: Event):
         else:
             uid = msg[0]
             keywords = msg[1:]
+        if not uid.isdecimal():
+            match = re.search(r'weibo\.com/u/(\d+)', uid)
+            if match:
+                uid = match.group(1)
+            else:
+                await bot.send(event, "无效的UID格式，请输入数字ID或完整的微博个人主页链接")
+                raise FinishedException
         post = await get_sub_new(uid, 0, keywords=keywords)
         if not post:
             post = await get_sub_new(uid, 0)
