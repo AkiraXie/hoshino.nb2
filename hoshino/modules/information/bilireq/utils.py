@@ -31,6 +31,13 @@ async def init_cookies():
     bili_cookies = get_cookies("bilibili")
 
 
+async def get_bilicookies():
+    global bili_cookies
+    if not bili_cookies:
+        bili_cookies = get_cookies("bilibili")
+    return bili_cookies
+
+
 class Dynamic:
     def __init__(self, dynamic: dict):
         self.dynamic = dynamic
@@ -43,7 +50,7 @@ class Dynamic:
 
     async def get_message(self) -> Message:
         msg = [self.name + self.type]
-        img = await get_bili_dynamic_screenshot(self.url, cookies=bili_cookies)
+        img = await get_bili_dynamic_screenshot(self.url, cookies=get_bilicookies())
         if img:
             msg.append(str(img))
         await asyncio.sleep(0.5)
@@ -56,7 +63,7 @@ async def get_new_dynamic(uid: int) -> Dynamic:
     h = headers.copy()
     h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
 
-    res = await aiohttpx.get(url, headers=h, cookies=bili_cookies)
+    res = await aiohttpx.get(url, headers=h, cookies=get_bilicookies())
     data = res.json.get("data", {})
     if not data:
         return None
@@ -72,7 +79,7 @@ async def get_dynamic(uid: int, ts) -> List[Dynamic]:
     h = headers.copy()
     h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
 
-    res = await aiohttpx.get(url, headers=h, cookies=bili_cookies)
+    res = await aiohttpx.get(url, headers=h, cookies=get_bilicookies())
     data = res.json.get("data", {})
 
     if not data:
@@ -93,7 +100,10 @@ async def get_user_name(uid: int):
 
 async def get_live_status(uids: List[int]) -> Dict[str, Dict]:
     res = await aiohttpx.post(
-        live_url, data=json.dumps({"uids": uids}), headers=headers, cookies=bili_cookies
+        live_url,
+        data=json.dumps({"uids": uids}),
+        headers=headers,
+        cookies=get_bilicookies(),
     )
     data: Dict[str, Dict] = res.json["data"]
     return data
