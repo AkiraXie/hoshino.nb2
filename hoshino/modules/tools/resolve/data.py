@@ -145,7 +145,7 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         return msg
     elif resource_type == "video":
         video_url = note_data["video"]["media"]["stream"]["h264"][0]["masterUrl"]
-        msg = [title_desc]
+        msg = [title_desc, f"笔记链接: {resp.url}"]
         msg.append(MessageSegment.video(video_url))
         return msg
     else:

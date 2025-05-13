@@ -1,5 +1,5 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
-
+## TODO: suppport weibo
 import asyncio
 from hoshino import Event
 from hoshino.typing import T_State
