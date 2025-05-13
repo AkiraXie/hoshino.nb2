@@ -3,7 +3,7 @@ import os
 
 driver = nonebot.get_driver()
 hsn_config = driver.config
-hsn_nickname = next(hsn_config.nickname, "Hoshino")
+hsn_nickname = next(iter(hsn_config.nickname), "Hoshino")
 fav_dir = os.path.join(hsn_config.data, "favorite/")
 img_dir = os.path.join(hsn_config.data, "image/")
 db_dir = os.path.join(hsn_config.data, "db/")
