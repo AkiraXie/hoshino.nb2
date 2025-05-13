@@ -1,7 +1,7 @@
 import json
 from hoshino import MessageSegment, Message, on_startup
 from hoshino.service import Service
-from hoshino.util import aiohttpx, get_cookies, sucmd
+from hoshino.util import aiohttpx, get_cookies, send_to_superuser
 from time import strftime, localtime
 from time import time
 import re
@@ -27,7 +27,7 @@ async def init_cookies():
     xhs_cookies = get_cookies("xhs")
 
 
-def get_xhscookies():
+async def get_xhscookies():
     global now
     global xhs_cookies
     now2 = int(time())
@@ -36,6 +36,7 @@ def get_xhscookies():
     if now2 - now > 86400 * 3:
         xhs_cookies = None
         now = now2
+        await send_to_superuser(msg="小红书cookies过期，请重新添加")
     return xhs_cookies
 
 
@@ -107,7 +108,7 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         resp = await aiohttpx.get(
             f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_source={xsec_source}&xsec_token={xsec_token}",
             headers=xhs_headers,
-            cookies=get_xhscookies(),
+            cookies=await get_xhscookies(),
         )
     except Exception as e:
         sv.logger.error(f"Error fetching Xiaohongshu data: {e}")
