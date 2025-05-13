@@ -27,9 +27,10 @@ bili_cookies = {}
 
 now = int(time())
 
+
 @on_startup
 async def init_cookies():
-    global now 
+    global now
     global bili_cookies
     now = int(time())
     bili_cookies = get_cookies("bilibili")
