@@ -289,19 +289,26 @@ db.connect()
 db.create_tables([Cookies], safe=True)
 
 
+cookiejar = {}
+
+
 def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):
         cookies = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    cookiejar[name] = cookies
     Cookies.replace(name=name, cookie=cookies).execute()
 
 
 def get_cookies(name: str) -> dict:
     try:
-        cookie = Cookies.get_or_none(Cookies.name == name).cookie
-        if not cookie:
+        if name in cookiejar:
+            return cookiejar[name]
+        cookies = Cookies.get_or_none(Cookies.name == name).cookie
+        if not cookies:
             return {}
+        cookiejar[name] = cookies
         cookie_dict = {}
-        for item in cookie.split("; "):
+        for item in cookies.split("; "):
             key, value = item.split("=", 1)
             cookie_dict[key] = value
         return cookie_dict
