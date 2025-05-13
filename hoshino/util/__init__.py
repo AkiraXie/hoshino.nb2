@@ -213,7 +213,7 @@ async def send(
     at_sender: bool = False,
     **kwargs,
 ):
-    matcher = current_matcher.get(default=None)
+    matcher = current_matcher.get()
     if matcher is None:
         raise ValueError("No running matcher found!")
     await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
@@ -226,7 +226,7 @@ async def finish(
     at_sender: bool = False,
     **kwargs,
 ):
-    matcher = current_matcher.get(default=None)
+    matcher = current_matcher.get()
     if matcher is None:
         raise ValueError("No running matcher found!")
     await matcher.finish(
