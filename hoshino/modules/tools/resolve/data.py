@@ -1,8 +1,9 @@
 import json
-from hoshino import MessageSegment, Message
+from hoshino import MessageSegment, Message,on_startup
 from hoshino.service import Service
-from hoshino.util import aiohttpx
+from hoshino.util import aiohttpx,get_cookies,sucmd
 from time import strftime, localtime
+from time import time
 import re
 from urllib.parse import parse_qs, urlparse
 
@@ -14,6 +15,26 @@ bili_headers = {
 }
 bili_pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
 
+xhs_cookies = {}
+now = int(time())
+
+@on_startup
+async def init_cookies():
+    global now 
+    now = int(time())
+    global xhs_cookies
+    xhs_cookies = get_cookies("xhs")
+
+def get_xhscookies():
+    global now
+    global xhs_cookies
+    now2 = int(time())
+    if not xhs_cookies:
+        xhs_cookies = get_cookies("xhs")
+    if now2 - now > 86400*3:
+        xhs_cookies = None
+        now = now2
+    return xhs_cookies
 
 async def get_redirect(url: str, headers={}) -> str:
     resp = await aiohttpx.head(url, follow_redirects=False)
@@ -83,6 +104,7 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         resp = await aiohttpx.get(
             f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_source={xsec_source}&xsec_token={xsec_token}",
             headers=xhs_headers,
+            cookies=get_xhscookies(),
         )
     except Exception as e:
         sv.logger.error(f"Error fetching Xiaohongshu data: {e}")
@@ -116,7 +138,7 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         msg = [title_desc]
         for img_url in img_urls:
             msg.append(MessageSegment.image(img_url))
-            return msg
+        return msg
     elif resource_type == "video":
         video_url = note_data["video"]["media"]["stream"]["h264"][0]["masterUrl"]
         msg = [title_desc]

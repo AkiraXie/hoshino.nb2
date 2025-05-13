@@ -6,6 +6,7 @@ import os
 from hoshino import db_dir, Message, on_startup
 from hoshino.util import aiohttpx, get_cookies
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
+from time import time
 
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = (
@@ -24,17 +25,25 @@ headers = {
 
 bili_cookies = {}
 
+now = int(time())
 
 @on_startup
 async def init_cookies():
+    global now 
     global bili_cookies
+    now = int(time())
     bili_cookies = get_cookies("bilibili")
 
 
 def get_bilicookies():
+    global now
     global bili_cookies
+    now2 = int(time())
     if not bili_cookies:
         bili_cookies = get_cookies("bilibili")
+    if now2 - now > 86400 * 2:
+        bili_cookies = None
+        now = now2
     return bili_cookies
 
 
