@@ -19,14 +19,13 @@ from nonebot.adapters.onebot.v11.event import (
     MessageEvent,
 )
 from nonebot.typing import T_State
-from hoshino import fav_dir, img_dir
+from hoshino import fav_dir, img_dir, hsn_nickname
 from nonebot.adapters.onebot.v11 import Bot
-from nonebot.matcher import Matcher, current_matcher
+from nonebot.matcher import Matcher, current_matcher, current_bot, current_event
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
 from . import aiohttpx
-import json
 from peewee import SqliteDatabase, Model, TextField, CompositeKey
 from hoshino import db_dir
 
@@ -219,6 +218,46 @@ async def send(
     await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
 
 
+def construct_nodes(
+    user_id: int, segments: List[Message | MessageSegment | str]
+) -> Message:
+    def node(content):
+        return MessageSegment.node_custom(
+            user_id=user_id, nickname=hsn_nickname, content=content
+        )
+
+    return Message([node(seg) for seg in segments])
+
+
+async def send_segments(
+    message: List[Message | MessageSegment | str],
+):
+    bot: Bot = current_bot.get()
+    event: MessageEvent = current_event.get()
+    api = ""
+    nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
+    kwargs = {"messages": nodes}
+    if isinstance(event, GroupMessageEvent):
+        kwargs["group_id"] = event.group_id
+        api = "send_group_forward_msg"
+    else:
+        kwargs["user_id"] = event.user_id
+        api = "send_private_forward_msg"
+    await bot.call_api(api, **kwargs)
+
+
+async def send_group_segments(
+    bot: Bot,
+    group_id: int,
+    message: List[Message | MessageSegment | str],
+):
+    nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
+    kwargs = {"messages": nodes}
+    kwargs["group_id"] = group_id
+    api = "send_group_forward_msg"
+    await bot.call_api(api, **kwargs)
+
+
 async def finish(
     message: Union[str, "Message", "MessageSegment"],
     *,
@@ -253,7 +292,7 @@ db.create_tables([Cookies], safe=True)
 
 def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):
-        cookies = '; '.join(f'{k}={v}' for k, v in cookies.items())
+        cookies = "; ".join(f"{k}={v}" for k, v in cookies.items())
     Cookies.replace(name=name, cookie=cookies).execute()
 
 
@@ -271,11 +310,13 @@ def get_cookies(name: str) -> dict:
         return {}
 
 
-@sucmd("save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True).handle()
+@sucmd(
+    "save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True
+).handle()
 async def save_cookies_cmd(
     event: MessageEvent,
 ):
-    msgs = event.get_plaintext().split(None,1)
+    msgs = event.get_plaintext().split(None, 1)
     name = msgs[0]
     cookies = msgs[1]
     if not name:

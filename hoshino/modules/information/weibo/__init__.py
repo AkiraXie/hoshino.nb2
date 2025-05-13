@@ -1,9 +1,11 @@
+# Thanks to https://github.com/MountainDash/nonebot-bison
+
 import asyncio
 from datetime import datetime
 from typing import List
-import random
 from hoshino import Bot, Event, on_startup
 from hoshino.schedule import scheduled_job
+from hoshino.util import send_group_segments
 from hoshino.typing import FinishedException
 from .utils import get_sub_list, sv, WeiboDB as db, Post, get_sub_new
 from asyncio import Queue
@@ -203,10 +205,12 @@ async def push_weibo_updates():
             db.uid == uid, db.group == gid
         ).execute()
         try:
-            for msg in msgs:
-                await bot.send_group_msg(group_id=gid, message=msg)
-                rand = random.random()
-                await asyncio.sleep(rand * 0.5 + 0.1)
+            if msgs > 4:
+                await send_group_segments(bot, gid, msgs)
+            else:
+                for m in msgs:
+                    await bot.send_group_msg(gid, m)
+                    await asyncio.sleep(0.25)
         except Exception as e:
             sv.logger.error(f"发送 weibo post 失败: {e}")
     weibo_queue.remove_id(dyn.id)
