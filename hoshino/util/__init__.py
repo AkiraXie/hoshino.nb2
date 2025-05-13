@@ -268,7 +268,7 @@ def get_cookies(name: str) -> dict:
         return {}
 
 
-@sucmd("save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True)
+@sucmd("save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True).handle()
 async def save_cookies_cmd(
     event: MessageEvent,
 ):
