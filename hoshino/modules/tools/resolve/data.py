@@ -1,7 +1,7 @@
 import json
-from hoshino import MessageSegment, Message,on_startup
+from hoshino import MessageSegment, Message, on_startup
 from hoshino.service import Service
-from hoshino.util import aiohttpx,get_cookies,sucmd
+from hoshino.util import aiohttpx, get_cookies, sucmd
 from time import strftime, localtime
 from time import time
 import re
@@ -18,12 +18,14 @@ bili_pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
 xhs_cookies = {}
 now = int(time())
 
+
 @on_startup
 async def init_cookies():
-    global now 
+    global now
     now = int(time())
     global xhs_cookies
     xhs_cookies = get_cookies("xhs")
+
 
 def get_xhscookies():
     global now
@@ -31,10 +33,11 @@ def get_xhscookies():
     now2 = int(time())
     if not xhs_cookies:
         xhs_cookies = get_cookies("xhs")
-    if now2 - now > 86400*3:
+    if now2 - now > 86400 * 3:
         xhs_cookies = None
         now = now2
     return xhs_cookies
+
 
 async def get_redirect(url: str, headers={}) -> str:
     resp = await aiohttpx.head(url, follow_redirects=False)
@@ -73,12 +76,12 @@ async def get_resp(bvid: str) -> Message:
     pubdate = strftime("%Y-%m-%d %H:%M:%S", localtime(res["pubdate"]))
     msg = []
     msg.append(str(MessageSegment.image(res["pic"])))
-    msg.append(f"https://www.bilibili.com/video/av{res['aid']}")
     msg.append(f"标题：{res['title']}")
     msg.append(f"类型：{res['tname']} | UP：{res['owner']['name']} | 日期：{pubdate}")
     msg.append(
         f"播放：{handle_num(res['stat']['view'])} | 弹幕：{handle_num(res['stat']['danmaku'])} | 收藏：{handle_num(res['stat']['favorite'])}"
     )
+    msg.append(f"链接: https://www.bilibili.com/video/av{res['aid']}")
     return Message("\n".join(msg))
 
 
@@ -129,13 +132,17 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
     resource_type = note_data["type"]
     note_title = note_data["title"]
     note_desc = note_data["desc"]
-    title_desc = f"{note_title}\n{note_desc}"
+    title_desc = f"{note_title}\n{note_desc}\n笔记链接: {resp.url}"
     img_urls = []
     video_url = ""
     if resource_type == "normal":
         image_list = note_data["imageList"]
         img_urls = [item["urlDefault"] for item in image_list]
         msg = [title_desc]
+        lens = len(img_urls)
+        if lens > 9:
+            img_urls = img_urls[:9]
+        msg.append(f"图片数量过多，最多显示9张，更多请前往笔记链接: {resp.url}")
         for img_url in img_urls:
             msg.append(MessageSegment.image(img_url))
         return msg
