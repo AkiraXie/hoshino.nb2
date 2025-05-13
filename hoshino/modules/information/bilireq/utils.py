@@ -31,7 +31,7 @@ async def init_cookies():
     bili_cookies = get_cookies("bilibili")
 
 
-async def get_bilicookies():
+def get_bilicookies():
     global bili_cookies
     if not bili_cookies:
         bili_cookies = get_cookies("bilibili")
