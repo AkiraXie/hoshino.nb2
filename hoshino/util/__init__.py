@@ -192,9 +192,8 @@ def get_event_imageurl(event: MessageEvent) -> List[str]:
     return imglist
 
 
-async def send_to_superuser(bot: Optional[Bot] = None, msg=""):
-    if not bot:
-        bot = nonebot.get_bot()
+async def send_to_superuser(msg=""):
+    bot = nonebot.get_bot()
     sus = bot.config.superusers
     for su in sus:
         await bot.send_private_msg(user_id=int(su), message=msg)

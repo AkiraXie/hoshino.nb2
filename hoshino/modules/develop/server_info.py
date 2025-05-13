@@ -73,4 +73,4 @@ async def _():
 
 @driver.on_bot_connect
 async def _(bot: Bot):
-    await send_to_superuser(bot, get_stat())
+    await send_to_superuser(get_stat())

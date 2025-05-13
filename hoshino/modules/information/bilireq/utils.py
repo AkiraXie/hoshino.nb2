@@ -4,7 +4,7 @@ from typing import Dict, List
 import peewee as pw
 import os
 from hoshino import db_dir, Message, on_startup
-from hoshino.util import aiohttpx, get_cookies
+from hoshino.util import aiohttpx, get_cookies, send_to_superuser
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
 from time import time
 
@@ -36,7 +36,7 @@ async def init_cookies():
     bili_cookies = get_cookies("bilibili")
 
 
-def get_bilicookies():
+async def get_bilicookies():
     global now
     global bili_cookies
     now2 = int(time())
@@ -45,6 +45,7 @@ def get_bilicookies():
     if now2 - now > 86400 * 2:
         bili_cookies = None
         now = now2
+        await send_to_superuser(msg="B站cookies过期，请重新添加")
     return bili_cookies
 
 
