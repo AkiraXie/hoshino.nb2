@@ -275,7 +275,7 @@ def get_cookies(name: str) -> dict:
 async def save_cookies_cmd(
     event: MessageEvent,
 ):
-    msgs = event.get_plaintext().split()
+    msgs = event.get_plaintext().split(1)
     name = msgs[0]
     cookies = msgs[1]
     if not name:
