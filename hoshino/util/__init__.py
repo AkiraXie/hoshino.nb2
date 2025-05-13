@@ -302,11 +302,12 @@ def save_cookies(name: str, cookies: Union[str, dict]):
 def get_cookies(name: str) -> dict:
     try:
         if name in cookiejar:
-            return cookiejar[name]
-        cookies = Cookies.get_or_none(Cookies.name == name).cookie
+            cookies = cookiejar[name]
+        else:
+            cookies = Cookies.get_or_none(Cookies.name == name).cookie
+            cookiejar[name] = cookies
         if not cookies:
             return {}
-        cookiejar[name] = cookies
         cookie_dict = {}
         for item in cookies.split("; "):
             key, value = item.split("=", 1)
