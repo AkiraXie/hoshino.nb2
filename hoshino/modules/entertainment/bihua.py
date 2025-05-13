@@ -27,7 +27,7 @@ async def fetch_bihua_config():
                 line = line.strip().removeprefix('"meme/').removesuffix('",')
                 for ext in [".jpg", ".png", ".jpeg"]:
                     if line.endswith(ext):
-                        line = line[:-len(ext)]
+                        line = line[: -len(ext)]
                         bi_copy[line] = ext
                         break
         bihuas = bi_copy
@@ -43,7 +43,7 @@ async def _():
     ls = list(bihuas.keys())
     matching_bihua = ra.choice(ls)
     link = prefix + matching_bihua
-    link2 = quote(link, safe=":/")+bihuas[matching_bihua]
+    link2 = quote(link, safe=":/") + bihuas[matching_bihua]
     await r.send(MessageSegment.image(link2))
 
 
@@ -67,5 +67,5 @@ async def _(event: Event):
     if not matching_bihua:
         await m.finish()
     link = prefix + matching_bihua
-    link2 = quote(link, safe=":/")+bihuas[matching_bihua]
+    link2 = quote(link, safe=":/") + bihuas[matching_bihua]
     await m.send(MessageSegment.image(link2))

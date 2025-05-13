@@ -115,7 +115,7 @@ async def _(bot: Bot, event: Event):
     else:
         uid = rows[0].uid
         dyn = await get_new_dynamic(uid)
-        msg = await dyn.get_message(sv.logger)
+        msg = await dyn.get_message()
         await bot.send(event, msg)
 
 
@@ -156,7 +156,7 @@ async def push_bili_dyn():
         dyn_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msg = await dyn.get_message(sv.logger)
+    msg = await dyn.get_message()
     for gid in gids:
         await asyncio.sleep(0.35)
         bot = groups[gid][0]
