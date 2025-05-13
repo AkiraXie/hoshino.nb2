@@ -32,7 +32,7 @@ async def refresh_playwright():
     _b = await ap.chromium.launch(timeout=10000)
 
 
-async def get_weibo_screenshot(mid: str) -> MessageSegment:
+async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
     url = f"https://m.weibo.cn/detail/{mid}"
     b: Browser = await get_b()
     c = await b.new_context(
@@ -43,6 +43,13 @@ async def get_weibo_screenshot(mid: str) -> MessageSegment:
         viewport={"width": 480, "height": 800},
         device_scale_factor=2,
     )
+    if cookies:
+        cks = []
+        for k, v in cookies.items():
+            if not v:
+                continue
+            cks.append({"name": k, "value": v, "domain": ".weibo.cn", "path": "/"})
+        await c.add_cookies(cks)
     page = None
     try:
         page: Page = await c.new_page()
@@ -150,29 +157,3 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment:
         if page:
             await page.close()
         await c.close()
-
-
-# async def get_pcr_shidan(name: str) -> MessageSegment:
-#     browser: Browser = await get_browser()
-#     ctx = await browser.new_context()
-#     page = await ctx.new_page()
-#     await page.goto("https://shindan.priconne-redive.jp/", timeout=100000)
-#     await page.fill('input[type="text"]', name)
-#     await page.click("button")
-#     await page.wait_for_load_state("networkidle", timeout=100000)
-#     div = await page.wait_for_selector(
-#         "#app > main > div > div > div", timeout=10000000
-#     )
-#     assert div
-#     divbound = await div.bounding_box()
-#     twi = await page.wait_for_selector(
-#         "#app > main > div > div > div > p > a > span.tweet-btn__on.s-sm-min > img",
-#         timeout=10000000,
-#     )
-#     assert twi
-#     twibound = await twi.bounding_box()
-#     divbound["height"] = twibound["y"] - divbound["y"]
-#     img = await page.screenshot(clip=divbound, full_page=True)
-#     await page.close()
-#     await ctx.close()
-#     return MessageSegment.image(img)

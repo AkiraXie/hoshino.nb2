@@ -3,8 +3,9 @@ import json
 from typing import Dict, List
 import peewee as pw
 import os
-from hoshino import db_dir, Message
-from hoshino.util import get_bili_dynamic_screenshot, aiohttpx
+from hoshino import db_dir, Message, on_startup
+from hoshino.util import aiohttpx, get_cookies
+from hoshino.util.playwrights import get_bili_dynamic_screenshot
 
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = (
@@ -21,6 +22,15 @@ headers = {
 }
 
 
+bili_cookies = {}
+
+
+@on_startup
+async def init_cookies():
+    global bili_cookies
+    bili_cookies = get_cookies("bilibili")
+
+
 class Dynamic:
     def __init__(self, dynamic: dict):
         self.dynamic = dynamic
@@ -31,9 +41,9 @@ class Dynamic:
         self.uid = dynamic["modules"]["module_author"]["mid"]
         self.name = dynamic["modules"]["module_author"]["name"]
 
-    async def get_message(self, logger) -> Message:
+    async def get_message(self) -> Message:
         msg = [self.name + self.type]
-        img = await get_bili_dynamic_screenshot(self.url)
+        img = await get_bili_dynamic_screenshot(self.url, cookies=bili_cookies)
         if img:
             msg.append(str(img))
         await asyncio.sleep(0.5)
@@ -46,7 +56,7 @@ async def get_new_dynamic(uid: int) -> Dynamic:
     h = headers.copy()
     h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
 
-    res = await aiohttpx.get(url, headers=h)
+    res = await aiohttpx.get(url, headers=h, cookies=bili_cookies)
     data = res.json.get("data", {})
     if not data:
         return None
@@ -62,7 +72,7 @@ async def get_dynamic(uid: int, ts) -> List[Dynamic]:
     h = headers.copy()
     h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
 
-    res = await aiohttpx.get(url, headers=h)
+    res = await aiohttpx.get(url, headers=h, cookies=bili_cookies)
     data = res.json.get("data", {})
 
     if not data:
@@ -83,7 +93,7 @@ async def get_user_name(uid: int):
 
 async def get_live_status(uids: List[int]) -> Dict[str, Dict]:
     res = await aiohttpx.post(
-        live_url, data=json.dumps({"uids": uids}), headers=headers
+        live_url, data=json.dumps({"uids": uids}), headers=headers, cookies=bili_cookies
     )
     data: Dict[str, Dict] = res.json["data"]
     return data

@@ -5,7 +5,7 @@ import nonebot
 import unicodedata
 import os
 from asyncio import get_running_loop
-from typing import List, Optional, Tuple, Type, Union
+from typing import List, Optional, Type, Union
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image
@@ -19,15 +19,16 @@ from nonebot.adapters.onebot.v11.event import (
     MessageEvent,
 )
 from nonebot.typing import T_State
-from hoshino import R, fav_dir, img_dir
-from nonebot.utils import run_sync
+from hoshino import fav_dir, img_dir
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.matcher import Matcher, current_matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command
 from nonebot.rule import Rule, to_me
-from .aiohttpx import get
-from .playwrights import get_bili_dynamic_screenshot
+from . import aiohttpx
+import json
+from peewee import SqliteDatabase, Model, TextField, CompositeKey
+from hoshino import db_dir
 
 
 def Cooldown(
@@ -201,7 +202,7 @@ async def send_to_superuser(bot: Optional[Bot] = None, msg=""):
 
 
 async def get_img_from_url(url: str) -> MessageSegment:
-    resp = await get(url)
+    resp = await aiohttpx.get(url)
     return MessageSegment.image(resp.content)
 
 
@@ -231,3 +232,53 @@ async def finish(
     await matcher.finish(
         message, call_header=call_header, at_sender=at_sender, **kwargs
     )
+
+
+db_path = db_dir + "cookies.db"
+db = SqliteDatabase(db_path)
+
+
+class Cookies(Model):
+    name = TextField()
+    cookie = TextField()
+
+    class Meta:
+        primary_key = CompositeKey("name")
+        database = db
+
+
+db.connect()
+db.create_tables([Cookies], safe=True)
+
+
+def save_cookies(name: str, cookies: Union[str, dict]):
+    if isinstance(cookies, dict):
+        cookies = json.dumps(cookies)
+    if isinstance(cookies, str):
+        cookies = {i.split("=")[0]: i.split("=")[1] for i in cookies.split("; ")}
+        cookies = json.dumps(cookies)
+    Cookies.replace(name=name, cookie=cookies).execute()
+
+
+def get_cookies(name: str) -> dict:
+    try:
+        cookie = Cookies.get(Cookies.name == name).cookie
+        return json.loads(cookie)
+    except Exception:
+        return {}
+
+
+@sucmd("save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True)
+async def save_cookies_cmd(
+    event: MessageEvent,
+):
+    msgs = event.get_plaintext().split()
+    name = msgs[0]
+    cookies = msgs[1]
+    if not name:
+        await finish("请提供cookie名称")
+    if not cookies:
+        await finish("请提供cookie")
+
+    save_cookies(name, cookies)
+    await send(f"保存{name} cookies成功")
