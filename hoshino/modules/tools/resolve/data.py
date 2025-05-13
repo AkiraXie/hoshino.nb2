@@ -133,17 +133,13 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
     resource_type = note_data["type"]
     note_title = note_data["title"]
     note_desc = note_data["desc"]
-    title_desc = f"{note_title}\n{note_desc}\n笔记链接: {resp.url}"
+    title_desc = f"{note_title}\n--------\n{note_desc}"
     img_urls = []
     video_url = ""
     if resource_type == "normal":
         image_list = note_data["imageList"]
         img_urls = [item["urlDefault"] for item in image_list]
-        msg = [title_desc]
-        lens = len(img_urls)
-        if lens > 9:
-            img_urls = img_urls[:9]
-            msg.append(f"图片数量过多，最多显示9张，更多请前往笔记链接: {resp.url}")
+        msg = [title_desc, f"笔记链接: {resp.url}"]
         for img_url in img_urls:
             msg.append(MessageSegment.image(img_url))
         return msg
