@@ -61,7 +61,9 @@ class Dynamic:
 
     async def get_message(self) -> Message:
         msg = [self.name + self.type]
-        img = await get_bili_dynamic_screenshot(self.url, cookies=get_bilicookies())
+        img = await get_bili_dynamic_screenshot(
+            self.url, cookies=await get_bilicookies()
+        )
         if img:
             msg.append(str(img))
         await asyncio.sleep(0.5)
@@ -74,7 +76,7 @@ async def get_new_dynamic(uid: int) -> Dynamic:
     h = headers.copy()
     h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
 
-    res = await aiohttpx.get(url, headers=h, cookies=get_bilicookies())
+    res = await aiohttpx.get(url, headers=h, cookies=await get_bilicookies())
     data = res.json.get("data", {})
     if not data:
         return None
@@ -90,7 +92,7 @@ async def get_dynamic(uid: int, ts) -> List[Dynamic]:
     h = headers.copy()
     h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
 
-    res = await aiohttpx.get(url, headers=h, cookies=get_bilicookies())
+    res = await aiohttpx.get(url, headers=h, cookies=await get_bilicookies())
     data = res.json.get("data", {})
 
     if not data:
@@ -114,7 +116,7 @@ async def get_live_status(uids: List[int]) -> Dict[str, Dict]:
         live_url,
         data=json.dumps({"uids": uids}),
         headers=headers,
-        cookies=get_bilicookies(),
+        cookies=await get_bilicookies(),
     )
     data: Dict[str, Dict] = res.json["data"]
     return data
