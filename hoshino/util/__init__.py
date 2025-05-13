@@ -253,17 +253,20 @@ db.create_tables([Cookies], safe=True)
 
 def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):
-        cookies = json.dumps(cookies)
-    if isinstance(cookies, str):
-        cookies = {i.split("=")[0]: i.split("=")[1] for i in cookies.split("; ")}
-        cookies = json.dumps(cookies)
+        cookies = '; '.join(f'{k}={v}' for k, v in cookies.items())
     Cookies.replace(name=name, cookie=cookies).execute()
 
 
 def get_cookies(name: str) -> dict:
     try:
-        cookie = Cookies.get(Cookies.name == name).cookie
-        return json.loads(cookie)
+        cookie = Cookies.get_or_none(Cookies.name == name).cookie
+        if not cookie:
+            return {}
+        cookie_dict = {}
+        for item in cookie.split("; "):
+            key, value = item.split("=", 1)
+            cookie_dict[key] = value
+        return cookie_dict
     except Exception:
         return {}
 
