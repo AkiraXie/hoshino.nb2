@@ -142,7 +142,7 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         lens = len(img_urls)
         if lens > 9:
             img_urls = img_urls[:9]
-        msg.append(f"图片数量过多，最多显示9张，更多请前往笔记链接: {resp.url}")
+            msg.append(f"图片数量过多，最多显示9张，更多请前往笔记链接: {resp.url}")
         for img_url in img_urls:
             msg.append(MessageSegment.image(img_url))
         return msg
