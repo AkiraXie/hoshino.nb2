@@ -209,7 +209,7 @@ async def push_weibo_updates():
                 await send_group_segments(bot, gid, msgs)
             else:
                 for m in msgs:
-                    await bot.send_group_msg(gid, m)
+                    await bot.send_group_msg(group_id=gid, message=m)
                     await asyncio.sleep(0.25)
         except Exception as e:
             sv.logger.error(f"发送 weibo post 失败: {e}")

@@ -63,7 +63,7 @@ def handle_num(num: int) -> str:
     return s
 
 
-async def get_resp(bvid: str) -> Message:
+async def get_bv_resp(bvid: str) -> Message:
     url = "https://api.bilibili.com/x/web-interface/view?bvid=" + bvid
     try:
         resp = await aiohttpx.get(url, headers=bili_headers)

@@ -4,12 +4,10 @@ import asyncio
 from hoshino import Event
 from hoshino.typing import T_State
 from hoshino.util import send_segments
-from .data import sv, get_bvid, get_resp, parse_xhs
+from .data import sv, get_bvid, get_bv_resp, parse_xhs
 from json import loads
 import re
 
-bl = sv.on_regex(r"b23.tv\\?/([A-Za-z0-9]{6,7})", normal=False, full_match=False)
-bv = sv.on_regex(r"BV[A-Za-z0-9]{10}", normal=False, full_match=False)
 
 urlmaps = {
     "detail_1": "qqdocurl",
@@ -18,8 +16,8 @@ urlmaps = {
 }
 replacements = {"&#44;": ",", "\\": "", "&amp;": "&"}
 
-
-async def check_json(ev: Event, state: T_State) -> bool:
+regexs = {"b23":r"b23.tv\\?/([A-Za-z0-9]{6,7})","bv":r"BV[A-Za-z0-9]{10}","xhs":r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"}
+async def check_json_or_text(ev: Event, state: T_State) -> bool:
     for s in ev.get_message():
         if s.type == "json":
             data = loads(s.data.get("data", "{}"))
@@ -31,82 +29,54 @@ async def check_json(ev: Event, state: T_State) -> bool:
                         if url:
                             for old, new in replacements.items():
                                 url = url.replace(old, new)
-                            state["url"] = url
-                            return True
+                            for name,regex in regexs.items():
+                                if matched:=re.search(regex, url):
+                                    state["__url_name"] = name
+                                    state["__url"] = url
+                                    state["__url_matched"] = matched
+                                    return True
+    text = ev.get_plaintext()
+    for name,regex in regexs.items():
+        if matched:=re.search(regex, text):
+            state["__url_name"] = name
+            state["__url"] = text
+            state["__url_matched"] = matched
+            return True
     return False
 
+m = sv.on_message(rule=check_json_or_text)
 
-bvjson = sv.on_message(rule=check_json)
-
-
-@bvjson
+@m
 async def _(state: T_State):
-    if not (url := state.get("url")):
+
+    if not (url := state.get("__url")):
         return
-    bvid = await get_bvid(url)
-    if not bvid:
+    if not (name := state.get("__url_name")):
         return
-    msg = await get_resp(bvid)
-    if not msg:
+    if not (matched := state.get("__url_matched")):
         return
-    await asyncio.sleep(0.3)
-    await bvjson.finish(msg)
-
-
-@bl
-async def _(state: T_State):
-    url = f"https://b23.tv/{state['match'].group(1)}"
-    bvid = await get_bvid(url)
-    if not bvid:
-        await bl.finish()
-    msg = await get_resp(bvid)
-    if not msg:
-        await bl.finish()
-    await asyncio.sleep(0.3)
-    await bl.finish(msg)
-
-
-@bv
-async def _(state: T_State):
-    bvid = state["_matched"]
-    msg = await get_resp(bvid)
-    if not msg:
-        await bv.finish()
-    await asyncio.sleep(0.3)
-    await bv.finish(msg)
-
-
-xhs = sv.on_keyword(("xhslink.com", "xiaohongshu.com"))
-xhsjson = sv.on_message(rule=check_json)
-
-
-@xhs
-async def parse_xhs_ev(event: Event):
-    text = event.get_plaintext()
-    pattern = (
-        r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"
-    )
-    matched = re.search(pattern, text)
-    if not matched:
-        await xhs.finish()
-    url = matched.group(0)
-    msgs = await parse_xhs(url)
-    if not msgs:
-        await xhs.finish()
-    await send_segments(msgs)
-
-
-@xhsjson
-async def parse_xhs_json(state: T_State):
-    if not (url := state.get("url")):
+    name = name.lower()
+    bvid = None
+    xhs_url = None
+    if name == "b23":
+        bvurl = f"https://b23.tv/{matched.group(1)}"
+        bvid = await get_bvid(bvurl)
+    elif name == "bv":
+        bvid = matched.group(0)
+    elif name == "xhs":
+        xhs_url = matched.group(0)
+    if not bvid and not xhs_url:
         return
-    pattern = (
-        r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"
-    )
-    matched = re.search(pattern, url)
-    if not matched:
-        return
-    msgs = await parse_xhs(url)
-    if not msgs:
-        return
-    await send_segments(msgs)
+    if bvid:
+        msg = await get_bv_resp(bvid)
+        if not msg:
+            return
+        await asyncio.sleep(0.3)
+        await m.finish(msg)
+    if xhs_url:
+        msgs = await parse_xhs(xhs_url)
+        if not msgs:
+            return
+        await send_segments(msgs)
+        await asyncio.sleep(0.3)
+        await m.finish()
