@@ -16,8 +16,16 @@ urlmaps = {
 }
 replacements = {"&#44;": ",", "\\": "", "&amp;": "&"}
 
-regexs = {"b23":r"b23.tv\\?/([A-Za-z0-9]{6,7})","bv":r"BV[A-Za-z0-9]{10}","xhs":r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"}
+regexs = {
+    "b23": r"b23.tv\\?/([A-Za-z0-9]{6,7})",
+    "bv": r"BV[A-Za-z0-9]{10}",
+    "xhs": r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*",
+}
+
+
 async def check_json_or_text(ev: Event, state: T_State) -> bool:
+    url = None
+    jsonFlag = False
     for s in ev.get_message():
         if s.type == "json":
             data = loads(s.data.get("data", "{}"))
@@ -29,26 +37,25 @@ async def check_json_or_text(ev: Event, state: T_State) -> bool:
                         if url:
                             for old, new in replacements.items():
                                 url = url.replace(old, new)
-                            for name,regex in regexs.items():
-                                if matched:=re.search(regex, url):
-                                    state["__url_name"] = name
-                                    state["__url"] = url
-                                    state["__url_matched"] = matched
-                                    return True
-    text = ev.get_plaintext()
-    for name,regex in regexs.items():
-        if matched:=re.search(regex, text):
+                            jsonFlag = True
+                            break
+    url = ev.get_plaintext() if not jsonFlag else url
+    if not url:
+        return False
+    for name, regex in regexs.items():
+        if matched := re.search(regex, url):
             state["__url_name"] = name
-            state["__url"] = text
+            state["__url"] = url
             state["__url_matched"] = matched
             return True
     return False
 
-m = sv.on_message(rule=check_json_or_text)
+
+m = sv.on_message(rule=check_json_or_text, log=True)
+
 
 @m
 async def _(state: T_State):
-
     if not (url := state.get("__url")):
         return
     if not (name := state.get("__url_name")):
@@ -77,6 +84,6 @@ async def _(state: T_State):
         msgs = await parse_xhs(xhs_url)
         if not msgs:
             return
-        await send_segments(msgs)
         await asyncio.sleep(0.3)
+        await send_segments(msgs)
         await m.finish()
