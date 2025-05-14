@@ -54,6 +54,8 @@ class Post:
     """标题"""
     images: list[str | bytes] | None = None
     """图片列表"""
+    video: str | None = None
+    """视频链接"""
     timestamp: float | None = None
     """发布/获取时间戳, 秒"""
     url: str | None = None
@@ -65,14 +67,17 @@ class Post:
     repost: "Post | None" = None
     """转发的Post"""
 
-    async def get_msg_with_screenshot(self) -> list[Message]:
+    async def get_msg_with_screenshot(self) -> list[Message | MessageSegment]:
         """获取消息"""
         msg = []
         immsg = []
+        video = self.video
         if self.repost:
             if self.repost.images:
                 for img in self.repost.images:
                     immsg.append(MessageSegment.image(img))
+            if self.repost.video:
+                video = self.repost.video
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
@@ -88,14 +93,18 @@ class Post:
             if self.url:
                 msg.append("详情: " + self.url)
             res = [Message("\n".join(msg))]
+            if video:
+                res.append(MessageSegment.video(video))
             return res
         else:
             return self.get_msg()
 
-    def get_msg(self) -> list[Message]:
+    def get_msg(self) -> list[Message | MessageSegment]:
         """获取消息"""
         msg = []
         immsg = []
+        res = []
+        video = self.video
         if self.nickname:
             msg.append(self.nickname + "微博~")
         if self.content:
@@ -109,17 +118,20 @@ class Post:
             if self.repost.images:
                 for img in self.repost.images:
                     immsg.append(MessageSegment.image(img))
-
+            if self.repost.video:
+                video = self.repost.video
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
 
         if self.url:
             msg.append("详情: " + self.url)
-        res = [Message("\n".join(msg))]
+        res.append(Message("\n".join(msg)))
         if immsg:
             for i in immsg:
-                res.append(Message(i))
+                res.append(i)
+        if video:
+            res.append(MessageSegment.video(video))
         return res
 
 
@@ -271,20 +283,24 @@ async def _parse_weibo_card(info: dict) -> Post:
     parsed_text = _get_text(info["text"])
     raw_pics_list = info.get("pics", [])
     pic_urls = [img["large"]["url"] for img in raw_pics_list]
-    # # 视频cover
-    # if "page_info" in info and info["page_info"].get("type") == "video":
-    #     crop_url = info["page_info"]["page_pic"]["url"]
-    #     pic_urls.append(
-    #         f"{URL(crop_url).scheme}://{URL(crop_url).host}/large/{info['page_info']['page_pic']['pid']}"
-    #     )
-    # pics = []
-    # for pic_url in pic_urls:
-    #     h = _HEADER.copy()
-    #     h["referer"] = "https://weibo.com"
-    #     async with AsyncClient(headers=h,follow_redirects=True) as client:
-    #         res = await client.get(pic_url)
-    #         res.raise_for_status()
-    #         pics.append(res.content)
+    video_url = None
+    # 视频cover
+    if "page_info" in info and info["page_info"].get("type") == "video":
+        page_pic = info["page_info"].get("page_pic")
+        if page_pic:
+            pic_urls.append(page_pic["url"])
+        media = info["page_info"].get("media_info")
+        urls = info["page_info"].get("urls")
+        if urls:
+            for k in ["mp4_720p_mp4", "mp4_hd_mp4", "mp4_ld_mp4", "mp4_sd_mp4"]:
+                if k in urls:
+                    video_url = urls[k]
+                    break
+        elif media:
+            for k in ["stream_url_hd", "stream_url"]:
+                if k in media:
+                    video_url = media[k]
+                    break
     detail_url = f"https://weibo.com/{info['user']['id']}/{info['bid']}"
     ts = info["created_at"]
     created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
@@ -296,6 +312,7 @@ async def _parse_weibo_card(info: dict) -> Post:
         url=detail_url,
         images=pic_urls,
         nickname=info["user"]["screen_name"],
+        video=video_url,
     )
 
 
