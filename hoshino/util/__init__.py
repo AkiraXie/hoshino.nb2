@@ -180,9 +180,8 @@ async def get_image_segments_from_forward(
             if s.type == "forward":
                 id_ = s.data["id"]
                 dic = await bot.get_forward_msg(id=id_)
-                data = dic.get("data")
-                if data:
-                    msgs = data.get("message")
+                if dic:
+                    msgs = dic.get("message")
                     if msgs:
                         for msg in msgs:
                             data = msg.get("data")
@@ -208,7 +207,7 @@ async def get_event_image_segments(
     imglist.extend(await get_image_segments_from_forward(bot, event))
     reply = event.reply
     if reply:
-        imglist = imglist.extend([s for s in reply.message if s.type == "image"])
+        imglist.extend([s for s in reply.message if s.type == "image"])
     if imglist:
         state[__SU_IMGLIST] = imglist
         return True
