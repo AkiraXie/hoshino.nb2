@@ -193,8 +193,7 @@ async def get_image_segments_from_forward(
                                     return [s for s in content if s.type == "image"]
         return []
 
-    msg = event.get_message()
-    res = await get_imgs_from_msg(bot, msg)
+    res = []
     reply = event.reply
     if reply:
         res.extend(await get_imgs_from_msg(bot, reply.message))
@@ -397,10 +396,11 @@ async def save_cookies_cmd(
 
 
 @sumsg(
-    only_to_me=True,rule=KeywordsRule("simg", "存图", "saveimg"),
+    only_to_me=True,
+    rule=Rule(get_event_image_segments) & KeywordsRule("simg", "存图", "saveimg"),
 ).handle()
 async def save_img_cmd(event: MessageEvent, state: T_State):
-    segs = [s for s in event.get_message() if s.type == "image"]
+    segs = state[__SU_IMGLIST]
     cnt = 0
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
@@ -413,7 +413,7 @@ async def save_img_cmd(event: MessageEvent, state: T_State):
         except Exception:
             nonebot.logger.exception(f"保存图片失败: {fname}")
             continue
-    if cnt!= 0:
+    if cnt != 0:
         await send(f"成功保存{cnt}张图片")
     else:
         await send("保存图片失败")
