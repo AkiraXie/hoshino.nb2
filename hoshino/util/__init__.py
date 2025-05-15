@@ -169,6 +169,15 @@ def get_event_image_segments(event: MessageEvent) -> list[MessageSegment]:
     return imglist
 
 
+def get_event_image(event: MessageEvent) -> list[str]:
+    msg = event.get_message()
+    reply = event.reply
+    imglist = [s.data["file"] for s in msg if s.type == "image" and "file" in s.data]
+    if reply:
+        imglist.extend([s.data["file"] for s in reply.message if s.type == "image"])
+    return imglist
+
+
 async def save_img(url: str, name: str, fav: bool = False, verify: bool = False):
     if fav:
         idir = fav_dir
@@ -354,7 +363,7 @@ async def save_img_cmd(
         url = seg.data.get("url", seg.data.get("file"))
         fname = seg.data.get("filename", name)
         url = URL(url)
-        url.scheme = "http"
+        url.with_scheme("http")
         url = str(url)
         try:
             await save_img(url, fname)

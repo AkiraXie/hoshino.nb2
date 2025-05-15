@@ -13,7 +13,7 @@ async def _(bot: Bot, event: Event):
     for i, img in enumerate(imgs):
         try:
             res = await bot.ocr_image(image=img)
-        except:
+        except Exception:
             sv.logger.error("Failed to call ocr-api")
             await ocrm.finish("请求ocrAPI失败")
         reply = [f"第{i + 1}张图片的ocr结果是:"]
