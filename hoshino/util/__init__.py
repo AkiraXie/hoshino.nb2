@@ -475,19 +475,15 @@ async def random_img_cmd(
         await finish()
     num = min(len(names), 5)
     imgs = []
-    weights = []
-    now = datetime.now().timestamp()
-    for name in names:
-        fpath = os.path.join(path, name)
-        age = now - os.path.getmtime(fpath)
-        weight = 1.0 + age / 300
-        weights.append(weight)
-    selected_names = random.choices(names, weights=weights, k=num)
+    selected_names = random.sample(names, k=num)
     for name in selected_names:
         fpath = os.path.join(path, name)
         fpath = Path(fpath)
         img = MessageSegment.image(fpath)
-        imgs.append(name)
         imgs.append(img)
     if imgs:
+        names = []
+        for i,name in enumerate(selected_names):
+            names.append(f"{i+1}: {name}")
+        imgs.append("\n".join(names))
         await send_segments(imgs)
