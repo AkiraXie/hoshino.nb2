@@ -41,8 +41,12 @@ class Response(BaseResponse):
             logger.exception(e)
 
 
-async def get(url: str, *, timeout=10, cookies: dict = {}, **kwargs) -> Response:
-    async with AsyncClient(cookies=cookies, timeout=httpx.Timeout(timeout)) as session:
+async def get(
+    url: str, *, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
+) -> Response:
+    async with AsyncClient(
+        cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+    ) as session:
         resp = await session.get(url, **kwargs)
         res = Response(
             resp.url, resp.content, resp.status_code, resp.headers, cookies=resp.cookies
@@ -50,8 +54,12 @@ async def get(url: str, *, timeout=10, cookies: dict = {}, **kwargs) -> Response
     return res
 
 
-async def post(url: str, *args, timeout=10, cookies: dict = {}, **kwargs) -> Response:
-    async with AsyncClient(cookies=cookies, timeout=httpx.Timeout(timeout)) as session:
+async def post(
+    url: str, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
+) -> Response:
+    async with AsyncClient(
+        cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+    ) as session:
         resp = await session.post(url, **kwargs)
         res = Response(
             resp.url, resp.content, resp.status_code, resp.headers, cookies=resp.cookies
@@ -60,9 +68,11 @@ async def post(url: str, *args, timeout=10, cookies: dict = {}, **kwargs) -> Res
 
 
 async def head(
-    url: str, *args, timeout=10, cookies: dict = {}, **kwargs
+    url: str, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
 ) -> BaseResponse:
-    async with AsyncClient(cookies=cookies, timeout=httpx.Timeout(timeout)) as session:
+    async with AsyncClient(
+        cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+    ) as session:
         resp = await session.head(url, **kwargs)
         res = BaseResponse(resp.url, resp.status_code, resp.headers)
     return res
