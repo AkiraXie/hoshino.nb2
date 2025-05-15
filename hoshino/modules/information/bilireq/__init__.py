@@ -165,4 +165,3 @@ async def push_bili_dyn():
             sv.logger.error(f"发送 bili 动态失败: {e}")
     dyn_queue.remove_id(dyn.id)
     await asyncio.sleep(0.5)
-
