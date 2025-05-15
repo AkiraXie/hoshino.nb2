@@ -1,5 +1,6 @@
 import random
 import pytz
+from yarl import URL
 import zhconv
 import nonebot
 import unicodedata
@@ -159,36 +160,25 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
         state["ids"] = ids.copy()
 
 
-def get_event_image(event: MessageEvent) -> set[str]:
+def get_event_image_segments(event: MessageEvent) -> list[MessageSegment]:
     msg = event.get_message()
-    ks = ["url", "file"]
-    res = set()
     imglist = [s for s in msg if s.type == "image"]
-    for s in imglist:
-        for k in ks:
-            if k in s.data:
-                res.add(s.data[k])
-                break
     reply = event.reply
     if reply:
-        imglist = [s for s in reply.message if s.type == "image"]
-        for s in imglist:
-            for k in ks:
-                if k in s.data:
-                    res.add(s.data[k])
-                    break
-    return res
+        imglist = imglist.extend([s for s in reply.message if s.type == "image"])
+    return imglist
 
 
-async def save_img(url: str, name: str, fav: bool = False):
+async def save_img(url: str, name: str, fav: bool = False, verify: bool = False):
     if fav:
         idir = fav_dir
     else:
         idir = img_dir
-    r = await aiohttpx.get(url)
+    r = await aiohttpx.get(url, verify=verify)
     b = BytesIO(r.content)
     img = Image.open(b)
     ext = img.format.lower()
+    name = name.split(".")[0]
     name = os.path.join(idir, f"{name}.{ext}")
     img.save(name)
     b.close()
@@ -354,10 +344,23 @@ async def save_cookies_cmd(
 async def save_img_cmd(
     event: MessageEvent,
 ):
-    name = f"{event.message_id}_{event.get_session_id()}"
-    urls = get_event_image(event)
-    if not urls:
-        await finish()
-    for i, url in enumerate(urls):
-        fname = f"{name}_{i}"
-        await save_img(url, fname)
+    segs = get_event_image_segments(event)
+    if not segs:
+        await send("没有找到图片")
+        return
+    cnt = 0
+    for i, seg in enumerate(segs):
+        name = f"{event.message_id}_{event.get_session_id()}_{i}"
+        url = seg.data.get("url", seg.data.get("file"))
+        fname = seg.data.get("filename", name)
+        url = URL(url)
+        url.scheme = "http"
+        url = str(url)
+        try:
+            await save_img(url, fname)
+            cnt += 1
+        except Exception as e:
+            nonebot.logger.exception(e)
+            await send(f"保存图片失败: {fname}")
+            continue
+    await send(f"保存图片成功,共保存{len(segs)}张图片")
