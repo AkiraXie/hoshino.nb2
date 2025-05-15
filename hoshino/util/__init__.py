@@ -28,6 +28,7 @@ from nonebot.compat import type_validate_python
 from . import aiohttpx
 from peewee import SqliteDatabase, Model, TextField, CompositeKey
 from hoshino import db_dir
+from pathlib import Path
 
 __SU_IMGLIST = "__superuser__imglist"
 
@@ -419,3 +420,66 @@ async def save_img_cmd(event: MessageEvent, state: T_State):
         await send(f"成功保存{cnt}张图片")
     else:
         await send("保存图片失败")
+
+
+@sucmd(
+    "删图",
+    aliases={"st", "rmimg", "delimg", "deleteimg"},
+    only_to_me=True,
+).handle()
+async def delete_img_cmd(
+    event: MessageEvent,
+):
+    names = event.get_plaintext().split(None)
+    if not names:
+        await finish()
+    for name in names:
+        path = os.path.join(img_dir, name)
+        if os.path.exists(path):
+            os.remove(path)
+            await send(f"删除图片{name}成功")
+
+
+@sucmd(
+    "看图",
+    aliases={"kt", "kkimg", "showimg", "showimage"},
+    only_to_me=True,
+).handle()
+async def show_img_cmd(
+    event: MessageEvent,
+):
+    names = event.get_plaintext().split(None)
+    if not names:
+        await finish()
+    for name in names:
+        path = os.path.join(img_dir, name)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                img = f.read()
+                await send(MessageSegment.image(img))
+        else:
+            await send(f"图片{name}不存在")
+
+
+@sucmd(
+    "随图",
+    aliases={"rat", "rai", "raimg", "randomimg"},
+    only_to_me=True,
+).handle()
+async def random_img_cmd(
+    event: MessageEvent,
+):
+    path = img_dir
+    names = os.listdir(path)
+    if not names:
+        await finish()
+    num = min(len(names), 5)
+    imgs = []
+    selected_names = random.sample(names, num)
+    for name in selected_names:
+        fpath = os.path.join(path, name)
+        fpath = Path(fpath)
+        img = MessageSegment.image(fpath)
+        imgs.append(img)
+    if imgs:
+        await send_segments(imgs)
