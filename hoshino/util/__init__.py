@@ -474,10 +474,13 @@ async def random_img_cmd(
     if not names:
         await finish()
     num = min(len(names), 5)
+    imgs = []
     selected_names = random.sample(names, num)
     for name in selected_names:
         fpath = os.path.join(path, name)
         fpath = Path(fpath)
         img = MessageSegment.image(fpath)
-        img = Message([name,img])
-        await send(img)
+        imgs.append(name)
+        imgs.append(img)
+    if imgs:
+        await send_segments(imgs)
