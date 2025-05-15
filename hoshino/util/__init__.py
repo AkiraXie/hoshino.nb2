@@ -177,6 +177,7 @@ async def get_image_segments_from_forward(
     bot: Bot, event: MessageEvent
 ) -> list[MessageSegment]:
     async def get_imgs_from_msg(bot: Bot, msg: Message) -> list[MessageSegment]:
+        res = []
         for s in msg:
             if s.type == "forward":
                 id_ = s.data["id"]
@@ -190,11 +191,15 @@ async def get_image_segments_from_forward(
                                 content = data.get("content")
                                 if content:
                                     content: list[dict]
-                                    content = type_validate_python(Message,content)
-                                    return [s for s in content if s.type == "image"]
-        return []
+                                    content = type_validate_python(Message, content)
+                                    p = [s for s in content if s.type == "image"]
+                                    res.extend(p)
+        return res
 
     res = []
+    msg = event.get_message()
+    if msg:
+        res.extend(await get_imgs_from_msg(bot, msg))
     reply = event.reply
     if reply:
         res.extend(await get_imgs_from_msg(bot, reply.message))
