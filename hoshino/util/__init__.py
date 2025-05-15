@@ -397,15 +397,13 @@ async def save_cookies_cmd(
 
 
 @sumsg(
-    only_to_me=True,
-    rule=Rule(get_event_image_segments) & KeywordsRule("simg", "存图", "saveimg"),
+    only_to_me=False,rule=Rule(get_event_image_segments) & KeywordsRule("simg", "存图", "saveimg"),
 ).handle()
 async def save_img_cmd(event: MessageEvent, state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     if not segs:
         await send("没有找到图片")
         return
-    cnt = 0
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
         url = seg.data.get("url", seg.data.get("file"))
@@ -413,11 +411,7 @@ async def save_img_cmd(event: MessageEvent, state: T_State):
         url = url.replace("https://", "http://")
         try:
             await save_img(url, fname)
-            cnt += 1
-        except Exception as e:
-            nonebot.logger.exception(e)
-            await send(f"保存图片失败: {fname}")
+            nonebot.logger.info(f"保存图片成功,name: {fname}")
+        except Exception:
+            nonebot.logger.exception(f"保存图片失败: {fname}")
             continue
-    if cnt == 0:
-        return
-    await send(f"保存图片成功,共保存{cnt}张图片")
