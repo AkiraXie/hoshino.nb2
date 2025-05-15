@@ -56,16 +56,15 @@ async def _(event: Event):
     if not keywords:
         await m.finish()
     word_queries = set(keywords)
-    matching_bihua = next(
-        (
-            bihua
-            for bihua in bihuas
-            if all(word.lower() in bihua.lower() for word in word_queries)
-        ),
-        None,
-    )
-    if not matching_bihua:
+    matching_bihuas = [
+        bihua
+        for bihua in bihuas
+        if all(word.lower() in bihua.lower() for word in word_queries)
+    ]
+    if not matching_bihuas:
         await m.finish()
+    ra = random.SystemRandom()
+    matching_bihua = ra.choice(matching_bihuas)
     link = prefix + matching_bihua
     link2 = quote(link, safe=":/") + bihuas[matching_bihua]
     await m.send(MessageSegment.image(link2))
