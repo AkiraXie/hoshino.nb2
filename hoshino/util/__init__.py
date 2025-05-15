@@ -463,7 +463,7 @@ async def show_img_cmd(
 
 @sucmd(
     "随图",
-    aliases={"rat", "rai", "raimg", "randomimg"},
+    aliases={"rai", "raimg", "randomimg"},
     only_to_me=True,
 ).handle()
 async def random_img_cmd(
@@ -474,12 +474,10 @@ async def random_img_cmd(
     if not names:
         await finish()
     num = min(len(names), 5)
-    imgs = []
     selected_names = random.sample(names, num)
     for name in selected_names:
         fpath = os.path.join(path, name)
         fpath = Path(fpath)
         img = MessageSegment.image(fpath)
-        imgs.append(img)
-    if imgs:
-        await send_segments(imgs)
+        img = Message([name,img])
+        await send(img)
