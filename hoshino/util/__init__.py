@@ -24,6 +24,7 @@ from nonebot.matcher import Matcher, current_matcher, current_bot, current_event
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command, on_message
 from nonebot.rule import Rule, to_me, KeywordsRule
+from nonebot.compat import type_validate_python
 from . import aiohttpx
 from peewee import SqliteDatabase, Model, TextField, CompositeKey
 from hoshino import db_dir
@@ -188,7 +189,8 @@ async def get_image_segments_from_forward(
                             if data:
                                 content = data.get("content")
                                 if content:
-                                    content: Message
+                                    content: list[dict]
+                                    content = type_validate_python(Message,content)
                                     return [s for s in content if s.type == "image"]
         return []
 
