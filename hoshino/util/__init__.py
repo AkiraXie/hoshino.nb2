@@ -398,7 +398,7 @@ async def save_cookies_cmd(
 
 @sumsg(
     only_to_me=True,
-    rule=get_event_image_segments & KeywordsRule(("simg", "存图", "saveimg")),
+    rule=Rule(get_event_image_segments) & KeywordsRule(("simg", "存图", "saveimg")),
 ).handle()
 async def save_img_cmd(event: MessageEvent, state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
