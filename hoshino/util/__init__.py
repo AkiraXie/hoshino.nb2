@@ -400,7 +400,7 @@ async def save_cookies_cmd(
 
 @sumsg(
     only_to_me=True,
-    rule=Rule(get_event_image_segments) & KeywordsRule("simg", "存图", "saveimg"),
+    rule=Rule(get_event_image_segments) & KeywordsRule("sim", "存图", "saveimg", "ctu"),
 ).handle()
 async def save_img_cmd(event: MessageEvent, state: T_State):
     segs = state[__SU_IMGLIST]
@@ -417,9 +417,9 @@ async def save_img_cmd(event: MessageEvent, state: T_State):
             nonebot.logger.exception(f"保存图片失败: {fname}")
             continue
     if cnt != 0:
-        await send(f"成功保存{cnt}张图片")
+        await send_to_superuser(f"成功保存{cnt}张图片")
     else:
-        await send("保存图片失败")
+        await send_to_superuser("保存图片失败")
 
 
 @sucmd(
@@ -463,7 +463,7 @@ async def show_img_cmd(
 
 @sucmd(
     "随图",
-    aliases={"rai", "raimg", "randomimg"},
+    aliases={"raimg", "randomimg"},
     only_to_me=True,
 ).handle()
 async def random_img_cmd(
@@ -475,7 +475,14 @@ async def random_img_cmd(
         await finish()
     num = min(len(names), 5)
     imgs = []
-    selected_names = random.sample(names, num)
+    weights = []
+    now = datetime.now().timestamp()
+    for name in names:
+        fpath = os.path.join(path, name)
+        age = now - os.path.getmtime(fpath)
+        weight = 1.0 + age / 300
+        weights.append(weight)
+    selected_names = random.choices(names, weights=weights, k=num)
     for name in selected_names:
         fpath = os.path.join(path, name)
         fpath = Path(fpath)
