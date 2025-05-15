@@ -362,9 +362,7 @@ async def save_img_cmd(
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
         url = seg.data.get("url", seg.data.get("file"))
         fname = seg.data.get("filename", name)
-        url = URL(url)
-        url.with_scheme("http")
-        url = str(url)
+        url = url.replace("https://", "http://")
         try:
             await save_img(url, fname)
             cnt += 1
@@ -372,4 +370,6 @@ async def save_img_cmd(
             nonebot.logger.exception(e)
             await send(f"保存图片失败: {fname}")
             continue
-    await send(f"保存图片成功,共保存{len(segs)}张图片")
+    if cnt == 0:
+        return
+    await send(f"保存图片成功,共保存{cnt}张图片")
