@@ -23,7 +23,7 @@ from hoshino import fav_dir, img_dir, hsn_nickname
 from nonebot.matcher import Matcher, current_matcher, current_bot, current_event
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command, on_message
-from nonebot.rule import Rule, to_me
+from nonebot.rule import Rule, to_me, KeywordsRule
 from . import aiohttpx
 from peewee import SqliteDatabase, Model, TextField, CompositeKey
 from hoshino import db_dir
@@ -191,6 +191,7 @@ async def get_image_segments_from_forward(
                                 if content:
                                     content: Message
                                     return [s for s in content if s.type == "image"]
+        return []
 
     msg = event.get_message()
     res = await get_imgs_from_msg(bot, msg)
@@ -395,7 +396,10 @@ async def save_cookies_cmd(
     await send(f"保存{name} cookies成功")
 
 
-@sumsg(only_to_me=True, rule=get_event_image_segments).handle()
+@sumsg(
+    only_to_me=True,
+    rule=get_event_image_segments & KeywordsRule(("simg", "存图", "saveimg")),
+).handle()
 async def save_img_cmd(event: MessageEvent, state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     if not segs:
