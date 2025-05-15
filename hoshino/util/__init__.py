@@ -1,6 +1,5 @@
 import random
 import pytz
-from yarl import URL
 import zhconv
 import nonebot
 import unicodedata
@@ -11,7 +10,7 @@ from io import BytesIO
 from collections import defaultdict
 from PIL import Image
 from datetime import datetime, timedelta
-from nonebot.adapters.onebot.v11 import MessageSegment, Message
+from nonebot.adapters.onebot.v11 import MessageSegment, Message, Bot
 from nonebot.params import Depends
 from nonebot.adapters.onebot.v11.event import (
     Event,
@@ -21,14 +20,15 @@ from nonebot.adapters.onebot.v11.event import (
 )
 from nonebot.typing import T_State
 from hoshino import fav_dir, img_dir, hsn_nickname
-from nonebot.adapters.onebot.v11 import Bot
 from nonebot.matcher import Matcher, current_matcher, current_bot, current_event
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import CommandGroup, on_command
+from nonebot.plugin import CommandGroup, on_command, on_message
 from nonebot.rule import Rule, to_me
 from . import aiohttpx
 from peewee import SqliteDatabase, Model, TextField, CompositeKey
 from hoshino import db_dir
+
+__SU_IMGLIST = "__superuser__imglist"
 
 
 def Cooldown(
@@ -114,6 +114,20 @@ def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
     return CommandGroup(name, **kwargs)
 
 
+def sumsg(
+    only_to_me: bool = True,
+    rule: Rule = Rule(),
+    aliases: Optional[set] = None,
+    **kwargs,
+) -> Type[Matcher]:
+    kwargs["aliases"] = aliases
+    kwargs["permission"] = SUPERUSER
+    rule = rule & to_me() if only_to_me else Rule(rule)
+    kwargs["rule"] = rule
+    kwargs.setdefault("block", True)
+    return on_message(**kwargs)
+
+
 def img_to_bytes(pic: Image.Image) -> bytes:
     buf = BytesIO()
     pic.save(buf, format="PNG")
@@ -160,13 +174,47 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
         state["ids"] = ids.copy()
 
 
-def get_event_image_segments(event: MessageEvent) -> list[MessageSegment]:
+async def get_image_segments_from_forward(
+    bot: Bot, event: MessageEvent
+) -> list[MessageSegment]:
+    async def get_imgs_from_msg(bot: Bot, msg: Message) -> list[MessageSegment]:
+        for s in msg:
+            if s.type == "forward":
+                id_ = s.data["id"]
+                dic = await bot.get_forward_msg(id=id_)
+                data = dic.get("data")
+                if data:
+                    msgs = data.get("message")
+                    if msgs:
+                        for msg in msgs:
+                            data = msg.get("data")
+                            if data:
+                                content = data.get("content")
+                                if content:
+                                    content: Message
+                                    return [s for s in content if s.type == "image"]
+
+    msg = event.get_message()
+    res = await get_imgs_from_msg(bot, msg)
+    reply = event.reply
+    if reply:
+        res.extend(await get_imgs_from_msg(bot, reply.message))
+    return res
+
+
+async def get_event_image_segments(
+    bot: Bot, event: MessageEvent, state: T_State
+) -> bool:
     msg = event.get_message()
     imglist = [s for s in msg if s.type == "image"]
+    imglist.extend(await get_image_segments_from_forward(bot, event))
     reply = event.reply
     if reply:
         imglist = imglist.extend([s for s in reply.message if s.type == "image"])
-    return imglist
+    if imglist:
+        state[__SU_IMGLIST] = imglist
+        return True
+    return False
 
 
 def get_event_image(event: MessageEvent) -> list[str]:
@@ -349,11 +397,9 @@ async def save_cookies_cmd(
     await send(f"保存{name} cookies成功")
 
 
-@sucmd("saveimg", aliases={"存图", "simg"}, only_to_me=False).handle()
-async def save_img_cmd(
-    event: MessageEvent,
-):
-    segs = get_event_image_segments(event)
+@sumsg(only_to_me=True, rule=get_event_image_segments).handle()
+async def save_img_cmd(event: MessageEvent, state: T_State):
+    segs: list[MessageSegment] = state[__SU_IMGLIST]
     if not segs:
         await send("没有找到图片")
         return
