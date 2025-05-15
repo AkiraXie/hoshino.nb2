@@ -117,10 +117,8 @@ def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
 def sumsg(
     only_to_me: bool = True,
     rule: Rule = Rule(),
-    aliases: Optional[set] = None,
     **kwargs,
 ) -> Type[Matcher]:
-    kwargs["aliases"] = aliases
     kwargs["permission"] = SUPERUSER
     rule = rule & to_me() if only_to_me else Rule(rule)
     kwargs["rule"] = rule
