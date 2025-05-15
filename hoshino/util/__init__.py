@@ -236,14 +236,10 @@ async def save_img(url: str, name: str, fav: bool = False, verify: bool = False)
     else:
         idir = img_dir
     r = await aiohttpx.get(url, verify=verify)
-    b = BytesIO(r.content)
-    img = Image.open(b)
-    ext = img.format.lower()
-    name = name.split(".")[0]
-    name = os.path.join(idir, f"{name}.{ext}")
-    img.save(name)
-    b.close()
-    img.close()
+    name = os.path.join(idir, f"{name}")
+    f = open(name, "wb")
+    f.write(r.content)
+    f.close()
 
 
 def random_modify_pixel(img: Image.Image):
