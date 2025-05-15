@@ -29,7 +29,7 @@ from . import aiohttpx
 from peewee import SqliteDatabase, Model, TextField, CompositeKey
 from hoshino import db_dir
 from pathlib import Path
-
+from time import time
 __SU_IMGLIST = "__superuser__imglist"
 
 
@@ -475,7 +475,8 @@ async def random_img_cmd(
         await finish()
     num = min(len(names), 5)
     imgs = []
-    selected_names = random.sample(names, k=num)
+    ra = random.SystemRandom(time()+event.message_id)
+    selected_names = ra.sample(names, k=num)
     for name in selected_names:
         fpath = os.path.join(path, name)
         fpath = Path(fpath)
