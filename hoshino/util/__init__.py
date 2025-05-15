@@ -349,7 +349,7 @@ async def save_cookies_cmd(
     await send(f"保存{name} cookies成功")
 
 
-@sucmd("saveimg", aliases={"存图", "simg"}, only_to_me=True).handle()
+@sucmd("saveimg", aliases={"存图", "simg"}, only_to_me=False).handle()
 async def save_img_cmd(
     event: MessageEvent,
 ):
