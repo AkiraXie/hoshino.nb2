@@ -92,7 +92,6 @@ def gen_imgs(lmt: int = 0, fav: bool = False):
     rm = random.SystemRandom()
     img_d = Path(img_dir) if not fav else Path(fav_dir)
     imgs = [i for i in img_d.iterdir()]
-    imgs = list(filter(lambda x: x.name.startswith("tweet@"), imgs))
     imgs.sort(key=sort_key)
     if fav:
         return imgs[::-1]
