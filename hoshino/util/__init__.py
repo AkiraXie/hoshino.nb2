@@ -159,10 +159,25 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
         state["ids"] = ids.copy()
 
 
-def get_event_image(event: MessageEvent) -> List[str]:
+def get_event_image(event: MessageEvent) -> set[str]:
     msg = event.get_message()
-    imglist = [s.data["file"] for s in msg if s.type == "image" and "file" in s.data]
-    return imglist
+    ks = ["url", "file"]
+    res = set()
+    imglist = [s for s in msg if s.type == "image"]
+    for s in imglist:
+        for k in ks:
+            if k in s.data:
+                res.add(s.data[k])
+                break
+    reply = event.reply
+    if reply:
+        imglist = [s for s in reply.message if s.type == "image"]
+        for s in imglist:
+            for k in ks:
+                if k in s.data:
+                    res.add(s.data[k])
+                    break
+    return res
 
 
 async def save_img(url: str, name: str, fav: bool = False):
@@ -172,9 +187,9 @@ async def save_img(url: str, name: str, fav: bool = False):
         idir = img_dir
     r = await aiohttpx.get(url)
     b = BytesIO(r.content)
-    img = Image.open(b).convert("RGB")
-    random_modify_pixel(img)
-    name = os.path.join(idir, name)
+    img = Image.open(b)
+    ext = img.format.lower()
+    name = os.path.join(idir, f"{name}.{ext}")
     img.save(name)
     b.close()
     img.close()
@@ -333,3 +348,16 @@ async def save_cookies_cmd(
 
     save_cookies(name, cookies)
     await send(f"保存{name} cookies成功")
+
+
+@sucmd("saveimg", aliases={"存图", "simg"}, only_to_me=True).handle()
+async def save_img_cmd(
+    event: MessageEvent,
+):
+    name = f"{event.message_id}_{event.get_session_id()}"
+    urls = get_event_image(event)
+    if not urls:
+        await finish()
+    for i, url in enumerate(urls):
+        fname = f"{name}_{i}"
+        await save_img(url, fname)
