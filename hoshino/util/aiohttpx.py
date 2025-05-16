@@ -7,11 +7,14 @@ from json import loads
 
 
 class BaseResponse:
-    def __init__(self, url: URL, status_code: int, headers: httpx.Headers) -> None:
+    def __init__(
+        self, url: URL, status_code: int, headers: httpx.Headers, _resp: httpx.Response
+    ) -> None:
         self.url: URL = url
         self.status_code: int = status_code
         self.headers: httpx.Headers = headers
         self.ok: bool = 200 <= status_code < 300
+        self._resp: httpx.Response = _resp
 
 
 class Response(BaseResponse):
@@ -21,15 +24,18 @@ class Response(BaseResponse):
         content: bytes,
         status_code: int,
         headers: httpx.Headers,
-        json: Any = None,
+        _resp: httpx.Response = None,
         text: str = None,
         cookies: dict = {},
     ) -> None:
-        super().__init__(url=url, status_code=status_code, headers=headers)
+        super().__init__(url=url, status_code=status_code, headers=headers, _resp=_resp)
         self.content: bytes = content
         self.cookies = cookies
-        self.json: Any = json
         self.text: str = text
+
+    @property
+    def json(self) -> Any:
+        return self._resp.json()
 
 
 async def get(
@@ -44,7 +50,7 @@ async def get(
             resp.content,
             resp.status_code,
             resp.headers,
-            json=resp.json(),
+            _resp=resp,
             text=resp.text,
             cookies=resp.cookies,
         )
@@ -63,7 +69,7 @@ async def post(
             resp.content,
             resp.status_code,
             resp.headers,
-            json=resp.json(),
+            _resp=resp,
             text=resp.text,
             cookies=resp.cookies,
         )
@@ -77,5 +83,5 @@ async def head(
         cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
     ) as session:
         resp = await session.head(url, **kwargs)
-        res = BaseResponse(resp.url, resp.status_code, resp.headers)
+        res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
     return res
