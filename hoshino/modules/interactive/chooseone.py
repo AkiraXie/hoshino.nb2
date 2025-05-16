@@ -17,7 +17,7 @@ async def _(bot: Bot, event: Event):
     msgs = ["您的选项是:"]
     idchoices = list(f"{i + 1}. {choice}" for i, choice in enumerate(choices))
     msgs.extend(idchoices)
-    if random.randint(1000) <= 76:
+    if random.randint(0, 1000) <= 76:
         msgs.append("建议您选择: “我全都要”")
     else:
         final = random.choice(choices)
