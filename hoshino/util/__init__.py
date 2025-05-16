@@ -30,6 +30,7 @@ from peewee import SqliteDatabase, Model, TextField, CompositeKey
 from hoshino import db_dir
 from pathlib import Path
 from time import time
+
 __SU_IMGLIST = "__superuser__imglist"
 
 
@@ -475,7 +476,7 @@ async def random_img_cmd(
         await finish()
     num = min(len(names), 5)
     imgs = []
-    ra = random.SystemRandom(time()+event.message_id)
+    ra = random.SystemRandom(time() + event.message_id)
     selected_names = ra.sample(names, k=num)
     for name in selected_names:
         fpath = os.path.join(path, name)
@@ -484,7 +485,7 @@ async def random_img_cmd(
         imgs.append(img)
     if imgs:
         names = []
-        for i,name in enumerate(selected_names):
-            names.append(f"{i+1}: {name}")
+        for i, name in enumerate(selected_names):
+            names.append(f"{i + 1}: {name}")
         imgs.append("\n".join(names))
         await send_segments(imgs)
