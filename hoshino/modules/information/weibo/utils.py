@@ -54,7 +54,7 @@ class Post:
     """标题"""
     images: list[str | bytes] | None = None
     """图片列表"""
-    video: str | None = None
+    videos: list[str] | None = None
     """视频链接"""
     timestamp: float | None = None
     """发布/获取时间戳, 秒"""
@@ -71,13 +71,13 @@ class Post:
         """获取消息"""
         msg = []
         immsg = []
-        video = self.video
+        video = self.videos
         if self.repost:
             if self.repost.images:
                 for img in self.repost.images:
                     immsg.append(MessageSegment.image(img))
-            if self.repost.video:
-                video = self.repost.video
+            if self.repost.videos:
+                video = self.repost.videos
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
@@ -94,7 +94,8 @@ class Post:
                 msg.append("详情: " + self.url)
             res = [Message("\n".join(msg))]
             if video:
-                res.append(MessageSegment.video(video))
+                for v in video:
+                    res.append(MessageSegment.video(v))
             return res
         else:
             return self.get_msg()
@@ -104,7 +105,7 @@ class Post:
         msg = []
         immsg = []
         res = []
-        video = self.video
+        video = self.videos
         if self.nickname:
             msg.append(self.nickname + "微博~")
         if self.content:
@@ -118,8 +119,8 @@ class Post:
             if self.repost.images:
                 for img in self.repost.images:
                     immsg.append(MessageSegment.image(img))
-            if self.repost.video:
-                video = self.repost.video
+            if self.repost.videos:
+                video = self.repost.videos
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
@@ -131,7 +132,8 @@ class Post:
             for i in immsg:
                 res.append(i)
         if video:
-            res.append(MessageSegment.video(video))
+            for v in video:
+                res.append(MessageSegment.video(v))
         return res
 
 
@@ -282,13 +284,19 @@ async def _parse_weibo_card(info: dict) -> Post:
         info["text"] = (await _get_long_weibo(info["mid"]))["longTextContent"]
     parsed_text = _get_text(info["text"])
     raw_pics_list = info.get("pics", [])
+    video_urls = []
+    pic_urls = []
     if isinstance(raw_pics_list, dict):
-        pic_urls = [img["large"]["url"] for img in raw_pics_list.values()]
+        for img in raw_pics_list.values():
+            if img.get("large"):
+                pic_urls.append(img["large"]["url"])
+            elif img.get("videoSrc"):
+                video_urls.append(img["videoSrc"])
+
     elif isinstance(raw_pics_list, list):
         pic_urls = [img["large"]["url"] for img in raw_pics_list]
     else:
         pic_urls = []
-    video_url = None
     # 视频cover
     if "page_info" in info and info["page_info"].get("type") == "video":
         page_pic = info["page_info"].get("page_pic")
@@ -296,6 +304,7 @@ async def _parse_weibo_card(info: dict) -> Post:
             pic_urls.append(page_pic["url"])
         media = info["page_info"].get("media_info")
         urls = info["page_info"].get("urls")
+        video_url = None
         if urls:
             for k in ["mp4_720p_mp4", "mp4_hd_mp4", "mp4_ld_mp4", "mp4_sd_mp4"]:
                 if k in urls:
@@ -306,6 +315,8 @@ async def _parse_weibo_card(info: dict) -> Post:
                 if k in media:
                     video_url = media[k]
                     break
+        if video_url:
+            video_urls.append(video_url)
     detail_url = f"https://weibo.com/{info['user']['id']}/{info['bid']}"
     ts = info["created_at"]
     created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
@@ -317,7 +328,7 @@ async def _parse_weibo_card(info: dict) -> Post:
         url=detail_url,
         images=pic_urls,
         nickname=info["user"]["screen_name"],
-        video=video_url,
+        video=video_urls,
     )
 
 
