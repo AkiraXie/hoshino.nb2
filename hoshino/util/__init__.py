@@ -314,22 +314,11 @@ async def send_group_segments(
     group_id: int,
     message: List[Message | MessageSegment | str],
 ):
-    message_raw = message.copy()
-    message1 = []
-    if len(message_raw) > 10:
-        message = message_raw[:10]
-        message1 = message_raw[10:]
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     kwargs = {"messages": nodes}
     kwargs["group_id"] = group_id
     api = "send_group_forward_msg"
     await bot.call_api(api, **kwargs)
-    if message1:
-        nodes = construct_nodes(user_id=int(bot.self_id), segments=message1)
-        kwargs = {"messages": nodes}
-        kwargs["group_id"] = group_id
-        api = "send_group_forward_msg"
-        await bot.call_api(api, **kwargs)
 
 
 async def finish(

@@ -263,20 +263,34 @@ async def get_sub_new(
     return post
 
 
-async def _get_long_weibo(weibo_id: str) -> dict:
+async def get_m_weibo(weibo_id: str) -> Post | None:
+    h2 = {
+        "accept": "application/json",
+        "cookie": "_T_WM=40835919903; WEIBOCN_FROM=1110006030; MLOGIN=0; XSRF-TOKEN=4399c8",
+        "Referer": f"https://m.weibo.cn/detail/{weibo_id}",
+    }
     try:
-        weibo_info = await aiohttpx.get(
-            "https://m.weibo.cn/statuses/extend",
+        resp = await aiohttpx.get(
+            "https://m.weibo.cn/statuses/show",
             params={"id": weibo_id},
-            headers=_HEADER,
+            headers=h2,
         )
-        weibo_info = weibo_info.json
+        weibo_info = resp.json
         if not weibo_info or weibo_info["ok"] != 1:
-            return {}
-        return weibo_info["data"]
+            return None
+        data = weibo_info.get("data")
+        if not data:
+            return None
+        bid = data.get("bid")
+        uid = data.get("user", {}).get("id")
+        uid = str(uid)
+        if uid and bid:
+            return await parse_weibo_with_bid(uid, bid)
+        else:
+            return None
     except (KeyError, TimeoutError):
         sv.logger.info(f"detail message error: https://m.weibo.cn/detail/{weibo_id}")
-    return {}
+        return None
 
 
 def _get_text(raw_text: str) -> str:
@@ -302,7 +316,7 @@ def _get_text(raw_text: str) -> str:
     return selector.xpath("string(.)")
 
 
-async def parse_weibo_with_bid(uid: str, bid: str) -> Post:
+async def parse_weibo_with_bid(uid: str, bid: str) -> Post | None:
     h1 = {"Referer": f"https://weibo.com/{uid}/{bid}", "authority": "weibo.com"}
     url = (
         f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
@@ -337,6 +351,20 @@ async def parse_weibo_with_bid(uid: str, bid: str) -> Post:
         if pic.get("type") == "livephoto":
             if video_url := pic.get("video"):
                 video_urls.append(video_url)
+    page_info = rj.get("page_info", {})
+    if page_info.get("object_type") == "video":
+        media_info = page_info.get("media_info")
+        if media_info:
+            for k in [
+                "mp4_720p_mp4",
+                "mp4_hd_url",
+                "mp4_sd_url",
+                "stream_url_hd",
+                "stream_url",
+            ]:
+                if k in media_info:
+                    video_urls.append(media_info[k])
+                    break
     return Post(
         uid=uid,
         id=mid,

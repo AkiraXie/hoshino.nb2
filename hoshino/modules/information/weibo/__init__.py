@@ -14,6 +14,7 @@ from .utils import (
     Post,
     get_sub_new,
     parse_weibo_with_bid,
+    get_m_weibo,
 )
 from asyncio import Queue
 from nonebot.permission import SUPERUSER
@@ -225,16 +226,22 @@ async def push_weibo_updates():
     await asyncio.sleep(0.5)
 
 
-@sv.on_command("看微博", aliases=("kkweibo"), permission=SUPERUSER)
+@sv.on_command("看微博", aliases=("kkweibo"), permission=SUPERUSER, block=True)
 async def look_weibo(bot: Bot, event: Event):
     text = event.get_plaintext().strip()
-    reg = r"(http://|https://){0,1}weibo\.com\/(\d+)/(\w+)"
+    reg = r"(http://|https://){0,1}weibo\.com\/(\d+)\/(\w+)"
+    reg2 = r"(http://|https://){0,1}weibo\.cn\/(detail|status)\/(\d+)"
     match = re.search(reg, text)
-    if not match:
-        await bot.send(event, "请提供正确的微博链接")
+    match2 = re.search(reg2, text)
+    if not match and not match2:
+        await bot.send(event, "无效的微博链接")
         raise FinishedException
-    _, uid, bid = match.groups()
-    post = await parse_weibo_with_bid(uid, bid)
+    if match:
+        _, uid, bid = match.groups()
+        post = await parse_weibo_with_bid(uid, bid)
+    if match2:
+        _, _, bid = match2.groups()
+        post = await get_m_weibo(bid)
     if not post:
         await bot.send(event, "获取微博失败")
         raise FinishedException
