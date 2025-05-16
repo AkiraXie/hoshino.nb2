@@ -3,11 +3,12 @@ from dataclasses import dataclass
 from datetime import datetime
 import functools
 import json
+from time import time
 from typing import Dict, List, Optional
 import peewee as pw
 import os
-from hoshino import db_dir, Message, Service, MessageSegment
-from hoshino.util import aiohttpx
+from hoshino import db_dir, Message, Service, MessageSegment, on_startup
+from hoshino.util import aiohttpx, get_cookies, send_to_superuser
 from lxml.etree import HTML
 from yarl import URL
 from urllib.parse import unquote
@@ -38,12 +39,8 @@ _HEADER = {
 
 @dataclass
 class Post:
-    """最通用的Post，理论上包含所有常用的数据
+    """WEIPO POST数据类"""
 
-    对于更特殊的需要，可以考虑另外实现一个Post
-    """
-
-    """来源平台"""
     uid: str
     """用户ID"""
     id: str
@@ -137,6 +134,32 @@ class Post:
         return res
 
 
+weibo_cookies = {}
+
+now = int(time())
+
+
+@on_startup
+async def init_cookies():
+    global now
+    global weibo_cookies
+    now = int(time())
+    weibo_cookies = get_cookies("weibo")
+
+
+async def get_weibocookies():
+    global now
+    global weibo_cookies
+    now2 = int(time())
+    if not weibo_cookies:
+        weibo_cookies = get_cookies("weibo")
+    if now2 - now > 86400 * 2:
+        weibo_cookies = None
+        now = now2
+        await send_to_superuser(msg="微博 cookies 过期，请重新添加")
+    return weibo_cookies
+
+
 async def get_sub_list(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[Post]:
@@ -152,6 +175,7 @@ async def get_sub_list(
         headers=header,
         params=params,
         timeout=8.0,
+        cookies=await get_weibocookies(),
     )
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
@@ -205,6 +229,7 @@ async def get_sub_new(
         headers=header,
         params=params,
         timeout=4.0,
+        cookies=await get_weibocookies(),
     )
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
@@ -279,9 +304,53 @@ def _get_text(raw_text: str) -> str:
     return selector.xpath("string(.)")
 
 
+async def parse_weibo_with_bid(uid: str, bid: str) -> Post:
+    h = _HEADER.copy()
+    h.update({"Referer": f"https://weibo.com/{uid}/{bid}"})
+    url = (
+        f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
+    )
+    try:
+        res = await aiohttpx.get(
+            url, headers=h, cookies=await get_weibocookies(), timeout=8.0
+        )
+        rj = res.json
+    except Exception as e:
+        sv.logger.error(f"获取微博失败: {e}")
+        return None
+    mid = rj.get("mid")
+    uid = rj.get("user", {}).get("idstr")
+    nickname = rj.get("user", {}).get("screen_name")
+    ts = rj["created_at"]
+    created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
+    detail_url = f"https://weibo.com/{uid}/{bid}"
+    parsed_text = _get_text(rj["text"])
+    pic_urls = []
+    video_urls = []
+    pic_info: list = rj.get("pic_infos", {}).values()
+    for pic in pic_info:
+        for scale in ["largest", "mw2000", "large", "original"]:
+            if scale in pic:
+                if ur := pic[scale].get("url"):
+                    pic_urls.append(ur)
+        if pic.get("type") == "livephoto":
+            if video_url := pic.get("video"):
+                video_urls.append(video_url)
+    return Post(
+        uid=uid,
+        id=mid,
+        timestamp=created_at.timestamp(),
+        content=parsed_text,
+        url=detail_url,
+        images=pic_urls,
+        nickname=nickname,
+        videos=video_urls,
+    )
+
+
 async def _parse_weibo_card(info: dict) -> Post:
     if info["isLongText"] or info["pic_num"] > 9:
-        info["text"] = (await _get_long_weibo(info["mid"]))["longTextContent"]
+        return await parse_weibo_with_bid(info["user"]["id"], info["bid"])
     parsed_text = _get_text(info["text"])
     raw_pics_list = info.get("pics", [])
     video_urls = []
@@ -291,8 +360,8 @@ async def _parse_weibo_card(info: dict) -> Post:
             if img.get("large"):
                 pic_urls.append(img["large"]["url"])
             elif img.get("videoSrc"):
-                video_urls.append(img["videoSrc"])
-
+                # 解析带live photo的视频
+                return await parse_weibo_with_bid(info["user"]["id"], info["bid"])
     elif isinstance(raw_pics_list, list):
         pic_urls = [img["large"]["url"] for img in raw_pics_list]
     else:
