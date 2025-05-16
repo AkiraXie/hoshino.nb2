@@ -313,7 +313,7 @@ async def send_group_segments(
     bot: Bot,
     group_id: int,
     message: List[Message | MessageSegment | str],
-):  
+):
     message_raw = message.copy()
     message1 = []
     if len(message_raw) > 10:

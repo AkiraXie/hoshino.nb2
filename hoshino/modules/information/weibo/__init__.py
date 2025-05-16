@@ -228,7 +228,7 @@ async def push_weibo_updates():
 @sv.on_command("看微博", aliases=("kkweibo"), permission=SUPERUSER)
 async def look_weibo(bot: Bot, event: Event):
     text = event.get_plaintext().strip()
-    reg = r"(https://){0,1}weibo\.com/(\d+)/(\w+)"
+    reg = r"(http://|https://){0,1}weibo\.com\/(\d+)/(\w+)"
     match = re.search(reg, text)
     if not match:
         await bot.send(event, "请提供正确的微博链接")
