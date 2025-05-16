@@ -1,5 +1,4 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
-import nonebot
 import asyncio
 from hoshino import Event
 from hoshino.typing import T_State
@@ -7,8 +6,6 @@ from hoshino.util import send_segments
 from .data import sv, get_bvid, get_bv_resp, parse_xhs
 from json import loads
 import re
-
-nonebot.require("hoshino.modules.information.weibo")
 from hoshino.modules.information.weibo.utils import parse_weibo_with_bid, get_m_weibo
 
 urlmaps = {
