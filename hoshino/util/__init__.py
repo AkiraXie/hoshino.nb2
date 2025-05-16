@@ -313,11 +313,12 @@ async def send_group_segments(
     bot: Bot,
     group_id: int,
     message: List[Message | MessageSegment | str],
-):
-    message1 = ""
-    if len(message) > 10:
-        message = message[:10]
-        message1 = message[10:]
+):  
+    message_raw = message.copy()
+    message1 = []
+    if len(message_raw) > 10:
+        message = message_raw[:10]
+        message1 = message_raw[10:]
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     kwargs = {"messages": nodes}
     kwargs["group_id"] = group_id
