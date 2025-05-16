@@ -303,18 +303,16 @@ def _get_text(raw_text: str) -> str:
 
 
 async def parse_weibo_with_bid(uid: str, bid: str) -> Post:
-    h = _HEADER.copy()
-    h.update({"Referer": f"https://weibo.com/{uid}/{bid}"})
+    h1 = {"Referer": f"https://weibo.com/{uid}/{bid}", "authority": "weibo.com"}
     url = (
         f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
     )
     try:
         res = await aiohttpx.get(
             url,
-            headers=h,
+            headers=h1,
             cookies=await get_weibocookies(),
             timeout=8.0,
-            follow_redirects=True,
         )
         rj = res.json
     except Exception as e:
@@ -335,6 +333,7 @@ async def parse_weibo_with_bid(uid: str, bid: str) -> Post:
             if scale in pic:
                 if ur := pic[scale].get("url"):
                     pic_urls.append(ur)
+                    break
         if pic.get("type") == "livephoto":
             if video_url := pic.get("video"):
                 video_urls.append(video_url)
