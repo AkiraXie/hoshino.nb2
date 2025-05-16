@@ -7,8 +7,16 @@ from hoshino import Bot, Event, on_startup
 from hoshino.schedule import scheduled_job
 from hoshino.util import send_group_segments
 from hoshino.typing import FinishedException
-from .utils import get_sub_list, sv, WeiboDB as db, Post, get_sub_new
+from .utils import (
+    get_sub_list,
+    sv,
+    WeiboDB as db,
+    Post,
+    get_sub_new,
+    parse_weibo_with_bid,
+)
 from asyncio import Queue
+from nonebot.permission import SUPERUSER
 import re
 
 
@@ -215,3 +223,23 @@ async def push_weibo_updates():
             sv.logger.error(f"发送 weibo post 失败: {e}")
     weibo_queue.remove_id(dyn.id)
     await asyncio.sleep(0.5)
+
+
+@sv.on_command("看微博", aliases=("kkweibo"), permission=SUPERUSER)
+async def look_weibo(bot: Bot, event: Event):
+    text = event.get_plaintext().strip()
+    reg = r"https://weibo\.com/(\d+)/(\w+)"
+    match = re.search(reg, text)
+    if not match:
+        await bot.send(event, "请提供正确的微博链接")
+        raise FinishedException
+    uid, bid = match.groups()
+    post = await parse_weibo_with_bid(uid, bid)
+    if not post:
+        await bot.send(event, "获取微博失败")
+        raise FinishedException
+    msg = await post.get_msg_with_screenshot()
+    if not msg:
+        await bot.send(event, "获取微博失败")
+        raise FinishedException
+    await send_group_segments(bot, event.group_id, msg)
