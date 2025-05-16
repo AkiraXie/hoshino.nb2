@@ -151,8 +151,7 @@ async def get_weibocookies():
     global now
     global weibo_cookies
     now2 = int(time())
-    if not weibo_cookies:
-        weibo_cookies = get_cookies("weibo")
+    weibo_cookies = get_cookies("weibo")
     if now2 - now > 86400 * 2:
         weibo_cookies = None
         now = now2
@@ -175,7 +174,6 @@ async def get_sub_list(
         headers=header,
         params=params,
         timeout=8.0,
-        cookies=await get_weibocookies(),
     )
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":

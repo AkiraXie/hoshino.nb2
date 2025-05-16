@@ -1,3 +1,4 @@
+from typing import Any
 from httpx import AsyncClient
 import httpx
 from httpx import URL
@@ -20,25 +21,15 @@ class Response(BaseResponse):
         content: bytes,
         status_code: int,
         headers: httpx.Headers,
+        json: Any = None,
+        text: str = None,
         cookies: dict = {},
     ) -> None:
         super().__init__(url=url, status_code=status_code, headers=headers)
         self.content: bytes = content
         self.cookies = cookies
-
-    @property
-    def json(self):
-        try:
-            return loads(self.content)
-        except Exception as e:
-            logger.exception(e)
-
-    @property
-    def text(self) -> str:
-        try:
-            return self.content.decode()
-        except Exception as e:
-            logger.exception(e)
+        self.json: Any = json
+        self.text: str = text
 
 
 async def get(
@@ -49,7 +40,13 @@ async def get(
     ) as session:
         resp = await session.get(url, **kwargs)
         res = Response(
-            resp.url, resp.content, resp.status_code, resp.headers, cookies=resp.cookies
+            resp.url,
+            resp.content,
+            resp.status_code,
+            resp.headers,
+            json=resp.json(),
+            text=resp.text,
+            cookies=resp.cookies,
         )
     return res
 
@@ -62,7 +59,13 @@ async def post(
     ) as session:
         resp = await session.post(url, **kwargs)
         res = Response(
-            resp.url, resp.content, resp.status_code, resp.headers, cookies=resp.cookies
+            resp.url,
+            resp.content,
+            resp.status_code,
+            resp.headers,
+            json=resp.json(),
+            text=resp.text,
+            cookies=resp.cookies,
         )
     return res
 

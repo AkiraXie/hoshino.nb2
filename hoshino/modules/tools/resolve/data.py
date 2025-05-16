@@ -31,8 +31,7 @@ async def get_xhscookies():
     global now
     global xhs_cookies
     now2 = int(time())
-    if not xhs_cookies:
-        xhs_cookies = get_cookies("xhs")
+    xhs_cookies = get_cookies("xhs")
     if now2 - now > 86400 * 3:
         xhs_cookies = None
         now = now2

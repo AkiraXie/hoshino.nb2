@@ -40,8 +40,7 @@ async def get_bilicookies():
     global now
     global bili_cookies
     now2 = int(time())
-    if not bili_cookies:
-        bili_cookies = get_cookies("bilibili")
+    bili_cookies = get_cookies("bilibili")
     if now2 - now > 86400 * 2:
         bili_cookies = None
         now = now2
