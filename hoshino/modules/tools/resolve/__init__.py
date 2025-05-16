@@ -2,6 +2,7 @@
 ## TODO: suppport weibo
 import asyncio
 from hoshino import Event
+from hoshino.modules.information.weibo.utils import parse_weibo_with_bid
 from hoshino.typing import T_State
 from hoshino.util import send_segments
 from .data import sv, get_bvid, get_bv_resp, parse_xhs
@@ -20,6 +21,7 @@ regexs = {
     "b23": r"b23.tv\\?/([A-Za-z0-9]{6,7})",
     "bv": r"BV[A-Za-z0-9]{10}",
     "xhs": r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*",
+    "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)/(\w+)",
 }
 
 
@@ -72,6 +74,17 @@ async def _(state: T_State):
         bvid = matched.group(0)
     elif name == "xhs":
         xhs_url = matched.group(0)
+    elif name == "weibo":
+        _, uid, bid = matched.groups()
+        post = await parse_weibo_with_bid(uid, bid)
+        if not post:
+            return
+        await asyncio.sleep(0.3)
+        ms = await post.get_msg_with_screenshot()
+        if not ms:
+            return
+        await send_segments(ms)
+        await m.finish()
     if not bvid and not xhs_url:
         return
     if bvid:
