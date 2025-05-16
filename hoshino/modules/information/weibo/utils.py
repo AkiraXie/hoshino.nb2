@@ -180,6 +180,8 @@ async def get_sub_list(
         return []
 
     def custom_filter(d) -> bool:
+        if d.get("mblog") is None:
+            return False
         text = d["mblog"]["text"]
         kb = False if keywords else True
         if keywords:
@@ -227,13 +229,14 @@ async def get_sub_new(
         headers=header,
         params=params,
         timeout=4.0,
-        cookies=await get_weibocookies(),
     )
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
         return None
 
     def custom_filter(d) -> bool:
+        if d.get("mblog") is None:
+            return False
         text = d["mblog"]["text"]
         kb = False if keywords else True
         if keywords:
