@@ -313,7 +313,7 @@ async def send_group_segments(
     bot: Bot,
     group_id: int,
     message: List[Message | MessageSegment | str],
-):  
+):
     message1 = ""
     if len(message) > 10:
         message = message[:10]
