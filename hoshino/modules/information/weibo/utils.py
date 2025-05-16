@@ -282,7 +282,12 @@ async def _parse_weibo_card(info: dict) -> Post:
         info["text"] = (await _get_long_weibo(info["mid"]))["longTextContent"]
     parsed_text = _get_text(info["text"])
     raw_pics_list = info.get("pics", [])
-    pic_urls = [img["large"]["url"] for img in raw_pics_list]
+    if isinstance(raw_pics_list, dict):
+        pic_urls = [img["large"]["url"] for img in raw_pics_list.values()]
+    elif isinstance(raw_pics_list, list):
+        pic_urls = [img["large"]["url"] for img in raw_pics_list]
+    else:
+        pic_urls = []
     video_url = None
     # 视频cover
     if "page_info" in info and info["page_info"].get("type") == "video":
