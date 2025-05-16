@@ -343,7 +343,7 @@ async def parse_weibo_with_bid(uid: str, bid: str) -> Post | None:
     video_urls = []
     pic_info: list = rj.get("pic_infos", {}).values()
     for pic in pic_info:
-        for scale in ["largest", "mw2000", "large", "original"]:
+        for scale in ["original", "large"]:
             if scale in pic:
                 if ur := pic[scale].get("url"):
                     pic_urls.append(ur)
