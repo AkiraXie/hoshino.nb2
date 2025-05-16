@@ -1,14 +1,15 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
-## TODO: suppport weibo
+import nonebot
 import asyncio
 from hoshino import Event
-from hoshino.modules.information.weibo.utils import parse_weibo_with_bid
 from hoshino.typing import T_State
 from hoshino.util import send_segments
 from .data import sv, get_bvid, get_bv_resp, parse_xhs
 from json import loads
 import re
 
+nonebot.require("weibo")
+from hoshino.modules.information.weibo.utils import parse_weibo_with_bid, get_m_weibo
 
 urlmaps = {
     "detail_1": "qqdocurl",
@@ -21,7 +22,8 @@ regexs = {
     "b23": r"b23.tv\\?/([A-Za-z0-9]{6,7})",
     "bv": r"BV[A-Za-z0-9]{10}",
     "xhs": r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*",
-    "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)/(\w+)",
+    "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)",
+    "mweibo": r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)",
 }
 
 
@@ -53,13 +55,11 @@ async def check_json_or_text(ev: Event, state: T_State) -> bool:
     return False
 
 
-m = sv.on_message(rule=check_json_or_text, log=True)
+m = sv.on_message(rule=check_json_or_text, log=True, priority=3, block=False)
 
 
 @m
 async def _(state: T_State):
-    if not (url := state.get("__url")):
-        return
     if not (name := state.get("__url_name")):
         return
     if not (matched := state.get("__url_matched")):
@@ -77,6 +77,17 @@ async def _(state: T_State):
     elif name == "weibo":
         _, uid, bid = matched.groups()
         post = await parse_weibo_with_bid(uid, bid)
+        if not post:
+            return
+        await asyncio.sleep(0.3)
+        ms = await post.get_msg_with_screenshot()
+        if not ms:
+            return
+        await send_segments(ms)
+        await m.finish()
+    elif name == "mweibo":
+        _, _, bid = matched.groups()
+        post = await get_m_weibo(bid)
         if not post:
             return
         await asyncio.sleep(0.3)

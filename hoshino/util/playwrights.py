@@ -6,6 +6,8 @@ from hoshino import scheduled_job
 from nonebot.log import logger
 import ssl
 
+from hoshino.util import get_cookies
+
 ssl._create_default_https_context = ssl._create_unverified_context
 ## thansks to github.com/SK-415/HarukaBot
 ap: Optional[Playwright] = None
@@ -43,6 +45,8 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
         viewport={"width": 480, "height": 800},
         device_scale_factor=2,
     )
+    if not cookies:
+        cookies = get_cookies("weibo")
     if cookies:
         cks = []
         for k, v in cookies.items():
@@ -97,6 +101,8 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment:
         viewport={"width": 460, "height": 780},
         device_scale_factor=2,
     )
+    if not cookies:
+        cookies = get_cookies("bilibili")
     cks = []
     for k, v in cookies.items():
         if not v:
