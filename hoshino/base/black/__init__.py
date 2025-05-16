@@ -12,34 +12,6 @@ from typing import Union
 from pytz import timezone
 from .data import black
 
-BANNED_WORD = {
-    "rbq",
-    "RBQ",
-    "憨批",
-    "废物",
-    "死妈",
-    "崽种",
-    "傻逼",
-    "傻逼玩意",
-    "没用东西",
-    "傻B",
-    "傻b",
-    "SB",
-    "sb",
-    "煞笔",
-    "cnm",
-    "爬",
-    "kkp",
-    "nmsl",
-    "D区",
-    "口区",
-    "我是你爹",
-    "nmbiss",
-    "弱智",
-    "给爷爬",
-    "杂种爬",
-    "爪巴",
-}
 
 _block_users = set()
 
@@ -82,18 +54,6 @@ async def _(bot: Bot, event: Event, state: T_State):
     uid = int(event.user_id)
     if uid in _block_users:
         raise IgnoredException("This user is blocked")
-    if event.is_tome():
-        text = event.get_plaintext()
-        for bw in BANNED_WORD:
-            if bw in text:
-                if await SUPERUSER(bot, event):
-                    await bot.send(
-                        event, "虽然你骂我但是我好像也不讨厌你~", at_sender=True
-                    )
-                    raise IgnoredException("This user is blocked")
-                block_uid(uid, timedelta(hours=8))
-                await bot.send(event, "拉黑了,再见了您~", at_sender=True)
-                raise IgnoredException("This user is blocked")
 
 
 lahei = sucmd(
