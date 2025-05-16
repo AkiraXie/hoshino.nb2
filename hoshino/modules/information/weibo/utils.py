@@ -328,7 +328,7 @@ async def _parse_weibo_card(info: dict) -> Post:
         url=detail_url,
         images=pic_urls,
         nickname=info["user"]["screen_name"],
-        video=video_urls,
+        videos=video_urls,
     )
 
 
