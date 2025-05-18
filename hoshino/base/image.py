@@ -1,7 +1,5 @@
 import asyncio
 from pathlib import Path
-
-from nonebot import on_command
 from hoshino import Message, Bot, T_State, SUPERUSER, MessageSegment, img_dir
 from hoshino.util import (
     __SU_IMGLIST,
@@ -16,7 +14,7 @@ from hoshino.util import (
     _get_imgs_from_forward_msg,
 )
 from hoshino.event import GroupReactionEvent, MessageEvent
-from nonebot.plugin import on_notice
+from nonebot.plugin import on_notice,on_keyword
 from nonebot.rule import Rule, KeywordsRule
 from nonebot.compat import type_validate_python
 from nonebot.log import logger
@@ -149,9 +147,8 @@ async def random_img_cmd(
         await send_segments(imgs)
 
 
-timg = on_command(
-    "toimg",
-    aliases={"转图", ".toimg"},
+timg = on_keyword(
+    {".toimg","/toimg"},
     rule=Rule(get_event_image_segments),
     block=False,
 )

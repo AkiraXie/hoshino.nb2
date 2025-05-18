@@ -319,6 +319,7 @@ async def send_group_segments(
 ):
     if len(message) == 1:
         await bot.send_group_msg(group_id=group_id, message=message[0])
+        return
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     kwargs = {"messages": nodes}
     kwargs["group_id"] = group_id

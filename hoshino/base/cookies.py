@@ -17,4 +17,4 @@ async def save_cookies_cmd(
         await finish("请提供cookie")
 
     save_cookies(name, cookies)
-    await send(f"保存 {name} cookies成功")
+    await send(f"保存 {name} cookies 成功")
