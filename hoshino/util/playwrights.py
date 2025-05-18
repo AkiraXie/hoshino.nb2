@@ -91,7 +91,7 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
         device_scale_factor=2,
     )
     if not cookies:
-        cookies = get_cookies("weibo")
+        cookies = await get_cookies("weibo")
     if cookies:
         cks = []
         for k, v in cookies.items():
@@ -149,7 +149,7 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment:
         device_scale_factor=2,
     )
     if not cookies:
-        cookies = get_cookies("bilibili")
+        cookies = await get_cookies("bilibili")
     cks = []
     for k, v in cookies.items():
         if not v:
