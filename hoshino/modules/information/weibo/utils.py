@@ -472,7 +472,7 @@ async def parse_mapp_weibo(url: id) -> Post | None:
         content=parsed_text,
         images=img_urls,
         videos=video_urls,
-        detail_url=url,
+        url=url,
         nickname=nickname,
         description="mapp",
     )
