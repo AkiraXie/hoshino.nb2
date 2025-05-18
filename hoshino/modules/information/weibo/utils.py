@@ -97,12 +97,12 @@ class Post:
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
-        if videos:
-            for video in videos:
-                immsg.append(MessageSegment.video(video))
         res = [Message("\n".join(msg))]
         if immsg:
-            res.append(immsg)
+            res.append(Message(immsg))
+        if videos:
+            for video in videos:
+                res.append(MessageSegment.video(video))
         return res
 
 

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List
 from hoshino import Bot, Event, on_startup
 from hoshino.schedule import scheduled_job
-from hoshino.util import send_group_segments
+from hoshino.util import send_group_segments, send_segments
 from hoshino.typing import FinishedException
 from .utils import (
     get_sub_list,
@@ -147,9 +147,7 @@ async def see_weibo(bot: Bot, event: Event):
             await bot.send(event, f"没有获取到{arg}微博")
             return
         else:
-            for m in msg:
-                await bot.send(event, m)
-                await asyncio.sleep(0.25)
+            await send_segments(message=msg)
 
 
 @scheduled_job("interval", seconds=114, id="获取微博更新", jitter=5)
