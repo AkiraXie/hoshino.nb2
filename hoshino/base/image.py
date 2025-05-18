@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from nonebot import on_command
@@ -12,6 +13,7 @@ from hoshino.util import (
     send_segments,
     get_event_image_segments,
     send_to_superuser,
+    _get_imgs_from_forward_msg,
 )
 from hoshino.event import GroupReactionEvent, MessageEvent
 from nonebot.plugin import on_notice
@@ -38,6 +40,7 @@ async def reaction_img_rule(
         if msg:
             msg = type_validate_python(Message, msg)
             img_list = [s for s in msg if s.type == "image"]
+            img_list.extend(await _get_imgs_from_forward_msg(bot, msg))
             if img_list:
                 state[__SU_IMGLIST] = img_list
                 return True
@@ -68,6 +71,7 @@ async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State)
         try:
             await save_img(url, fname)
             cnt += 1
+            await asyncio.sleep(0.2)
         except Exception:
             logger.exception(f"保存图片失败: {fname}")
             continue
@@ -149,12 +153,11 @@ timg = on_command(
     "toimg",
     aliases={"转图", ".toimg"},
     rule=Rule(get_event_image_segments),
-    priority=2,
     block=False,
 )
 
 
 @timg.handle()
-async def toimg(event: MessageEvent, state: T_State):
+async def toimg_cmd(state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     await timg.finish(Message(segs))
