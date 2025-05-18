@@ -80,6 +80,7 @@ async def _(state: T_State):
         _, uid, bid = matched.groups()
         post = await parse_weibo_with_bid(uid, bid)
         if not post:
+            sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
         ms = await post.get_msg_with_screenshot()
@@ -91,6 +92,7 @@ async def _(state: T_State):
         _, _, bid = matched.groups()
         post = await parse_m_weibo(bid)
         if not post:
+            sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
         ms = await post.get_msg_with_screenshot()
@@ -102,6 +104,7 @@ async def _(state: T_State):
         url = matched.group(0)
         post = await parse_mapp_weibo(url)
         if not post:
+            sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
         ms = await post.get_msg_with_screenshot()
