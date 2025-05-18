@@ -86,7 +86,7 @@ class Dynamic:
         res = [Message("\n".join(msg))]
         if self.pics:
             for pic in self.pics:
-                await imgmsg.append(MessageSegment.image(pic))
+                imgmsg.append(MessageSegment.image(pic))
         res.extend(Message(imgmsg))
 
 
