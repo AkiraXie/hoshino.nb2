@@ -103,6 +103,7 @@ class Post:
         res = [Message("\n".join(msg))]
         if immsg:
             res.append(immsg)
+        return res
 
 
 weibo_cookies = {}
