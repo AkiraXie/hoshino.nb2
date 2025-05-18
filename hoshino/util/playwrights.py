@@ -87,7 +87,6 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
             "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
         ),
-        viewport={"width": 480, "height": 800},
         device_scale_factor=2,
     )
     if not cookies:
