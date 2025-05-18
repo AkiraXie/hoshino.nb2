@@ -100,7 +100,11 @@ class Post:
                 immsg.append(MessageSegment.image(img))
         res = [Message("\n".join(msg))]
         if immsg:
-            res.append(Message(immsg))
+            immsg0 = immsg[:9]
+            immsg1 = immsg[9:]
+            res.append(Message(immsg0))
+            if immsg1:
+                res.append(Message(immsg1))
         if videos:
             for video in videos:
                 res.append(MessageSegment.video(video))
