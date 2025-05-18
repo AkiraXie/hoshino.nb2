@@ -391,6 +391,8 @@ async def get_cookies(name: str) -> dict:
         for item in cookies.split("; "):
             key, value = item.split("=", 1)
             cookie_dict[key] = value
+        if name == "bilibili":
+            cookie_dict = {"SESSDATA": cookie_dict.get("SESSDATA", "").strip()}
         return cookie_dict
     except Exception:
         return {}

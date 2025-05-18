@@ -88,6 +88,7 @@ class Dynamic:
             for pic in self.pics:
                 imgmsg.append(MessageSegment.image(pic))
         res.extend(Message(imgmsg))
+        return res
 
 
 async def get_new_dynamic(uid: int) -> Dynamic:
