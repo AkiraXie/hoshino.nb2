@@ -9,7 +9,6 @@ import re
 from hoshino.modules.information.weibo.utils import (
     parse_mapp_weibo,
     parse_weibo_with_bid,
-    parse_m_weibo,
 )
 
 urlmaps = {
@@ -77,8 +76,8 @@ async def _(state: T_State):
     elif name == "xhs":
         xhs_url = matched.group(0)
     elif name == "weibo":
-        _, uid, bid = matched.groups()
-        post = await parse_weibo_with_bid(uid, bid)
+        _, _, bid = matched.groups()
+        post = await parse_weibo_with_bid(bid)
         if not post:
             sv.logger.error(f"{name} parse error")
             return
@@ -90,7 +89,7 @@ async def _(state: T_State):
         await m.finish()
     elif name == "mweibo":
         _, _, bid = matched.groups()
-        post = await parse_m_weibo(bid)
+        post = await parse_weibo_with_bid(bid)
         if not post:
             sv.logger.error(f"{name} parse error")
             return
