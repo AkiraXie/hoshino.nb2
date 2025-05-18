@@ -174,36 +174,37 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
         state["ids"] = ids.copy()
 
 
+async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegment]:
+    res = []
+    for s in msg:
+        if s.type == "forward":
+            id_ = s.data["id"]
+            dic = await bot.get_forward_msg(id=id_)
+            if dic:
+                msgs = dic.get("message")
+                if msgs:
+                    for msg in msgs:
+                        data = msg.get("data")
+                        if data:
+                            content = data.get("content")
+                            if content:
+                                content: list[dict]
+                                content = type_validate_python(Message, content)
+                                p = [s for s in content if s.type == "image"]
+                                res.extend(p)
+    return res
+
+
 async def get_image_segments_from_forward(
     bot: Bot, event: MessageEvent
 ) -> list[MessageSegment]:
-    async def get_imgs_from_msg(bot: Bot, msg: Message) -> list[MessageSegment]:
-        res = []
-        for s in msg:
-            if s.type == "forward":
-                id_ = s.data["id"]
-                dic = await bot.get_forward_msg(id=id_)
-                if dic:
-                    msgs = dic.get("message")
-                    if msgs:
-                        for msg in msgs:
-                            data = msg.get("data")
-                            if data:
-                                content = data.get("content")
-                                if content:
-                                    content: list[dict]
-                                    content = type_validate_python(Message, content)
-                                    p = [s for s in content if s.type == "image"]
-                                    res.extend(p)
-        return res
-
     res = []
     msg = event.get_message()
     if msg:
-        res.extend(await get_imgs_from_msg(bot, msg))
+        res.extend(await _get_imgs_from_forward_msg(bot, msg))
     reply = event.reply
     if reply:
-        res.extend(await get_imgs_from_msg(bot, reply.message))
+        res.extend(await _get_imgs_from_forward_msg(bot, reply.message))
     return res
 
 

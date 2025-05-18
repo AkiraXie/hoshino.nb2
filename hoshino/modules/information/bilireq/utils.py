@@ -3,7 +3,7 @@ import json
 from typing import Dict, List
 import peewee as pw
 import os
-from hoshino import db_dir, Message, on_startup
+from hoshino import db_dir, Message, MessageSegment
 from hoshino.util import aiohttpx, get_cookies, send_to_superuser
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
 from time import time
@@ -36,9 +36,46 @@ class Dynamic:
         self.time = dynamic["modules"]["module_author"]["pub_ts"]
         self.uid = dynamic["modules"]["module_author"]["mid"]
         self.name = dynamic["modules"]["module_author"]["name"]
+        self.pics = []
+        modules = dynamic["modules"]
+        if dyn := modules.get("module_dynamic"):
+            if major := dyn.get("major"):
+                match major["type"]:
+                    case "MAJOR_TYPE_DRAW":
+                        draw = major["draw"]
+                        if items := draw.get("items"):
+                            for item in items:
+                                if pic := item.get("src"):
+                                    self.pics.append(pic)
+                    case "MAJOR_TYPE_ARCHIVE":
+                        archive = major["archive"]
+                        if pic := archive.get("cover"):
+                            self.pics.append(pic)
+                    case "MAJOR_TYPE_OPUS":
+                        opus = major["opus"]
+                        if pics := opus.get("pics"):
+                            for pic in pics:
+                                if picurl := pic.get("url"):
+                                    self.pics.append(picurl)
+                    case "MAJOR_TYPE_ARTICLE":
+                        article = major["article"]
+                        if pics := article.get("covers"):
+                            for pic in pics:
+                                self.pics.append(pic)
+                    case "MAJOR_TYPE_PGC":
+                        pgc = major["pgc"]
+                        if pic := pgc.get("cover"):
+                            self.pics.append(pic)
+                    case "MAJOR_TYPE_COMMON":
+                        common = major["common"]
+                        if pic := common.get("cover"):
+                            self.pics.append(pic)
+                    case _:
+                        pass
 
-    async def get_message(self) -> Message:
+    async def get_message(self) -> list[Message | MessageSegment]:
         msg = [self.name + self.type]
+        imgmsg = []
         img = await get_bili_dynamic_screenshot(
             self.url, cookies=await get_bilicookies()
         )
@@ -46,7 +83,11 @@ class Dynamic:
             msg.append(str(img))
         await asyncio.sleep(0.5)
         msg.append(self.url)
-        return Message("\n".join(msg))
+        res = [Message("\n".join(msg))]
+        if self.pics:
+            for pic in self.pics:
+                await imgmsg.append(MessageSegment.image(pic))
+        res.extend(Message(imgmsg))
 
 
 async def get_new_dynamic(uid: int) -> Dynamic:

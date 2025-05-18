@@ -5,6 +5,7 @@ from hoshino.schedule import scheduled_job
 from hoshino import Service, Bot, Event, MessageSegment
 from datetime import datetime
 from hoshino.typing import FinishedException
+from hoshino.util import send, send_group_segments, send_segments
 from .utils import (
     Dynamic,
     DynamicDB as db,
@@ -113,8 +114,8 @@ async def _(bot: Bot, event: Event):
     else:
         uid = rows[0].uid
         dyn = await get_new_dynamic(uid)
-        msg = await dyn.get_message()
-        await bot.send(event, msg)
+        msgs = await dyn.get_message()
+        await send_segments(msgs)
 
 
 @scheduled_job("interval", seconds=135, jitter=5, id="获取bili动态")
@@ -154,13 +155,13 @@ async def push_bili_dyn():
         dyn_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msg = await dyn.get_message()
+    msgs = await dyn.get_message()
     for gid in gids:
         await asyncio.sleep(0.35)
         bot = groups[gid][0]
         db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
         try:
-            await bot.send_group_msg(group_id=gid, message=msg)
+            await send_group_segments(bot, gid, msgs)
         except Exception as e:
             sv.logger.error(f"发送 bili 动态失败: {e}")
     dyn_queue.remove_id(dyn.id)

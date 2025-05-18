@@ -3,7 +3,14 @@ import asyncio
 from hoshino import Event
 from hoshino.typing import T_State
 from hoshino.util import send_segments
-from .data import sv, get_bvid, get_bv_resp, parse_xhs
+from .data import (
+    sv,
+    get_redirect,
+    get_bv_resp,
+    parse_xhs,
+    get_bvid,
+    get_dynamic_from_url,
+)
 from json import loads
 import re
 from hoshino.modules.information.weibo.utils import (
@@ -19,12 +26,14 @@ urlmaps = {
 replacements = {"&#44;": ",", "\\": "", "&amp;": "&"}
 
 regexs = {
-    "b23": r"b23.tv\\?/([A-Za-z0-9]{6,7})",
+    "b23": r"b23.tv\\?/([A-Za-z0-9]+)",
+    "bilibilicn": r"bilibili2233.cn\\?/([A-Za-z0-9]+)",
     "bv": r"BV[A-Za-z0-9]{10}",
     "xhs": r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*",
     "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)",
     "mweibo": r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)",
     "mappweibo": r"(http:|https:)\/\/mapp\.api\.weibo\.cn\/fx\/(\w+)\.html",
+    "bilibilidyn": r"(http:|https:)\/\/(t\.)?bilibili\.com\/(opus\/|dynamic\/)?(\d+)",
 }
 
 
@@ -65,14 +74,20 @@ async def _(state: T_State):
         return
     if not (matched := state.get("__url_matched")):
         return
+    if not (url := state.get("__url")):
+        return
     name = name.lower()
     bvid = None
+    burl = None
     xhs_url = None
-    if name == "b23":
-        bvurl = f"https://b23.tv/{matched.group(1)}"
-        bvid = await get_bvid(bvurl)
+    if name == "b23" or name == "bilibilicn":
+        bvid = await get_bvid(url)
+        if not bvid:
+            burl = await get_redirect(url)
     elif name == "bv":
         bvid = matched.group(0)
+    elif name == "bilibilidyn":
+        burl = url
     elif name == "xhs":
         xhs_url = matched.group(0)
     elif name == "weibo":
@@ -111,7 +126,7 @@ async def _(state: T_State):
             return
         await send_segments(ms)
         await m.finish()
-    if not bvid and not xhs_url:
+    if not bvid and not xhs_url and not burl:
         return
     if bvid:
         msg = await get_bv_resp(bvid)
@@ -126,3 +141,11 @@ async def _(state: T_State):
         await asyncio.sleep(0.3)
         await send_segments(msgs)
         await m.finish()
+    if burl:
+        dyn = await get_dynamic_from_url(burl)
+        if not dyn:
+            return
+        msgs = await dyn.get_message()
+        if not msgs:
+            return
+        await send_segments(msgs)

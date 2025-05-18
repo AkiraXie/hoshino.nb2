@@ -6,6 +6,8 @@ from time import strftime, localtime
 import re
 from urllib.parse import parse_qs, urlparse
 from functools import partial
+from hoshino.modules.information.bilireq.utils import Dynamic
+
 
 sv = Service("resolve")
 
@@ -13,7 +15,9 @@ bili_headers = {
     "User-Agent": "Mozilla/5.0",
     "Referer": "https://www.bilibili.com/",
 }
-bili_pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
+bili_video_pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
+
+dyn_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 
 get_xhscookies = partial(get_cookies, "xhs")
 
@@ -24,9 +28,36 @@ async def get_redirect(url: str, headers={}) -> str:
     return loc
 
 
-async def get_bvid(url: str) -> str:
+async def get_dynamic_from_url(url: str) -> Dynamic | None:
+    if "t.bilibili.com" in url or "/opus" in url:
+        matched = re.search(r"/(\d+)", url)
+        if matched:
+            uid = matched.group(1)
+            params = {
+                "timezone_offset": -480,
+                "id": uid,
+                "features": "onlyfansVote,onlyfansAssetsV2,decorationCard,htmlNewStyle,ugcDelete,editable,opusPrivateVisible",
+            }
+            resp = await aiohttpx.get(
+                dyn_url,
+                params=params,
+                cookies=await get_cookies("bilibili"),
+            )
+            if resp.ok:
+                data = resp.json.get("data", {})
+                if not data:
+                    return None
+                card = data.get("item", {})
+                if not card:
+                    return None
+                dyn = Dynamic(card)
+                return dyn
+    return None
+
+
+async def get_bvid(url: str) -> str | None:
     loc = await get_redirect(url, headers=bili_headers)
-    if mat := bili_pat.match(loc):
+    if mat := bili_video_pat.match(loc):
         return mat.group(1)
     else:
         return None
