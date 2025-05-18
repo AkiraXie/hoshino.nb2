@@ -12,6 +12,7 @@ from hoshino.util import (
     get_event_image_segments,
     send_to_superuser,
     _get_imgs_from_forward_msg,
+    aiohttpx
 )
 from hoshino.event import GroupReactionEvent, MessageEvent
 from nonebot.plugin import on_notice,on_keyword
@@ -157,4 +158,14 @@ timg = on_keyword(
 @timg.handle()
 async def toimg_cmd(state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
-    await timg.finish(Message(segs))
+    res = []
+    for seg in segs:
+        url = seg.data.get("url", seg.data.get("file"))
+        if url:
+            url = url.replace("https://", "http://")
+            resp = await aiohttpx.get(url,verify=False)
+            if resp.ok:
+                img = resp.content
+                res.append(MessageSegment.image(img))
+    if res:
+        await timg.finish(Message(res))
