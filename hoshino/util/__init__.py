@@ -27,7 +27,7 @@ from nonebot.rule import Rule, to_me, KeywordsRule
 from nonebot.compat import type_validate_python
 from . import aiohttpx
 from peewee import SqliteDatabase, Model, TextField, CompositeKey, FloatField
-from hoshino import db_dir
+from hoshino import db_dir, on_startup
 from pathlib import Path
 from time import time
 
@@ -364,12 +364,21 @@ def save_cookies(name: str, cookies: Union[str, dict]):
     Cookies.replace(name=name, cookie=cookies, created_at=time()).execute()
 
 
-def get_cookies(name: str) -> dict:
+async def get_cookies(name: str) -> dict:
     try:
         if name in cookiejar:
             cookies = cookiejar[name]
         else:
-            cookies = Cookies.get_or_none(Cookies.name == name).cookie
+            rows = Cookies.get_or_none(Cookies.name == name)
+            if not rows:
+                return {}
+            cookies = rows.cookie
+            ts = rows.created_at
+            if time() - ts > 86400 * 2:
+                Cookies.delete().where(Cookies.name == name).execute()
+                cookiejar.pop(name, None)
+                await send_to_superuser(f"cookie {name} 已过期,请重新设置")
+                return {}
             cookiejar[name] = cookies
         if not cookies:
             return {}
@@ -380,6 +389,13 @@ def get_cookies(name: str) -> dict:
         return cookie_dict
     except Exception:
         return {}
+
+
+@on_startup
+async def init_cookies():
+    await get_cookies("xhs")
+    await get_cookies("weibo")
+    await get_cookies("bilibili")
 
 
 @sucmd(

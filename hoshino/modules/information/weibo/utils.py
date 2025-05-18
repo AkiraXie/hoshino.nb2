@@ -14,6 +14,7 @@ from urllib.parse import unquote
 from httpx import AsyncClient
 from hoshino.util.playwrights import get_weibo_screenshot, get_mapp_weibo_screenshot
 from bs4 import BeautifulSoup
+from functools import partial
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
@@ -106,29 +107,12 @@ class Post:
         return res
 
 
-weibo_cookies = {}
-
-now = int(time())
-
-
 @on_startup
 async def init_cookies():
-    global now
-    global weibo_cookies
-    now = int(time())
-    weibo_cookies = get_cookies("weibo")
+    await get_cookies("weibo")
 
 
-async def get_weibocookies():
-    global now
-    global weibo_cookies
-    now2 = int(time())
-    weibo_cookies = get_cookies("weibo")
-    if now2 - now > 86400 * 2:
-        weibo_cookies = None
-        now = now2
-        await send_to_superuser(msg="微博 cookies 过期，请重新添加")
-    return weibo_cookies
+get_weibocookies = partial(get_cookies, "weibo")
 
 
 async def get_sub_list(
@@ -238,36 +222,6 @@ async def get_sub_new(
     return post
 
 
-async def parse_m_weibo(weibo_id: str) -> Post | None:
-    h2 = {
-        "accept": "application/json",
-        "cookie": "_T_WM=40835919903; WEIBOCN_FROM=1110006030; MLOGIN=0; XSRF-TOKEN=4399c8",
-        "Referer": f"https://m.weibo.cn/detail/{weibo_id}",
-    }
-    try:
-        resp = await aiohttpx.get(
-            "https://m.weibo.cn/statuses/show",
-            params={"id": weibo_id},
-            headers=h2,
-        )
-        weibo_info = resp.json
-        if not weibo_info or weibo_info["ok"] != 1:
-            return None
-        data = weibo_info.get("data")
-        if not data:
-            return None
-        bid = data.get("bid")
-        uid = data.get("user", {}).get("id")
-        uid = str(uid)
-        if uid and bid:
-            return await parse_weibo_with_bid(uid, bid)
-        else:
-            return None
-    except (KeyError, TimeoutError):
-        sv.logger.info(f"detail message error: https://m.weibo.cn/detail/{weibo_id}")
-        return None
-
-
 def _get_text(raw_text: str) -> str:
     text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
     soup = BeautifulSoup(text, "lxml")
@@ -297,15 +251,13 @@ def _get_text(raw_text: str) -> str:
     return soup.get_text()
 
 
-async def parse_weibo_with_bid(uid: str, bid: str) -> Post | None:
-    h1 = {"Referer": f"https://weibo.com/{uid}/{bid}", "authority": "weibo.com"}
+async def parse_weibo_with_bid(bid: str) -> Post | None:
     url = (
         f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
     )
     try:
         res = await aiohttpx.get(
             url,
-            headers=h1,
             cookies=await get_weibocookies(),
             timeout=8.0,
         )
@@ -313,7 +265,19 @@ async def parse_weibo_with_bid(uid: str, bid: str) -> Post | None:
     except Exception as e:
         sv.logger.error(f"获取微博失败: {e}")
         return None
+    repost = None
+    post = await _parse_weibo_with_bid_dict(rj)
+    if rj.get("retweeted_status"):
+        rj_rt = rj["retweeted_status"]
+        repost = await _parse_weibo_with_bid_dict(rj_rt)
+    if repost:
+        post.repost = repost
+    return post
+
+
+async def _parse_weibo_with_bid_dict(rj: dict) -> Post | None:
     mid = rj.get("mid")
+    bid = rj.get("mblogid")
     uid = rj.get("user", {}).get("idstr")
     nickname = rj.get("user", {}).get("screen_name")
     ts = rj["created_at"]

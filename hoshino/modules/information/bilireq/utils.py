@@ -7,6 +7,7 @@ from hoshino import db_dir, Message, on_startup
 from hoshino.util import aiohttpx, get_cookies, send_to_superuser
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
 from time import time
+from functools import partial
 
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = (
@@ -23,29 +24,7 @@ headers = {
 }
 
 
-bili_cookies = {}
-
-now = int(time())
-
-
-@on_startup
-async def init_cookies():
-    global now
-    global bili_cookies
-    now = int(time())
-    bili_cookies = get_cookies("bilibili")
-
-
-async def get_bilicookies():
-    global now
-    global bili_cookies
-    now2 = int(time())
-    bili_cookies = get_cookies("bilibili")
-    if now2 - now > 86400 * 2:
-        bili_cookies = None
-        now = now2
-        await send_to_superuser(msg="B站cookies过期，请重新添加")
-    return bili_cookies
+get_bilicookies = partial(get_cookies, "bilibili")
 
 
 class Dynamic:

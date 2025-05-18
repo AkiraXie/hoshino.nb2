@@ -3,9 +3,9 @@ from hoshino import MessageSegment, Message, on_startup
 from hoshino.service import Service
 from hoshino.util import aiohttpx, get_cookies, send_to_superuser
 from time import strftime, localtime
-from time import time
 import re
 from urllib.parse import parse_qs, urlparse
+from functools import partial
 
 sv = Service("resolve")
 
@@ -15,28 +15,7 @@ bili_headers = {
 }
 bili_pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
 
-xhs_cookies = {}
-now = int(time())
-
-
-@on_startup
-async def init_cookies():
-    global now
-    now = int(time())
-    global xhs_cookies
-    xhs_cookies = get_cookies("xhs")
-
-
-async def get_xhscookies():
-    global now
-    global xhs_cookies
-    now2 = int(time())
-    xhs_cookies = get_cookies("xhs")
-    if now2 - now > 86400 * 3:
-        xhs_cookies = None
-        now = now2
-        await send_to_superuser(msg="小红书cookies过期，请重新添加")
-    return xhs_cookies
+get_xhscookies = partial(get_cookies, "xhs")
 
 
 async def get_redirect(url: str, headers={}) -> str:
