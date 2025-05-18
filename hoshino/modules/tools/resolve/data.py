@@ -42,6 +42,7 @@ async def get_dynamic_from_url(url: str) -> Dynamic | None:
                 dyn_url,
                 params=params,
                 cookies=await get_cookies("bilibili"),
+                headers = bili_headers,
             )
             if resp.ok:
                 data = resp.json.get("data", {})
