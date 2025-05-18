@@ -9,11 +9,11 @@ import peewee as pw
 import os
 from hoshino import db_dir, Message, Service, MessageSegment, on_startup
 from hoshino.util import aiohttpx, get_cookies, send_to_superuser
-from lxml.etree import HTML
 from yarl import URL
 from urllib.parse import unquote
 from httpx import AsyncClient
-from hoshino.util.playwrights import get_weibo_screenshot
+from hoshino.util.playwrights import get_weibo_screenshot, get_mapp_weibo_screenshot
+from bs4 import BeautifulSoup
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
@@ -60,78 +60,49 @@ class Post:
     nickname: str | None = None
     """发布者昵称"""
     description: str | None = None
-    """发布者个性签名等"""
     repost: "Post | None" = None
     """转发的Post"""
 
     async def get_msg_with_screenshot(self) -> list[Message | MessageSegment]:
-        """获取消息"""
         msg = []
         immsg = []
-        video = self.videos
-        if self.repost:
-            if self.repost.images:
-                for img in self.repost.images:
-                    immsg.append(MessageSegment.image(img))
-            if self.repost.videos:
-                video = self.repost.videos
-        if self.images:
-            for img in self.images:
-                immsg.append(MessageSegment.image(img))
-        if not immsg:
-            if self.nickname:
-                msg.append(self.nickname + "微博~")
-            if self.id:
-                ms = await get_weibo_screenshot(self.id)
-                if ms:
-                    msg.append(str(ms))
-                else:
-                    return self.get_msg()
-            if self.url:
-                msg.append("详情: " + self.url)
-            res = [Message("\n".join(msg))]
-            if video:
-                for v in video:
-                    res.append(MessageSegment.video(v))
-            return res
-        else:
-            return self.get_msg()
-
-    def get_msg(self) -> list[Message | MessageSegment]:
-        """获取消息"""
-        msg = []
-        immsg = []
-        res = []
-        video = self.videos
+        ms = None
+        videos = self.videos
         if self.nickname:
             msg.append(self.nickname + "微博~")
-        if self.content:
+        if self.id:
+            ms = await get_weibo_screenshot(self.id)
+            if ms:
+                msg.append(str(ms))
+        elif self.description == "mapp" and self.url:
+            ms = await get_mapp_weibo_screenshot(self.url)
+            if ms:
+                msg.append(str(ms))
+        if not ms and self.content:
             msg.append(self.content)
+            if self.repost:
+                msg.append("------------")
+                msg.append("转发自 " + self.repost.nickname + ":")
+                msg.append(self.repost.content)
+                msg.append("转发详情: " + self.repost.url)
+                msg.append("------------")
+        if self.url:
+            msg.append("微博详情: " + self.url)
         if self.repost:
-            msg.append("------------")
-            msg.append("转发自 " + self.repost.nickname + ":")
-            msg.append(self.repost.content)
-            msg.append("转发详情: " + self.repost.url)
-            msg.append("------------")
             if self.repost.images:
                 for img in self.repost.images:
                     immsg.append(MessageSegment.image(img))
             if self.repost.videos:
-                video = self.repost.videos
+                videos = self.repost.videos
         if self.images:
             for img in self.images:
                 immsg.append(MessageSegment.image(img))
-
-        if self.url:
-            msg.append("详情: " + self.url)
-        res.append(Message("\n".join(msg)))
+        if self.videos:
+            for video in videos:
+                immsg.append(MessageSegment.video(video))
+        res = [Message("\n".join(msg))]
         if immsg:
-            for i in immsg:
-                res.append(i)
-        if video:
-            for v in video:
-                res.append(MessageSegment.video(v))
-        return res
+            res.append(immsg)
 
 
 weibo_cookies = {}
@@ -266,7 +237,7 @@ async def get_sub_new(
     return post
 
 
-async def get_m_weibo(weibo_id: str) -> Post | None:
+async def parse_m_weibo(weibo_id: str) -> Post | None:
     h2 = {
         "accept": "application/json",
         "cookie": "_T_WM=40835919903; WEIBOCN_FROM=1110006030; MLOGIN=0; XSRF-TOKEN=4399c8",
@@ -298,25 +269,31 @@ async def get_m_weibo(weibo_id: str) -> Post | None:
 
 def _get_text(raw_text: str) -> str:
     text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
-    selector = HTML(text, parser=None)
-    if selector is None:
+    soup = BeautifulSoup(text, "lxml")
+
+    if not soup:
         return text
-    url_elems = selector.xpath("//a[@href]/span[@class='surl-text']")
-    for br in selector.xpath("br"):
-        br.tail = "\n" + br.tail
-    for elem in url_elems:
-        url = elem.getparent().get("href")
-        if (
-            not elem.text.startswith("#")
-            and not elem.text.endswith("#")
-            and (
-                url.startswith("https://weibo.cn/sinaurl?u=")
-                or url.startswith("https://video.weibo.com")
-            )
-        ):
-            url = unquote(url.replace("https://weibo.cn/sinaurl?u=", ""))
-            elem.text = f"{elem.text}( {url} )"
-    return selector.xpath("string(.)")
+
+    for br in soup.find_all("br"):
+        br.replace_with("\n")
+
+    for a in soup.find_all("a", href=True):
+        span = a.find("span", class_="surl-text")
+        if span:
+            text = span.get_text()
+            url = a["href"]
+            if (
+                not text.startswith("#")
+                and not text.endswith("#")
+                and (
+                    url.startswith("https://weibo.cn/sinaurl?u=")
+                    or url.startswith("https://video.weibo.com")
+                )
+            ):
+                url = unquote(url.replace("https://weibo.cn/sinaurl?u=", ""))
+                span.string = f"{text}( {url} )"
+
+    return soup.get_text()
 
 
 async def parse_weibo_with_bid(uid: str, bid: str) -> Post | None:
@@ -439,6 +416,65 @@ async def parse_weibo_card(raw: dict) -> Post:
     if "retweeted_status" in info:
         post.repost = await _parse_weibo_card(info["retweeted_status"])
     return post
+
+
+async def parse_mapp_weibo(url: id) -> Post | None:
+    # what a holyshit,fk weibo
+    ## https://mapp.api.weibo.cn/fx/77eaa5c2f741894631a87fc4806a1f05.html
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf254032b) XWEB/13655 Flue"
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Authority": "mapp.api.weibo.cn",
+    }
+    resp = await aiohttpx.get(
+        url,
+        headers=headers,
+        timeout=8.0,
+    )
+    text = resp.text
+    if not text:
+        return None
+    soup = BeautifulSoup(text, "lxml")
+    imgs = soup.find_all("img", class_="f-bg-imgs")
+    parsed_text = ""
+    img_urls = []
+    video_urls = []
+    for img in imgs:
+        if img.get("bak_src"):
+            img_urls.append(img["data-src"])
+        elif img.get("src"):
+            img_urls.append(img["src"])
+    text_div = soup.find_all("div", class_="weibo-text")
+    for div in text_div:
+        text = div.get_text(strip=True).replace("&ZeroWidthSpace;", "")
+        parsed_text += text + "\n"
+    videos = soup.find_all("video", id="video")
+    for video in videos:
+        if video.get("src"):
+            video_urls.append(video["src"])
+        if video.get("poster"):
+            img_urls.append(video["poster"])
+    nickname = ""
+    m_text_box = soup.find("div", class_="m-text-box")
+    if m_text_box:
+        nickname_span = m_text_box.find("span")
+        if nickname_span:
+            nickname = nickname_span.get_text(strip=True)
+        else:
+            nickname = ""
+    else:
+        nickname = ""
+    return Post(
+        uid="",
+        id="",
+        content=parsed_text,
+        images=img_urls,
+        videos=video_urls,
+        detail_url=url,
+        nickname=nickname,
+        description="mapp",
+    )
 
 
 db_path = os.path.join(db_dir, "weibodata.db")

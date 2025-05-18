@@ -6,7 +6,11 @@ from hoshino.util import send_segments
 from .data import sv, get_bvid, get_bv_resp, parse_xhs
 from json import loads
 import re
-from hoshino.modules.information.weibo.utils import parse_weibo_with_bid, get_m_weibo
+from hoshino.modules.information.weibo.utils import (
+    parse_mapp_weibo,
+    parse_weibo_with_bid,
+    parse_m_weibo,
+)
 
 urlmaps = {
     "detail_1": "qqdocurl",
@@ -21,6 +25,7 @@ regexs = {
     "xhs": r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*",
     "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)",
     "mweibo": r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)",
+    "mappweibo": r"(http:|https:)\/\/mapp\.api\.weibo\.cn\/fx\/(\w+)\.html",
 }
 
 
@@ -84,7 +89,18 @@ async def _(state: T_State):
         await m.finish()
     elif name == "mweibo":
         _, _, bid = matched.groups()
-        post = await get_m_weibo(bid)
+        post = await parse_m_weibo(bid)
+        if not post:
+            return
+        await asyncio.sleep(0.3)
+        ms = await post.get_msg_with_screenshot()
+        if not ms:
+            return
+        await send_segments(ms)
+        await m.finish()
+    elif name == "mappweibo":
+        url = matched.group(0)
+        post = await parse_mapp_weibo(url)
         if not post:
             return
         await asyncio.sleep(0.3)

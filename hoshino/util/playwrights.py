@@ -34,6 +34,46 @@ async def refresh_playwright():
     _b = await ap.chromium.launch(timeout=10000)
 
 
+async def get_mapp_weibo_screenshot(url: str) -> MessageSegment:
+    b: Browser = await get_b()
+    c = await b.new_context(
+        user_agent=(
+            "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
+        ),
+        device_scale_factor=2,
+    )
+    page = None
+    try:
+        page: Page = await c.new_page()
+        await page.goto(url, wait_until="networkidle")
+        card = await page.query_selector(".card-wrap")
+        if not card:
+            await page.close()
+            return None
+        clip = await card.bounding_box()
+        if not clip:
+            await page.close()
+            return None
+
+        image = await page.screenshot(
+            clip=clip, full_page=True, type="jpeg", quality=100
+        )
+        await page.close()
+        await c.close()
+        return MessageSegment.image(image)
+    except Exception as e:
+        if page:
+            await page.close()
+            await c.close()
+        logger.error(f"get_weibo_screenshot error: {e}")
+        return None
+    finally:
+        if page:
+            await page.close()
+            await c.close()
+
+
 async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
     url = f"https://m.weibo.cn/detail/{mid}"
     b: Browser = await get_b()

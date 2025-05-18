@@ -26,7 +26,7 @@ from nonebot.plugin import CommandGroup, on_command, on_message
 from nonebot.rule import Rule, to_me, KeywordsRule
 from nonebot.compat import type_validate_python
 from . import aiohttpx
-from peewee import SqliteDatabase, Model, TextField, CompositeKey
+from peewee import SqliteDatabase, Model, TextField, CompositeKey, FloatField
 from hoshino import db_dir
 from pathlib import Path
 from time import time
@@ -343,6 +343,7 @@ db = SqliteDatabase(db_path)
 class Cookies(Model):
     name = TextField()
     cookie = TextField()
+    created_at = FloatField()
 
     class Meta:
         primary_key = CompositeKey("name")
@@ -360,7 +361,7 @@ def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):
         cookies = "; ".join(f"{k}={v}" for k, v in cookies.items())
     cookiejar[name] = cookies
-    Cookies.replace(name=name, cookie=cookies).execute()
+    Cookies.replace(name=name, cookie=cookies, created_at=time()).execute()
 
 
 def get_cookies(name: str) -> dict:
@@ -396,7 +397,7 @@ async def save_cookies_cmd(
         await finish("请提供cookie")
 
     save_cookies(name, cookies)
-    await send(f"保存{name} cookies成功")
+    await send(f"保存 {name} cookies成功")
 
 
 @sumsg(
