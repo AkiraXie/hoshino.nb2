@@ -148,12 +148,13 @@ async def random_img_cmd(
 timg = on_command(
     "toimg",
     aliases={"转图", ".toimg"},
-    rule=get_event_image_segments,
+    rule=Rule(get_event_image_segments),
     priority=2,
     block=False,
 )
 
 
+@timg.handle()
 async def toimg(event: MessageEvent, state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     await timg.finish(Message(segs))
