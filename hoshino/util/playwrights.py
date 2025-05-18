@@ -39,7 +39,10 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment:
     c = await b.new_context(
         user_agent=(
             "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
+            "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36 "
+            "XWEB/13655 Flue "
+            "NetType/WIFI "
+            "MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf254032b)"
         ),
         device_scale_factor=2,
     )
@@ -50,10 +53,12 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment:
         card = await page.query_selector(".card-wrap")
         if not card:
             await page.close()
+            logger.error("get_mapp_weibo_screenshot error: no card")
             return None
         clip = await card.bounding_box()
         if not clip:
             await page.close()
+            logger.error("get_mapp_weibo_screenshot error: no clip")
             return None
 
         image = await page.screenshot(
@@ -66,7 +71,7 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment:
         if page:
             await page.close()
             await c.close()
-        logger.error(f"get_weibo_screenshot error: {e}")
+        logger.error(f"get_mapp_weibo_screenshot error: {e}")
         return None
     finally:
         if page:
@@ -107,10 +112,12 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
         card = await page.query_selector(".f-weibo")
         if not card:
             await page.close()
+            logger.error("get_weibo_screenshot error: no card")
             return None
         clip = await card.bounding_box()
         if not clip:
             await page.close()
+            logger.error("get_weibo_screenshot error: no clip")
             return None
 
         image = await page.screenshot(
@@ -181,10 +188,12 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment:
         )
         if not card:
             await page.close()
+            logger.error("get_bili_dyn_screenshot error: no card")
             return None
         clip = await card.bounding_box()
         if not clip:
             await page.close()
+            logger.error("get_bili_dyn_screenshot error: no clip")
             return None
 
         image = await page.screenshot(
