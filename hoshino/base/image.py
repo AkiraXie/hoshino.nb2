@@ -163,9 +163,13 @@ async def toimg_cmd(state: T_State):
         url = seg.data.get("url", seg.data.get("file"))
         if url:
             url = url.replace("https://", "http://")
-            resp = await aiohttpx.get(url,verify=False)
-            if resp.ok:
-                img = resp.content
-                res.append(MessageSegment.image(img))
+            try:
+                resp = await aiohttpx.get(url,verify=False,follow_redirects=True)
+                if resp.ok:
+                    img = resp.content
+                    res.append(MessageSegment.image(img))
+            except Exception:
+                logger.exception(f"获取图片失败: {url}")
+                continue
     if res:
         await timg.finish(Message(res))
