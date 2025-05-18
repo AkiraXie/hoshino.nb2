@@ -22,7 +22,7 @@ from nonebot.typing import T_State
 from hoshino import fav_dir, img_dir, hsn_nickname
 from nonebot.matcher import Matcher, current_matcher, current_bot, current_event
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import CommandGroup, on_command, on_message
+from nonebot.plugin import CommandGroup, on_command, on_message, on_notice
 from nonebot.rule import Rule, to_me, KeywordsRule
 from nonebot.compat import type_validate_python
 from . import aiohttpx
@@ -30,6 +30,7 @@ from peewee import SqliteDatabase, Model, TextField, CompositeKey, FloatField
 from hoshino import db_dir, on_startup
 from pathlib import Path
 from time import time
+from hoshino.event import GroupReactionEvent
 
 __SU_IMGLIST = "__superuser__imglist"
 
@@ -295,6 +296,9 @@ def construct_nodes(
 async def send_segments(
     message: List[Message | MessageSegment | str],
 ):
+    if len(message) == 1:
+        await send(message[0])
+        return
     bot: Bot = current_bot.get()
     event: MessageEvent = current_event.get()
     api = ""
@@ -314,6 +318,8 @@ async def send_group_segments(
     group_id: int,
     message: List[Message | MessageSegment | str],
 ):
+    if len(message) == 1:
+        await bot.send_group_msg(group_id=group_id, message=message[0])
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     kwargs = {"messages": nodes}
     kwargs["group_id"] = group_id
@@ -416,12 +422,42 @@ async def save_cookies_cmd(
     await send(f"保存 {name} cookies成功")
 
 
+async def reaction_img_rule(
+    bot: Bot,
+    event: GroupReactionEvent,
+    state: T_State,
+) -> bool:
+    if  event.code == "76":
+        msg_id = event.message_id
+        msg = await bot.get_msg(message_id=msg_id)
+        sender = msg.get("sender",{}).get("user_id")
+        if int(sender) != int(bot.self_id):
+            return False
+        msg = msg.get("message")
+        if msg:
+            msg = type_validate_python(Message, msg)
+            img_list = [s for s in msg if s.type == "image"]
+            if img_list:
+                state[__SU_IMGLIST] = img_list
+                return True
+    return False
+
+
+svimg_notice = on_notice(
+    rule=reaction_img_rule,
+    permission=SUPERUSER,
+    priority=5,
+    block=True,
+)
+
+
 @sumsg(
     only_to_me=True,
     rule=Rule(get_event_image_segments) & KeywordsRule("sim", "存图", "saveimg", "ctu"),
 ).handle()
-async def save_img_cmd(event: MessageEvent, state: T_State):
-    segs = state[__SU_IMGLIST]
+@svimg_notice.handle()
+async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State):
+    segs: list[MessageSegment] = state[__SU_IMGLIST]
     cnt = 0
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
