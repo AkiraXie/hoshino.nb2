@@ -12,10 +12,10 @@ from hoshino.util import (
     get_event_image_segments,
     send_to_superuser,
     _get_imgs_from_forward_msg,
-    aiohttpx
+    aiohttpx,
 )
 from hoshino.event import GroupReactionEvent, MessageEvent
-from nonebot.plugin import on_notice,on_keyword
+from nonebot.plugin import on_notice, on_keyword
 from nonebot.rule import Rule, KeywordsRule
 from nonebot.compat import type_validate_python
 from nonebot.log import logger
@@ -64,13 +64,17 @@ async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State)
     cnt = 0
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
-        url = seg.data.get("url", seg.data.get("file"))
+        url = seg.data.get("file", seg.data.get("url"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
         try:
-            await save_img(url, fname)
-            cnt += 1
-            await asyncio.sleep(0.2)
+            res = await save_img(url, fname)
+            if res:
+                cnt += 1
+                await asyncio.sleep(0.2)
+            else:
+                logger.exception(f"保存图片失败: {fname}")
+                continue
         except Exception:
             logger.exception(f"保存图片失败: {fname}")
             continue
@@ -149,7 +153,7 @@ async def random_img_cmd(
 
 
 timg = on_keyword(
-    {".toimg","/toimg"},
+    {".toimg", "/toimg"},
     rule=Rule(get_event_image_segments),
     block=False,
 )
@@ -164,7 +168,7 @@ async def toimg_cmd(state: T_State):
         if url:
             url = url.replace("https://", "http://")
             try:
-                resp = await aiohttpx.get(url,verify=False,follow_redirects=True)
+                resp = await aiohttpx.get(url, verify=False, follow_redirects=True)
                 if resp.ok:
                     img = resp.content
                     res.append(MessageSegment.image(img))

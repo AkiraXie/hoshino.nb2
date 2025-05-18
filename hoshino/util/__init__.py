@@ -232,16 +232,22 @@ def get_event_image(event: MessageEvent) -> list[str]:
     return imglist
 
 
-async def save_img(url: str, name: str, fav: bool = False, verify: bool = False):
+async def save_img(
+    url: str, name: str, fav: bool = False, verify: bool = False
+) -> bool:
     if fav:
         idir = fav_dir
     else:
         idir = img_dir
     r = await aiohttpx.get(url, verify=verify)
-    name = os.path.join(idir, f"{name}")
-    f = open(name, "wb")
-    f.write(r.content)
-    f.close()
+    try:
+        im = Image.open(BytesIO(r.content))
+        name = os.path.join(idir, name)
+        im.save(name)
+        return True
+    except Exception as e:
+        nonebot.logger.error(f"保存图片失败: {e}")
+    return False
 
 
 def random_modify_pixel(img: Image.Image):
