@@ -324,7 +324,7 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> Post | None:
 
 async def _parse_weibo_card(info: dict) -> Post:
     if info["isLongText"] or info["pic_num"] > 9:
-        return await parse_weibo_with_bid(info["user"]["id"], info["bid"])
+        return await parse_weibo_with_bid(info["bid"])
     parsed_text = _get_text(info["text"])
     raw_pics_list = info.get("pics", [])
     video_urls = []
@@ -335,7 +335,7 @@ async def _parse_weibo_card(info: dict) -> Post:
                 pic_urls.append(img["large"]["url"])
             elif img.get("videoSrc"):
                 # 解析带live photo的视频
-                return await parse_weibo_with_bid(info["user"]["id"], info["bid"])
+                return await parse_weibo_with_bid(info["bid"])
     elif isinstance(raw_pics_list, list):
         pic_urls = [img["large"]["url"] for img in raw_pics_list]
     else:
