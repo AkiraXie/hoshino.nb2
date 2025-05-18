@@ -1,4 +1,6 @@
 from pathlib import Path
+
+from nonebot import on_command
 from hoshino import Message, Bot, T_State, SUPERUSER, MessageSegment, img_dir
 from hoshino.util import (
     __SU_IMGLIST,
@@ -141,3 +143,8 @@ async def random_img_cmd(
             names.append(f"{i + 1}: {name}")
         imgs.append("\n".join(names))
         await send_segments(imgs)
+
+timg = on_command('toimg', aliases={'转图','.toimg'},rule=get_event_image_segments, priority=2, block=True)
+async def toimg(event: MessageEvent, state: T_State):
+    segs: list[MessageSegment] = state[__SU_IMGLIST]
+    await timg.finish(Message(segs))
