@@ -14,7 +14,8 @@ from .utils import (
     Post,
     get_sub_new,
     parse_weibo_with_bid,
-    get_m_weibo,
+    parse_m_weibo,
+    parse_mapp_weibo,
 )
 from asyncio import Queue
 from nonebot.permission import SUPERUSER
@@ -231,17 +232,22 @@ async def look_weibo(bot: Bot, event: Event):
     text = event.get_plaintext().strip()
     reg = r"(http://|https://){0,1}weibo\.com\/(\d+)\/(\w+)"
     reg2 = r"(http://|https://){0,1}weibo\.cn\/(detail|status)\/(\d+)"
+    reg3 = r"(http://|https://){0,1}mapp\.api\.weibo\.cn\/fx\/(\w+)\.html"
     match = re.search(reg, text)
     match2 = re.search(reg2, text)
-    if not match and not match2:
+    match3 = re.search(reg3, text)
+    if not match and not match2 and not match3:
         await bot.send(event, "无效的微博链接")
         raise FinishedException
     if match:
         _, uid, bid = match.groups()
         post = await parse_weibo_with_bid(uid, bid)
     if match2:
-        _, _, bid = match2.groups()
-        post = await get_m_weibo(bid)
+        _, _, mid = match2.groups()
+        post = await parse_m_weibo(mid)
+    if match3:
+        url = match3.group(0)
+        post = await parse_mapp_weibo(url)
     if not post:
         await bot.send(event, "获取微博失败")
         raise FinishedException
