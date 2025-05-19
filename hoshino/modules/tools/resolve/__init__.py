@@ -25,8 +25,8 @@ urlmaps = {
 replacements = {"&#44;": ",", "\\": "", "&amp;": "&"}
 
 regexs = {
-    "b23": r"b23.tv\\?/([A-Za-z0-9]+)",
-    "bilibilicn": r"bilibili2233.cn\\?/([A-Za-z0-9]+)",
+    "b23": r"(http:|https:)\/\/b23.tv\\?/([A-Za-z0-9]+)",
+    "bilibilicn": r"(http:|https:)\/\/bilibili2233.cn\\?/([A-Za-z0-9]+)",
     "bv": r"BV[A-Za-z0-9]{10}",
     "xhs": r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*",
     "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)",
