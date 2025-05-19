@@ -7,7 +7,7 @@ import re
 from urllib.parse import parse_qs, urlparse
 from functools import partial
 from hoshino.modules.information.bilireq.utils import Dynamic
-
+from hoshino.util import get_redirect
 
 sv = Service("resolve")
 
@@ -20,12 +20,6 @@ bili_video_pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
 dyn_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 
 get_xhscookies = partial(get_cookies, "xhs")
-
-
-async def get_redirect(url: str, headers={}) -> str:
-    resp = await aiohttpx.head(url, follow_redirects=False)
-    loc = resp.headers["Location"]
-    return loc
 
 
 async def get_dynamic_from_url(url: str) -> Dynamic | None:

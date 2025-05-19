@@ -405,6 +405,14 @@ async def get_cookies(name: str) -> dict:
         return {}
 
 
+async def get_redirect(url: str, headers={}) -> str | None:
+    resp = await aiohttpx.head(url, follow_redirects=False, headers=headers)
+    loc = resp.headers.get("Location")
+    if not loc:
+        return None
+    return loc
+
+
 @on_startup
 async def init_cookies():
     await get_cookies("xhs")
