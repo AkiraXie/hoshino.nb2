@@ -24,6 +24,8 @@ async function getMobileStyle(useImageBig = false) {
         commentsDoms: [".v-switcher"],
         // 打开商品 dom
         openGoodsDoms: [".bm-link-card-goods__one__action", ".dyn-goods__one__action"],
+        // 打开app dom
+        openAppDoms: ["m-open-app"],
     }
 
     // 遍历对象的值, 并将多数组扁平化, 再遍历进行删除操作
