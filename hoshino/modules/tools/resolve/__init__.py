@@ -53,12 +53,13 @@ async def check_json_or_text(ev: Event, state: T_State) -> bool:
                             jsonFlag = True
                             break
     url = ev.get_plaintext() if not jsonFlag else url
+    url = url.strip()
     if not url:
         return False
     for name, regex in regexs.items():
         if matched := re.search(regex, url):
             state["__url_name"] = name
-            state["__url"] = url
+            state["__url"] = matched.group(0)
             state["__url_matched"] = matched
             return True
     return False
@@ -88,7 +89,7 @@ async def _(state: T_State):
     elif name == "bilibilidyn":
         burl = url
     elif name == "xhs":
-        xhs_url = matched.group(0)
+        xhs_url = url
     elif name == "weibo":
         _, _, bid = matched.groups()
         post = await parse_weibo_with_bid(bid)
@@ -118,7 +119,6 @@ async def _(state: T_State):
         await send_segments(ms[1:])
         await m.finish()
     elif name == "mappweibo":
-        url = matched.group(0)
         post = await parse_mapp_weibo(url)
         if not post:
             sv.logger.error(f"{name} parse error")
