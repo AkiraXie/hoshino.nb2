@@ -51,11 +51,12 @@ async def get_dynamic_from_url(url: str) -> Dynamic | None:
 
 
 async def get_bvid(url: str) -> str | None:
-    loc = await get_redirect(url, headers=bili_headers)
-    if mat := bili_video_pat.search(loc):
-        return mat.group(1)
-    else:
-        return None
+    if loc := await get_redirect(url):
+        if mat := bili_video_pat.search(loc):
+            return mat.group(1)
+        else:
+            return None
+    return None
 
 
 # 处理超过一万的数字
@@ -82,7 +83,7 @@ async def get_bv_resp(bvid: str) -> Message:
     msg = []
     msg.append(str(MessageSegment.image(res["pic"])))
     msg.append(f"标题：{res['title']}")
-    msg.append(f"类型：{res['tname']} | UP：{res['owner']['name']} | 日期：{pubdate}")
+    msg.append(f"类型：{res['tname']} | UP: {res['owner']['name']} | 日期：{pubdate}")
     msg.append(
         f"播放：{handle_num(res['stat']['view'])} | 弹幕：{handle_num(res['stat']['danmaku'])} | 收藏：{handle_num(res['stat']['favorite'])}"
     )
