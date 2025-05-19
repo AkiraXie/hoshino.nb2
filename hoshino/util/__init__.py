@@ -103,7 +103,7 @@ def sucmd(
     handlers.insert(0, _strip_cmd)
     kwargs["handlers"] = handlers
     kwargs.setdefault("block", True)
-    return on_command(name, _depth=1, **kwargs)
+    return on_command(name, **kwargs)
 
 
 def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
