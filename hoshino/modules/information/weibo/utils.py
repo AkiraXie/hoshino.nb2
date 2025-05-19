@@ -398,7 +398,7 @@ async def parse_mapp_weibo(url: id) -> Post | None:
         "Authority": "mapp.api.weibo.cn",
     }
     ## https://mapp.api.weibo.cn/fx/ed689ab06571073864067e0eeae8de7f.html may redirect to m.weibo.cn
-    if furl := get_redirect(url, headers=headers):
+    if furl := await get_redirect(url, headers=headers):
         matched = re.search(r"m.weibo.cn\/(detail|status)\/(\w+)", furl)
         if matched:
             return await parse_weibo_with_bid(matched.group(1))
