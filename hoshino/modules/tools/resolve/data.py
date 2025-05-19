@@ -36,7 +36,7 @@ async def get_dynamic_from_url(url: str) -> Dynamic | None:
             params = {
                 "timezone_offset": -480,
                 "id": uid,
-                "features": "onlyfansVote,onlyfansAssetsV2,decorationCard,htmlNewStyle,ugcDelete,editable,opusPrivateVisible",
+                "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
             }
             resp = await aiohttpx.get(
                 dyn_url,
