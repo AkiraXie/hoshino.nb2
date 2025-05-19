@@ -80,14 +80,15 @@ class Post:
             ms = await get_mapp_weibo_screenshot(self.url)
             if ms:
                 msg.append(str(ms))
-        if not ms and self.content:
+        if not ms:
             msg.append(self.content)
             if self.repost:
                 msg.append("------------")
                 msg.append("转发自 " + self.repost.nickname + ":")
                 msg.append(self.repost.content)
-                msg.append("转发详情: " + self.repost.url)
                 msg.append("------------")
+        if self.repost and self.repost.url:
+            msg.append("转发详情: " + self.repost.url)
         if self.url:
             msg.append("微博详情: " + self.url)
         if self.repost:
