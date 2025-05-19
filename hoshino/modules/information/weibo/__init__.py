@@ -212,7 +212,7 @@ async def push_weibo_updates():
             db.uid == uid, db.group == gid
         ).execute()
         try:
-            if len(msgs) > 3:
+            if len(msgs) > 2:
                 await send_group_segments(bot, gid, msgs)
             else:
                 for m in msgs:
