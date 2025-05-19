@@ -2,7 +2,7 @@
 import asyncio
 from hoshino import Event
 from hoshino.typing import T_State
-from hoshino.util import send_segments, get_redirect
+from hoshino.util import send_segments, get_redirect,send
 from .data import (
     sv,
     get_bv_resp,
@@ -99,7 +99,9 @@ async def _(state: T_State):
         ms = await post.get_msg_with_screenshot()
         if not ms:
             return
-        await send_segments(ms)
+        await send(ms[0])
+        await asyncio.sleep(0.2)
+        await send_segments(ms[1:])
         await m.finish()
     elif name == "mweibo":
         _, _, bid = matched.groups()
@@ -111,7 +113,9 @@ async def _(state: T_State):
         ms = await post.get_msg_with_screenshot()
         if not ms:
             return
-        await send_segments(ms)
+        await send(ms[0])
+        await asyncio.sleep(0.2)
+        await send_segments(ms[1:])
         await m.finish()
     elif name == "mappweibo":
         url = matched.group(0)
@@ -123,7 +127,9 @@ async def _(state: T_State):
         ms = await post.get_msg_with_screenshot()
         if not ms:
             return
-        await send_segments(ms)
+        await send(ms[0])
+        await asyncio.sleep(0.2)
+        await send_segments(ms[1:])
         await m.finish()
     if not bvid and not xhs_url and not burl:
         return

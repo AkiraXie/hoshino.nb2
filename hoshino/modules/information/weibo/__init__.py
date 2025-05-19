@@ -146,7 +146,10 @@ async def see_weibo(bot: Bot, event: Event):
             await bot.send(event, f"没有获取到{arg}微博")
             return
         else:
-            await send_segments(message=msg)
+            m = msg[0]
+            await bot.send(event,m)
+            await asyncio.sleep(0.2)
+            await send_segments(message=msg[1:])
 
 
 @scheduled_job("interval", seconds=114, id="获取微博更新", jitter=5)
@@ -212,12 +215,13 @@ async def push_weibo_updates():
             db.uid == uid, db.group == gid
         ).execute()
         try:
-            if len(msgs) > 2:
-                await send_group_segments(bot, gid, msgs)
+            if msgs:
+                m = msgs[0]
+                await bot.send_group_msg(group_id=gid, message=m)
+                await asyncio.sleep(0.2)
+                await send_group_segments(bot, gid, msgs[1:])
             else:
-                for m in msgs:
-                    await bot.send_group_msg(group_id=gid, message=m)
-                    await asyncio.sleep(0.25)
+                await bot.send(gid, "获取微博失败")
         except Exception as e:
             sv.logger.error(f"发送 weibo post 失败: {e}")
     weibo_queue.remove_id(dyn.id)
@@ -248,8 +252,12 @@ async def look_weibo(bot: Bot, event: Event):
     if not post:
         await bot.send(event, "获取微博失败")
         raise FinishedException
-    msg = await post.get_msg_with_screenshot()
-    if not msg:
+    msgs = await post.get_msg_with_screenshot()
+    if not msgs:
         await bot.send(event, "获取微博失败")
         raise FinishedException
-    await send_group_segments(bot, event.group_id, msg)
+    gid = event.group_id
+    m = msgs[0]
+    await bot.send_group_msg(group_id=gid, message=m)
+    await asyncio.sleep(0.2)
+    await send_group_segments(bot, gid, msgs[1:])

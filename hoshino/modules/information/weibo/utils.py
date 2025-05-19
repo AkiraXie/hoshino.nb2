@@ -66,12 +66,32 @@ class Post:
     """转发的Post"""
 
     async def get_msg_with_screenshot(self) -> list[Message | MessageSegment]:
+        """获取消息列表, 包含截图, 第一个是总览，剩下的是图片或者视频"""
         msg = []
         immsg = []
         ms = None
         videos = self.videos
+        cts = []
+        links = []
         if self.nickname:
             msg.append(self.nickname + "微博~")
+        if self.content:
+            cts.append(self.content)
+        # 处理转推
+        if self.repost:
+            cts.append("------------")
+            cts.append("转发自 " + self.repost.nickname)
+            cts.append(self.repost.content)
+            cts.append("------------")
+            if self.repost.images:
+                for img in self.repost.images:
+                    immsg.append(MessageSegment.image(img))
+            if self.repost.videos:
+                videos = self.repost.videos
+        if self.images:
+            for img in self.images:
+                immsg.append(MessageSegment.image(img))
+        # 处理截图
         if self.id:
             ms = await get_weibo_screenshot(self.id)
             if ms:
@@ -81,32 +101,15 @@ class Post:
             if ms:
                 msg.append(str(ms))
         if not ms:
-            msg.append(self.content)
-            if self.repost:
-                msg.append("------------")
-                msg.append("转发自 " + self.repost.nickname + ":")
-                msg.append(self.repost.content)
-                msg.append("------------")
+            msg.append("\n".join(cts))
+
         if self.repost and self.repost.url:
-            msg.append("转发详情: " + self.repost.url)
+            links.append("转发详情: " + self.repost.url)
         if self.url:
-            msg.append("微博详情: " + self.url)
-        if self.repost:
-            if self.repost.images:
-                for img in self.repost.images:
-                    immsg.append(MessageSegment.image(img))
-            if self.repost.videos:
-                videos = self.repost.videos
-        if self.images:
-            for img in self.images:
-                immsg.append(MessageSegment.image(img))
-        res = [Message("\n".join(msg))]
-        if immsg:
-            immsg0 = immsg[:9]
-            immsg1 = immsg[9:]
-            res.append(Message(immsg0))
-            if immsg1:
-                res.append(Message(immsg1))
+            links.append("微博详情: " + self.url)
+
+        res = [Message("\n".join(msg)), Message("\n".join(links))]
+        res.extend(immsg)
         if videos:
             for video in videos:
                 res.append(MessageSegment.video(video))
