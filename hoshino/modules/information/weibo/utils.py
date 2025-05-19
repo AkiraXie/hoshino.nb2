@@ -388,7 +388,7 @@ async def parse_weibo_card(raw: dict) -> Post:
     return post
 
 
-async def parse_mapp_weibo(url: id) -> Post | None:
+async def parse_mapp_weibo(url: str) -> Post | None:
     # what a holyshit,fk weibo
     ## https://mapp.api.weibo.cn/fx/77eaa5c2f741894631a87fc4806a1f05.html
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf254032b) XWEB/13655 Flue"
