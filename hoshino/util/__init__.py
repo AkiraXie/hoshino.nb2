@@ -241,9 +241,11 @@ async def save_img(
         idir = img_dir
     r = await aiohttpx.get(url, verify=verify)
     try:
-        im = Image.open(BytesIO(r.content))
+        im = Image.open(bio := BytesIO(r.content))
         name = os.path.join(idir, name)
         im.save(name)
+        im.close()
+        bio.close()
         return True
     except Exception as e:
         nonebot.logger.error(f"保存图片失败: {e}")
