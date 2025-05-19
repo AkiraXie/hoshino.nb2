@@ -13,9 +13,9 @@ sv = Service("resolve")
 
 bili_headers = {
     "User-Agent": "Mozilla/5.0",
-    "Referer": "https://www.bilibili.com/",
+    "Referer": "https://bilibili.com/",
 }
-bili_video_pat = re.compile(r"https://www.bilibili.com/video/(.{12})")
+bili_video_pat = re.compile(r"bilibili.com/video/(BV[A-Za-z0-9]{10})")
 
 dyn_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 
@@ -52,7 +52,7 @@ async def get_dynamic_from_url(url: str) -> Dynamic | None:
 
 async def get_bvid(url: str) -> str | None:
     loc = await get_redirect(url, headers=bili_headers)
-    if mat := bili_video_pat.match(loc):
+    if mat := bili_video_pat.search(loc):
         return mat.group(1)
     else:
         return None

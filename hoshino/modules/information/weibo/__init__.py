@@ -147,7 +147,7 @@ async def see_weibo(bot: Bot, event: Event):
             return
         else:
             m = msg[0]
-            await bot.send(event,m)
+            await bot.send(event, m)
             await asyncio.sleep(0.2)
             await send_segments(message=msg[1:])
 
