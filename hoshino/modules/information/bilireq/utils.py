@@ -37,8 +37,12 @@ class Dynamic:
         self.uid = dynamic["modules"]["module_author"]["mid"]
         self.name = dynamic["modules"]["module_author"]["name"]
         self.pics = []
+        self.text = ""
         modules = dynamic["modules"]
         if dyn := modules.get("module_dynamic"):
+            if desc := dyn.get("desc"):
+                if text := desc.get("text"):
+                    self.text = text
             if major := dyn.get("major"):
                 match major["type"]:
                     case "MAJOR_TYPE_DRAW":
@@ -51,25 +55,36 @@ class Dynamic:
                         archive = major["archive"]
                         if pic := archive.get("cover"):
                             self.pics.append(pic)
+                        if desc := archive.get("desc"):
+                            self.text = desc
                     case "MAJOR_TYPE_OPUS":
                         opus = major["opus"]
                         if pics := opus.get("pics"):
                             for pic in pics:
                                 if picurl := pic.get("url"):
                                     self.pics.append(picurl)
+                        if summary := opus.get("summary"):
+                            if text := summary.get("text"):
+                                self.text = text
                     case "MAJOR_TYPE_ARTICLE":
                         article = major["article"]
                         if pics := article.get("covers"):
                             for pic in pics:
                                 self.pics.append(pic)
+                        if desc := article.get("desc"):
+                            self.text = desc
                     case "MAJOR_TYPE_PGC":
                         pgc = major["pgc"]
                         if pic := pgc.get("cover"):
                             self.pics.append(pic)
+                        if title := pgc.get("title"):
+                            self.text = title
                     case "MAJOR_TYPE_COMMON":
                         common = major["common"]
                         if pic := common.get("cover"):
                             self.pics.append(pic)
+                        if desc := common.get("desc"):
+                            self.text = desc
                     case _:
                         pass
 
@@ -81,6 +96,8 @@ class Dynamic:
         )
         if img:
             msg.append(str(img))
+        else:
+            msg.append(self.text)
         await asyncio.sleep(0.5)
         msg.append(self.url)
         res = [Message("\n".join(msg))]
