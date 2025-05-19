@@ -35,6 +35,7 @@ async def reaction_img_rule(
         msg_id = event.message_id
         msg = await bot.get_msg(message_id=msg_id)
         sender = msg.get("sender", {}).get("user_id")
+        sender = str(sender)
         if sender != bot.self_id and sender not in bot.config.superusers:
             return False
         msg = msg.get("message")
