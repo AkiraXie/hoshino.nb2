@@ -33,7 +33,7 @@ regexs = {
     "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)",
     "mweibo": r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)",
     "mappweibo": r"(http:|https:)\/\/mapp\.api\.weibo\.cn\/fx\/(\w+)\.html",
-    "bilibilidyn": r"(http:|https:)\/\/(t|www)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)",
+    "bilibilidyn": r"(http:|https:)\/\/(t|www|m)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)",
 }
 
 

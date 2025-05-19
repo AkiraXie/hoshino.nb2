@@ -105,6 +105,7 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
         await page.add_script_tag(
             content="""
     document.querySelector('.wrap')?.remove();
+    document.querySelector('.lite-page-editor')?.remove(); 
 """
         )
         await page.wait_for_load_state(state="networkidle")
