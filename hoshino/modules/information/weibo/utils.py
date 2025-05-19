@@ -401,7 +401,7 @@ async def parse_mapp_weibo(url: id) -> Post | None:
     if furl := await get_redirect(url, headers=headers):
         matched = re.search(r"m.weibo.cn\/(detail|status)\/(\w+)", furl)
         if matched:
-            return await parse_weibo_with_bid(matched.group(1))
+            return await parse_weibo_with_bid(matched.group(2))
     resp = await aiohttpx.get(
         url,
         headers=headers,
