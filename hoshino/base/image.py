@@ -1,4 +1,6 @@
 import asyncio
+from io import BytesIO
+from PIL import Image
 from pathlib import Path
 from hoshino import Message, Bot, T_State, SUPERUSER, MessageSegment, img_dir
 from hoshino.util import (
@@ -125,7 +127,7 @@ async def show_img_cmd(
 
 @sucmd(
     "随图",
-    aliases={"raimg", "randomimg"},
+    aliases={"raimg", "randomimg", "rimg"},
     only_to_me=True,
 ).handle()
 async def random_img_cmd(
@@ -142,14 +144,59 @@ async def random_img_cmd(
     for name in selected_names:
         fpath = os.path.join(path, name)
         fpath = Path(fpath)
-        img = MessageSegment.image(fpath)
-        imgs.append(img)
+        try:
+            im = Image.open(fpath)
+            img = MessageSegment.image(fpath)
+            imgs.append(img)
+            im.close()
+        except Exception:
+            logger.exception(f"打开图片失败: {fpath}")
+            os.remove(fpath)
+            continue
     if imgs:
         names = []
         for i, name in enumerate(selected_names):
             names.append(f"{i + 1}: {name}")
         imgs.append("\n".join(names))
         await send_segments(imgs)
+
+
+@sucmd(
+    "全图",
+    aliases={"aimg", "allimg", "qt"},
+    only_to_me=True,
+).handle()
+async def all_img_cmd(
+    event: MessageEvent,
+):
+    path = img_dir
+    names = os.listdir(path)
+    if not names:
+        await finish()
+    imgs = []
+    ns = []
+    for name in names:
+        fpath = os.path.join(path, name)
+        fpath = Path(fpath)
+        try:
+            im = Image.open(fpath)
+            img = MessageSegment.image(fpath)
+            imgs.append(img)
+            ns.append(name)
+            im.close()
+        except Exception:
+            logger.exception(f"打开图片失败: {fpath}")
+            os.remove(fpath)
+            continue
+    if imgs:
+        n = 9
+        await send(f"共{len(imgs)}张图片")
+        for i in range(0, len(imgs), n):
+            await asyncio.sleep(1)
+            chunk = imgs[i : i + n]
+            chunk.append(f"第{i + 1}-{min(i + n, len(imgs))}张")
+            chunk.append("\n".join(ns[i : i + n]))
+            await send_segments(chunk)
 
 
 timg = on_keyword(
@@ -171,6 +218,8 @@ async def toimg_cmd(state: T_State):
                 resp = await aiohttpx.get(url, verify=False, follow_redirects=True)
                 if resp.ok:
                     img = resp.content
+                    im = Image.open(BytesIO(img))
+                    im.close()
                     res.append(MessageSegment.image(img))
             except Exception:
                 logger.exception(f"获取图片失败: {url}")
