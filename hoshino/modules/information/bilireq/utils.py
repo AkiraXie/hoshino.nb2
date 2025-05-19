@@ -39,6 +39,7 @@ class Dynamic:
         self.pics = []
         self.text = ""
         modules = dynamic["modules"]
+        self.is_opus = False
         if dyn := modules.get("module_dynamic"):
             if desc := dyn.get("desc"):
                 if text := desc.get("text"):
@@ -66,6 +67,8 @@ class Dynamic:
                         if summary := opus.get("summary"):
                             if text := summary.get("text"):
                                 self.text = text
+                        self.url = "https://m.bilibili.com/opus/" + str(self.id)
+                        self.is_opus = True
                     case "MAJOR_TYPE_ARTICLE":
                         article = major["article"]
                         if pics := article.get("covers"):

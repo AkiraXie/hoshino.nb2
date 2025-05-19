@@ -177,8 +177,9 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment:
         # 移动端
         page: Page = await c.new_page()
         await page.goto(url, wait_until="networkidle")
-        if page.url == "https://m.bilibili.com/404":
+        if page.url.startswith("https://m.bilibili.com/404"):
             await page.close()
+            await c.close()
             return None
         await page.wait_for_load_state(state="domcontentloaded")
         await page.add_script_tag(path=mobilejs)
@@ -190,11 +191,13 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment:
         )
         if not card:
             await page.close()
+            await c.close()
             logger.error("get_bili_dyn_screenshot error: no card")
             return None
         clip = await card.bounding_box()
         if not clip:
             await page.close()
+            await c.close()
             logger.error("get_bili_dyn_screenshot error: no clip")
             return None
 
