@@ -8,13 +8,14 @@ from typing import Dict, List, Optional
 import peewee as pw
 import os
 from hoshino import db_dir, Message, Service, MessageSegment, on_startup
-from hoshino.util import aiohttpx, get_cookies, send_to_superuser
+from hoshino.util import aiohttpx, get_cookies, get_redirect
 from yarl import URL
 from urllib.parse import unquote
 from httpx import AsyncClient
 from hoshino.util.playwrights import get_weibo_screenshot, get_mapp_weibo_screenshot
 from bs4 import BeautifulSoup
 from functools import partial
+import re
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
@@ -396,6 +397,11 @@ async def parse_mapp_weibo(url: id) -> Post | None:
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Authority": "mapp.api.weibo.cn",
     }
+    ## https://mapp.api.weibo.cn/fx/ed689ab06571073864067e0eeae8de7f.html may redirect to m.weibo.cn
+    if furl := get_redirect(url, headers=headers):
+        matched = re.search(r"m.weibo.cn\/(detail|status)\/(\w+)", furl)
+        if matched:
+            return await parse_weibo_with_bid(matched.group(1))
     resp = await aiohttpx.get(
         url,
         headers=headers,
