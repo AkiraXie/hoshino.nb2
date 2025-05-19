@@ -2,7 +2,7 @@
 import asyncio
 from hoshino import Event
 from hoshino.typing import T_State
-from hoshino.util import send_segments, get_redirect,send
+from hoshino.util import send_segments, get_redirect, send
 from .data import (
     sv,
     get_bv_resp,
