@@ -138,7 +138,12 @@ async def random_img_cmd(
     names = os.listdir(path)
     if not names:
         await finish()
-    num = min(len(names), 5)
+    num = event.get_plaintext()
+    if num.isdigit():
+        num = int(num)
+    else:
+        num = 9
+    num = min(len(names), num)
     imgs = []
     ra = random.SystemRandom(time() + event.message_id)
     selected_names = ra.sample(names, k=num)
