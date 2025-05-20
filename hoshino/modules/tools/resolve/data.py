@@ -12,8 +12,7 @@ from hoshino.util import get_redirect
 sv = Service("resolve")
 
 bili_headers = {
-    "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    "Referer": "https://bilibili.com/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
 }
 bili_video_pat = re.compile(r"bilibili.com/video/(BV[A-Za-z0-9]{10})")
 
