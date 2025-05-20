@@ -19,25 +19,6 @@ import re
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
-_HEADER = {
-    "accept": (
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,"
-        "*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
-    ),
-    "accept-language": "zh-CN,zh;q=0.9",
-    "authority": "m.weibo.cn",
-    "cache-control": "max-age=0",
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "same-origin",
-    "sec-fetch-site": "same-origin",
-    "upgrade-insecure-requests": "1",
-    "user-agent": (
-        "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 "
-        "Mobile Safari/537.36"
-    ),
-}
-
 
 @dataclass
 class Post:
