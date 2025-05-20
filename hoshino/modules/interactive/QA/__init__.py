@@ -32,13 +32,11 @@ async def event_image_in_local(
     answer_msg = Message(answer)
     for i, s in enumerate(answer_msg):
         if s.type == "image":
-            url = s.data.get("url", s.data.get("file"))
-            img = await get(url, timeout=120)
-
+            url = s.data.get("file", s.data.get("url"))
+            url = url.replace("https://", "http://")
+            img = await get(url, timeout=120, verify=False)
             im = Image.open(BytesIO(img.content))
-
             fmt = im.get_format_mimetype()
-            print(fmt)
             ext = ""
             if fmt == "image/webp":
                 ext = ".webp"
@@ -47,7 +45,6 @@ async def event_image_in_local(
             elif fmt == "image/png":
                 ext = ".png"
             s = "{}-{}{}".format(sid, (url.split("/")[-2]).split("-")[-1], ext)
-            print(s)
             f = img_dir / s
             f.write_bytes(img.content)
             answer_msg[i] = MessageSegment.image(f)

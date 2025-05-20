@@ -116,11 +116,6 @@ class Post:
         return res
 
 
-@on_startup
-async def init_cookies():
-    await get_cookies("weibo")
-
-
 get_weibocookies = partial(get_cookies, "weibo")
 
 
@@ -132,12 +127,12 @@ async def get_sub_list(
         "MWeibo-Pwa": "1",
         "X-Requested-With": "XMLHttpRequest",
     }
-    header.update(_HEADER)
     params = {"containerid": "107603" + target}
     res = await aiohttpx.get(
         "https://m.weibo.cn/api/container/getIndex?",
         headers=header,
         params=params,
+        cookies=await get_weibocookies(),
         timeout=8.0,
     )
     res_data = res.json
@@ -187,7 +182,6 @@ async def get_sub_new(
         "MWeibo-Pwa": "1",
         "X-Requested-With": "XMLHttpRequest",
     }
-    header.update(_HEADER)
     params = {"containerid": "107603" + target}
     res = await aiohttpx.get(
         "https://m.weibo.cn/api/container/getIndex?",

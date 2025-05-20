@@ -152,8 +152,7 @@ async def see_weibo(bot: Bot, event: Event):
             await send_segments(message=msg[1:])
 
 
-@scheduled_job("interval", seconds=114, id="获取微博更新", jitter=5)
-@on_startup
+@scheduled_job("interval", seconds=200, id="获取微博更新", jitter=15)
 async def fetch_weibo_updates():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:

@@ -10,7 +10,7 @@ from hoshino.log import logger
 from datetime import datetime, timedelta
 from typing import Union
 from pytz import timezone
-from .data import black
+from .data import black as db
 
 
 _block_users = set()
@@ -19,7 +19,7 @@ _block_users = set()
 @driver.on_startup
 async def _():
     date = datetime.now(timezone("Asia/Shanghai"))
-    rows = black.select().where(black.due_time.to_timestamp() > date.timestamp())
+    rows = db.select().where(db.due_time.to_timestamp() > date.timestamp())
     loop = asyncio.get_event_loop()
     for r in rows:
         _block_users.add(r.uid)
@@ -36,14 +36,14 @@ def block_uid(uid: int, date: Union[datetime, timedelta]):
     else:
         sec = (date - datetime.now(timezone("Asia/Shanghai"))).seconds
     _block_users.add(uid)
-    black.replace(uid=uid, due_time=date).execute()
+    db.replace(uid=uid, due_time=date).execute()
     loop = asyncio.get_event_loop()
     loop.call_later(sec, lambda: _block_users.remove(uid))
 
 
 def unblock_uid(uid: int) -> bool:
     _block_users.remove(uid)
-    res = black.delete().where(black.uid == uid).execute()
+    res = db.delete().where(db.uid == uid).execute()
     return bool(res)
 
 
