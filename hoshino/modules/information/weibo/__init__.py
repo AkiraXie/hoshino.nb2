@@ -152,7 +152,7 @@ async def see_weibo(bot: Bot, event: Event):
             await send_segments(message=msg[1:])
 
 
-@scheduled_job("interval", seconds=200, id="获取微博更新", jitter=15)
+@scheduled_job("interval", seconds=220, id="获取微博更新", jitter=40)
 async def fetch_weibo_updates():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -185,7 +185,7 @@ async def fetch_weibo_updates():
     await asyncio.sleep(0.5)
 
 
-@scheduled_job("interval", seconds=20, id="推送微博更新", jitter=5)
+@scheduled_job("interval", seconds=60, id="推送微博更新", jitter=20)
 async def push_weibo_updates():
     groups = await sv.get_enable_groups()
     dyn = weibo_queue.get()
@@ -208,7 +208,7 @@ async def push_weibo_updates():
         return
     msgs = await dyn.get_msg_with_screenshot()
     for gid in gids:
-        await asyncio.sleep(0.35)
+        await asyncio.sleep(0.5)
         bot = groups[gid][0]
         db.update(time=dyn.timestamp, name=dyn.nickname).where(
             db.uid == uid, db.group == gid
@@ -217,7 +217,7 @@ async def push_weibo_updates():
             if msgs:
                 m = msgs[0]
                 await bot.send_group_msg(group_id=gid, message=m)
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.5)
                 await send_group_segments(bot, gid, msgs[1:])
             else:
                 await bot.send(gid, "获取微博失败")
