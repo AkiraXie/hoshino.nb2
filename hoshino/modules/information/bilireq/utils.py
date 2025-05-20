@@ -17,9 +17,7 @@ live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
 
 headers = {
     "user-agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        " AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88"
-        " Safari/537.36 Edg/87.0.664.60"
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
     ),
 }
 
