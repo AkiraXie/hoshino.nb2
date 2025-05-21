@@ -224,11 +224,17 @@ async def toimg_cmd(bot:Bot,state: T_State):
             try:
                 url = URL(url)
                 domain = url.host
-                ck = await bot.get_cookies(domain).get('cookies','')
-                headers = {
+                try:
+                    ck = await bot.get_cookies(domain=domain).get('cookies','')
+                    headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
                     "cookies": ck,
-                }
+                    }
+                except Exception as e:
+                    logger.exception(f"获取 cookies 失败: {e}")
+                    headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                    }
                 resp = await aiohttpx.get(url, verify=False, follow_redirects=True,headers=headers)
                 if resp.ok:
                     img = resp.content
