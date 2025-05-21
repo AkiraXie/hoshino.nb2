@@ -226,9 +226,11 @@ async def toimg_cmd(state: T_State):
                     img = resp.content
                     im = Image.open(BytesIO(img))
                     im.close()
-                    res.append(MessageSegment.image(img))
+                    res.append(MessageSegment.image(img, type_="0"))
             except Exception:
                 logger.exception(f"获取图片失败: {url}")
                 continue
     if res:
         await timg.finish(Message(res))
+    else:
+        await timg.finish("获取图片失败")
