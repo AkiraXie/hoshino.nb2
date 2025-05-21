@@ -24,6 +24,7 @@ from nonebot.log import logger
 import os
 import random
 from time import time
+from httpx import URL
 
 
 async def reaction_img_rule(
@@ -213,7 +214,7 @@ timg = on_keyword(
 
 
 @timg.handle()
-async def toimg_cmd(state: T_State):
+async def toimg_cmd(bot:Bot,state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     res = []
     for seg in segs:
@@ -221,12 +222,19 @@ async def toimg_cmd(state: T_State):
         if url:
             url = url.replace("https://", "http://")
             try:
-                resp = await aiohttpx.get(url, verify=False, follow_redirects=True)
+                url = URL(url)
+                domain = url.host
+                ck = await bot.get_cookies(domain).get('cookies','')
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                    "cookies": ck,
+                }
+                resp = await aiohttpx.get(url, verify=False, follow_redirects=True,headers=headers)
                 if resp.ok:
                     img = resp.content
                     im = Image.open(BytesIO(img))
                     im.close()
-                    res.append(MessageSegment.image(img, type_="0"))
+                    res.append(MessageSegment.image(img))
             except Exception:
                 logger.exception(f"获取图片失败: {url}")
                 continue
