@@ -277,15 +277,11 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> Post | None:
                 if ur := pic[scale].get("url"):
                     pic_urls.append(ur)
                     break
-        if pic.get("type") == "livephoto":
-            if video_url := pic.get("video"):
-                video_urls.append(video_url)
     page_info = rj.get("page_info", {})
     if page_info.get("object_type") == "video":
         media_info = page_info.get("media_info")
         if media_info:
             for k in [
-                "mp4_720p_mp4",
                 "mp4_hd_url",
                 "mp4_sd_url",
                 "stream_url_hd",
