@@ -70,21 +70,20 @@ class Post:
             if self.repost.videos:
                 videos = self.repost.videos
         if self.images:
-            for img in self.images:
-                tasks = []
-                for image_url in self.images:
-                    headers = {"referer": "https://weibo.com"}
-                    tasks.append(aiohttpx.get(image_url, headers=headers))
-                # Gather all responses at once
-                responses = await asyncio.gather(*tasks, return_exceptions=True)
-                for i, resp in enumerate(responses):
-                    if isinstance(resp, Exception):
-                        sv.logger.error(f"Error fetching image: {resp}")
-                        immsg.append(MessageSegment.image(self.images[i]))
-                    elif resp.ok:
-                        immsg.append(MessageSegment.image(resp.content))
-                    else:
-                        immsg.append(MessageSegment.image(self.images[i]))
+            tasks = []
+            for image_url in self.images:
+                headers = {"referer": "https://weibo.com"}
+                tasks.append(aiohttpx.get(image_url, headers=headers))
+            # Gather all responses at once
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, resp in enumerate(responses):
+                if isinstance(resp, Exception):
+                    sv.logger.error(f"Error fetching image: {resp}")
+                    immsg.append(MessageSegment.image(self.images[i]))
+                elif resp.ok:
+                    immsg.append(MessageSegment.image(resp.content))
+                else:
+                    immsg.append(MessageSegment.image(self.images[i]))
         # 处理截图
         if self.id:
             ms = await get_weibo_screenshot(self.id)
