@@ -66,22 +66,20 @@ svimg_notice = on_notice(
 async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     cnt = 0
+    tasks = []
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
         url = seg.data.get("file", seg.data.get("url"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
-        try:
-            res = await save_img(url, fname)
-            if res:
-                cnt += 1
-                await asyncio.sleep(0.2)
-            else:
-                logger.exception(f"保存图片失败: {fname}")
-                continue
-        except Exception:
-            logger.exception(f"保存图片失败: {fname}")
-            continue
+        tasks.append(save_img(url, fname))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            logger.exception(f"保存图片失败: {result}")
+        elif result:
+            cnt += 1
     if cnt != 0:
         await send_to_superuser(f"成功保存{cnt}张图片")
     else:
@@ -214,32 +212,34 @@ timg = on_keyword(
 
 
 @timg.handle()
-async def toimg_cmd(bot:Bot,state: T_State):
+async def toimg_cmd(bot: Bot, state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     res = []
     for seg in segs:
         url = seg.data.get("url", seg.data.get("file"))
         headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-                    }
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        }
         if url:
             url = url.replace("https://", "http://")
             try:
                 url = URL(url)
                 domain = url.host
                 try:
-                    if 'vip.qq.com' in domain:
-                        domain = 'vip.qq.com'
+                    if "vip.qq.com" in domain:
+                        domain = "vip.qq.com"
                         ck = await bot.get_cookies(domain=domain)
                         ck = ck.get("cookies")
                         if ck:
                             headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-                    "cookies": ck,
-                    }
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                                "cookies": ck,
+                            }
                 except Exception as e:
                     logger.exception(f"获取 cookies 失败: {e}")
-                resp = await aiohttpx.get(url, verify=False, follow_redirects=True,headers=headers)
+                resp = await aiohttpx.get(
+                    url, verify=False, follow_redirects=True, headers=headers
+                )
                 if resp.ok:
                     img = resp.content
                     im = Image.open(BytesIO(img))

@@ -71,11 +71,20 @@ class Post:
                 videos = self.repost.videos
         if self.images:
             for img in self.images:
-                headers={"referer": "https://weibo.com"}
-                resp = await aiohttpx.get(img, headers=headers)
-                if resp.ok:
-                    img = resp.content
-                    immsg.append(MessageSegment.image(img))
+                tasks = []
+                for image_url in self.images:
+                    headers = {"referer": "https://weibo.com"}
+                    tasks.append(aiohttpx.get(image_url, headers=headers))
+                # Gather all responses at once
+                responses = await asyncio.gather(*tasks, return_exceptions=True)
+                for i, resp in enumerate(responses):
+                    if isinstance(resp, Exception):
+                        sv.logger.error(f"Error fetching image: {resp}")
+                        immsg.append(MessageSegment.image(self.images[i]))
+                    elif resp.ok:
+                        immsg.append(MessageSegment.image(resp.content))
+                    else:
+                        immsg.append(MessageSegment.image(self.images[i]))
         # 处理截图
         if self.id:
             ms = await get_weibo_screenshot(self.id)
@@ -96,12 +105,19 @@ class Post:
         res = [Message("\n".join(msg)), Message("\n".join(links))]
         res.extend(immsg)
         if videos:
-            for video in videos:
-                headers={"referer": "https://weibo.com"}
-                resp = await aiohttpx.get(video, headers=headers)
-                if resp.ok:
-                    video = resp.content
-                    res.append(MessageSegment.video(video))
+            tasks = []
+            for video_url in self.videos:
+                headers = {"referer": "https://weibo.com"}
+                tasks.append(aiohttpx.get(video_url, headers=headers))
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, resp in enumerate(responses):
+                if isinstance(resp, Exception):
+                    sv.logger.error(f"Error video image: {resp}")
+                    immsg.append(MessageSegment.video(self.videos[i]))
+                elif resp.ok:
+                    immsg.append(MessageSegment.video(resp.content))
+                else:
+                    immsg.append(MessageSegment.video(self.videos[i]))
         return res
 
 
