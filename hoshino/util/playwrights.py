@@ -87,7 +87,7 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
             "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
         ),
-        device_scale_factor=2,
+        device_scale_factor=1.5,
     )
     if not cookies:
         cookies = await get_cookies("weibo")
@@ -101,27 +101,23 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
     page = None
     try:
         page: Page = await c.new_page()
-        await page.goto(url, wait_until="networkidle")
-        await page.add_script_tag(
-            content="""
-    document.querySelector('.wrap')?.remove();
-    document.querySelector('.lite-page-editor')?.remove(); 
-"""
-        )
-        await page.wait_for_load_state(state="networkidle")
-        card = await page.query_selector(".f-weibo")
-        if not card:
+        await page.goto(url)
+        try:
+            await page.wait_for_selector(".f-weibo, .wrap, .lite-page-editor", timeout=15000)
+            await page.evaluate("""
+            document.querySelector('.wrap')?.remove();
+            document.querySelector('.lite-page-editor')?.remove();
+            """)
+            element = await page.wait_for_selector(".f-weibo", timeout=5000)
+        except Exception as e:
+            logger.error(f"Error waiting for elements: {e}")
+        if not element:
             await page.close()
-            logger.error("get_weibo_screenshot error: no card")
+            await c.close()
+            logger.error("get_weibo_screenshot error: no element")
             return None
-        clip = await card.bounding_box()
-        if not clip:
-            await page.close()
-            logger.error("get_weibo_screenshot error: no clip")
-            return None
-
-        image = await page.screenshot(
-            clip=clip, full_page=True, type="jpeg", quality=98
+        image = await element.screenshot(
+            type="jpeg", quality=98
         )
         await page.close()
         await c.close()
