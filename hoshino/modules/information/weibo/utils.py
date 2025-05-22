@@ -71,7 +71,11 @@ class Post:
                 videos = self.repost.videos
         if self.images:
             for img in self.images:
-                immsg.append(MessageSegment.image(img))
+                headers={"referer": "https://weibo.com"}
+                resp = await aiohttpx.get(img, headers=headers)
+                if resp.ok:
+                    img = resp.content
+                    immsg.append(MessageSegment.image(img))
         # 处理截图
         if self.id:
             ms = await get_weibo_screenshot(self.id)
@@ -93,7 +97,11 @@ class Post:
         res.extend(immsg)
         if videos:
             for video in videos:
-                res.append(MessageSegment.video(video))
+                headers={"referer": "https://weibo.com"}
+                resp = await aiohttpx.get(video, headers=headers)
+                if resp.ok:
+                    video = resp.content
+                    res.append(MessageSegment.video(video))
         return res
 
 
