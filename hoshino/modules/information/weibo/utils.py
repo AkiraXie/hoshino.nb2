@@ -69,32 +69,40 @@ class Post:
                     immsg.append(MessageSegment.image(img))
             if self.repost.videos:
                 videos = self.repost.videos
+        tasks = []
+        # Prepare image fetch tasks
         if self.images:
-            tasks = []
             for image_url in self.images:
                 headers = {"referer": "https://weibo.com"}
                 tasks.append(aiohttpx.get(image_url, headers=headers))
-            # Gather all responses at once
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
-            for i, resp in enumerate(responses):
-                if isinstance(resp, Exception):
-                    sv.logger.error(f"Error fetching image: {resp}")
-                    immsg.append(MessageSegment.image(self.images[i]))
-                elif resp.ok:
-                    immsg.append(MessageSegment.image(resp.content))
-                else:
-                    immsg.append(MessageSegment.image(self.images[i]))
-        # 处理截图
+        screenshot_task = None
+        is_screenshot = False
         if self.id:
-            ms = await get_weibo_screenshot(self.id)
-            if ms:
-                msg.append(str(ms))
+            screenshot_task = get_weibo_screenshot(self.id)
+            tasks.append(screenshot_task)
+            is_screenshot = True
         elif self.description == "mapp" and self.url:
-            ms = await get_mapp_weibo_screenshot(self.url)
+            screenshot_task = get_mapp_weibo_screenshot(self.url)
+            tasks.append(screenshot_task)
+            is_screenshot = True
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+        image_count = len(self.images) if self.images else 0
+        for i in range(image_count):
+            resp = responses[i]
+            if isinstance(resp, Exception):
+                sv.logger.error(f"Error fetching image: {resp}")
+                immsg.append(MessageSegment.image(self.images[i]))
+            elif resp.ok:
+                immsg.append(MessageSegment.image(resp.content))
+            else:
+                immsg.append(MessageSegment.image(self.images[i]))
+                
+        if is_screenshot    :
+            ms = responses[-1] if isinstance(responses[-1], MessageSegment) else None
             if ms:
                 msg.append(str(ms))
-        if not ms:
-            msg.append("\n".join(cts))
+            else:
+                msg.append("\n".join(cts))
 
         if self.repost and self.repost.url:
             links.append("转发详情: " + self.repost.url)
@@ -112,11 +120,11 @@ class Post:
             for i, resp in enumerate(responses):
                 if isinstance(resp, Exception):
                     sv.logger.error(f"Error video image: {resp}")
-                    immsg.append(MessageSegment.video(self.videos[i]))
+                    res.append(MessageSegment.video(self.videos[i]))
                 elif resp.ok:
-                    immsg.append(MessageSegment.video(resp.content))
+                    res.append(MessageSegment.video(resp.content))
                 else:
-                    immsg.append(MessageSegment.video(self.videos[i]))
+                    res.append(MessageSegment.video(self.videos[i]))
         return res
 
 
