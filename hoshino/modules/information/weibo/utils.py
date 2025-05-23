@@ -77,11 +77,11 @@ class Post:
                 tasks.append(aiohttpx.get(image_url, headers=headers))
         screenshot_task = None
         is_screenshot = False
-        if self.id:
-            screenshot_task = get_weibo_screenshot(self.id)
+        if not self.description:
+            screenshot_task = get_weibo_screenshot(self.url)
             tasks.append(screenshot_task)
             is_screenshot = True
-        elif self.description == "mapp" and self.url:
+        elif self.description == "mapp":
             screenshot_task = get_mapp_weibo_screenshot(self.url)
             tasks.append(screenshot_task)
             is_screenshot = True

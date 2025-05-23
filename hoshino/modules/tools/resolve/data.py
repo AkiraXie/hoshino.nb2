@@ -1,7 +1,7 @@
 import json
-from hoshino import MessageSegment, Message, on_startup
+from hoshino import MessageSegment, Message
 from hoshino.service import Service
-from hoshino.util import aiohttpx, get_cookies, send_to_superuser
+from hoshino.util import aiohttpx, get_cookies
 from time import strftime, localtime
 import re
 from urllib.parse import parse_qs, urlparse
