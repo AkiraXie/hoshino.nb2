@@ -49,8 +49,8 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment | None:
     page = None
     try:
         page: Page = await c.new_page()
-        await page.goto(url, wait_until="networkidle")
-        card = await page.query_selector(".card-wrap")
+        await page.goto(url, wait_until="domcontentloaded")
+        card = await page.wait_for_selector(".card-wrap")
         if not card:
             await page.close()
             logger.error("get_mapp_weibo_screenshot error: no card")
@@ -100,12 +100,21 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
     page = None
     try:
         page: Page = await c.new_page()
-        await page.goto(url)
-        element = await page.wait_for_selector("article.woo-panel-main")
+        await page.goto(url, wait_until="domcontentloaded")
+        # Try different selectors for the element
+        selectors = [".Feed_body_3R0r0", ".feed_body", "article.woo-panel-main"]
+        element = None
+        for selector in selectors:
+            try:
+                element = await page.wait_for_selector(selector, timeout=5000)
+                if element:
+                    break
+            except TimeoutError:
+                continue  # 尝试下一个选择器
         if not element:
             await page.close()
             await c.close()
-            logger.error("get_weibo_screenshot error: no element")
+            logger.error("get_weibo_screenshot error: no element found")
             return None
 
         image = await element.screenshot()
