@@ -96,8 +96,8 @@ class Post:
                 immsg.append(MessageSegment.image(resp.content))
             else:
                 immsg.append(MessageSegment.image(self.images[i]))
-                
-        if is_screenshot    :
+
+        if is_screenshot:
             ms = responses[-1] if isinstance(responses[-1], MessageSegment) else None
             if ms:
                 msg.append(str(ms))

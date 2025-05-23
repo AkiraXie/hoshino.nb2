@@ -34,7 +34,7 @@ async def refresh_playwright():
     _b = await ap.chromium.launch(timeout=10000)
 
 
-async def get_mapp_weibo_screenshot(url: str) -> MessageSegment|None:
+async def get_mapp_weibo_screenshot(url: str) -> MessageSegment | None:
     b: Browser = await get_b()
     c = await b.new_context(
         user_agent=(
@@ -79,7 +79,7 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment|None:
             await c.close()
 
 
-async def get_weibo_screenshot(url:str, cookies: dict = {}) -> MessageSegment|None:
+async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment | None:
     b: Browser = await get_b()
     c = await b.new_context(
         user_agent=(
@@ -107,7 +107,7 @@ async def get_weibo_screenshot(url:str, cookies: dict = {}) -> MessageSegment|No
             await c.close()
             logger.error("get_weibo_screenshot error: no element")
             return None
-            
+
         image = await element.screenshot()
         await page.close()
         await c.close()
@@ -124,7 +124,7 @@ async def get_weibo_screenshot(url:str, cookies: dict = {}) -> MessageSegment|No
             await c.close()
 
 
-async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment|None:
+async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | None:
     b: Browser = await get_b()
     c = await b.new_context(
         user_agent=(
