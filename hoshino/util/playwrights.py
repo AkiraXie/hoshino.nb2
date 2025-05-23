@@ -102,34 +102,28 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
         page: Page = await c.new_page()
         await page.goto(url, wait_until="domcontentloaded")
         # Try different selectors for the element
-        selectors = [".Feed_body_3R0r0", ".feed_body", "article.woo-panel-main"]
+        selectors = [".feed_body", ".Feed_body_3R0r0", "article.woo-panel-main"]
         element = None
         for selector in selectors:
             try:
-                element = await page.wait_for_selector(selector, timeout=5000)
+                element = await page.wait_for_selector(selector, timeout=4000)
                 if element:
                     break
-            except TimeoutError:
-                continue  # 尝试下一个选择器
+            except (TimeoutError, Exception):
+                continue
         if not element:
-            await page.close()
-            await c.close()
             logger.error("get_weibo_screenshot error: no element found")
             return None
 
         image = await element.screenshot()
-        await page.close()
-        await c.close()
         return MessageSegment.image(image)
     except Exception as e:
-        if page:
-            await page.close()
-            await c.close()
         logger.error(f"get_weibo_screenshot error: {e}")
         return None
     finally:
         if page:
             await page.close()
+        if c:
             await c.close()
 
 
@@ -155,60 +149,27 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | 
     await c.add_cookies(cks)
     page = None
     try:
-        # 电脑端
-        # page = await browser.new_page()
-        # await page.goto(url, wait_until="networkidle", timeout=10000)
-        # await page.set_viewport_size({"width": 2560, "height": 1080})
-        # card = await page.query_selector(".card")
-        # assert card
-        # clip = await card.bounding_box()
-        # assert clip
-        # bar = await page.query_selector(".bili-dyn-action__icon")
-        # assert bar
-        # bar_bound = await bar.bounding_box()
-        # assert bar_bound
-        # clip["height"] = bar_bound["y"] - clip["y"]
-
-        # 移动端
         page: Page = await c.new_page()
-        await page.goto(url, wait_until="networkidle")
+        await page.goto(url, wait_until="domcontentloaded")
         if page.url.startswith("https://m.bilibili.com/404"):
-            await page.close()
-            await c.close()
             return None
-        await page.wait_for_load_state(state="domcontentloaded")
         await page.add_script_tag(path=mobilejs)
         await page.wait_for_function("getMobileStyle()")
-        await page.wait_for_load_state("networkidle")
         await page.wait_for_load_state("domcontentloaded")
-        card = await page.query_selector(
+        element = await page.wait_for_selector(
             ".opus-modules" if "opus" in page.url else ".dyn-card"
         )
-        if not card:
-            await page.close()
-            await c.close()
-            logger.error("get_bili_dyn_screenshot error: no card")
+        if not element:
+            logger.error("get_bili_dynamic_screenshot error: no element found")
             return None
-        clip = await card.bounding_box()
-        if not clip:
-            await page.close()
-            await c.close()
-            logger.error("get_bili_dyn_screenshot error: no clip")
-            return None
+        image = await element.screenshot()
 
-        image = await page.screenshot(
-            clip=clip, full_page=True, type="jpeg", quality=98
-        )
-        await page.close()
-        await c.close()
         return MessageSegment.image(image)
     except Exception as e:
-        if page:
-            await page.close()
-            await c.close()
         logger.error(f"get_bili_dynamic_screenshot error: {e}")
         return None
     finally:
         if page:
             await page.close()
-        await c.close()
+        if c:
+            await c.close()
