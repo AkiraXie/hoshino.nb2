@@ -5,7 +5,7 @@ from hoshino.typing import T_State
 from hoshino.util import send_segments, get_redirect, send
 from .data import (
     sv,
-    get_bv_resp,
+    get_bili_video_resp,
     parse_xhs,
     get_bvid,
     get_dynamic_from_url,
@@ -25,14 +25,15 @@ urlmaps = {
 replacements = {"&#44;": ",", "\\": "", "&amp;": "&"}
 
 regexs = {
-    "b23": r"(http:|https:)\/\/b23.tv\\?/([A-Za-z0-9]+)",
-    "bilibilicn": r"(http:|https:)\/\/bilibili2233.cn\\?/([A-Za-z0-9]+)",
-    "bv": r"BV[A-Za-z0-9]{10}",
-    "xhs": r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*",
-    "weibo": r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)",
-    "mweibo": r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)",
-    "mappweibo": r"(http:|https:)\/\/mapp\.api\.weibo\.cn\/fx\/(\w+)\.html",
-    "bilibilidyn": r"(http:|https:)\/\/(t|www|m)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)",
+    "b23": re.compile(r"(http:|https:)\/\/b23.tv\\?/([A-Za-z0-9]+)"),
+    "bilibilicn": re.compile(r"(http:|https:)\/\/bilibili2233.cn\\?/([A-Za-z0-9]+)"),
+    "bv": re.compile(r"BV[A-Za-z0-9]{10}"),
+    "av": re.compile(r"av(\d{6,})"),
+    "xhs": re.compile(r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"),
+    "weibo": re.compile(r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)"),
+    "mweibo": re.compile(r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)"),
+    "mappweibo": re.compile(r"(http:|https:)\/\/mapp\.api\.weibo\.cn\/fx\/(\w+)\.html"),
+    "bilibilidyn": re.compile(r"(http:|https:)\/\/(t|www|m)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)"),
 }
 
 
@@ -57,7 +58,7 @@ async def check_json_or_text(ev: Event, state: T_State) -> bool:
     if not url:
         return False
     for name, regex in regexs.items():
-        if matched := re.search(regex, url):
+        if matched := regex.search(url):
             state["__url_name"] = name
             state["__url"] = matched.group(0)
             state["__url_matched"] = matched
@@ -80,12 +81,15 @@ async def _(state: T_State):
     bvid = None
     burl = None
     xhs_url = None
+    avid = None
     if name == "b23" or name == "bilibilicn":
         bvid = await get_bvid(url)
         if not bvid:
             burl = await get_redirect(url)
     elif name == "bv":
         bvid = matched.group(0)
+    elif name == "av":
+        avid = matched.group(1)
     elif name == "bilibilidyn":
         burl = url
     elif name == "xhs":
@@ -131,10 +135,16 @@ async def _(state: T_State):
         await asyncio.sleep(0.2)
         await send_segments(ms[1:])
         await m.finish()
-    if not bvid and not xhs_url and not burl:
+    if not bvid and not xhs_url and not burl and not avid:
         return
     if bvid:
-        msg = await get_bv_resp(bvid)
+        msg = await get_bili_video_resp(bvid=bvid)
+        if not msg:
+            return
+        await asyncio.sleep(0.3)
+        await m.finish(msg)
+    if avid:
+        msg = await get_bili_video_resp(avid=avid)
         if not msg:
             return
         await asyncio.sleep(0.3)
