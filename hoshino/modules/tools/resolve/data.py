@@ -67,8 +67,12 @@ def handle_num(num: int) -> str:
     return s
 
 
-async def get_bv_resp(bvid: str) -> Message:
-    url = "https://api.bilibili.com/x/web-interface/view?bvid=" + bvid
+async def get_bili_video_resp(*,bvid: str,avid:str) -> Message:
+    url = "https://api.bilibili.com/x/web-interface/view"
+    if avid:
+        url = f"https://api.bilibili.com/x/web-interface/view?aid={avid}"
+    else:
+        url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
     try:
         resp = await aiohttpx.get(url, headers=bili_headers)
     except Exception:

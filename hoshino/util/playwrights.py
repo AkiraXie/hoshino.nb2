@@ -34,7 +34,7 @@ async def refresh_playwright():
     _b = await ap.chromium.launch(timeout=10000)
 
 
-async def get_mapp_weibo_screenshot(url: str) -> MessageSegment:
+async def get_mapp_weibo_screenshot(url: str) -> MessageSegment|None:
     b: Browser = await get_b()
     c = await b.new_context(
         user_agent=(
@@ -79,13 +79,12 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment:
             await c.close()
 
 
-async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
-    url = f"https://m.weibo.cn/detail/{mid}"
+async def get_weibo_screenshot(url:str, cookies: dict = {}) -> MessageSegment|None:
     b: Browser = await get_b()
     c = await b.new_context(
         user_agent=(
-            "Mozilla/5.0 (Linux; Android 10; RMX1911) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/136.0.0.0 Safari/537.36"
         ),
         device_scale_factor=1.5,
     )
@@ -102,23 +101,14 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
     try:
         page: Page = await c.new_page()
         await page.goto(url)
-        try:
-            await page.wait_for_selector(".f-weibo, .wrap, .lite-page-editor", timeout=15000)
-            await page.evaluate("""
-            document.querySelector('.wrap')?.remove();
-            document.querySelector('.lite-page-editor')?.remove();
-            """)
-            element = await page.wait_for_selector(".f-weibo", timeout=5000)
-        except Exception as e:
-            logger.error(f"Error waiting for elements: {e}")
+        element = await page.wait_for_selector("article.woo-panel-main")
         if not element:
             await page.close()
             await c.close()
             logger.error("get_weibo_screenshot error: no element")
             return None
-        image = await element.screenshot(
-            type="jpeg", quality=98
-        )
+            
+        image = await element.screenshot()
         await page.close()
         await c.close()
         return MessageSegment.image(image)
@@ -134,7 +124,7 @@ async def get_weibo_screenshot(mid: str, cookies: dict = {}) -> MessageSegment:
             await c.close()
 
 
-async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment:
+async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment|None:
     b: Browser = await get_b()
     c = await b.new_context(
         user_agent=(
