@@ -29,11 +29,15 @@ regexs = {
     "bilibilicn": re.compile(r"(http:|https:)\/\/bilibili2233.cn\\?/([A-Za-z0-9]+)"),
     "bv": re.compile(r"BV[A-Za-z0-9]{10}"),
     "av": re.compile(r"av(\d{6,})"),
-    "xhs": re.compile(r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"),
+    "xhs": re.compile(
+        r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"
+    ),
     "weibo": re.compile(r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)"),
     "mweibo": re.compile(r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)"),
     "mappweibo": re.compile(r"(http:|https:)\/\/mapp\.api\.weibo\.cn\/fx\/(\w+)\.html"),
-    "bilibilidyn": re.compile(r"(http:|https:)\/\/(t|www|m)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)"),
+    "bilibilidyn": re.compile(
+        r"(http:|https:)\/\/(t|www|m)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)"
+    ),
 }
 
 

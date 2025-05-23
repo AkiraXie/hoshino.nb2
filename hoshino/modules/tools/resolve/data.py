@@ -67,7 +67,7 @@ def handle_num(num: int) -> str:
     return s
 
 
-async def get_bili_video_resp(*,bvid: str,avid:str) -> Message:
+async def get_bili_video_resp(bvid: str = "", avid: str = "") -> Message | None:
     url = "https://api.bilibili.com/x/web-interface/view"
     if avid:
         url = f"https://api.bilibili.com/x/web-interface/view?aid={avid}"
