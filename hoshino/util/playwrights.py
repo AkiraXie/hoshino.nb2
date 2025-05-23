@@ -102,7 +102,11 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
         page: Page = await c.new_page()
         await page.goto(url, wait_until="domcontentloaded")
         # Try different selectors for the element
-        selectors = [".feed_body", ".Feed_body_3R0r0", "article.woo-panel-main"]
+        selectors = [
+            "article.woo-panel-main > div:nth-child(2)"
+            "div.Feed_body_3R0rO", 
+            "div.feed_body", 
+        ]
         element = None
         for selector in selectors:
             try:
