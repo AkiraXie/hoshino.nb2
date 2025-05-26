@@ -78,7 +78,7 @@ class Post:
         screenshot_task = None
         is_screenshot = False
         if not self.description:
-            screenshot_task = get_weibo_screenshot("m.weibo.cn/status/" + self.id)
+            screenshot_task = get_weibo_screenshot(self.url)
             tasks.append(screenshot_task)
             is_screenshot = True
         elif self.description == "mapp":
