@@ -21,6 +21,7 @@ from nonebot.plugin import on_notice, on_keyword
 from nonebot.rule import Rule, KeywordsRule
 from nonebot.compat import type_validate_python
 from nonebot.log import logger
+from nonebot.params import Keyword
 import os
 import random
 from time import time
@@ -32,7 +33,7 @@ async def reaction_img_rule(
     event: GroupReactionEvent,
     state: T_State,
 ) -> bool:
-    if event.code == "76":
+    if event.code == "76" or event.code == "66":
         msg_id = event.message_id
         msg = await bot.get_msg(message_id=msg_id)
         sender = msg.get("sender", {}).get("user_id")
@@ -46,6 +47,7 @@ async def reaction_img_rule(
             img_list.extend(await _get_imgs_from_forward_msg(bot, msg))
             if img_list:
                 state[__SU_IMGLIST] = img_list
+                state["__IMG_FAV"] = True if event.code == "66" else False
                 return True
     return False
 
@@ -60,19 +62,25 @@ svimg_notice = on_notice(
 
 @sumsg(
     only_to_me=True,
-    rule=Rule(get_event_image_segments) & KeywordsRule("sim", "存图", "saveimg", "ctu"),
+    rule=Rule(get_event_image_segments)
+    & KeywordsRule("sim", "存图", "saveimg", "ctu", "fav", "fim"),
 ).handle()
 @svimg_notice.handle()
-async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State):
+async def save_img_cmd(
+    event: MessageEvent | GroupReactionEvent, state: T_State, keyword: str = Keyword()
+):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     cnt = 0
     tasks = []
+    is_fav = (
+        True if state.get("__IMG_FAV", False) or keyword in ("fav", "fim") else False
+    )
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
         url = seg.data.get("file", seg.data.get("url"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
-        tasks.append(save_img(url, fname))
+        tasks.append(save_img(url, fname, is_fav))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     for result in results:
