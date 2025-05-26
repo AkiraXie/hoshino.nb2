@@ -21,7 +21,7 @@ from nonebot.plugin import on_notice, on_keyword
 from nonebot.rule import Rule, KeywordsRule
 from nonebot.compat import type_validate_python
 from nonebot.log import logger
-from nonebot.params import Keyword
+from nonebot.consts import KEYWORD_KEY
 import os
 import random
 from time import time
@@ -67,13 +67,13 @@ svimg_notice = on_notice(
 ).handle()
 @svimg_notice.handle()
 async def save_img_cmd(
-    event: MessageEvent | GroupReactionEvent, state: T_State, keyword: str = Keyword()
+    event: MessageEvent | GroupReactionEvent, state: T_State
 ):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     cnt = 0
     tasks = []
     is_fav = (
-        True if state.get("__IMG_FAV", False) or keyword in ("fav", "fim") else False
+        True if state.get("__IMG_FAV", False) or state.get(KEYWORD_KEY, "") in ("fav", "fim") else False
     )
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
