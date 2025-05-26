@@ -218,10 +218,10 @@ async def push_weibo_updates():
                 m = msgs[0]
                 await bot.send_group_msg(group_id=gid, message=m)
                 await asyncio.sleep(1)
-                await send_group_segments(bot, gid, msgs[1:10])
-                if len(msgs) > 10:
+                await send_group_segments(bot, gid, msgs[1:13])
+                if len(msgs) > 13:
                     await asyncio.sleep(1)
-                    await send_group_segments(bot, gid, msgs[10:])
+                    await send_group_segments(bot, gid, msgs[13:])
             else:
                 await bot.send(gid, "获取微博失败")
         except Exception as e:
