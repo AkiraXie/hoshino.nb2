@@ -100,7 +100,7 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
         await page.goto(url)
         await page.wait_for_selector("div.wrap", timeout=5000)
         await page.add_script_tag(content=weibo_script)
-        await page.wait_for_load_state('networkidle')
+        await page.wait_for_load_state("networkidle")
         selector = "div.f-weibo"
         element = None
         try:

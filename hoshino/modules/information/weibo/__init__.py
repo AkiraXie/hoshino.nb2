@@ -152,7 +152,7 @@ async def see_weibo(bot: Bot, event: Event):
             await send_segments(message=msg[1:])
 
 
-@scheduled_job("interval", seconds=220, id="获取微博更新", jitter=40)
+@scheduled_job("interval", seconds=180, id="获取微博更新", jitter=40)
 async def fetch_weibo_updates():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -206,7 +206,7 @@ async def push_weibo_updates():
         weibo_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msgs = await dyn.get_msg_with_screenshot()
+    msgs = await dyn.get_msg_with_screenshot(False)
     for gid in gids:
         await asyncio.sleep(0.5)
         bot = groups[gid][0]

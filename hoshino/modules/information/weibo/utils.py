@@ -46,7 +46,9 @@ class Post:
     repost: "Post | None" = None
     """转发的Post"""
 
-    async def get_msg_with_screenshot(self) -> list[Message | MessageSegment]:
+    async def get_msg_with_screenshot(
+        self, with_screenshot: bool = True
+    ) -> list[Message | MessageSegment]:
         """获取消息列表, 包含截图, 第一个是总览，剩下的是图片或者视频"""
         msg = []
         immsg = []
@@ -77,14 +79,15 @@ class Post:
                 tasks.append(aiohttpx.get(image_url, headers=headers))
         screenshot_task = None
         is_screenshot = False
-        if not self.description:
-            screenshot_task = get_weibo_screenshot(self.url)
-            tasks.append(screenshot_task)
-            is_screenshot = True
-        elif self.description == "mapp":
-            screenshot_task = get_mapp_weibo_screenshot(self.url)
-            tasks.append(screenshot_task)
-            is_screenshot = True
+        if with_screenshot:
+            if not self.description:
+                screenshot_task = get_weibo_screenshot(self.url)
+                tasks.append(screenshot_task)
+                is_screenshot = True
+            elif self.description == "mapp":
+                screenshot_task = get_mapp_weibo_screenshot(self.url)
+                tasks.append(screenshot_task)
+                is_screenshot = True
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         image_count = len(self.images) if self.images else 0
         for i in range(image_count):

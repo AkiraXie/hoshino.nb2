@@ -66,14 +66,14 @@ svimg_notice = on_notice(
     & KeywordsRule("sim", "存图", "saveimg", "ctu", "fav", "fim"),
 ).handle()
 @svimg_notice.handle()
-async def save_img_cmd(
-    event: MessageEvent | GroupReactionEvent, state: T_State
-):
+async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State):
     segs: list[MessageSegment] = state[__SU_IMGLIST]
     cnt = 0
     tasks = []
     is_fav = (
-        True if state.get("__IMG_FAV", False) or state.get(KEYWORD_KEY, "") in ("fav", "fim") else False
+        True
+        if state.get("__IMG_FAV", False) or state.get(KEYWORD_KEY, "") in ("fav", "fim")
+        else False
     )
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}"
