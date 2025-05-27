@@ -89,15 +89,19 @@ class Dynamic:
                     case _:
                         pass
 
-    async def get_message(self) -> list[Message | MessageSegment]:
+    async def get_message(
+        self, with_screenshot: bool = True
+    ) -> list[Message | MessageSegment]:
         msg = [self.name + self.type]
         imgmsg = []
-        img = await get_bili_dynamic_screenshot(
-            self.url, cookies=await get_bilicookies()
-        )
-        if img:
-            msg.append(str(img))
-        else:
+        img = None
+        if with_screenshot:
+            img = await get_bili_dynamic_screenshot(
+                self.url, cookies=await get_bilicookies()
+            )
+            if img:
+                msg.append(str(img))
+        if not img:
             msg.append(self.text)
         await asyncio.sleep(0.5)
         msg.append(self.url)
@@ -112,7 +116,6 @@ class Dynamic:
 async def get_new_dynamic(uid: int) -> Dynamic:
     url = dynamic_url.format(uid=uid)
     h = headers.copy()
-    h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
 
     res = await aiohttpx.get(url, headers=h, cookies=await get_bilicookies())
     data = res.json.get("data", {})
@@ -128,8 +131,6 @@ async def get_new_dynamic(uid: int) -> Dynamic:
 async def get_dynamic(uid: int, ts) -> List[Dynamic]:
     url = dynamic_url.format(uid=uid)
     h = headers.copy()
-    h.update({"origin": "https://t.bilibili.com", "referer": "https://t.bilibili.com/"})
-
     res = await aiohttpx.get(url, headers=h, cookies=await get_bilicookies())
     data = res.json.get("data", {})
 

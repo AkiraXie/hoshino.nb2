@@ -132,18 +132,20 @@ async def get_bili_dyn():
         min_ts = time_rows[0].time
         dyns = await get_dynamic(uid, min_ts)
         for dyn in dyns:
+            sv.logger.info(f"获取到新的动态: {dyn.name} ({dyn.url} {dyn.time})")
             dyn_queue.put(dyn)
         await asyncio.sleep(2)
     await asyncio.sleep(0.5)
 
 
-@scheduled_job("interval", seconds=60, jitter=10, id="推送bili动态")
+@scheduled_job("interval", seconds=75, jitter=10, id="推送bili动态")
 async def push_bili_dyn():
     groups = await sv.get_enable_groups()
     dyn = dyn_queue.get()
     if not dyn:
         await asyncio.sleep(0.5)
         return
+    sv.logger.info(f"推送新动态: {dyn.name} ({dyn.url} {dyn.time})")
     uid = dyn.uid
     rows: List[db] = db.select().where(db.uid == uid)
     _gids = [row.group for row in rows]
@@ -155,7 +157,7 @@ async def push_bili_dyn():
         dyn_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msgs = await dyn.get_message()
+    msgs = await dyn.get_message(False)
     for gid in gids:
         await asyncio.sleep(0.35)
         bot = groups[gid][0]
