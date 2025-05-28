@@ -101,8 +101,7 @@ class Dynamic:
             )
             if img:
                 msg.append(str(img))
-        if not img:
-            msg.append(self.text)
+        msg.append(self.text)
         await asyncio.sleep(0.5)
         msg.append(self.url)
         res = [Message("\n".join(msg))]
