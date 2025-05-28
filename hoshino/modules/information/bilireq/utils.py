@@ -122,13 +122,12 @@ async def get_dynamic(uid: int, ts) -> List[Dynamic]:
     url = dynamic_url
     h = headers.copy()
     params = {
-        {
-            "host_mid": uid,
-            "timezone_offset": -480,
-            "offset": "",
-            "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
-        }
+        "host_mid": uid,
+        "timezone_offset": -480,
+        "offset": "",
+        "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
     }
+
     res = await aiohttpx.get(
         url, params=params, headers=h, cookies=await get_bilicookies()
     )
