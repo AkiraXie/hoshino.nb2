@@ -55,7 +55,6 @@ class Post:
         ms = None
         videos = self.videos
         cts = []
-        links = []
         if self.nickname:
             msg.append(self.nickname + "微博~")
         if self.content:
@@ -105,11 +104,11 @@ class Post:
             msg.append("\n".join(cts))
 
         if self.repost and self.repost.url:
-            links.append("转发详情: " + self.repost.url)
+            msg.append("源微博详情: " + self.repost.url)
         if self.url:
-            links.append("微博详情: " + self.url)
+            msg.append("微博详情: " + self.url)
 
-        res = [Message("\n".join(msg)), Message("\n".join(links))]
+        res = [Message("\n".join(msg))]
         res.extend(immsg)
         if videos:
             tasks = []
@@ -310,6 +309,9 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> Post | None:
                     break
     page_info = rj.get("page_info", {})
     if page_info.get("object_type") == "video":
+        page_pic = page_info.get("page_pic")
+        if page_pic:
+            pic_urls.append(page_pic)
         media_info = page_info.get("media_info")
         if media_info:
             for k in [

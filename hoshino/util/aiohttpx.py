@@ -57,7 +57,9 @@ async def get(
             )
         return res
     except Exception as e:
-        logger.error(f"GET request failed - URL: {url}, params: {kwargs}, error: {e}")
+        logger.error(
+            f"GET request failed - URL: {url}, params: {kwargs}, cookies: {cookies}, timeout: {timeout}, error: {e}"
+        )
         raise
 
 
@@ -80,7 +82,9 @@ async def post(
             )
         return res
     except Exception as e:
-        logger.error(f"POST request failed - URL: {url}, params: {kwargs}, error: {e}")
+        logger.error(
+            f"POST request failed - URL: {url}, params: {kwargs}, cookies: {cookies}, timeout: {timeout}, error: {e}"
+        )
         raise
 
 
@@ -95,5 +99,7 @@ async def head(
             res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
         return res
     except Exception as e:
-        logger.error(f"HEAD request failed - URL: {url}, params: {kwargs}, error: {e}")
+        logger.error(
+            f"HEAD request failed - URL: {url}, params: {kwargs}, cookies: {cookies}, timeout: {timeout}, error: {e}"
+        )
         raise
