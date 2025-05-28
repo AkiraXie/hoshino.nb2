@@ -3,7 +3,7 @@ from httpx import AsyncClient
 import httpx
 from httpx import URL
 from loguru import logger
-import simplejson 
+import simplejson
 
 
 class BaseResponse:
@@ -39,12 +39,10 @@ class Response(BaseResponse):
 
 
 async def get(
-    url: str, *, verify: bool = True, timeout:float=10, cookies: dict = {}, **kwargs
+    url: str, *, verify: bool = True, timeout: float = 10, cookies: dict = {}, **kwargs
 ) -> Response:
     try:
-        async with AsyncClient(
-            cookies=cookies, verify=verify
-        ) as session:
+        async with AsyncClient(cookies=cookies, verify=verify) as session:
             resp = await session.get(url, **kwargs)
             res = Response(
                 resp.url,
@@ -67,10 +65,10 @@ async def post(
     url: str, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
 ) -> Response:
     try:
-        async with AsyncClient(
-            cookies=cookies, verify=verify
-        ) as session:
-            resp = await session.post(url,  timeout=httpx.Timeout(timeout,read=timeout*3),**kwargs)
+        async with AsyncClient(cookies=cookies, verify=verify) as session:
+            resp = await session.post(
+                url, timeout=httpx.Timeout(timeout, read=timeout * 3), **kwargs
+            )
             res = Response(
                 resp.url,
                 resp.content,
@@ -92,10 +90,10 @@ async def head(
     url: str, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
 ) -> BaseResponse:
     try:
-        async with AsyncClient(
-            cookies=cookies, verify=verify
-        ) as session:
-            resp = await session.head(url,  timeout=httpx.Timeout(timeout,read=timeout*3),**kwargs)
+        async with AsyncClient(cookies=cookies, verify=verify) as session:
+            resp = await session.head(
+                url, timeout=httpx.Timeout(timeout, read=timeout * 3), **kwargs
+            )
             res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
         return res
     except Exception as e:
