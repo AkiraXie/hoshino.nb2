@@ -3,7 +3,7 @@ from httpx import AsyncClient
 import httpx
 from httpx import URL
 from loguru import logger
-from json import loads
+import simplejson 
 
 
 class BaseResponse:
@@ -35,53 +35,65 @@ class Response(BaseResponse):
 
     @property
     def json(self) -> Any:
-        return self._resp.json()
+        return simplejson.loads(self.content)
 
 
 async def get(
     url: str, *, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
 ) -> Response:
-    async with AsyncClient(
-        cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
-    ) as session:
-        resp = await session.get(url, **kwargs)
-        res = Response(
-            resp.url,
-            resp.content,
-            resp.status_code,
-            resp.headers,
-            _resp=resp,
-            text=resp.text,
-            cookies=resp.cookies,
-        )
-    return res
+    try:
+        async with AsyncClient(
+            cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+        ) as session:
+            resp = await session.get(url, **kwargs)
+            res = Response(
+                resp.url,
+                resp.content,
+                resp.status_code,
+                resp.headers,
+                _resp=resp,
+                text=resp.text,
+                cookies=resp.cookies,
+            )
+        return res
+    except Exception as e:
+        logger.error(f"GET request failed - URL: {url}, params: {kwargs}, error: {e}")
+        raise
 
 
 async def post(
     url: str, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
 ) -> Response:
-    async with AsyncClient(
-        cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
-    ) as session:
-        resp = await session.post(url, **kwargs)
-        res = Response(
-            resp.url,
-            resp.content,
-            resp.status_code,
-            resp.headers,
-            _resp=resp,
-            text=resp.text,
-            cookies=resp.cookies,
-        )
-    return res
+    try:
+        async with AsyncClient(
+            cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+        ) as session:
+            resp = await session.post(url, **kwargs)
+            res = Response(
+                resp.url,
+                resp.content,
+                resp.status_code,
+                resp.headers,
+                _resp=resp,
+                text=resp.text,
+                cookies=resp.cookies,
+            )
+        return res
+    except Exception as e:
+        logger.error(f"POST request failed - URL: {url}, params: {kwargs}, error: {e}")
+        raise
 
 
 async def head(
     url: str, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
 ) -> BaseResponse:
-    async with AsyncClient(
-        cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
-    ) as session:
-        resp = await session.head(url, **kwargs)
-        res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
-    return res
+    try:
+        async with AsyncClient(
+            cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+        ) as session:
+            resp = await session.head(url, **kwargs)
+            res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
+        return res
+    except Exception as e:
+        logger.error(f"HEAD request failed - URL: {url}, params: {kwargs}, error: {e}")
+        raise

@@ -105,7 +105,7 @@ async def _(state: T_State):
             sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
-        ms = await post.get_msg_with_screenshot()
+        ms = await post.get_msg()
         if not ms:
             return
         await send(ms[0])
@@ -119,7 +119,7 @@ async def _(state: T_State):
             sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
-        ms = await post.get_msg_with_screenshot()
+        ms = await post.get_msg()
         if not ms:
             return
         await send(ms[0])
@@ -132,7 +132,7 @@ async def _(state: T_State):
             sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
-        ms = await post.get_msg_with_screenshot()
+        ms = await post.get_msg()
         if not ms:
             return
         await send(ms[0])

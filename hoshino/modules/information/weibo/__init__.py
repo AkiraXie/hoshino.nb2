@@ -115,11 +115,11 @@ async def list_subscriptions(bot: Bot, event: Event):
         await bot.send(event, "本群没有订阅微博用户")
         return
     msg = "当前订阅的微博用户：\n"
-    for row in rows:
+    for i,row in enumerate(rows):
         uid = row.uid
         name = row.name
         ts = datetime.fromtimestamp(row.time).strftime("%Y-%m-%d %H:%M:%S")
-        msg += f"UID: {uid}, 昵称: {name}, 上次更新时间: {ts}\n"
+        msg += f"{i+1}. UID: {uid}, 昵称: {name}, 上次更新时间: {ts}\n"
     await bot.send(event, msg)
 
 
@@ -141,7 +141,7 @@ async def see_weibo(bot: Bot, event: Event):
         else:
             keywords = []
         post = await get_sub_new(uid, 0, keywords=keywords)
-        msg = await post.get_msg_with_screenshot()
+        msg = await post.get_msg()
         if not msg:
             await bot.send(event, f"没有获取到{arg}微博")
             return
@@ -152,7 +152,7 @@ async def see_weibo(bot: Bot, event: Event):
             await send_segments(message=msg[1:])
 
 
-@scheduled_job("interval", seconds=180, id="获取微博更新", jitter=40)
+@scheduled_job("interval", seconds=120, id="获取微博更新", jitter=30)
 async def fetch_weibo_updates():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -206,7 +206,7 @@ async def push_weibo_updates():
         weibo_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msgs = await dyn.get_msg_with_screenshot(False)
+    msgs = await dyn.get_msg(False)
     for gid in gids:
         await asyncio.sleep(0.5)
         bot = groups[gid][0]
@@ -254,7 +254,7 @@ async def look_weibo(bot: Bot, event: Event):
     if not post:
         await bot.send(event, "获取微博失败")
         raise FinishedException
-    msgs = await post.get_msg_with_screenshot()
+    msgs = await post.get_msg()
     if not msgs:
         await bot.send(event, "获取微博失败")
         raise FinishedException
