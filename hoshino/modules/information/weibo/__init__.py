@@ -19,6 +19,7 @@ from .utils import (
 from asyncio import Queue
 from nonebot.permission import SUPERUSER
 import re
+import random
 
 
 class PostQueue(Queue):
@@ -185,81 +186,57 @@ async def fetch_weibo_updates():
     await asyncio.sleep(0.5)
 
 
-@scheduled_job("interval", seconds=50, id="推送微博更新", jitter=20)
-async def push_weibo_updates():
-    groups = await sv.get_enable_groups()
-    dyn = weibo_queue.get()
-    if not dyn:
-        await asyncio.sleep(0.5)
-        return
-    sv.logger.info(f"推送微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}")
-    uid = dyn.uid
-    rows: List[db] = db.select().where(db.uid == uid)
-    _gids = [row.group for row in rows]
-    gids = list(filter(lambda x: x in groups, _gids))
-    if not gids:
-        for gid in _gids:
-            await asyncio.sleep(0.1)
+async def handle_weibo_dyn(dyn: Post, sem):
+    async with sem:
+        sv.logger.info(
+            f"推送微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}"
+        )
+        uid = dyn.uid
+        rows: List[db] = db.select().where(db.uid == uid)
+        _gids = [row.group for row in rows]
+        groups = await sv.get_enable_groups()
+        gids = list(filter(lambda x: x in groups, _gids))
+        if not gids:
+            for gid in _gids:
+                await asyncio.sleep(0.1)
+                db.update(time=dyn.timestamp, name=dyn.nickname).where(
+                    db.uid == uid, db.group == gid
+                ).execute()
+            weibo_queue.remove_id(dyn.id)
+            await asyncio.sleep(0.5)
+            return
+        msgs = await dyn.get_msg(False)
+        for gid in gids:
+            await asyncio.sleep(random.uniform(0.2, 0.5))
+            bot = groups[gid][0]
             db.update(time=dyn.timestamp, name=dyn.nickname).where(
                 db.uid == uid, db.group == gid
             ).execute()
+            try:
+                if msgs:
+                    m = msgs[0]
+                    await bot.send_group_msg(group_id=gid, message=m)
+                    await asyncio.sleep(random.uniform(0.2, 0.5))
+                    await send_group_segments(bot, gid, msgs[1:13])
+                    if len(msgs) > 13:
+                        await send_group_segments(bot, gid, msgs[13:])
+                else:
+                    await bot.send(gid, "获取微博失败")
+            except Exception as e:
+                sv.logger.error(f"发送 weibo post 失败: {e}")
         weibo_queue.remove_id(dyn.id)
-        await asyncio.sleep(0.5)
-        return
-    msgs = await dyn.get_msg(False)
-    for gid in gids:
-        await asyncio.sleep(0.5)
-        bot = groups[gid][0]
-        db.update(time=dyn.timestamp, name=dyn.nickname).where(
-            db.uid == uid, db.group == gid
-        ).execute()
-        try:
-            if msgs:
-                m = msgs[0]
-                await bot.send_group_msg(group_id=gid, message=m)
-                await asyncio.sleep(1)
-                await send_group_segments(bot, gid, msgs[1:13])
-                if len(msgs) > 13:
-                    await asyncio.sleep(1)
-                    await send_group_segments(bot, gid, msgs[13:])
-            else:
-                await bot.send(gid, "获取微博失败")
-        except Exception as e:
-            sv.logger.error(f"发送 weibo post 失败: {e}")
-    weibo_queue.remove_id(dyn.id)
-    await asyncio.sleep(0.5)
 
 
-@sv.on_command("看微博", aliases=("kkweibo"), permission=SUPERUSER, block=True)
-async def look_weibo(bot: Bot, event: Event):
-    text = event.get_plaintext().strip()
-    reg = r"(http://|https://){0,1}weibo\.com\/(\w+)\/(\w+)"
-    reg2 = r"(http://|https://){0,1}m\.weibo\.cn\/(detail|status)\/(\w+)"
-    reg3 = r"(http://|https://){0,1}mapp\.api\.weibo\.cn\/fx\/(\w+)\.html"
-    match = re.search(reg, text)
-    match2 = re.search(reg2, text)
-    match3 = re.search(reg3, text)
-    if not match and not match2 and not match3:
-        await bot.send(event, "无效的微博链接")
-        raise FinishedException
-    if match:
-        _, _, bid = match.groups()
-        post = await parse_weibo_with_bid(bid)
-    if match2:
-        _, _, mid = match2.groups()
-        post = await parse_weibo_with_bid(mid)
-    if match3:
-        url = match3.group(0)
-        post = await parse_mapp_weibo(url)
-    if not post:
-        await bot.send(event, "获取微博失败")
-        raise FinishedException
-    msgs = await post.get_msg()
-    if not msgs:
-        await bot.send(event, "获取微博失败")
-        raise FinishedException
-    gid = event.group_id
-    m = msgs[0]
-    await bot.send_group_msg(group_id=gid, message=m)
-    await asyncio.sleep(0.2)
-    await send_group_segments(bot, gid, msgs[1:])
+async def weibo_dispatcher():
+    sem = asyncio.Semaphore(5)
+    while True:
+        dyn = weibo_queue.get()
+        if not dyn:
+            await asyncio.sleep(0.5)
+            continue
+        asyncio.create_task(handle_weibo_dyn(dyn, sem))
+
+
+@on_startup
+async def start_weibo_dispatcher():
+    asyncio.create_task(weibo_dispatcher())
