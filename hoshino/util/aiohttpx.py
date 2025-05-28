@@ -39,11 +39,11 @@ class Response(BaseResponse):
 
 
 async def get(
-    url: str, *, verify: bool = True, timeout=10, cookies: dict = {}, **kwargs
+    url: str, *, verify: bool = True, timeout:float=10, cookies: dict = {}, **kwargs
 ) -> Response:
     try:
         async with AsyncClient(
-            cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+            cookies=cookies, verify=verify
         ) as session:
             resp = await session.get(url, **kwargs)
             res = Response(
@@ -68,9 +68,9 @@ async def post(
 ) -> Response:
     try:
         async with AsyncClient(
-            cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+            cookies=cookies, verify=verify
         ) as session:
-            resp = await session.post(url, **kwargs)
+            resp = await session.post(url,  timeout=httpx.Timeout(timeout,read=timeout*3),**kwargs)
             res = Response(
                 resp.url,
                 resp.content,
@@ -93,9 +93,9 @@ async def head(
 ) -> BaseResponse:
     try:
         async with AsyncClient(
-            cookies=cookies, timeout=httpx.Timeout(timeout), verify=verify
+            cookies=cookies, verify=verify
         ) as session:
-            resp = await session.head(url, **kwargs)
+            resp = await session.head(url,  timeout=httpx.Timeout(timeout,read=timeout*3),**kwargs)
             res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
         return res
     except Exception as e:
