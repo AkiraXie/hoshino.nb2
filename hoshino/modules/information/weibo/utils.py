@@ -46,7 +46,7 @@ class Post:
     repost: "Post | None" = None
     """转发的Post"""
 
-    async def get_msg_with_screenshot(
+    async def get_msg(
         self, with_screenshot: bool = True
     ) -> list[Message | MessageSegment]:
         """获取消息列表, 包含截图, 第一个是总览，剩下的是图片或者视频"""
