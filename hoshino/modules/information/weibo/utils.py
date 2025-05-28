@@ -78,16 +78,13 @@ class Post:
                 headers = {"referer": "https://weibo.com"}
                 tasks.append(aiohttpx.get(image_url, headers=headers))
         screenshot_task = None
-        is_screenshot = False
         if with_screenshot:
             if not self.description:
                 screenshot_task = get_weibo_screenshot(self.url)
                 tasks.append(screenshot_task)
-                is_screenshot = True
             elif self.description == "mapp":
                 screenshot_task = get_mapp_weibo_screenshot(self.url)
                 tasks.append(screenshot_task)
-                is_screenshot = True
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         image_count = len(self.images) if self.images else 0
         for i in range(image_count):
@@ -100,12 +97,12 @@ class Post:
             else:
                 immsg.append(MessageSegment.image(self.images[i]))
 
-        if is_screenshot:
+        if screenshot_task:
             ms = responses[-1] if isinstance(responses[-1], MessageSegment) else None
             if ms:
                 msg.append(str(ms))
-            else:
-                msg.append("\n".join(cts))
+        if not ms:
+            msg.append("\n".join(cts))
 
         if self.repost and self.repost.url:
             links.append("转发详情: " + self.repost.url)
