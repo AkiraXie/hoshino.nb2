@@ -157,7 +157,7 @@ async def push_bili_dyn():
         dyn_queue.remove_id(dyn.id)
         await asyncio.sleep(0.5)
         return
-    msgs = await dyn.get_message(False)
+    msgs = await dyn.get_message()
     for gid in gids:
         await asyncio.sleep(0.35)
         bot = groups[gid][0]
