@@ -118,7 +118,7 @@ async def _(bot: Bot, event: Event):
         await send_segments(msgs)
 
 
-@scheduled_job("interval", seconds=245, jitter=15, id="获取bili动态")
+@scheduled_job("interval", seconds=135, jitter=15, id="获取bili动态")
 async def get_bili_dyn():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -138,7 +138,7 @@ async def get_bili_dyn():
     await asyncio.sleep(0.5)
 
 
-@scheduled_job("interval", seconds=75, jitter=10, id="推送bili动态")
+@scheduled_job("interval", seconds=55, jitter=13, id="推送bili动态")
 async def push_bili_dyn():
     groups = await sv.get_enable_groups()
     dyn = dyn_queue.get()
