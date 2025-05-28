@@ -10,9 +10,7 @@ from time import time
 from functools import partial
 
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
-dynamic_url = (
-    "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space?host_mid={uid}"
-)
+dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
 
 headers = {
@@ -112,25 +110,28 @@ class Dynamic:
         return res
 
 
-async def get_new_dynamic(uid: int) -> Dynamic:
-    url = dynamic_url.format(uid=uid)
-    h = headers.copy()
-
-    res = await aiohttpx.get(url, headers=h, cookies=await get_bilicookies())
-    data = res.json.get("data", {})
-    if not data:
+async def get_new_dynamic(uid: int) -> Dynamic | None:
+    res = get_dynamic(uid, time() - 86400)
+    if isinstance(res, list) and res:
+        return res[0]
+    else:
         return None
-    cards = data.get("items", [])
-    if not cards:
-        return None
-    dyn = Dynamic(cards[0])
-    return dyn
 
 
 async def get_dynamic(uid: int, ts) -> List[Dynamic]:
-    url = dynamic_url.format(uid=uid)
+    url = dynamic_url
     h = headers.copy()
-    res = await aiohttpx.get(url, headers=h, cookies=await get_bilicookies())
+    params = {
+        {
+            "host_mid": uid,
+            "timezone_offset": -480,
+            "offset": "",
+            "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
+        }
+    }
+    res = await aiohttpx.get(
+        url, params=params, headers=h, cookies=await get_bilicookies()
+    )
     data = res.json.get("data", {})
 
     if not data:
@@ -147,17 +148,6 @@ async def get_dynamic(uid: int, ts) -> List[Dynamic]:
 async def get_user_name(uid: int):
     dyn = await get_new_dynamic(uid)
     return dyn.name
-
-
-async def get_live_status(uids: List[int]) -> Dict[str, Dict]:
-    res = await aiohttpx.post(
-        live_url,
-        data=json.dumps({"uids": uids}),
-        headers=headers,
-        cookies=await get_bilicookies(),
-    )
-    data: Dict[str, Dict] = res.json["data"]
-    return data
 
 
 db_path = os.path.join(db_dir, "bilidata.db")

@@ -5,7 +5,7 @@ from hoshino.schedule import scheduled_job
 from hoshino import Service, Bot, Event, MessageSegment
 from datetime import datetime
 from hoshino.typing import FinishedException
-from hoshino.util import send, send_group_segments, send_segments
+from hoshino.util import send_group_segments, send_segments
 from .utils import (
     Dynamic,
     DynamicDB as db,
@@ -134,7 +134,7 @@ async def get_bili_dyn():
         for dyn in dyns:
             sv.logger.info(f"获取到新的动态: {dyn.name} ({dyn.url} {dyn.time})")
             dyn_queue.put(dyn)
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.3)
     await asyncio.sleep(0.5)
 
 

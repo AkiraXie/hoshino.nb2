@@ -115,11 +115,11 @@ async def list_subscriptions(bot: Bot, event: Event):
         await bot.send(event, "本群没有订阅微博用户")
         return
     msg = "当前订阅的微博用户：\n"
-    for i,row in enumerate(rows):
+    for i, row in enumerate(rows):
         uid = row.uid
         name = row.name
         ts = datetime.fromtimestamp(row.time).strftime("%Y-%m-%d %H:%M:%S")
-        msg += f"{i+1}. UID: {uid}, 昵称: {name}, 上次更新时间: {ts}\n"
+        msg += f"{i + 1}. UID: {uid}, 昵称: {name}, 上次更新时间: {ts}\n"
     await bot.send(event, msg)
 
 
