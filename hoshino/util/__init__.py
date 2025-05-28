@@ -309,6 +309,8 @@ def construct_nodes(
 async def send_segments(
     message: List[Message | MessageSegment | str],
 ):
+    if not message:
+        return
     if len(message) == 1:
         await send(message[0])
         return
@@ -331,6 +333,8 @@ async def send_group_segments(
     group_id: int,
     message: List[Message | MessageSegment | str],
 ):
+    if not message:
+        return
     if len(message) == 1:
         await bot.send_group_msg(group_id=group_id, message=message[0])
         return
