@@ -2,7 +2,8 @@ import asyncio
 from collections import defaultdict
 from typing import List
 from hoshino.schedule import scheduled_job
-from hoshino import Service, Bot, Event, MessageSegment
+from hoshino import Service, Bot, Event, on_startup
+import random
 from datetime import datetime
 from hoshino.typing import FinishedException
 from hoshino.util import send_group_segments, send_segments
@@ -138,33 +139,43 @@ async def get_bili_dyn():
     await asyncio.sleep(0.5)
 
 
-@scheduled_job("interval", seconds=55, jitter=13, id="推送bili动态")
-async def push_bili_dyn():
-    groups = await sv.get_enable_groups()
-    dyn = dyn_queue.get()
-    if not dyn:
-        await asyncio.sleep(0.5)
-        return
-    sv.logger.info(f"推送新动态: {dyn.name} ({dyn.url} {dyn.time})")
-    uid = dyn.uid
-    rows: List[db] = db.select().where(db.uid == uid)
-    _gids = [row.group for row in rows]
-    gids = list(filter(lambda x: x in groups, _gids))
-    if not gids:
-        for gid in _gids:
-            await asyncio.sleep(0.1)
+async def handle_bili_dyn(dyn: Dynamic, sem):
+    async with sem:
+        sv.logger.info(f"推送新动态: {dyn.name} ({dyn.url} {dyn.time})")
+        uid = dyn.uid
+        rows: List[db] = db.select().where(db.uid == uid)
+        _gids = [row.group for row in rows]
+        groups = await sv.get_enable_groups()
+        gids = list(filter(lambda x: x in groups, _gids))
+        if not gids:
+            for gid in _gids:
+                await asyncio.sleep(0.1)
+                db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
+            dyn_queue.remove_id(dyn.id)
+            await asyncio.sleep(0.5)
+            return
+        msgs = await dyn.get_message()
+        for gid in gids:
+            await asyncio.sleep(random.uniform(0.2, 0.5))
+            bot = groups[gid][0]
             db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
+            try:
+                await send_group_segments(bot, gid, msgs)
+            except Exception as e:
+                sv.logger.error(f"发送 bili 动态失败: {e}")
         dyn_queue.remove_id(dyn.id)
-        await asyncio.sleep(0.5)
-        return
-    msgs = await dyn.get_message()
-    for gid in gids:
-        await asyncio.sleep(0.35)
-        bot = groups[gid][0]
-        db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
-        try:
-            await send_group_segments(bot, gid, msgs)
-        except Exception as e:
-            sv.logger.error(f"发送 bili 动态失败: {e}")
-    dyn_queue.remove_id(dyn.id)
-    await asyncio.sleep(0.5)
+
+
+async def bili_dyn_dispatcher():
+    sem = asyncio.Semaphore(5)
+    while True:
+        dyn = dyn_queue.get()
+        if not dyn:
+            await asyncio.sleep(0.5)
+            continue
+        asyncio.create_task(handle_bili_dyn(dyn, sem))
+
+
+@on_startup
+async def start_bili_dyn_dispatcher():
+    asyncio.create_task(bili_dyn_dispatcher())

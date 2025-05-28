@@ -5,7 +5,7 @@ import httpx
 from httpx import URL
 from loguru import logger
 import simplejson
-from hoshino import on_startup,on_shutdown
+from hoshino import on_startup, on_shutdown
 import ssl
 
 _timeout = 5.0
@@ -20,19 +20,20 @@ async def init_httpx_client():
     _client = AsyncClient(
         timeout=httpx.Timeout(_timeout, read=_timeout * 3),
         limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
-        verify=True
+        verify=True,
     )
-    
+
     unverified_context = ssl._create_unverified_context()
     unverified_context.check_hostname = False
     unverified_context.verify_mode = ssl.CERT_NONE
-    
+
     _client_unverified = AsyncClient(
         timeout=httpx.Timeout(_timeout, read=_timeout * 3),
         limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
-        verify=unverified_context
+        verify=unverified_context,
     )
     logger.info("HTTPX clients initialized successfully.")
+
 
 @on_shutdown
 async def close_httpx_client():
@@ -45,17 +46,19 @@ async def close_httpx_client():
         _client_unverified = None
     logger.info("HTTPX clients closed successfully.")
 
+
 async def get_client(verify_ssl: bool = True):
     global _client, _client_unverified
     target_client = _client if verify_ssl else _client_unverified
-    
+
     if target_client is None:
         async with _client_lock:
-            if (verify_ssl and _client is None) or (not verify_ssl and _client_unverified is None):
+            if (verify_ssl and _client is None) or (
+                not verify_ssl and _client_unverified is None
+            ):
                 await init_httpx_client()
-    
-    return _client if verify_ssl else _client_unverified
 
+    return _client if verify_ssl else _client_unverified
 
 
 class BaseResponse:
@@ -96,8 +99,8 @@ async def get(
     try:
         client = await get_client(verify_ssl=verify)
         if timeout is not None:
-            kwargs['timeout'] = timeout
-        resp = await client.get(url,cookies=cookies, **kwargs)
+            kwargs["timeout"] = timeout
+        resp = await client.get(url, cookies=cookies, **kwargs)
         res = Response(
             resp.url,
             resp.content,
@@ -121,8 +124,8 @@ async def post(
     try:
         client = await get_client(verify_ssl=verify)
         if timeout is not None:
-            kwargs['timeout'] = timeout
-        resp = await client.post(url,cookies=cookies, **kwargs)
+            kwargs["timeout"] = timeout
+        resp = await client.post(url, cookies=cookies, **kwargs)
         res = Response(
             resp.url,
             resp.content,
@@ -146,15 +149,10 @@ async def head(
     try:
         client = await get_client(verify_ssl=verify)
         if timeout is not None:
-            kwargs['timeout'] = timeout
-        resp = await client.head(
-                url, **kwargs
-            )
+            kwargs["timeout"] = timeout
+        resp = await client.head(url, **kwargs)
         res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
         return res
     except Exception as e:
-        logger.error(
-            f"HEAD request failed - URL: {url}, params: {kwargs},  error: {e}"
-        )
+        logger.error(f"HEAD request failed - URL: {url}, params: {kwargs},  error: {e}")
         raise
-
