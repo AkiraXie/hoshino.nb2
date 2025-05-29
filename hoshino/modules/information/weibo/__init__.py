@@ -13,8 +13,6 @@ from .utils import (
     WeiboDB as db,
     Post,
     get_sub_new,
-    parse_weibo_with_bid,
-    parse_mapp_weibo,
 )
 from asyncio import Queue
 from nonebot.permission import SUPERUSER
@@ -65,9 +63,9 @@ async def add_subscription(bot: Bot, event: Event):
             uid = msg[0]
             keywords = msg[1:]
         if not uid.isdecimal():
-            match = re.search(r"weibo\.com/u/(\d+)", uid)
+            match = re.search(r"weibo\.com\/(u\/)?(\d+)", uid)
             if match:
-                uid = match.group(1)
+                uid = match.group(2)
             else:
                 await bot.send(
                     event, "无效的UID格式，请输入数字ID或完整的微博个人主页链接"
