@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from typing import List
+from typing import List, Set
 from hoshino.schedule import scheduled_job
 from hoshino import Service, Bot, Event, on_startup
 import random
@@ -40,8 +40,86 @@ class DynamicQueue(Queue):
         self._set.discard(id)
 
 
-dyn_queue = DynamicQueue()
+class UidManager:
+    def __init__(self):
+        self._uids: Set[int] = set()
+        self._uid_queue = asyncio.Queue()
+        self._lock = asyncio.Lock()
+        self._processing_uids: Set[int] = set()  # 正在处理的 UID
+    
+    async def init_from_db(self):
+        """从数据库初始化 UID 列表"""
+        async with self._lock:
+            uids = [row.uid for row in db.select(db.uid).distinct()]
+            self._uids = set(uids)
+            # 清空队列并重新填充
+            while not self._uid_queue.empty():
+                try:
+                    self._uid_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            for uid in self._uids:
+                await self._uid_queue.put(uid)
+            sv.logger.info(f"初始化 Bili UID 列表，共 {len(self._uids)} 个")
+    
+    async def add_uid(self, uid: int):
+        """添加 UID"""
+        async with self._lock:
+            if uid not in self._uids:
+                self._uids.add(uid)
+                await self._uid_queue.put(uid)
+                sv.logger.info(f"添加 Bili UID: {uid}")
+    
+    async def remove_uid(self, uid: int):
+        """删除 UID（如果该 UID 没有其他群订阅）"""
+        # 检查是否还有其他群订阅此 UID
+        rows = db.select().where(db.uid == uid).execute()
+        if not rows:
+            async with self._lock:
+                if uid in self._uids:
+                    self._uids.remove(uid)
+                    self._processing_uids.discard(uid)  # 同时从处理列表移除
+                    sv.logger.info(f"删除 Bili UID: {uid}")
+    
+    async def get_next_uid(self) -> int:
+        """获取下一个要检查的 UID"""
+        max_attempts = len(self._uids) if self._uids else 1
+        attempts = 0
+        
+        while attempts < max_attempts:
+            if self._uid_queue.empty():
+                return None
 
+            uid = await self._uid_queue.get()
+
+            async with self._lock:
+                if uid in self._uids and uid not in self._processing_uids:
+                    # UID 有效且未在处理中
+                    self._processing_uids.add(uid)
+                    await self._uid_queue.put(uid)  # 重新放入队列
+                    return uid
+                elif uid in self._uids:
+                    # UID 有效但正在处理中，跳过并重新放入队列
+                    await self._uid_queue.put(uid)
+                    attempts += 1
+                else:
+                    # UID 已被删除，跳过
+                    attempts += 1
+        
+        return None
+
+    async def finish_processing(self, uid: int):
+        """标记 UID 处理完成"""
+        async with self._lock:
+            self._processing_uids.discard(uid)
+    
+    def get_count(self) -> int:
+        """获取 UID 总数"""
+        return len(self._uids)
+
+
+dyn_queue = DynamicQueue()
+uid_manager = UidManager()
 sv = Service("bilireq", enable_on_default=False)
 tz = timezone("Asia/Shanghai")
 
@@ -59,6 +137,10 @@ async def _(bot: Bot, event: Event):
         raise FinishedException
     ts = datetime.now(tz).timestamp()
     db.replace(group=gid, uid=uid, time=ts, name=name).execute()
+    
+    # 同步更新全局 UID 列表
+    await uid_manager.add_uid(uid)
+    
     await bot.send(event, f"{name} 订阅动态成功")
 
 
@@ -72,8 +154,20 @@ async def _(bot: Bot, event: Event):
     if uid.isdecimal():
         uid = int(uid)
         rows = db.delete().where(db.group == gid, db.uid == uid).execute()
+        # 同步更新全局 UID 列表
+        if rows:
+            await uid_manager.remove_uid(uid)
     else:
-        rows = db.delete().where(db.group == gid, db.name == uid).execute()
+        # 先获取 UID 再删除
+        rows = db.select().where(db.group == gid, db.name == uid).execute()
+        if rows:
+            target_uid = rows[0].uid
+            deleted_rows = db.delete().where(db.group == gid, db.name == uid).execute()
+            if deleted_rows:
+                await uid_manager.remove_uid(target_uid)
+        else:
+            deleted_rows = 0
+        rows = deleted_rows
     if rows:
         await bot.send(event, f"{uid} 删除订阅动态成功")
     else:
@@ -119,29 +213,40 @@ async def _(bot: Bot, event: Event):
         await send_segments(msgs)
 
 
-@scheduled_job("interval", seconds=185, jitter=15, id="获取bili动态")
+@scheduled_job("interval", seconds=4, jitter=1, id="获取bili动态")
 async def get_bili_dyn():
-    uids = [row.uid for row in db.select(db.uid).distinct()]
-    if not uids:
-        await asyncio.sleep(0.5)
+    uid_count = uid_manager.get_count()
+    if uid_count == 0:
+        await asyncio.sleep(1)
         return
-    for uid in uids:
+    
+    uid = await uid_manager.get_next_uid()
+    if not uid:
+        await asyncio.sleep(1)
+        return
+    
+    try:
         rows: List[db] = db.select().where(db.uid == uid)
         if not rows:
-            continue
+            # UID 已无订阅，从管理器中移除
+            await uid_manager.remove_uid(uid)
+            return
+        
         time_rows = sorted(rows, key=lambda x: x.time, reverse=True)
         min_ts = time_rows[0].time
         dyns = await get_dynamic(uid, min_ts)
         if not dyns:
-            await asyncio.sleep(1)
-            continue
+            return
         max_timestamp = max(dyn.time for dyn in dyns)
         for dyn in dyns:
-            dyn.time= max_timestamp
+            dyn.time = max_timestamp
             sv.logger.info(f"获取到新的动态: {dyn.name} ({dyn.url} {dyn.time})")
             dyn_queue.put(dyn)
-        await asyncio.sleep(1)
-    await asyncio.sleep(0.5)
+    except Exception as e:
+        sv.logger.error(f"获取Bili动态失败 UID {uid}: {e}")
+    finally:
+        # 无论成功失败都要标记处理完成
+        await uid_manager.finish_processing(uid)
 
 
 async def handle_bili_dyn(dyn: Dynamic, sem):
@@ -184,4 +289,6 @@ async def bili_dyn_dispatcher():
 
 @on_startup
 async def start_bili_dyn_dispatcher():
+    # 初始化 UID 管理器
+    await uid_manager.init_from_db()
     asyncio.create_task(bili_dyn_dispatcher())
