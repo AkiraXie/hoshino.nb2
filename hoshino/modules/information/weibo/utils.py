@@ -109,21 +109,14 @@ class Post:
             msg.append("微博详情: " + self.url)
 
         res = [Message("\n".join(msg))]
-        res.extend(immsg)
+        if immsg:
+            for i in range(0, len(immsg), 4):
+                group = immsg[i : i + 4]
+                res.append(Message(group))
         if videos:
-            tasks = []
-            for video_url in self.videos:
-                headers = {"referer": "https://weibo.com"}
-                tasks.append(aiohttpx.get(video_url, headers=headers))
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
-            for i, resp in enumerate(responses):
-                if isinstance(resp, Exception):
-                    sv.logger.error(f"Error video image: {resp}")
-                    res.append(MessageSegment.video(self.videos[i]))
-                elif resp.ok:
-                    res.append(MessageSegment.video(resp.content))
-                else:
-                    res.append(MessageSegment.video(self.videos[i]))
+            # no download , or it may cause oom
+            for video in videos:
+                res.append(MessageSegment.video(video))
         return res
 
 
