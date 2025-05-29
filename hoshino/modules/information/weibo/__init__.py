@@ -170,11 +170,13 @@ async def fetch_weibo_updates():
             kw = []
         try:
             dyns = await get_sub_list(uid, min_ts, kw)
+            max_timestamp = max(dyn.timestamp for dyn in dyns)
             for dyn in dyns:
+                dyn.timestamp = max_timestamp
                 b = weibo_queue.put(dyn)
                 if b:
                     sv.logger.info(
-                        f"获取到微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}"
+                        f"获取到微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
                     )
             await asyncio.sleep(0.3)
         except Exception as e:
@@ -187,7 +189,7 @@ async def fetch_weibo_updates():
 async def handle_weibo_dyn(dyn: Post, sem):
     async with sem:
         sv.logger.info(
-            f"推送微博更新: {dyn.id} {dyn.nickname} {dyn.timestamp} {dyn.url}"
+            f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
         )
         uid = dyn.uid
         rows: List[db] = db.select().where(db.uid == uid)
@@ -215,9 +217,7 @@ async def handle_weibo_dyn(dyn: Post, sem):
                     m = msgs[0]
                     await bot.send_group_msg(group_id=gid, message=m)
                     await asyncio.sleep(random.uniform(0.2, 0.5))
-                    await send_group_segments(bot, gid, msgs[1:13])
-                    if len(msgs) > 13:
-                        await send_group_segments(bot, gid, msgs[13:])
+                    await send_group_segments(bot, gid, msgs[1:])
                 else:
                     await bot.send(gid, "获取微博失败")
             except Exception as e:
