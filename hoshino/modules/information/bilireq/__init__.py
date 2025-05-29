@@ -145,6 +145,7 @@ async def handle_bili_dyn(dyn: Dynamic, sem):
         uid = dyn.uid
         rows: List[db] = db.select().where(db.uid == uid)
         _gids = [row.group for row in rows]
+        await asyncio.sleep(random.uniform(1, 5))
         groups = await sv.get_enable_groups()
         gids = list(filter(lambda x: x in groups, _gids))
         if not gids:
@@ -156,7 +157,7 @@ async def handle_bili_dyn(dyn: Dynamic, sem):
             return
         msgs = await dyn.get_message()
         for gid in gids:
-            await asyncio.sleep(random.uniform(0.2, 0.5))
+            await asyncio.sleep(random.uniform(2, 5))
             bot = groups[gid][0]
             db.replace(group=gid, uid=uid, time=dyn.time, name=dyn.name).execute()
             try:
