@@ -186,7 +186,7 @@ async def fetch_weibo_updates():
     await asyncio.sleep(0.5)
 
 
-async def handle_weibo_dyn(dyn: Post, sem):
+async def handle_weibo_dyn(dyn: Post, sem: asyncio.Semaphore):
     async with sem:
         sv.logger.info(
             f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
@@ -194,6 +194,7 @@ async def handle_weibo_dyn(dyn: Post, sem):
         uid = dyn.uid
         rows: List[db] = db.select().where(db.uid == uid)
         _gids = [row.group for row in rows]
+        await asyncio.sleep(random.uniform(1, 5))
         groups = await sv.get_enable_groups()
         gids = list(filter(lambda x: x in groups, _gids))
         if not gids:
@@ -207,7 +208,7 @@ async def handle_weibo_dyn(dyn: Post, sem):
             return
         msgs = await dyn.get_msg(False)
         for gid in gids:
-            await asyncio.sleep(random.uniform(0.2, 0.5))
+            await asyncio.sleep(random.uniform(2, 5))
             bot = groups[gid][0]
             db.update(time=dyn.timestamp, name=dyn.nickname).where(
                 db.uid == uid, db.group == gid
@@ -216,7 +217,7 @@ async def handle_weibo_dyn(dyn: Post, sem):
                 if msgs:
                     m = msgs[0]
                     await bot.send_group_msg(group_id=gid, message=m)
-                    await asyncio.sleep(random.uniform(0.2, 0.5))
+                    await asyncio.sleep(random.uniform(1, 3))
                     await send_group_segments(bot, gid, msgs[1:])
                 else:
                     await bot.send(gid, "获取微博失败")
