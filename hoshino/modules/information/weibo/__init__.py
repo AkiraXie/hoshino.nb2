@@ -151,7 +151,7 @@ async def see_weibo(bot: Bot, event: Event):
             await send_segments(message=msg[1:])
 
 
-@scheduled_job("interval", seconds=120, id="获取微博更新", jitter=30)
+@scheduled_job("interval", seconds=180, id="获取微博更新", jitter=30)
 async def fetch_weibo_updates():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -170,6 +170,9 @@ async def fetch_weibo_updates():
             kw = []
         try:
             dyns = await get_sub_list(uid, min_ts, kw)
+            if not dyns:
+                await asyncio.sleep(1)
+                continue
             max_timestamp = max(dyn.timestamp for dyn in dyns)
             for dyn in dyns:
                 dyn.timestamp = max_timestamp
@@ -178,10 +181,10 @@ async def fetch_weibo_updates():
                     sv.logger.info(
                         f"获取到微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
                     )
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(1)
         except Exception as e:
             sv.logger.error(f"获取微博更新失败: {e}")
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(1)
             continue
     await asyncio.sleep(0.5)
 

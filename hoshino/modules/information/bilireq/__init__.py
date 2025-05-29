@@ -119,7 +119,7 @@ async def _(bot: Bot, event: Event):
         await send_segments(msgs)
 
 
-@scheduled_job("interval", seconds=135, jitter=15, id="获取bili动态")
+@scheduled_job("interval", seconds=185, jitter=15, id="获取bili动态")
 async def get_bili_dyn():
     uids = [row.uid for row in db.select(db.uid).distinct()]
     if not uids:
@@ -132,10 +132,15 @@ async def get_bili_dyn():
         time_rows = sorted(rows, key=lambda x: x.time, reverse=True)
         min_ts = time_rows[0].time
         dyns = await get_dynamic(uid, min_ts)
+        if not dyns:
+            await asyncio.sleep(1)
+            continue
+        max_timestamp = max(dyn.time for dyn in dyns)
         for dyn in dyns:
+            dyn.time= max_timestamp
             sv.logger.info(f"获取到新的动态: {dyn.name} ({dyn.url} {dyn.time})")
             dyn_queue.put(dyn)
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(1)
     await asyncio.sleep(0.5)
 
 
