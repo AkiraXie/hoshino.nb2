@@ -1,20 +1,9 @@
+from __future__ import annotations
 import nonebot
-import os
+from .config import config
 
-driver = nonebot.get_driver()
-hsn_config = driver.config
-hsn_nickname = next(iter(hsn_config.nickname), "Hoshino")
-fav_dir = os.path.join(hsn_config.data, "favorite/")
-img_dir = os.path.join(hsn_config.data, "image/")
-db_dir = os.path.join(hsn_config.data, "db/")
-service_dir = os.path.join(hsn_config.data, "service/")
-os.makedirs(fav_dir, exist_ok=True)
-os.makedirs(img_dir, exist_ok=True)
-os.makedirs(db_dir, exist_ok=True)
-os.makedirs(service_dir, exist_ok=True)
-
-from .typing import Final, Any, Union, T_Handler, Optional, Type
-from .res import RHelper
+from typing import Any, Union, Optional, Type
+from nonebot.typing import T_Handler, T_State
 from nonebot.adapters.onebot.v11 import Adapter, Bot
 from nonebot.adapters.onebot.v11.utils import escape
 from nonebot.params import (
@@ -26,9 +15,20 @@ from nonebot.params import (
     DependParam,
 )
 from nonebot.dependencies import Dependent
-from nonebot.matcher import Matcher, current_bot, current_matcher
+from nonebot.matcher import Matcher, current_bot,current_event
 from .message import MessageSegment, Message, MessageTemplate
 from .event import Event
+
+driver = nonebot.get_driver()
+hsn_nickname = next(iter(config.nickname), "Hoshino")
+fav_dir = config.data_dir / "favorite"
+img_dir = config.data_dir / "image"
+db_dir = config.data_dir / "db"
+service_dir = config.data_dir / "service"
+fav_dir.mkdir(exist_ok=True)
+img_dir.mkdir(exist_ok=True)
+db_dir.mkdir(exist_ok=True)
+service_dir.mkdir(exist_ok=True)
 
 # patch bot.send
 
@@ -190,25 +190,10 @@ def got(
 
 Matcher.got = got
 
-"""
-`R`本身是一个字符串，并重载了`.`,`+`,`()`等运算符,但屏蔽了对字符串本身进行修改的一些操作。
-
-**请不要对`R`进行赋值操作！**
-
-并且对图片对象进行了取`CQcode`和`open()`的操作。
-    
-e.g：
-    
-`R.img.priconne`==`R.img('priconne')`==`R+'img'+'priconne'`
-"""
-R: Final[RHelper] = RHelper()
-
-
 on_startup = driver.on_startup
 on_shutdown = driver.on_shutdown
 
 from .permission import SUPERUSER
 from .schedule import scheduled_job, add_job
-from .typing import T_State
 from .service import Service
 from .util import aiohttpx, get_bot_list, sucmd, sucmds

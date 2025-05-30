@@ -1,7 +1,7 @@
 from nonebot.log import logger, default_format
 import os
 import sys
-from . import hsn_config
+from . import config
 from .service import _loaded_matchers
 
 
@@ -59,7 +59,7 @@ log_error_root = "logs/error/"
 os.makedirs(log_root, exist_ok=True)
 logger.remove()
 hoshino_filter = Filter()
-hoshino_filter.level = "DEBUG" if hsn_config.debug else "INFO"
+hoshino_filter.level = "DEBUG" if config.debug else "INFO"
 logger.add(
     sys.stdout,
     colorize=True,

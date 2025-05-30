@@ -3,11 +3,14 @@ import re
 import os
 import json
 from collections import defaultdict
+from typing import Iterable, Optional, Union
 import nonebot
 from nonebot.params import Depends
-from nonebot.matcher import current_bot, current_event
 from nonebot.message import run_preprocessor
-from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment, Matcher
+from nonebot.typing import T_State
+from nonebot.exception import RejectedException, PausedException, FinishedException
+from nonebot.rule import ArgumentParser,to_me, command, shell_command
+from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment, Matcher,current_bot,current_event
 from hoshino.message import MessageTemplate
 from hoshino.event import Event
 from hoshino.matcher import (
@@ -20,32 +23,19 @@ from hoshino.matcher import (
 from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import _strip_cmd
 from hoshino.rule import (
-    ArgumentParser,
     Rule,
     fullmatch,
-    to_me,
     regex,
     keyword,
-    command,
-    shell_command,
 )
-from hoshino.typing import (
+from hoshino import (
     T_Handler,
-    Dict,
-    Iterable,
-    Optional,
-    Union,
-    T_State,
-    List,
-    Type,
-    FinishedException,
-    PausedException,
-    RejectedException,
 )
 
+
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
-_loaded_services: Dict[str, "Service"] = {}
-_loaded_matchers: Dict["Type[Matcher]", "MatcherWrapper"] = {}
+_loaded_services: dict[str, "Service"] = {}
+_loaded_matchers: dict["type[Matcher]", "MatcherWrapper"] = {}
 from hoshino.log import LoggerWrapper
 
 
@@ -134,7 +124,7 @@ class Service:
         self.matchers = []
 
     @staticmethod
-    def get_loaded_services() -> Dict[str, "Service"]:
+    def get_loaded_services() -> dict[str, "Service"]:
         return _loaded_services
 
     def set_enable(self, group_id):
@@ -147,7 +137,7 @@ class Service:
         self.disable_group.add(group_id)
         _save_service_data(self)
 
-    async def get_enable_groups(self) -> Dict[int, List[Bot]]:
+    async def get_enable_groups(self) -> dict[int, list[Bot]]:
         gl = defaultdict(list)
         for bot in nonebot.get_bots().values():
             sgl = set(g["group_id"] for g in await bot.get_group_list())
@@ -208,7 +198,7 @@ class Service:
                 sv.add_nonebot_plugin_matcher(m)
         return sv
 
-    def add_nonebot_plugin_matcher(self, matcher: Type[Matcher]) -> "MatcherWrapper":
+    def add_nonebot_plugin_matcher(self, matcher: type[Matcher]) -> "MatcherWrapper":
         rule = self.check_service(False, False)
         matcher.rule = matcher.rule & rule
         mw = MatcherWrapper(
@@ -389,7 +379,7 @@ class Service:
     def on_regex(
         self,
         pattern: str,
-        flags: Union[int, re.RegexFlag] = 0,
+        flags: int | re.RegexFlag = 0,
         normal: bool = True,
         full_match: bool = True,
         only_to_me: bool = False,
@@ -502,7 +492,7 @@ class MatcherWrapper:
         sv: Service,
         type: str,
         priority: int,
-        matcher: Type[Matcher],
+        matcher: type[Matcher],
         log: bool = True,
         **info,
     ) -> None:
@@ -514,7 +504,7 @@ class MatcherWrapper:
         self.log = log
 
     @staticmethod
-    def get_loaded_matchers() -> List[str]:
+    def get_loaded_matchers() -> list[str]:
         return list(map(str, _loaded_matchers.values()))
 
     def handle(self, parameterless: Optional[list] = None):
@@ -535,7 +525,7 @@ class MatcherWrapper:
     def got(
         self,
         key: str,
-        prompt: Optional[Union[str, Message, MessageSegment, MessageTemplate]] = None,
+        prompt: Optional[str | Message | MessageSegment | MessageTemplate] = None,
         args_parser: Optional[T_Handler] = None,
         parameterless: Optional[list] = None,
     ):

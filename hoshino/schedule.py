@@ -2,7 +2,7 @@ from functools import wraps
 from nonebot_plugin_apscheduler import scheduler
 from loguru import logger
 from apscheduler import job
-from .typing import Callable, Any, Awaitable, List, Dict, Optional
+from typing import Callable, Any, Awaitable, List, Dict, Optional
 
 
 def wrapper(
@@ -14,7 +14,9 @@ def wrapper(
     @wraps(func)
     async def _wrapper() -> Awaitable[Any]:
         try:
-            logger.opt(colors=True).info(f"<ly>Scheduled job <c>{id}</c> started.</ly>")
+            logger.opt(colors=True).debug(
+                f"<ly>Scheduled job <c>{id}</c> started.</ly>"
+            )
             if kwargs is None and args is not None:
                 res = await func(*args)
             elif kwargs is not None and args is None:
@@ -23,7 +25,7 @@ def wrapper(
                 res = await func()
             else:
                 res = await func(*args, **kwargs)
-            logger.opt(colors=True).info(
+            logger.opt(colors=True).debug(
                 f"<ly>Scheduled job <c>{id}</c> completed.</ly>"
             )
             return res

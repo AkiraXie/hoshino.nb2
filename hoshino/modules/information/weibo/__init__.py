@@ -2,130 +2,24 @@
 
 import asyncio
 from datetime import datetime
-from typing import List, Set
+from typing import List
 from hoshino import Bot, Event, on_startup
 from hoshino.schedule import scheduled_job
 from hoshino.util import send_group_segments, send_segments
-from hoshino.typing import FinishedException
 from .utils import (
     get_sub_list,
     sv,
     WeiboDB as db,
-    Post,
+    WeiboPost,
     get_sub_new,
 )
-from asyncio import Queue
-from nonebot.permission import SUPERUSER
+from ..utils import PostQueue, UIDManager
+
 import re
 import random
 
-
-class PostQueue(Queue):
-    def __init__(self, maxsize: int = 0) -> None:
-        super().__init__(maxsize)
-        self._set = set()
-
-    def put(self, item: Post) -> bool:
-        if item.id not in self._set:
-            self._set.add(item.id)
-            super().put_nowait(item)
-            loop = asyncio.get_event_loop()
-            loop.call_later(3600, self._set.discard, item.id)
-            return True
-        return False
-
-    def get(self) -> Post:
-        if self.empty():
-            return None
-        item = super().get_nowait()
-        return item
-
-    def remove_id(self, id: str) -> None:
-        self._set.discard(id)
-
-
 weibo_queue = PostQueue()
-
-
-class UidManager:
-    def __init__(self):
-        self._uids: Set[str] = set()
-        self._uid_queue = asyncio.Queue()
-        self._lock = asyncio.Lock()
-        self._processing_uids: Set[str] = set()  # 正在处理的 UID
-
-    async def init_from_db(self):
-        """从数据库初始化 UID 列表"""
-        async with self._lock:
-            uids = [row.uid for row in db.select(db.uid).distinct()]
-            self._uids = set(uids)
-            # 清空队列并重新填充
-            while not self._uid_queue.empty():
-                try:
-                    self._uid_queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-            for uid in self._uids:
-                await self._uid_queue.put(uid)
-            sv.logger.info(f"初始化 UID 列表，共 {len(self._uids)} 个")
-
-    async def add_uid(self, uid: str):
-        """添加 UID"""
-        async with self._lock:
-            if uid not in self._uids:
-                self._uids.add(uid)
-                await self._uid_queue.put(uid)
-                sv.logger.info(f"添加 UID: {uid}")
-
-    async def remove_uid(self, uid: str):
-        """删除 UID（如果该 UID 没有其他群订阅）"""
-        # 检查是否还有其他群订阅此 UID
-        rows = db.select().where(db.uid == uid).execute()
-        if not rows:
-            async with self._lock:
-                if uid in self._uids:
-                    self._uids.remove(uid)
-                    self._processing_uids.discard(uid)  # 同时从处理列表移除
-                    sv.logger.info(f"删除 UID: {uid}")
-
-    async def get_next_uid(self) -> str:
-        """获取下一个要检查的 UID"""
-        max_attempts = len(self._uids) if self._uids else 1
-        attempts = 0
-        
-        while attempts < max_attempts:
-            if self._uid_queue.empty():
-                return None
-
-            uid = await self._uid_queue.get()
-
-            async with self._lock:
-                if uid in self._uids and uid not in self._processing_uids:
-                    # UID 有效且未在处理中
-                    self._processing_uids.add(uid)
-                    await self._uid_queue.put(uid)  # 重新放入队列
-                    return uid
-                elif uid in self._uids:
-                    # UID 有效但正在处理中，跳过并重新放入队列
-                    await self._uid_queue.put(uid)
-                    attempts += 1
-                else:
-                    # UID 已被删除，跳过
-                    attempts += 1
-        
-        return None
-
-    async def finish_processing(self, uid: str):
-        """标记 UID 处理完成"""
-        async with self._lock:
-            self._processing_uids.discard(uid)
-
-    def get_count(self) -> int:
-        """获取 UID 总数"""
-        return len(self._uids)
-
-
-uid_manager = UidManager()
+uid_manager = UIDManager("weibo")
 
 
 @sv.on_command(
@@ -151,14 +45,14 @@ async def add_subscription(bot: Bot, event: Event):
                 await bot.send(
                     event, "无效的UID格式，请输入数字ID或完整的微博个人主页链接"
                 )
-                raise FinishedException
+                return
         post = await get_sub_new(uid, 0, keywords=keywords)
         if not post:
             post = await get_sub_new(uid, 0)
     except Exception as e:
         sv.logger.exception(e)
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
-        raise FinishedException
+        return
     kw = "-_-".join(keywords) if keywords else ""
     db.replace(
         group=gid, uid=uid, name=post.nickname, time=post.timestamp, keyword=kw
@@ -185,7 +79,9 @@ async def remove_subscription(bot: Bot, event: Event):
         rows = db.delete().where(db.group == gid, db.uid == uid).execute()
         # 同步更新全局 UID 列表
         if rows:
-            await uid_manager.remove_uid(uid)
+            await uid_manager.remove_uid(
+                uid, lambda u: bool(db.select().where(db.uid == u).execute())
+            )
     else:
         # 先获取 UID 再删除
         rows = db.select().where(db.group == gid, db.name == uid).execute()
@@ -193,7 +89,9 @@ async def remove_subscription(bot: Bot, event: Event):
             target_uid = rows[0].uid
             deleted_rows = db.delete().where(db.group == gid, db.name == uid).execute()
             if deleted_rows:
-                await uid_manager.remove_uid(target_uid)
+                await uid_manager.remove_uid(
+                    target_uid, lambda u: bool(db.select().where(db.uid == u).execute())
+                )
         else:
             deleted_rows = 0
         rows = deleted_rows
@@ -237,34 +135,30 @@ async def see_weibo(bot: Bot, event: Event):
         else:
             keywords = []
         post = await get_sub_new(uid, 0, keywords=keywords)
-        msg = await post.get_msg()
-        if not msg:
+        if not post:
             await bot.send(event, f"没有获取到{arg}微博")
             return
-        else:
-            m = msg[0]
-            await bot.send(event, m)
-            await asyncio.sleep(0.2)
-            await send_segments(message=msg[1:])
+        msgs = await post.get_message()
+        await send_segments(msgs)
 
 
-@scheduled_job("interval", seconds=4, id="获取微博更新", jitter=1)
+@scheduled_job("interval", seconds=1, jitter=0.2, id="获取微博更新")
 async def fetch_weibo_updates():
     uid_count = uid_manager.get_count()
     if uid_count == 0:
-        await asyncio.sleep(1)
         return
 
-    uid = await uid_manager.get_next_uid()
-    if not uid:
-        await asyncio.sleep(1)
+    uid_str = await uid_manager.get_next_uid()
+    if not uid_str:
         return
 
+    success = False
     try:
-        rows: List[db] = db.select().where(db.uid == uid).execute()
+        rows: List[db] = db.select().where(db.uid == uid_str).execute()
         if not rows:
-            # UID 已无订阅，从管理器中移除
-            await uid_manager.remove_uid(uid)
+            await uid_manager.remove_uid(
+                uid_str, lambda u: bool(db.select().where(db.uid == u).execute())
+            )
             return
 
         time_rows = sorted(rows, key=lambda x: x.time, reverse=True)
@@ -275,25 +169,29 @@ async def fetch_weibo_updates():
         else:
             kw = []
 
-        dyns = await get_sub_list(uid, min_ts, kw)
-        if not dyns:
+        posts = await get_sub_list(uid_str, min_ts, kw)
+        if not posts:
+            success = True
             return
-        max_timestamp = max(dyn.timestamp for dyn in dyns)
-        for dyn in dyns:
-            dyn.timestamp = max_timestamp
-            b = weibo_queue.put(dyn)
+
+        max_timestamp = max(post.timestamp for post in posts)
+        for post in posts:
+            post.timestamp = max_timestamp
+            b = weibo_queue.put(post)
             if b:
                 sv.logger.info(
-                    f"获取到微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
+                    f"获取到微博更新: {post.uid} {post.nickname} {post.timestamp} {post.url}"
                 )
+        success = True
+
     except Exception as e:
-        sv.logger.error(f"获取微博更新失败 UID {uid}: {e}")
+        sv.logger.error(f"获取微博更新失败 UID {uid_str}: {e}")
+        success = False
     finally:
-        # 无论成功失败都要标记处理完成
-        await uid_manager.finish_processing(uid)
+        await uid_manager.finish_processing(uid_str, success)
 
 
-async def handle_weibo_dyn(dyn: Post, sem: asyncio.Semaphore):
+async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
     async with sem:
         sv.logger.info(
             f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
@@ -313,7 +211,9 @@ async def handle_weibo_dyn(dyn: Post, sem: asyncio.Semaphore):
             weibo_queue.remove_id(dyn.id)
             await asyncio.sleep(0.5)
             return
-        msgs = await dyn.get_msg(False)
+
+        # 直接使用 Post 对象的 get_message 方法
+        msgs = await dyn.get_message(False)
         for gid in gids:
             await asyncio.sleep(random.uniform(2, 5))
             bot = groups[gid][0]
@@ -346,5 +246,6 @@ async def weibo_dispatcher():
 @on_startup
 async def start_weibo_dispatcher():
     # 初始化 UID 管理器
-    await uid_manager.init_from_db()
+    uids = [str(row.uid) for row in db.select(db.uid).distinct()]
+    await uid_manager.init(uids)
     asyncio.create_task(weibo_dispatcher())

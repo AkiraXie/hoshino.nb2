@@ -2,9 +2,8 @@ import asyncio
 from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.message import event_preprocessor
 from nonebot.exception import FinishedException, IgnoredException
-from nonebot.permission import SUPERUSER
 from hoshino import Bot, Event, driver
-from hoshino.typing import T_State
+from nonebot.typing import T_State
 from hoshino.util import sucmd, parse_qq
 from hoshino.log import logger
 from datetime import datetime, timedelta

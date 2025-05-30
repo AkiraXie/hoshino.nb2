@@ -6,7 +6,7 @@ from time import strftime, localtime
 import re
 from urllib.parse import parse_qs, urlparse
 from functools import partial
-from hoshino.modules.information.bilireq.utils import Dynamic
+from hoshino.modules.information.bilireq.utils import BiliBiliDynamic
 from hoshino.util import get_redirect
 
 sv = Service("resolve")
@@ -21,7 +21,7 @@ dyn_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 get_xhscookies = partial(get_cookies, "xhs")
 
 
-async def get_dynamic_from_url(url: str) -> Dynamic | None:
+async def get_dynamic_from_url(url: str) -> BiliBiliDynamic | None:
     if "t.bilibili.com" in url or "/opus" in url:
         matched = re.search(r"/(\d+)", url)
         if matched:
@@ -44,7 +44,7 @@ async def get_dynamic_from_url(url: str) -> Dynamic | None:
                 card = data.get("item", {})
                 if not card:
                     return None
-                dyn = Dynamic(card)
+                dyn = BiliBiliDynamic(card)
                 return dyn
     return None
 

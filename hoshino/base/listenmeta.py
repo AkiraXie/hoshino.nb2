@@ -1,4 +1,4 @@
-from hoshino import Bot, hsn_config as config
+from hoshino import Bot, config as config
 from nonebot import get_driver
 
 driver = get_driver()

@@ -1,5 +1,4 @@
 from pathlib import Path
-from hoshino.typing import Optional
 from playwright.async_api import async_playwright, Browser, Playwright, Page
 from hoshino import MessageSegment
 from hoshino import scheduled_job, on_startup
@@ -10,8 +9,8 @@ from hoshino.util import get_cookies
 
 ssl._create_default_https_context = ssl._create_unverified_context
 ## thansks to github.com/SK-415/HarukaBot
-ap: Optional[Playwright] = None
-_b: Optional[Browser] = None
+ap: Playwright | None = None
+_b: Browser | None = None
 bili_mobilejs = Path(__file__).parent.joinpath("mobile.js")
 weibo_script = """
 document.querySelector('div.wrap')?.remove();

@@ -2,7 +2,6 @@ from typing import Iterable
 from loguru import logger
 from lxml import etree
 import json
-import os
 from hoshino import scheduled_job, Bot, Event, Service, db_dir
 from hoshino.permission import ADMIN
 from asyncio import sleep
@@ -10,11 +9,11 @@ from hoshino.util import get_bot_list, aiohttpx
 
 sv = Service("steam", enable_on_default=False, visible=False)
 sub = {"subscribes": {}}
-subscribe_file = os.path.join(db_dir, "subscribes.json")
-if not os.path.exists(subscribe_file):
-    with open(subscribe_file, mode="w") as f:
+subscribe_file = db_dir / "subscribes.json"
+if not subscribe_file.exists():
+    with subscribe_file.open(mode="w") as f:
         json.dump(sub, f, indent=4, ensure_ascii=False)
-with open(subscribe_file, mode="r") as f:
+with subscribe_file.open(mode="r") as f:
     f = f.read()
     sub = json.loads(f)
 cfg = sv.config
@@ -167,7 +166,7 @@ async def update_steam_ids(steam_id, group):
         sub["subscribes"][str(steam_id)] = []
     if group not in sub["subscribes"][str(steam_id)]:
         sub["subscribes"][str(steam_id)].append(group)
-    with open(subscribe_file, mode="w") as fil:
+    with subscribe_file.open(mode="w") as fil:
         json.dump(sub, fil, indent=4, ensure_ascii=False)
     await update_game_status()
 
@@ -176,7 +175,7 @@ async def del_steam_ids(steam_id, group):
     steam_id = await format_id(steam_id)
     if group in sub["subscribes"][str(steam_id)]:
         sub["subscribes"][str(steam_id)].remove(group)
-    with open(subscribe_file, mode="w") as fil:
+    with subscribe_file.open(mode="w") as fil:
         json.dump(sub, fil, indent=4, ensure_ascii=False)
     await update_game_status()
 
