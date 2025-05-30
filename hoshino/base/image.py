@@ -7,7 +7,6 @@ from hoshino.util import (
     __SU_IMGLIST,
     save_img,
     sucmd,
-    sumsg,
     finish,
     send,
     send_segments,
@@ -15,6 +14,7 @@ from hoshino.util import (
     send_to_superuser,
     _get_imgs_from_forward_msg,
     aiohttpx,
+    sumsg,
 )
 from hoshino.event import GroupReactionEvent, MessageEvent
 from nonebot.plugin import on_notice, on_keyword

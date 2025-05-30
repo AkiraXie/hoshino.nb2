@@ -1,6 +1,4 @@
-from hoshino.typing import Dict
-
-emojis: Dict[str, str] = {
+emojis: dict[str, str] = {
     "1f636": "20201001",
     "1f948": "20211115",
     "1f629": "20201001",
@@ -259,7 +257,7 @@ emojis: Dict[str, str] = {
     "1f9e1": "20201001",
 }
 
-qqface: Dict[int, int] = {
+qqface: dict[int, int] = {
     0: 128558,  # # 😮 face exhaling
     1: 128556,  # # 😬 grimacing face
     2: 128525,  # # 😍 smiling face with heart-eyes

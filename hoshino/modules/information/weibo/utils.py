@@ -2,51 +2,56 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 import functools
-import json
-from time import time
-from typing import Dict, List, Optional
 import peewee as pw
 import os
-from hoshino import db_dir, Message, Service, MessageSegment, on_startup
+from hoshino import db_dir, Message, Service, MessageSegment
 from hoshino.util import aiohttpx, get_cookies, get_redirect
-from yarl import URL
 from urllib.parse import unquote
-from httpx import AsyncClient
 from hoshino.util.playwrights import get_weibo_screenshot, get_mapp_weibo_screenshot
 from bs4 import BeautifulSoup
 from functools import partial
 import re
+from ..utils import Post
+from nonebot.typing import override
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
 
 @dataclass
-class Post:
-    """WEIPO POST数据类"""
+class WeiboPost(Post):
+    """微博POST数据类"""
 
-    uid: str
-    """用户ID"""
-    id: str
-    """微博ID"""
-    content: str
-    """文本内容"""
-    title: str | None = None
-    """标题"""
-    images: list[str | bytes] | None = None
-    """图片列表"""
-    videos: list[str] | None = None
-    """视频链接"""
-    timestamp: float | None = None
-    """发布/获取时间戳, 秒"""
-    url: str | None = None
-    """来源链接"""
-    nickname: str | None = None
-    """发布者昵称"""
-    description: str | None = None
-    repost: "Post | None" = None
-    """转发的Post"""
+    def __init__(
+        self,
+        uid: str,
+        id: str,
+        content: str,
+        title: str = None,
+        images: list = None,
+        videos: list = None,
+        timestamp: float = None,
+        url: str = None,
+        nickname: str = None,
+        description: str = None,
+        repost: "WeiboPost" = None,
+    ):
+        super().__init__(
+            uid=uid,
+            id=id,
+            content=content,
+            platform="weibo",
+            title=title,
+            images=images,
+            videos=videos,
+            timestamp=timestamp,
+            url=url,
+            nickname=nickname,
+            description=description,
+            repost=repost,
+        )
 
-    async def get_msg(
+    @override
+    async def get_message(
         self, with_screenshot: bool = True
     ) -> list[Message | MessageSegment]:
         """获取消息列表, 包含截图, 第一个是总览，剩下的是图片或者视频"""
@@ -101,7 +106,7 @@ class Post:
                 sv.logger.error(f"Error fetching screenshot: {responses[-1]}")
             elif isinstance(responses[-1], MessageSegment):
                 ms = responses[-1]
-                
+
             if ms:
                 msg.append(str(ms))
         if not ms:
@@ -129,7 +134,7 @@ get_weibocookies = partial(get_cookies, "weibo")
 
 async def get_sub_list(
     target: str, ts: float = 0.0, keywords: list[str] = list()
-) -> list[Post]:
+) -> list[WeiboPost]:
     header = {
         "Referer": f"https://m.weibo.cn/u/{target}",
         "MWeibo-Pwa": "1",
@@ -184,7 +189,7 @@ async def get_sub_list(
 
 async def get_sub_new(
     target: str, ts: float = 0.0, keywords: list[str] = list()
-) -> Optional[Post]:
+) -> WeiboPost | None:
     header = {
         "Referer": f"https://m.weibo.cn/u/{target}",
         "MWeibo-Pwa": "1",
@@ -262,7 +267,7 @@ def _get_text(raw_text: str) -> str:
     return soup.get_text()
 
 
-async def parse_weibo_with_bid(bid: str) -> Post | None:
+async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
     url = (
         f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
     )
@@ -286,7 +291,7 @@ async def parse_weibo_with_bid(bid: str) -> Post | None:
     return post
 
 
-async def _parse_weibo_with_bid_dict(rj: dict) -> Post | None:
+async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     mid = rj.get("mid")
     bid = rj.get("mblogid")
     uid = rj.get("user", {}).get("idstr")
@@ -320,7 +325,7 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> Post | None:
                 if k in media_info:
                     video_urls.append(media_info[k])
                     break
-    return Post(
+    return WeiboPost(
         uid=uid,
         id=mid,
         timestamp=created_at.timestamp(),
@@ -332,7 +337,7 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> Post | None:
     )
 
 
-async def _parse_weibo_card(info: dict) -> Post:
+async def _parse_weibo_card(info: dict) -> WeiboPost:
     if info["isLongText"] or info["pic_num"] > 9:
         return await parse_weibo_with_bid(info["bid"])
     parsed_text = _get_text(info["text"])
@@ -372,7 +377,7 @@ async def _parse_weibo_card(info: dict) -> Post:
     detail_url = f"https://weibo.com/{info['user']['id']}/{info['bid']}"
     ts = info["created_at"]
     created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
-    return Post(
+    return WeiboPost(
         uid=info["user"]["id"],
         id=info["mid"],
         timestamp=created_at.timestamp(),
@@ -384,7 +389,7 @@ async def _parse_weibo_card(info: dict) -> Post:
     )
 
 
-async def parse_weibo_card(raw: dict) -> Post:
+async def parse_weibo_card(raw: dict) -> WeiboPost:
     info = raw["mblog"]
     post = await _parse_weibo_card(info)
     if "retweeted_status" in info:
@@ -392,7 +397,7 @@ async def parse_weibo_card(raw: dict) -> Post:
     return post
 
 
-async def parse_mapp_weibo(url: str) -> Post | None:
+async def parse_mapp_weibo(url: str) -> WeiboPost | None:
     # what a holyshit,fk weibo
     ## https://mapp.api.weibo.cn/fx/77eaa5c2f741894631a87fc4806a1f05.html
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf254032b) XWEB/13655 Flue"
@@ -444,7 +449,7 @@ async def parse_mapp_weibo(url: str) -> Post | None:
             nickname = ""
     else:
         nickname = ""
-    return Post(
+    return WeiboPost(
         uid="",
         id="",
         content=parsed_text,

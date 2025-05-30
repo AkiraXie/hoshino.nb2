@@ -1,22 +1,22 @@
 from io import BytesIO
 from nonebot.typing import T_State
-from typing import Tuple
 from nonebot.params import Depends
 from .data import Question
 from hoshino.permission import ADMIN
-from hoshino import Service, Bot, Event, Message, MessageSegment, R, Matcher
+from hoshino import Service, Bot, Event, Message, MessageSegment, Matcher
 from hoshino.event import MessageEvent
+from hoshino.config import config
 from peewee import fn
 from hoshino.util.aiohttpx import get
 from PIL import Image
 
-img_dir = R.img("QA/").get_path()
+img_dir = config.static_dir / "img" / "QA"
 img_dir.mkdir(parents=True, exist_ok=True)
 
 
 async def event_image_in_local(
     matcher: Matcher, event: MessageEvent
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     msg = event.message.copy()
     msgs = str(msg).split("你答", 1)
     if len(msgs) != 2:
@@ -85,7 +85,7 @@ del_allqa = sv.on_command("删除所有问答", aliases={"delallqa"}, permission
 
 
 @group_ques.handle()
-async def _(event: Event, msg: Tuple[str, str] = set_qa_dep):
+async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
     question, answer = msg
     Question.replace(
         question=question, answer=answer, group=event.group_id, user=0
@@ -94,7 +94,7 @@ async def _(event: Event, msg: Tuple[str, str] = set_qa_dep):
 
 
 @person_ques.handle()
-async def _(event: Event, msg: Tuple[str, str] = set_qa_dep):
+async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
     question, answer = msg
     Question.replace(
         question=question,

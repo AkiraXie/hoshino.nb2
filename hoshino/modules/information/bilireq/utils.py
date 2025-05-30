@@ -1,13 +1,12 @@
 import asyncio
-import json
-from typing import Dict, List
+from nonebot.typing import override
 import peewee as pw
-import os
 from hoshino import db_dir, Message, MessageSegment
-from hoshino.util import aiohttpx, get_cookies, send_to_superuser
+from hoshino.util import aiohttpx, get_cookies
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
 from time import time
 from functools import partial
+from ..utils import Post
 
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
@@ -23,23 +22,25 @@ headers = {
 get_bilicookies = partial(get_cookies, "bilibili")
 
 
-class Dynamic:
+class BiliBiliDynamic(Post):
     def __init__(self, dynamic: dict):
         self.dynamic = dynamic
-        self.type = dynamic["modules"]["module_author"]["pub_action"]
-        self.id = dynamic["id_str"]
-        self.url = "http://m.bilibili.com/dynamic/" + str(self.id)
-        self.time = dynamic["modules"]["module_author"]["pub_ts"]
-        self.uid = dynamic["modules"]["module_author"]["mid"]
-        self.name = dynamic["modules"]["module_author"]["name"]
-        self.pics = []
-        self.text = ""
+        type_action = dynamic["modules"]["module_author"]["pub_action"]
+        id_str = str(dynamic["id_str"])  # 确保是字符串
+        url = "http://m.bilibili.com/dynamic/" + id_str
+        timestamp = dynamic["modules"]["module_author"]["pub_ts"]
+        uid = str(dynamic["modules"]["module_author"]["mid"])  # 确保是字符串
+        nickname = dynamic["modules"]["module_author"]["name"]
+        images = []
+        content = ""
         modules = dynamic["modules"]
         self.is_opus = False
+        self.type = type_action  # 保留 type 属性用于显示
+
         if dyn := modules.get("module_dynamic"):
             if desc := dyn.get("desc"):
-                if text := desc.get("text"):
-                    self.text = text
+                if desc_text := desc.get("text"):
+                    content = desc_text
             if major := dyn.get("major"):
                 match major["type"]:
                     case "MAJOR_TYPE_DRAW":
@@ -47,50 +48,63 @@ class Dynamic:
                         if items := draw.get("items"):
                             for item in items:
                                 if pic := item.get("src"):
-                                    self.pics.append(pic)
+                                    images.append(pic)
                     case "MAJOR_TYPE_ARCHIVE":
                         archive = major["archive"]
                         if pic := archive.get("cover"):
-                            self.pics.append(pic)
+                            images.append(pic)
                         if desc := archive.get("desc"):
-                            self.text = desc
+                            content = desc
                     case "MAJOR_TYPE_OPUS":
                         opus = major["opus"]
-                        if pics := opus.get("pics"):
-                            for pic in pics:
+                        if opus_pics := opus.get("pics"):
+                            for pic in opus_pics:
                                 if picurl := pic.get("url"):
-                                    self.pics.append(picurl)
+                                    images.append(picurl)
                         if summary := opus.get("summary"):
-                            if text := summary.get("text"):
-                                self.text = text
-                        self.url = "https://m.bilibili.com/opus/" + str(self.id)
+                            if summary_text := summary.get("text"):
+                                content = summary_text
+                        url = "https://m.bilibili.com/opus/" + str(id_str)
                         self.is_opus = True
                     case "MAJOR_TYPE_ARTICLE":
                         article = major["article"]
-                        if pics := article.get("covers"):
-                            for pic in pics:
-                                self.pics.append(pic)
+                        if article_pics := article.get("covers"):
+                            for pic in article_pics:
+                                images.append(pic)
                         if desc := article.get("desc"):
-                            self.text = desc
+                            content = desc
                     case "MAJOR_TYPE_PGC":
                         pgc = major["pgc"]
                         if pic := pgc.get("cover"):
-                            self.pics.append(pic)
+                            images.append(pic)
                         if title := pgc.get("title"):
-                            self.text = title
+                            content = title
                     case "MAJOR_TYPE_COMMON":
                         common = major["common"]
                         if pic := common.get("cover"):
-                            self.pics.append(pic)
+                            images.append(pic)
                         if desc := common.get("desc"):
-                            self.text = desc
+                            content = desc
                     case _:
                         pass
 
+        # 初始化父类
+        super().__init__(
+            uid=uid,
+            id=id_str,
+            content=content,
+            platform="bilibili",
+            images=images,
+            timestamp=timestamp,
+            url=url,
+            nickname=nickname,
+        )
+
+    @override
     async def get_message(
         self, with_screenshot: bool = True
     ) -> list[Message | MessageSegment]:
-        msg = [self.name + self.type]
+        msg = [self.nickname + self.type]
         imgmsg = []
         img = None
         if with_screenshot:
@@ -99,26 +113,27 @@ class Dynamic:
             )
             if img:
                 msg.append(str(img))
-        msg.append(self.text)
+        msg.append(self.content)
         await asyncio.sleep(0.5)
         msg.append(self.url)
         res = [Message("\n".join(msg))]
-        if self.pics:
-            for pic in self.pics:
+        if self.images:
+            for pic in self.images:
                 imgmsg.append(MessageSegment.image(pic))
-        res.extend(Message(imgmsg))
+        if imgmsg:
+            res.append(Message(imgmsg))
         return res
 
 
-async def get_new_dynamic(uid: int) -> Dynamic | None:
-    res = get_dynamic(uid, time() - 86400)
-    if isinstance(res, list) and res:
-        return res[0]
+async def get_new_dynamic(uid: str) -> BiliBiliDynamic | None:
+    dyns = await get_dynamic(uid, time() - 86400)
+    if dyns:
+        return dyns[0]
     else:
         return None
 
 
-async def get_dynamic(uid: int, ts) -> List[Dynamic]:
+async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     url = dynamic_url
     h = headers.copy()
     params = {
@@ -139,18 +154,13 @@ async def get_dynamic(uid: int, ts) -> List[Dynamic]:
     if not cards:
         return []
     dyn = cards[4::-1]
-    dyns = list(map(Dynamic, dyn))
-    dyns = [d for d in dyns if d.time > ts.timestamp()]
+    dyns = list(map(BiliBiliDynamic, dyn))
+    dyns = [d for d in dyns if d.timestamp > ts]
     return dyns
 
 
-async def get_user_name(uid: int):
-    dyn = await get_new_dynamic(uid)
-    return dyn.name
-
-
-db_path = os.path.join(db_dir, "bilidata.db")
-db = pw.SqliteDatabase(db_path)
+db_path = db_dir / "bilidata.db"
+db = pw.SqliteDatabase(str(db_path))
 
 
 class DynamicDB(pw.Model):
@@ -174,7 +184,7 @@ class LiveDB(pw.Model):
         primary_key = pw.CompositeKey("uid", "group")
 
 
-if not os.path.exists(db_path):
+if not db_path.exists():
     db.connect()
     db.create_tables([DynamicDB, LiveDB])
     db.close()

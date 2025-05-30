@@ -1,15 +1,13 @@
 import re
-from typing import Union, Set
-from nonebot.rule import command, shell_command
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import Bot, Event
-from nonebot.rule import ArgumentParser, Rule, to_me
 from hoshino.util import normalize_str
 
 
 def regex(
     regex: str,
-    flags: Union[int, re.RegexFlag] = 0,
+    flags: int | re.RegexFlag = 0,
     normal: bool = True,
     full_match: bool = True,
 ) -> Rule:

@@ -1,7 +1,7 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
 import asyncio
 from hoshino import Event
-from hoshino.typing import T_State
+from nonebot.typing import T_State
 from hoshino.util import send_segments, get_redirect, send
 from .data import (
     sv,

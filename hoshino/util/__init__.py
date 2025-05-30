@@ -1,3 +1,4 @@
+from __future__ import annotations
 import random
 import pytz
 import zhconv
@@ -360,7 +361,7 @@ async def finish(
     )
 
 
-db_path = db_dir + "cookies.db"
+db_path = db_dir / "cookies.db"
 db = SqliteDatabase(db_path)
 
 

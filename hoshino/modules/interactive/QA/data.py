@@ -1,9 +1,8 @@
 import peewee as pw
 from hoshino import db_dir
-import os
 
-db_path = os.path.join(db_dir, "QA.db")
-db = pw.SqliteDatabase(db_path)
+db_path = db_dir / "QA.db"
+db = pw.SqliteDatabase(str(db_path))
 
 
 class Question(pw.Model):
@@ -17,7 +16,7 @@ class Question(pw.Model):
         primary_key = pw.CompositeKey("question", "group", "user")
 
 
-if not os.path.exists(db_path):
+if not db_path.exists():
     db.connect()
     db.create_tables([Question])
     db.close()

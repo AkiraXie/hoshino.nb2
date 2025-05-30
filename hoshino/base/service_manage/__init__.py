@@ -2,11 +2,11 @@ import re
 from functools import cmp_to_key
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from hoshino import Service, Bot, Event
-from hoshino.rule import to_me, ArgumentParser
+from nonebot.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
 from hoshino.matcher import on_shell_command
 from hoshino.util import _strip_cmd
-from hoshino.typing import T_State, FinishedException
+from hoshino import T_State
 from .util import parse_gid, parse_service
 
 parser = ArgumentParser()
@@ -53,10 +53,8 @@ async def _(event: Event, state: T_State):
 @lssv.got("gids", prompt="请输入群号，并用空格隔开。", args_parser=parse_gid)
 async def _(bot: Bot, event: Event, state: T_State):
     if not "gids" in state:
-        await bot.send(event, "无效输入")
-        raise FinishedException
+        await enable.finish(event, "无效输入")
     verbose_all = state["_args"].all
-    as_pic = state["_args"].picture
     verbose_hide = state["_args"].invisible
     svs = Service.get_loaded_services().values()
     for gid in state["gids"]:
@@ -120,8 +118,7 @@ enable.handle()(handle_msg)
 @enable.got("services", "请输入服务名称，用空格间隔", args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
     if not state["gids"] or not state["services"]:
-        await bot.send(event, "无效输入")
-        raise FinishedException
+        await enable.finish(event, "无效输入")
     action = state["action"]
     svs = Service.get_loaded_services()
     if "all" in state["_args"].__dict__ and state["_args"].all:
@@ -143,8 +140,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         else:
             notfound.add(name)
     if not succ and notfound:
-        await bot.send(event, f"未找到服务: {', '.join(notfound)}")
-        raise FinishedException
+        await enable.finish(event, f"未找到服务: {', '.join(notfound)}")
     succ = succ if not exclude else allsv - exclude
     for gid in state["gids"]:
         for name in succ:
@@ -158,5 +154,4 @@ async def _(bot: Bot, event: Event, state: T_State):
         reply.append(f"已在群 {', '.join(succ_group)}{action}服务: {', '.join(succ)}")
     if notfound:
         reply.append(f"未找到服务: {', '.join(notfound)}")
-    await bot.send(event, "\n".join(reply))
-    raise FinishedException
+    await enable.finish(event, "\n".join(reply))
