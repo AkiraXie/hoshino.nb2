@@ -97,7 +97,11 @@ class Post:
                 immsg.append(MessageSegment.image(self.images[i]))
 
         if screenshot_task:
-            ms = responses[-1] if isinstance(responses[-1], MessageSegment) else None
+            if isinstance(responses[-1], Exception):
+                sv.logger.error(f"Error fetching screenshot: {responses[-1]}")
+            elif isinstance(responses[-1], MessageSegment):
+                ms = responses[-1]
+                
             if ms:
                 msg.append(str(ms))
         if not ms:
@@ -110,8 +114,8 @@ class Post:
 
         res = [Message("\n".join(msg))]
         if immsg:
-            for i in range(0, len(immsg), 4):
-                group = immsg[i : i + 4]
+            for i in range(0, len(immsg), 3):
+                group = immsg[i : i + 3]
                 res.append(Message(group))
         if videos:
             # no download , or it may cause oom
