@@ -141,7 +141,7 @@ async def get_bili_dyn():
 
         time_rows = sorted(rows, key=lambda x: x.time, reverse=True)
         min_ts = time_rows[0].time
-        dyns = await get_dynamic(uid_str, min_ts)
+        dyns = await get_dynamic(uid_str, min_ts.timestamp())
         if not dyns:
             success = True  # 没有新动态也算成功
             return
