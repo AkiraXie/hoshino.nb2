@@ -109,7 +109,7 @@ async def _(state: T_State):
         if not ms:
             return
         await send(ms[0])
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(1)
         await send_segments(ms[1:])
         await m.finish()
     elif name == "mweibo":
