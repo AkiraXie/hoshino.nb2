@@ -31,7 +31,7 @@ class Post:
     """发布者昵称"""
     description: str | None = None
     """描述信息"""
-    repost: "Post" | None = None
+    repost: "Post"  = None
     """转发的Post"""
 
     async def get_message(
