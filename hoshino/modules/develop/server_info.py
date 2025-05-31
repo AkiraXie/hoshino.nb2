@@ -73,9 +73,9 @@ async def get_stat():
 
 @showcmd.handle()
 async def _():
-    await showcmd.finish(get_stat())
+    await showcmd.finish(await get_stat())
 
 
 @driver.on_bot_connect
 async def _(bot: Bot):
-    await send_to_superuser(get_stat())
+    await send_to_superuser(await get_stat())
