@@ -257,7 +257,7 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
                 if msgs:
                     m = msgs[0]
                     await bot.send_group_msg(group_id=gid, message=m)
-                    await asyncio.sleep(random.uniform(1, 3))
+                    await asyncio.sleep(random.uniform(0, 2))
                     await send_group_segments(bot, gid, msgs[1:])
                 else:
                     await bot.send(gid, "获取微博失败")

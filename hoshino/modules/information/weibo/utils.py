@@ -87,7 +87,7 @@ class WeiboPost(Post):
                 for img in self.repost.images:
                     immsg.append(MessageSegment.image(img))
             if self.repost.videos:
-                videos = self.repost.videos
+                videos.extend(self.repost.videos)
         tasks = []
         # Prepare image fetch tasks
         if self.images:
