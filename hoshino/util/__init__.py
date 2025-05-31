@@ -341,7 +341,7 @@ async def send_group_segments(
         return
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     api = "send_group_forward_msg"
-    await bot.call_api(api, message=nodes, group_id=group_id)
+    await bot.call_api(api, messages=nodes, group_id=group_id)
 
 
 async def finish(
