@@ -1,13 +1,15 @@
 import asyncio
 from nonebot.typing import override
-import peewee as pw
+from sqlalchemy import Float, Integer, Text, create_engine, PrimaryKeyConstraint, BigInteger
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.types import Integer, Text
 from hoshino import db_dir, Message, MessageSegment
 from hoshino.util import aiohttpx, get_cookies
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
 from time import time
 from functools import partial
 from ..utils import Post
-
+from typing import Sequence
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
@@ -99,11 +101,14 @@ class BiliBiliDynamic(Post):
             url=url,
             nickname=nickname,
         )
+    @override
+    async def get_referer(self) -> str:
+        return "https://t.bilibili.com"
 
     @override
     async def get_message(
         self, with_screenshot: bool = True
-    ) -> list[Message | MessageSegment]:
+    ) -> Sequence[Message | MessageSegment]:
         msg = [self.nickname + self.type]
         imgmsg = []
         img = None
@@ -160,31 +165,19 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
 
 
 db_path = db_dir / "bilidata.db"
-db = pw.SqliteDatabase(str(db_path))
+engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
+Session = sessionmaker(bind=engine, expire_on_commit=False)
 
+class Base(DeclarativeBase):
+    pass
 
-class DynamicDB(pw.Model):
-    uid = pw.IntegerField()
-    group = pw.IntegerField()
-    time = pw.TimestampField()
-    name = pw.TextField()
+class DynamicDB(Base):
+    __tablename__ = "dynamicdb"
+    uid: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group: Mapped[int] = mapped_column(Integer, primary_key=True)
+    time: Mapped[float] = mapped_column(Float, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
 
-    class Meta:
-        database = db
-        primary_key = pw.CompositeKey("uid", "group")
-
-
-class LiveDB(pw.Model):
-    uid = pw.IntegerField()
-    group = pw.IntegerField()
-    name = pw.TextField()
-
-    class Meta:
-        database = db
-        primary_key = pw.CompositeKey("uid", "group")
-
-
+# 初始化数据库
 if not db_path.exists():
-    db.connect()
-    db.create_tables([DynamicDB, LiveDB])
-    db.close()
+    Base.metadata.create_all(engine)

@@ -58,9 +58,9 @@ async def check_json_or_text(ev: Event, state: T_State) -> bool:
                             jsonFlag = True
                             break
     url = ev.get_plaintext() if not jsonFlag else url
-    url = url.strip()
     if not url:
         return False
+    url = url.strip()
     for name, regex in regexs.items():
         if matched := regex.search(url):
             state["__url_name"] = name

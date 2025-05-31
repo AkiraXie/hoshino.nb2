@@ -3,17 +3,25 @@ import re
 import os
 import json
 from collections import defaultdict
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional, Union, Sized
 import nonebot
 from nonebot.params import Depends
 from nonebot.message import run_preprocessor
 from nonebot.typing import T_State
 from nonebot.exception import RejectedException, PausedException, FinishedException
-from nonebot.rule import ArgumentParser,to_me, command, shell_command
-from hoshino import Bot, service_dir as _service_dir, Message, MessageSegment, Matcher,current_bot,current_event
+from nonebot.rule import ArgumentParser, to_me, command, shell_command
+from hoshino import (
+    Bot,
+    service_dir as _service_dir,
+    Message,
+    MessageSegment,
+    Matcher,
+    current_bot,
+    current_event,
+)
 from hoshino.message import MessageTemplate
-from hoshino.event import Event
-from hoshino.matcher import (
+from hoshino.event import Event, GroupMessageEvent, PrivateMessageEvent
+from nonebot.plugin import (
     on_message,
     on_startswith,
     on_endswith,
@@ -28,18 +36,18 @@ from hoshino.rule import (
     regex,
     keyword,
 )
-from hoshino import (
+from nonebot.typing import (
     T_Handler,
 )
+from hoshino.logger_wrapper import LoggerWrapper
 
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: dict[str, "Service"] = {}
 _loaded_matchers: dict["type[Matcher]", "MatcherWrapper"] = {}
-from hoshino.log import LoggerWrapper
 
 
-def _iter_to_set(words: Iterable) -> set:
+def _iter_to_set(words: set | list | tuple | str | None) -> set:
     if isinstance(words, str):
         res = set([words])
     elif not isinstance(words, set):
@@ -155,8 +163,8 @@ class Service:
         try:
             with open(filename, encoding="utf8") as f:
                 return json.load(f)
-        except:
-            self.logger.error(f"Failed to load config")
+        except (Exception, FileNotFoundError):
+            self.logger.error("Failed to load config")
             return dict()
 
     def check_enabled(self, group_id: int) -> bool:
@@ -166,8 +174,10 @@ class Service:
         )
 
     def check_service(self, only_to_me: bool = False, only_group: bool = True) -> Rule:
-        async def _cs(bot: Bot, event: Event, state: T_State) -> bool:
-            if not "group_id" in event.__dict__:
+        async def _cs(
+            event: GroupMessageEvent | PrivateMessageEvent, state: T_State
+        ) -> bool:
+            if not isinstance(event, GroupMessageEvent):
                 return not only_group
             else:
                 group_id = event.group_id
@@ -184,11 +194,13 @@ class Service:
         manage_perm: Permission = ADMIN,
         enable_on_default: bool = True,
         visible: bool = True,
-    ) -> "Service":
+    ) -> Union["Service", None]:
         names = nonebot.get_available_plugin_names()
         if plugin_name in names:
-            return
+            return None
         plugin = nonebot.load_plugin(plugin_name)
+        if not plugin:
+            return None
         svname = plugin_name.replace("nonebot_plugin_", "").replace(
             "nonebot-plugin-", ""
         )
@@ -215,7 +227,7 @@ class Service:
         self,
         name: str,
         only_to_me: bool = False,
-        aliases: Optional[Iterable] = None,
+        aliases: Optional[set | list | tuple | str] = None,
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
@@ -233,7 +245,7 @@ class Service:
             self,
             "Message.command",
             priority,
-            on_message(_depth=1, **kwargs),
+            on_message(**kwargs),
             command=name,
             only_group=only_group,
         )
@@ -245,7 +257,7 @@ class Service:
         self,
         name: str,
         only_to_me: bool = False,
-        aliases: Optional[Iterable] = None,
+        aliases: Optional[set | list | tuple | str] = None,
         parser: Optional[ArgumentParser] = None,
         only_group: bool = True,
         permission: Permission = NORMAL,
@@ -264,7 +276,7 @@ class Service:
             self,
             "Message.shell_command",
             priority,
-            on_message(_depth=1, **kwargs),
+            on_message(**kwargs),
             command=name,
             only_group=only_group,
         )
@@ -288,7 +300,7 @@ class Service:
             self,
             "Message.startswith",
             priority,
-            on_startswith(msg, _depth=1, **kwargs),
+            on_startswith(msg, **kwargs),
             startswith=msg,
             only_group=only_group,
         )
@@ -312,7 +324,7 @@ class Service:
             self,
             "Message.endswith",
             priority,
-            on_endswith(msg, _depth=1, **kwargs),
+            on_endswith(msg, **kwargs),
             endswith=msg,
             only_group=only_group,
         )
@@ -322,7 +334,7 @@ class Service:
 
     def on_keyword(
         self,
-        keywords: Iterable,
+        keywords: Optional[set | list | tuple | str],
         normal: bool = True,
         only_to_me: bool = False,
         only_group: bool = True,
@@ -340,7 +352,7 @@ class Service:
             self,
             "Message.keyword",
             priority,
-            on_message(_depth=1, **kwargs),
+            on_message(**kwargs),
             keywords=str(keywords),
             only_group=only_group,
         )
@@ -350,7 +362,7 @@ class Service:
 
     def on_fullmatch(
         self,
-        keywords: Iterable,
+        keywords: Optional[set | list | tuple | str],
         normal: bool = True,
         only_to_me: bool = False,
         only_group: bool = True,
@@ -368,7 +380,7 @@ class Service:
             self,
             "Message.fullmatch",
             priority,
-            on_message(_depth=1, **kwargs),
+            on_message(**kwargs),
             keywords=str(keywords),
             only_group=only_group,
         )
@@ -403,7 +415,7 @@ class Service:
             self,
             "Message.regex",
             priority,
-            on_message(rule, permission, _depth=1, **kwargs),
+            on_message(rule, permission, **kwargs),
             pattern=str(pattern),
             flags=str(flags),
             only_group=only_group,
@@ -428,7 +440,7 @@ class Service:
             self,
             "Message.message",
             priority,
-            on_message(_depth=1, **kwargs),
+            on_message(**kwargs),
             log,
             only_group=only_group,
         )
@@ -437,13 +449,13 @@ class Service:
         return mw
 
     def on_notice(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
-        rule = self.check_service(0, only_group) & kwargs.pop("rule", Rule())
+        rule = self.check_service(False, only_group) & kwargs.pop("rule", Rule())
         priority = kwargs.get("priority", 1)
         mw = MatcherWrapper(
             self,
             "Notice",
             priority,
-            on_notice(rule, _depth=1, **kwargs),
+            on_notice(rule, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -451,13 +463,13 @@ class Service:
         return mw
 
     def on_request(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
-        rule = self.check_service(0, only_group) & kwargs.pop("rule", Rule())
+        rule = self.check_service(False, only_group) & kwargs.pop("rule", Rule())
         priority = kwargs.get("priority", 1)
         mw = MatcherWrapper(
             self,
             "Request",
             priority,
-            on_request(rule, _depth=1, **kwargs),
+            on_request(rule, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
@@ -465,6 +477,8 @@ class Service:
         return mw
 
     async def broadcast(self, msgs: Optional[Iterable], tag="", interval_time=0.5):
+        if not msgs:
+            return
         if isinstance(msgs, (str, Message, MessageSegment)):
             msgs = (msgs,)
         gdict = await self.get_enable_groups()
@@ -474,9 +488,9 @@ class Service:
                 for msg in msgs:
                     await asyncio.sleep(interval_time)
                     try:
-                        await bot.send_group_msg(self_id=sid, group_id=gid, message=msg)
+                        await bot.send_group_msg(group_id=gid, message=msg)
                         self.logger.info(f"{sid}在群{gid}投递{tag}成功")
-                    except:
+                    except Exception:
                         self.logger.error(f"{sid}在群{gid}投递{tag}失败")
 
 
@@ -516,9 +530,9 @@ class MatcherWrapper:
     def __call__(self, func: T_Handler) -> T_Handler:
         return self.handle()(func)
 
-    def receive(self, parameterless: Optional[list] = None):
+    def receive(self, id: str = "", parameterless: Optional[list] = None):
         def deco(func: T_Handler):
-            return self.matcher.receive(parameterless)(func)
+            return self.matcher.receive(id=id, parameterless=parameterless)(func)
 
         return deco
 
@@ -570,8 +584,8 @@ class MatcherWrapper:
         at_sender: bool = False,
         **kwargs,
     ):
-        bot: Bot = current_bot.get()
-        event: Event = current_event.get()
+        bot = current_bot.get()
+        event = current_event.get()
         return await bot.send(
             event, message, at_sender=at_sender, call_header=call_header, **kwargs
         )

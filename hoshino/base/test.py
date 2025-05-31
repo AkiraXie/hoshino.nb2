@@ -1,13 +1,17 @@
-from hoshino.matcher import get_matchers
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from hoshino.event import Event, get_event
 from hoshino import Bot, get_bot_list, sucmd
+from nonebot.matcher import matchers
 
 test1 = sucmd("testgetbot", True)
 test2 = sucmd("testmatchers", True)
 test3 = sucmd("testevent", True)
 test4 = sucmd("forward")
+
+
+def get_matchers() -> list:
+    return list(matchers.items())
 
 
 @test1.handle()

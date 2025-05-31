@@ -4,7 +4,7 @@ from hoshino.event import GroupMessageEvent, PrivateMessageEvent
 from hoshino import Service, Bot, Event
 from nonebot.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
-from hoshino.matcher import on_shell_command
+from nonebot.plugin import on_shell_command
 from hoshino.util import _strip_cmd
 from hoshino import T_State
 from .util import parse_gid, parse_service
@@ -53,7 +53,7 @@ async def _(event: Event, state: T_State):
 @lssv.got("gids", prompt="请输入群号，并用空格隔开。", args_parser=parse_gid)
 async def _(bot: Bot, event: Event, state: T_State):
     if not "gids" in state:
-        await enable.finish(event, "无效输入")
+        await enable.finish("无效输入")
     verbose_all = state["_args"].all
     verbose_hide = state["_args"].invisible
     svs = Service.get_loaded_services().values()
@@ -118,7 +118,7 @@ enable.handle()(handle_msg)
 @enable.got("services", "请输入服务名称，用空格间隔", args_parser=parse_service)
 async def _(bot: Bot, event: Event, state: T_State):
     if not state["gids"] or not state["services"]:
-        await enable.finish(event, "无效输入")
+        await enable.finish("无效输入")
     action = state["action"]
     svs = Service.get_loaded_services()
     if "all" in state["_args"].__dict__ and state["_args"].all:
@@ -140,7 +140,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         else:
             notfound.add(name)
     if not succ and notfound:
-        await enable.finish(event, f"未找到服务: {', '.join(notfound)}")
+        await enable.finish(f"未找到服务: {', '.join(notfound)}")
     succ = succ if not exclude else allsv - exclude
     for gid in state["gids"]:
         for name in succ:
@@ -154,4 +154,4 @@ async def _(bot: Bot, event: Event, state: T_State):
         reply.append(f"已在群 {', '.join(succ_group)}{action}服务: {', '.join(succ)}")
     if notfound:
         reply.append(f"未找到服务: {', '.join(notfound)}")
-    await enable.finish(event, "\n".join(reply))
+    await enable.finish("\n".join(reply))

@@ -1,7 +1,8 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from asyncio import Queue
 from hoshino import Message, MessageSegment
+from typing import Union, TypeVar, Generic
 import time
 
 
@@ -17,36 +18,40 @@ class Post:
     """文本内容"""
     platform: str
     """平台标识: 'weibo' 或 'bilibili'"""
-    title: str | None = None
-    """标题"""
-    images: list[str] | None = None
+    title: str = ""
+    images: list[str] = field(default_factory=list)
     """图片列表"""
-    videos: list[str] | None = None
+    videos: list[str] = field(default_factory=list)
     """视频链接"""
-    timestamp: float | None = None
+    timestamp: float = 0.0
     """发布/获取时间戳, 秒"""
-    url: str | None = None
+    url: str = ""
     """来源链接"""
-    nickname: str | None = None
+    nickname: str = ""
     """发布者昵称"""
-    description: str | None = None
+    description: str = ""
     """描述信息"""
-    repost: "Post"  = None
+    repost: Union["Post", None] = None
     """转发的Post"""
 
     async def get_message(
         self, with_screenshot: bool = True
-    ) -> list[Message | MessageSegment]: ...
+    ) -> list[Message | MessageSegment]: 
+        ...
+    async def get_referer(self) -> str:
+        ...
+
+T = TypeVar("T", bound="Post")
 
 
-class PostQueue(Queue):
-    """统一的队列管理器"""
+class PostQueue(Queue, Generic[T]):
+    """统一的队列管理器，支持泛型"""
 
     def __init__(self, maxsize: int = 0) -> None:
         super().__init__(maxsize)
         self._set = set()
 
-    def put(self, item: Post) -> bool:
+    def put(self, item: T) -> bool:
         """放入队列，如果ID已存在则跳过"""
         item_id = item.id
         if item_id not in self._set:
@@ -57,7 +62,7 @@ class PostQueue(Queue):
             return True
         return False
 
-    def get(self) -> Post | None:
+    def get(self) -> T | None:
         """从队列获取项目"""
         if self.empty():
             return None
@@ -94,7 +99,7 @@ class UIDManager:
             for uid in self._uids:
                 await self._uid_queue.put(uid)
 
-    async def add_uid(self, uid: str | int):
+    async def add_uid(self, uid: str):
         """添加 UID"""
         uid_str = str(uid)
         async with self._lock:
@@ -102,7 +107,7 @@ class UIDManager:
                 self._uids.add(uid_str)
                 await self._uid_queue.put(uid_str)
 
-    async def remove_uid(self, uid: str | int, check_db_func):
+    async def remove_uid(self, uid: str, check_db_func):
         """删除 UID（如果该 UID 没有其他群订阅）"""
         uid_str = str(uid)
         # 检查是否还有其他群订阅此 UID
