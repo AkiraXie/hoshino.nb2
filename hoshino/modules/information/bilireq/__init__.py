@@ -34,7 +34,7 @@ async def _(bot: Bot, event: Event):
         sv.logger.exception(e)
         await bot.send(event, f"UID {uid} 不合法")
         return
-    uid_int = int(dyn.uid)
+    uid_int = dyn.uid
     ts = dyn.timestamp
     name = dyn.nickname
     with Session() as session:
@@ -60,7 +60,7 @@ async def _(bot: Bot, event: Event):
     uid = event.get_plaintext()
     with Session() as session:
         if uid.isdecimal():
-            uid_int = int(uid)
+            uid_int = uid
             stmt = select(db).where(db.group == gid, db.uid == uid_int)
             rows = session.execute(stmt).scalars().all()
             for row in rows:
@@ -70,7 +70,7 @@ async def _(bot: Bot, event: Event):
             if num:
                 await uid_manager.remove_uid(
                     uid,
-                    lambda u: bool(session.execute(select(db).where(db.uid == int(u))).scalar_one_or_none()),
+                    lambda u: bool(session.execute(select(db).where(db.uid == u)).scalar_one_or_none()),
                 )
         else:
             stmt = select(db).where(db.group == gid, db.name == uid)
@@ -123,7 +123,7 @@ async def _(bot: Bot, event: Event):
     arg = event.get_plaintext()
     with Session() as session:
         if arg.isdecimal():
-            uid_int = int(arg)
+            uid_int = arg
             stmt = select(db).where(db.group == gid, db.uid == uid_int)
             rows = session.execute(stmt).scalars().all()
         else:
@@ -133,7 +133,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, f"没有订阅{arg}动态")
     else:
         uid_int = rows[0].uid
-        dyn = await get_new_dynamic(str(uid_int))
+        dyn = await get_new_dynamic(uid_int)
         if not dyn:
             await bot.send(event, f"没有获取到{arg}动态")
             return
@@ -153,13 +153,13 @@ async def get_bili_dyn():
 
     success = False
     try:
-        uid_int = int(uid_str)
+        uid_int = uid_str
         with Session() as session:
             stmt = select(db).where(db.uid == uid_int)
             rows = session.execute(stmt).scalars().all()
         if not rows:
             await uid_manager.remove_uid(
-                uid_str, lambda u: bool(Session().execute(select(db).where(db.uid == int(u))).scalar_one_or_none())
+                uid_str, lambda u: bool(Session().execute(select(db).where(db.uid == u)).scalar_one_or_none())
             )
             return
 
@@ -195,9 +195,9 @@ async def get_bili_dyn():
 async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
     async with sem:
         sv.logger.info(f"推送新动态: {dyn.nickname} ({dyn.url} {dyn.timestamp})")
-        uid_int = int(dyn.uid)
+        uid = dyn.uid
         with Session() as session:
-            stmt = select(db).where(db.uid == uid_int)
+            stmt = select(db).where(db.uid == uid)
             rows = session.execute(stmt).scalars().all()
         _gids = [row.group for row in rows]
         await asyncio.sleep(random.uniform(1, 5))
@@ -207,7 +207,7 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
             for gid in _gids:
                 await asyncio.sleep(0.1)
                 with Session() as session:
-                    stmt = select(db).where(db.uid == uid_int, db.group == gid)
+                    stmt = select(db).where(db.uid == uid, db.group == gid)
                     obj = session.execute(stmt).scalar_one_or_none()
                     if obj:
                         obj.time = dyn.timestamp
@@ -221,7 +221,7 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
             await asyncio.sleep(random.uniform(2, 5))
             bot = groups[gid][0]
             with Session() as session:
-                stmt = select(db).where(db.uid == uid_int, db.group == gid)
+                stmt = select(db).where(db.uid == uid, db.group == gid)
                 obj = session.execute(stmt).scalar_one_or_none()
                 if obj:
                     obj.time = dyn.timestamp
