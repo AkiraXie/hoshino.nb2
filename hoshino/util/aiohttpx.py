@@ -63,7 +63,11 @@ async def get_client(verify_ssl: bool = True):
 
 class BaseResponse:
     def __init__(
-        self, url: URL, status_code: int, headers: httpx.Headers, _resp: httpx.Response|None
+        self,
+        url: URL,
+        status_code: int,
+        headers: httpx.Headers,
+        _resp: httpx.Response | None,
     ) -> None:
         self.url: URL = url
         self.status_code: int = status_code
@@ -79,8 +83,8 @@ class Response(BaseResponse):
         content: bytes,
         status_code: int,
         headers: httpx.Headers,
-        _resp: httpx.Response  | None = None,
-        text: str |None = None,
+        _resp: httpx.Response | None = None,
+        text: str | None = None,
         cookies: httpx.Cookies | None = None,
     ) -> None:
         super().__init__(url=url, status_code=status_code, headers=headers, _resp=_resp)

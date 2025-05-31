@@ -7,8 +7,10 @@ db_path = db_dir / "QA.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Question(Base):
     __tablename__ = "question"
@@ -16,6 +18,7 @@ class Question(Base):
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     group: Mapped[int] = mapped_column(Integer, primary_key=True)
     user: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
+
 
 # 初始化数据库
 if not db_path.exists():
