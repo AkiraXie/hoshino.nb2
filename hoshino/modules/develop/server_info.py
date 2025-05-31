@@ -1,11 +1,12 @@
+import asyncio
 import time
 from hoshino import sucmd, Bot, driver
 from hoshino.util import send_to_superuser
 from asyncio import all_tasks
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, UTC
 import psutil
 
-showcmd = sucmd("info", aliases={"serverinfo", "stat"})
+showcmd = sucmd("状态", aliases={"serverinfo", "stat"})
 epoch = datetime.fromtimestamp(0, UTC)
 
 
@@ -27,10 +28,18 @@ def get_lag_process():
     return _p
 
 
-def get_stat():
+async def get_stat():
     p = psutil.Process()
+    pp = get_gocq_process()
+    pl = get_lag_process()
+    name = "go-cqhttp" if pp else "Lagrange"
+    ppp = pp if pp else pl
+    if ppp:
+        ppp.cpu_percent()
     tasks = all_tasks()
-    cpu_p = p.cpu_percent(1)
+    p.cpu_percent()
+    await asyncio.sleep(1)
+    cpu_p = p.cpu_percent()
     mem = p.memory_full_info()
     memu = mem.uss / 1024.0 / 1024.0
     disk = psutil.disk_usage("/")
@@ -47,13 +56,9 @@ def get_stat():
         f"服务运行时间: {datetime.fromtimestamp(live_time, UTC) - epoch}",
         f"磁盘使用: {dp}%  {du:.2f}GB/{dt:.2f}GB",
     ]
-    pp = get_gocq_process()
-    pl = get_lag_process()
-    if not pp and not pl:
+    if not ppp:
         return "\n".join(msg)
-    name = "go-cqhttp" if pp else "Lagrange"
-    ppp = pp if pp else pl
-    cpu_p1 = ppp.cpu_percent(1)
+    cpu_p1 = ppp.cpu_percent()
     mem1 = ppp.memory_full_info().uss / 1024.0 / 1024.0
     p_live_time = time.time() - ppp.create_time()
     msg.extend(
