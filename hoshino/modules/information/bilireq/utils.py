@@ -173,7 +173,7 @@ class Base(DeclarativeBase):
 
 class DynamicDB(Base):
     __tablename__ = "dynamicdb"
-    uid: Mapped[int] = mapped_column(Integer, primary_key=True)
+    uid: Mapped[str] = mapped_column(Text, primary_key=True)
     group: Mapped[int] = mapped_column(Integer, primary_key=True)
     time: Mapped[float] = mapped_column(Float, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
