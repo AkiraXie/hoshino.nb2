@@ -35,7 +35,7 @@ class Post:
     """转发的Post"""
 
     async def get_message(
-        self, with_screenshot: bool = True
+        self, with_screenshot: bool
     ) -> list[Message | MessageSegment]: ...
     def get_referer(self) -> str: ...
 
