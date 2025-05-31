@@ -59,7 +59,7 @@ class WeiboPost(Post):
             repost=repost,
         )
     @override
-    async def get_referer(self) -> str:
+    def get_referer(self) -> str:
         """获取微博的referer"""
         return "https://weibo.com"
 
