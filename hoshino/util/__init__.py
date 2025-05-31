@@ -1,7 +1,6 @@
 from __future__ import annotations
 import random
 import pytz
-import zhconv
 import nonebot
 import unicodedata
 import os
@@ -152,11 +151,10 @@ def concat_pic(pics, border=5):
 
 def normalize_str(string: str) -> str:
     """
-    规范化unicode字符串 并 转为小写 并 转为简体
+    规范化unicode字符串 并 转为小写
     """
     string = unicodedata.normalize("NFKC", string)
     string = string.lower()
-    string = zhconv.convert(string, "zh-hans")
     return string
 
 
