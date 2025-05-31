@@ -6,7 +6,7 @@ import nonebot
 import unicodedata
 import os
 from asyncio import get_running_loop
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Type, Union, Sequence
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image
@@ -27,7 +27,8 @@ from nonebot.plugin import CommandGroup, on_command, on_message
 from nonebot.rule import Rule, to_me
 from nonebot.compat import type_validate_python
 from . import aiohttpx
-from peewee import SqliteDatabase, Model, TextField, CompositeKey, FloatField
+from sqlalchemy import Column, Text, Float, create_engine, PrimaryKeyConstraint, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir, on_startup
 from time import time
 
@@ -43,8 +44,9 @@ def Cooldown(
     async def dependency(matcher: Matcher, event: MessageEvent, bot: Bot):
         loop = get_running_loop()
         key = event.user_id
+        message = prompt.format(cooldown) if prompt else f"请稍等 {cooldown} 秒后再试。"
         if key in debounced:
-            await matcher.finish(prompt.format(cooldown))
+            await matcher.finish(message=message)
         else:
             debounced.add(key)
             loop.call_later(cooldown, lambda: debounced.discard(key))
@@ -79,7 +81,7 @@ class DailyNumberLimiter:
         self.count[key] = 0
 
 
-def get_bot_list() -> List[Bot]:
+def get_bot_list() -> Sequence[Bot]:
     return list(nonebot.get_bots().values())
 
 
@@ -189,7 +191,6 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
                         if data:
                             content = data.get("content")
                             if content:
-                                content: list[dict]
                                 content = type_validate_python(Message, content)
                                 p = [
                                     s
@@ -297,7 +298,7 @@ async def send(
 
 
 def construct_nodes(
-    user_id: int, segments: List[Message | MessageSegment | str]
+    user_id: int, segments: Sequence[Message | MessageSegment | str]
 ) -> Message:
     def node(content):
         return MessageSegment.node_custom(
@@ -308,31 +309,32 @@ def construct_nodes(
 
 
 async def send_segments(
-    message: List[Message | MessageSegment | str],
+    message: Sequence[Message | MessageSegment | str],
 ):
     if not message:
         return
     if len(message) == 1:
         await send(message[0])
         return
-    bot: Bot = current_bot.get()
-    event: MessageEvent = current_event.get()
-    api = ""
+    bot = current_bot.get()
+    event = current_event.get()
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
-    kwargs = {"messages": nodes}
     if isinstance(event, GroupMessageEvent):
-        kwargs["group_id"] = event.group_id
-        api = "send_group_forward_msg"
+        await bot.call_api(
+            "send_group_forward_msg", group_id=event.group_id, messages=nodes
+        )
+    elif isinstance(event, PrivateMessageEvent):
+        await bot.call_api(
+            "send_private_forward_msg", user_id=event.user_id, messages=nodes
+        )
     else:
-        kwargs["user_id"] = event.user_id
-        api = "send_private_forward_msg"
-    await bot.call_api(api, **kwargs)
+        return
 
 
 async def send_group_segments(
     bot: Bot,
     group_id: int,
-    message: List[Message | MessageSegment | str],
+    message: Sequence[Message | MessageSegment | str],
 ):
     if not message:
         return
@@ -340,14 +342,12 @@ async def send_group_segments(
         await bot.send_group_msg(group_id=group_id, message=message[0])
         return
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
-    kwargs = {"messages": nodes}
-    kwargs["group_id"] = group_id
     api = "send_group_forward_msg"
-    await bot.call_api(api, **kwargs)
+    await bot.call_api(api, message=nodes, group_id=group_id)
 
 
 async def finish(
-    message: Union[str, "Message", "MessageSegment"],
+    message: Union[str, "Message", "MessageSegment", None] = None,
     *,
     call_header: bool = False,
     at_sender: bool = False,
@@ -360,51 +360,58 @@ async def finish(
         message, call_header=call_header, at_sender=at_sender, **kwargs
     )
 
+class Base(DeclarativeBase):
+    pass
+
+class Cookies(Base):
+    __tablename__ = "cookies"
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    cookie: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 db_path = db_dir / "cookies.db"
-db = SqliteDatabase(db_path)
+engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
+Session = sessionmaker(bind=engine, expire_on_commit=False)
 
+# 初始化数据库
+if not db_path.exists():
+    Base.metadata.create_all(engine)
 
-class Cookies(Model):
-    name = TextField()
-    cookie = TextField()
-    created_at = FloatField()
-
-    class Meta:
-        primary_key = CompositeKey("name")
-        database = db
-
-
-db.connect()
-db.create_tables([Cookies], safe=True)
-
-
-cookiejar = {}
-
+cookiejar: dict[str, str] = {}
 
 def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):
         cookies = "; ".join(f"{k}={v}" for k, v in cookies.items())
     cookiejar[name] = cookies
-    Cookies.replace(name=name, cookie=cookies, created_at=time()).execute()
-
+    with Session() as session:
+        obj: Cookies | None = session.get(Cookies, name)
+        if obj:
+            obj.cookie = cookies
+            obj.created_at = time()
+        else:
+            obj = Cookies(name=name, cookie=cookies, created_at=time())
+            session.add(obj)
+        session.commit()
 
 async def get_cookies(name: str) -> dict:
     try:
         if name in cookiejar:
             cookies = cookiejar[name]
         else:
-            rows = Cookies.get_or_none(Cookies.name == name)
-            if not rows:
-                return {}
-            cookies = rows.cookie
-            ts = rows.created_at
-            if time() - ts > 86400 * 2:
-                Cookies.delete().where(Cookies.name == name).execute()
-                cookiejar.pop(name, None)
-                await send_to_superuser(f"cookie {name} 已过期,请重新设置")
-                return {}
-            cookiejar[name] = cookies
+            with Session() as session:
+                stmt = select(Cookies).where(Cookies.name == name)
+                row = session.execute(stmt).scalar_one_or_none()
+                if not row:
+                    return {}
+                cookies = row.cookie
+                ts = row.created_at
+                if time() - ts > 86400 * 2:
+                    session.delete(row)
+                    session.commit()
+                    cookiejar.pop(name, None)
+                    await send_to_superuser(f"cookie {name} 已过期,请重新设置")
+                    return {}
+                cookiejar[name] = cookies
         if not cookies:
             return {}
         cookie_dict = {}

@@ -1,22 +1,25 @@
-import peewee as pw
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.types import BigInteger, DateTime
 import os
 from hoshino import db_dir
-
+from datetime import datetime
 
 db_path = os.path.join(db_dir, "black.db")
-db = pw.SqliteDatabase(db_path)
+engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
+Session = sessionmaker(bind=engine, expire_on_commit=False)
 
 
-class black(pw.Model):
-    uid = pw.BigIntegerField()
-    due_time = pw.DateTimeField()
-
-    class Meta:
-        database = db
-        primary_key = pw.CompositeKey("uid", "due_time")
+class Base(DeclarativeBase):
+    pass
 
 
+class black(Base):
+    __tablename__ = "black"
+    uid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    due_time: Mapped["datetime"] = mapped_column(DateTime, primary_key=True)
+
+
+# 初始化数据库
 if not os.path.exists(db_path):
-    db.connect()
-    db.create_tables([black])
-    db.close()
+    Base.metadata.create_all(engine)

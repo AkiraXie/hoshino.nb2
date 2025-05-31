@@ -9,7 +9,8 @@ from hoshino.log import logger
 from datetime import datetime, timedelta
 from typing import Union
 from pytz import timezone
-from .data import black as db
+from .data import black as db, Session
+from sqlalchemy import select
 
 
 _block_users = set()
@@ -18,32 +19,43 @@ _block_users = set()
 @driver.on_startup
 async def _():
     date = datetime.now(timezone("Asia/Shanghai"))
-    rows = db.select().where(db.due_time.to_timestamp() > date.timestamp())
-    loop = asyncio.get_event_loop()
-    for r in rows:
-        _block_users.add(r.uid)
-        due_date = datetime.strptime(r.due_time, "%Y-%m-%d %H:%M:%S.%f%z")
-        sec = (due_date - date).seconds
-        loop.call_later(sec, lambda: _block_users.remove(r.uid))
+    with Session() as session:
+        stmt = select(db).where(db.due_time > date)
+        rows = session.execute(stmt).scalars().all()
+        loop = asyncio.get_event_loop()
+        for r in rows:
+            _block_users.add(r.uid)
+            due_date = r.due_time
+            sec = int((due_date - date).total_seconds())
+            loop.call_later(sec, lambda: _block_users.remove(r.uid))
     logger.info("blocked users has recovered from db")
 
 
 def block_uid(uid: int, date: Union[datetime, timedelta]):
     if isinstance(date, timedelta):
-        sec = date.seconds
+        sec = int(date.total_seconds())
         date = datetime.now(timezone("Asia/Shanghai")) + date
     else:
-        sec = (date - datetime.now(timezone("Asia/Shanghai"))).seconds
+        sec = int((date - datetime.now(timezone("Asia/Shanghai"))).total_seconds())
     _block_users.add(uid)
-    db.replace(uid=uid, due_time=date).execute()
+    with Session() as session:
+        obj = db(uid=uid, due_time=date)
+        session.merge(obj)
+        session.commit()
     loop = asyncio.get_event_loop()
     loop.call_later(sec, lambda: _block_users.remove(uid))
 
 
 def unblock_uid(uid: int) -> bool:
     _block_users.remove(uid)
-    res = db.delete().where(db.uid == uid).execute()
-    return bool(res)
+    with Session() as session:
+        stmt = select(db).where(db.uid == uid)
+        rows = session.execute(stmt).scalars().all()
+        for row in rows:
+            session.delete(row)
+        res = len(rows) > 0
+        session.commit()
+    return res
 
 
 @event_preprocessor

@@ -9,10 +9,10 @@ def wrapper(
     func: Callable[[], Any],
     id: str,
     args: Optional[List] = None,
-    kwargs: Optional[Dict] = None,
-) -> Callable[[], Awaitable[Any]]:
+    kwargs: Optional[Dict[str, Any]] = None,
+):
     @wraps(func)
-    async def _wrapper() -> Awaitable[Any]:
+    async def _wrapper():
         try:
             logger.opt(colors=True).debug(
                 f"<ly>Scheduled job <c>{id}</c> started.</ly>"
@@ -40,7 +40,7 @@ def wrapper(
 def scheduled_job(
     trigger: str,
     args: Optional[List] = None,
-    kwargs: Optional[Dict] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
     **triger_kwargs,
 ):
     def deco(func: Callable[[], Any]) -> Callable[[], Awaitable[Any]]:
@@ -60,7 +60,7 @@ def add_job(
     func: Callable[[], Any],
     trigger: str,
     args: Optional[List] = None,
-    kwargs: Optional[Dict] = None,
+    kwargs: Optional[Dict[str, Any]] = None,
     **triger_kwargs,
 ) -> job.Job:
     triger_kwargs.setdefault("timezone", "Asia/Shanghai")

@@ -2,19 +2,28 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 import functools
-import peewee as pw
 import os
+import re
+from urllib.parse import unquote
+
+import peewee as pw
+from bs4 import BeautifulSoup
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.types import Float, Integer, Text
+
 from hoshino import db_dir, Message, Service, MessageSegment
 from hoshino.util import aiohttpx, get_cookies, get_redirect
-from urllib.parse import unquote
-from hoshino.util.playwrights import get_weibo_screenshot, get_mapp_weibo_screenshot
-from bs4 import BeautifulSoup
-from functools import partial
-import re
+from hoshino.util.playwrights import get_mapp_weibo_screenshot, get_weibo_screenshot
+
 from ..utils import Post
 from nonebot.typing import override
 
 sv = Service("weibo", enable_on_default=False, visible=False)
+
+db_path = os.path.join(db_dir, "weibodata.db")
+engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
+Session = sessionmaker(bind=engine, expire_on_commit=False)
 
 
 @dataclass
@@ -26,13 +35,13 @@ class WeiboPost(Post):
         uid: str,
         id: str,
         content: str,
-        title: str = None,
-        images: list = None,
-        videos: list = None,
-        timestamp: float = None,
-        url: str = None,
-        nickname: str = None,
-        description: str = None,
+        title: str = "",
+        images: list = [],
+        videos: list = [],
+        timestamp: float = 0.0,
+        url: str = "",
+        nickname: str = "",
+        description: str = "",
         repost: "WeiboPost" = None,
     ):
         super().__init__(
@@ -49,6 +58,10 @@ class WeiboPost(Post):
             description=description,
             repost=repost,
         )
+    @override
+    async def get_referer(self) -> str:
+        """获取微博的referer"""
+        return "https://weibo.com"
 
     @override
     async def get_message(
@@ -79,7 +92,7 @@ class WeiboPost(Post):
         # Prepare image fetch tasks
         if self.images:
             for image_url in self.images:
-                headers = {"referer": "https://weibo.com"}
+                headers = {"referer": self.get_referer()}
                 tasks.append(aiohttpx.get(image_url, headers=headers))
         screenshot_task = None
         if with_screenshot:
@@ -119,8 +132,13 @@ class WeiboPost(Post):
 
         res = [Message("\n".join(msg))]
         if immsg:
-            for i in range(0, len(immsg), 3):
-                group = immsg[i : i + 3]
+            num = 3
+            for i in (6,4,3):
+                if len(immsg) % i == 0:
+                    num = i
+                    break
+            for i in range(0, len(immsg), num):
+                group = immsg[i : i + num]
                 res.append(Message(group))
         if videos:
             # no download , or it may cause oom
@@ -129,7 +147,7 @@ class WeiboPost(Post):
         return res
 
 
-get_weibocookies = partial(get_cookies, "weibo")
+get_weibocookies = functools.partial(get_cookies, "weibo")
 
 
 async def get_sub_list(
@@ -172,7 +190,7 @@ async def get_sub_list(
         created2 = d2["mblog"]["created_at"]
         t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
         t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        return t1 - t2
+        return t1 >= t2
 
     k = functools.cmp_to_key(cmp)
     l = list(filter(custom_filter, res_data["data"]["cards"]))
@@ -182,6 +200,8 @@ async def get_sub_list(
     res = []
     for i in l:
         post = await parse_weibo_card(i)
+        if not post:
+            continue
         if post.timestamp > ts:
             res.append(post)
     return res
@@ -226,7 +246,7 @@ async def get_sub_new(
         created2 = d2["mblog"]["created_at"]
         t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
         t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        return t1 - t2
+        return t1 >= t2
 
     k = functools.cmp_to_key(cmp)
     l = list(filter(custom_filter, res_data["data"]["cards"]))
@@ -337,7 +357,7 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     )
 
 
-async def _parse_weibo_card(info: dict) -> WeiboPost:
+async def _parse_weibo_card(info: dict) -> WeiboPost | None:
     if info["isLongText"] or info["pic_num"] > 9:
         return await parse_weibo_with_bid(info["bid"])
     parsed_text = _get_text(info["text"])
@@ -389,9 +409,11 @@ async def _parse_weibo_card(info: dict) -> WeiboPost:
     )
 
 
-async def parse_weibo_card(raw: dict) -> WeiboPost:
+async def parse_weibo_card(raw: dict) -> WeiboPost | None:
     info = raw["mblog"]
     post = await _parse_weibo_card(info)
+    if not post:
+        return None
     if "retweeted_status" in info:
         post.repost = await _parse_weibo_card(info["retweeted_status"])
     return post
@@ -461,23 +483,19 @@ async def parse_mapp_weibo(url: str) -> WeiboPost | None:
     )
 
 
-db_path = os.path.join(db_dir, "weibodata.db")
-db = pw.SqliteDatabase(db_path)
+class Base(DeclarativeBase):
+    pass
 
 
-class WeiboDB(pw.Model):
-    uid = pw.TextField()
-    group = pw.IntegerField()
-    time = pw.FloatField()
-    name = pw.TextField()
-    keyword = pw.TextField(default="")
-
-    class Meta:
-        database = db
-        primary_key = pw.CompositeKey("uid", "group")
+class WeiboDB(Base):
+    __tablename__ = "weibodb"
+    uid: Mapped[str] = mapped_column(Text, primary_key=True)
+    group: Mapped[int] = mapped_column(Integer, primary_key=True)
+    time: Mapped[float] = mapped_column(Float, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    keyword: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
 
+# 初始化数据库
 if not os.path.exists(db_path):
-    db.connect()
-    db.create_tables([WeiboDB])
-    db.close()
+    Base.metadata.create_all(engine)

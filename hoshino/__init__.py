@@ -15,7 +15,7 @@ from nonebot.params import (
     DependParam,
 )
 from nonebot.dependencies import Dependent
-from nonebot.matcher import Matcher, current_bot,current_event
+from nonebot.matcher import Matcher, current_bot, current_event
 from .message import MessageSegment, Message, MessageTemplate
 from .event import Event
 
@@ -30,9 +30,8 @@ img_dir.mkdir(exist_ok=True)
 db_dir.mkdir(exist_ok=True)
 service_dir.mkdir(exist_ok=True)
 
+
 # patch bot.send
-
-
 async def send(
     self: Bot,
     event: Event,
@@ -122,9 +121,8 @@ async def send(
 
 Adapter.custom_send(send)
 
+
 # patch matcher.got
-
-
 @classmethod
 def got(
     cls: Type[Matcher],
@@ -157,7 +155,7 @@ def got(
             if not args_parser:
                 matcher.set_arg(key, event.get_message())
             else:
-                bot: Bot = current_bot.get()
+                bot = current_bot.get()
                 await args_parser(
                     matcher=matcher, bot=bot, event=event, state=matcher.state
                 )
@@ -188,7 +186,7 @@ def got(
     return _decorator
 
 
-Matcher.got = got
+setattr(Matcher, "got", got)
 
 on_startup = driver.on_startup
 on_shutdown = driver.on_shutdown

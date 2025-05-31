@@ -12,13 +12,15 @@ from .utils import (
     WeiboDB as db,
     WeiboPost,
     get_sub_new,
+    Session,
 )
 from ..utils import PostQueue, UIDManager
+from sqlalchemy import select
 
 import re
 import random
 
-weibo_queue = PostQueue()
+weibo_queue = PostQueue[WeiboPost]()
 uid_manager = UIDManager("weibo")
 
 
@@ -49,18 +51,26 @@ async def add_subscription(bot: Bot, event: Event):
         post = await get_sub_new(uid, 0, keywords=keywords)
         if not post:
             post = await get_sub_new(uid, 0)
+        if not post:
+            await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
+            return
     except Exception as e:
         sv.logger.exception(e)
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
         return
     kw = "-_-".join(keywords) if keywords else ""
-    db.replace(
-        group=gid, uid=uid, name=post.nickname, time=post.timestamp, keyword=kw
-    ).execute()
-
-    # 同步更新全局 UID 列表
+    with Session() as session:
+        stmt = select(db).where(db.group == gid, db.uid == uid)
+        obj = session.execute(stmt).scalar_one_or_none()
+        if obj:
+            obj.name = post.nickname
+            obj.time = post.timestamp
+            obj.keyword = kw
+        else:
+            obj = db(group=gid, uid=uid, name=post.nickname, time=post.timestamp, keyword=kw)
+            session.add(obj)
+        session.commit()
     await uid_manager.add_uid(uid)
-
     if keywords:
         await bot.send(
             event, f"成功订阅微博用户：{post.nickname} UID: {uid} 关键词: {kw}"
@@ -75,27 +85,34 @@ async def add_subscription(bot: Bot, event: Event):
 async def remove_subscription(bot: Bot, event: Event):
     gid = event.group_id
     uid = event.get_plaintext().strip()
-    if uid.isdecimal():
-        rows = db.delete().where(db.group == gid, db.uid == uid).execute()
-        # 同步更新全局 UID 列表
-        if rows:
-            await uid_manager.remove_uid(
-                uid, lambda u: bool(db.select().where(db.uid == u).execute())
-            )
-    else:
-        # 先获取 UID 再删除
-        rows = db.select().where(db.group == gid, db.name == uid).execute()
-        if rows:
-            target_uid = rows[0].uid
-            deleted_rows = db.delete().where(db.group == gid, db.name == uid).execute()
-            if deleted_rows:
+    with Session() as session:
+        if uid.isdecimal():
+            stmt = select(db).where(db.group == gid, db.uid == uid)
+            rows = session.execute(stmt).scalars().all()
+            for row in rows:
+                session.delete(row)
+            num = len(rows)
+            session.commit()
+            if num:
                 await uid_manager.remove_uid(
-                    target_uid, lambda u: bool(db.select().where(db.uid == u).execute())
+                    uid, lambda u: bool(session.execute(select(db).where(db.uid == u)).scalar_one_or_none())
                 )
         else:
-            deleted_rows = 0
-        rows = deleted_rows
-    if rows:
+            stmt = select(db).where(db.group == gid, db.name == uid)
+            rows = session.execute(stmt).scalars().all()
+            if rows:
+                target_uid = rows[0].uid
+                for row in rows:
+                    session.delete(row)
+                num = len(rows)
+                session.commit()
+                if num:
+                    await uid_manager.remove_uid(
+                        target_uid, lambda u: bool(session.execute(select(db).where(db.uid == u)).scalar_one_or_none())
+                    )
+            else:
+                num = 0
+    if num:
         await bot.send(event, f"{uid} 删除微博订阅成功")
     else:
         await bot.send(event, f"{uid} 删除微博订阅失败")
@@ -104,7 +121,9 @@ async def remove_subscription(bot: Bot, event: Event):
 @sv.on_command("微博订阅", aliases=("微博订阅列表", "lookweibo", "lswb", "listweibo"))
 async def list_subscriptions(bot: Bot, event: Event):
     gid = event.group_id
-    rows = db.select().where(db.group == gid).execute()
+    with Session() as session:
+        stmt = select(db).where(db.group == gid)
+        rows = session.execute(stmt).scalars().all()
     if not rows:
         await bot.send(event, "本群没有订阅微博用户")
         return
@@ -121,10 +140,13 @@ async def list_subscriptions(bot: Bot, event: Event):
 async def see_weibo(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext().strip()
-    if arg.isdecimal():
-        rows = db.select().where(db.group == gid, db.uid == arg).execute()
-    else:
-        rows = db.select().where(db.group == gid, db.name == arg).execute()
+    with Session() as session:
+        if arg.isdecimal():
+            stmt = select(db).where(db.group == gid, db.uid == arg)
+            rows = session.execute(stmt).scalars().all()
+        else:
+            stmt = select(db).where(db.group == gid, db.name == arg)
+            rows = session.execute(stmt).scalars().all()
     if not rows:
         await bot.send(event, f"没有订阅{arg}微博")
     else:
@@ -154,10 +176,12 @@ async def fetch_weibo_updates():
 
     success = False
     try:
-        rows: List[db] = db.select().where(db.uid == uid_str).execute()
+        with Session() as session:
+            stmt = select(db).where(db.uid == uid_str)
+            rows = session.execute(stmt).scalars().all()
         if not rows:
             await uid_manager.remove_uid(
-                uid_str, lambda u: bool(db.select().where(db.uid == u).execute())
+                uid_str, lambda u: bool(Session().execute(select(db).where(db.uid == u)).scalar_one_or_none())
             )
             return
 
@@ -197,7 +221,9 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
         )
         uid = dyn.uid
-        rows: List[db] = db.select().where(db.uid == uid)
+        with Session() as session:
+            stmt = select(db).where(db.uid == uid)
+            rows = session.execute(stmt).scalars().all()
         _gids = [row.group for row in rows]
         await asyncio.sleep(random.uniform(1, 5))
         groups = await sv.get_enable_groups()
@@ -205,21 +231,28 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
         if not gids:
             for gid in _gids:
                 await asyncio.sleep(0.1)
-                db.update(time=dyn.timestamp, name=dyn.nickname).where(
-                    db.uid == uid, db.group == gid
-                ).execute()
+                with Session() as session:
+                    stmt = select(db).where(db.uid == uid, db.group == gid)
+                    obj = session.execute(stmt).scalar_one_or_none()
+                    if obj:
+                        obj.time = dyn.timestamp
+                        obj.name = dyn.nickname
+                        session.commit()
             weibo_queue.remove_id(dyn.id)
             await asyncio.sleep(0.5)
             return
 
-        # 直接使用 Post 对象的 get_message 方法
         msgs = await dyn.get_message(False)
         for gid in gids:
             await asyncio.sleep(random.uniform(2, 5))
             bot = groups[gid][0]
-            db.update(time=dyn.timestamp, name=dyn.nickname).where(
-                db.uid == uid, db.group == gid
-            ).execute()
+            with Session() as session:
+                stmt = select(db).where(db.uid == uid, db.group == gid)
+                obj = session.execute(stmt).scalar_one_or_none()
+                if obj:
+                    obj.time = dyn.timestamp
+                    obj.name = dyn.nickname
+                    session.commit()
             try:
                 if msgs:
                     m = msgs[0]
@@ -246,6 +279,8 @@ async def weibo_dispatcher():
 @on_startup
 async def start_weibo_dispatcher():
     # 初始化 UID 管理器
-    uids = [str(row.uid) for row in db.select(db.uid).distinct()]
+    with Session() as session:
+        stmt = select(db.uid).distinct()
+        uids = [str(row) for row in session.execute(stmt).scalars()]
     await uid_manager.init(uids)
     asyncio.create_task(weibo_dispatcher())

@@ -63,13 +63,13 @@ async def get_client(verify_ssl: bool = True):
 
 class BaseResponse:
     def __init__(
-        self, url: URL, status_code: int, headers: httpx.Headers, _resp: httpx.Response
+        self, url: URL, status_code: int, headers: httpx.Headers, _resp: httpx.Response|None
     ) -> None:
         self.url: URL = url
         self.status_code: int = status_code
         self.headers: httpx.Headers = headers
         self.ok: bool = 200 <= status_code < 300
-        self._resp: httpx.Response = _resp
+        self._resp = _resp
 
 
 class Response(BaseResponse):
@@ -79,14 +79,14 @@ class Response(BaseResponse):
         content: bytes,
         status_code: int,
         headers: httpx.Headers,
-        _resp: httpx.Response = None,
-        text: str = None,
-        cookies: dict = {},
+        _resp: httpx.Response  | None = None,
+        text: str |None = None,
+        cookies: httpx.Cookies | None = None,
     ) -> None:
         super().__init__(url=url, status_code=status_code, headers=headers, _resp=_resp)
         self.content: bytes = content
         self.cookies = cookies
-        self.text: str = text
+        self.text = text
 
     @property
     def json(self) -> Any:
@@ -98,6 +98,8 @@ async def get(
 ) -> Response:
     try:
         client = await get_client(verify_ssl=verify)
+        if not client:
+            raise RuntimeError("HTTPX client is not initialized.")
         if timeout is not None:
             kwargs["timeout"] = timeout
         resp = await client.get(url, cookies=cookies, **kwargs)
@@ -123,6 +125,8 @@ async def post(
 ) -> Response:
     try:
         client = await get_client(verify_ssl=verify)
+        if not client:
+            raise RuntimeError("HTTPX client is not initialized.")
         if timeout is not None:
             kwargs["timeout"] = timeout
         resp = await client.post(url, cookies=cookies, **kwargs)
@@ -148,6 +152,8 @@ async def head(
 ) -> BaseResponse:
     try:
         client = await get_client(verify_ssl=verify)
+        if not client:
+            raise RuntimeError("HTTPX client is not initialized.")
         if timeout is not None:
             kwargs["timeout"] = timeout
         resp = await client.head(url, **kwargs)

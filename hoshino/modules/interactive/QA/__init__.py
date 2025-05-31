@@ -1,7 +1,7 @@
 from io import BytesIO
 from nonebot.typing import T_State
 from nonebot.params import Depends
-from .data import Question
+from .data import Question, Session
 from hoshino.permission import ADMIN
 from hoshino import Service, Bot, Event, Message, MessageSegment, Matcher
 from hoshino.event import MessageEvent
@@ -9,6 +9,7 @@ from hoshino.config import config
 from peewee import fn
 from hoshino.util.aiohttpx import get
 from PIL import Image
+from sqlalchemy import select
 
 img_dir = config.static_dir / "img" / "QA"
 img_dir.mkdir(parents=True, exist_ok=True)
@@ -59,16 +60,27 @@ async def answer_qa_rule(event: Event, state: T_State):
     uid = event.user_id
     msg = str(event.get_message())
     question = msg.lower()
-    answer = Question.get_or_none(
-        fn.Lower(Question.question) == question, group=gid, user=uid
-    ) or Question.get_or_none(
-        fn.Lower(Question.question) == question, group=gid, user=0
-    )
-    if answer:
-        state["answer"] = answer.answer
-        return True
-    else:
-        return False
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.question.ilike(question),
+            Question.group == gid,
+            Question.user == uid
+        )
+        answer = session.execute(stmt).scalar_one_or_none()
+        
+        if not answer:
+            stmt = select(Question).where(
+                Question.question.ilike(question),
+                Question.group == gid,
+                Question.user == 0
+            )
+            answer = session.execute(stmt).scalar_one_or_none()
+            
+        if answer:
+            state["answer"] = answer.answer
+            return True
+        else:
+            return False
 
 
 sv = Service("QA")
@@ -87,21 +99,39 @@ del_allqa = sv.on_command("删除所有问答", aliases={"delallqa"}, permission
 @group_ques.handle()
 async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
     question, answer = msg
-    Question.replace(
-        question=question, answer=answer, group=event.group_id, user=0
-    ).execute()
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.question == question,
+            Question.group == event.group_id,
+            Question.user == 0
+        )
+        obj = session.execute(stmt).scalar_one_or_none()
+        if obj:
+            obj.answer = answer
+        else:
+            obj = Question(question=question, answer=answer, group=event.group_id, user=0)
+            session.add(obj)
+        session.commit()
     await group_ques.finish(Message(f"好的我记住{question}了"))
 
 
 @person_ques.handle()
 async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
     question, answer = msg
-    Question.replace(
-        question=question,
-        answer=answer,
-        group=event.group_id if "group_id" in event.__dict__ else 0,
-        user=event.user_id,
-    ).execute()
+    gid = event.group_id if "group_id" in event.__dict__ else 0
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.question == question,
+            Question.group == gid,
+            Question.user == event.user_id
+        )
+        obj = session.execute(stmt).scalar_one_or_none()
+        if obj:
+            obj.answer = answer
+        else:
+            obj = Question(question=question, answer=answer, group=gid, user=event.user_id)
+            session.add(obj)
+        session.commit()
     await person_ques.finish(Message(f"好的我记住{question}了"))
 
 
@@ -109,15 +139,17 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
 async def _(bot: Bot, event: Event):
     question = str(event.get_message())
     lquestion = question.lower()
-    num = (
-        Question.delete()
-        .where(
-            fn.Lower(Question.question) == lquestion,
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.question.ilike(lquestion),
             Question.group == event.group_id,
-            Question.user == 0,
+            Question.user == 0
         )
-        .execute()
-    )
+        questions = session.execute(stmt).scalars().all()
+        for q in questions:
+            session.delete(q)
+        num = len(questions)
+        session.commit()
     if num == 0:
         await del_gqa.finish(Message('我不记得"{}"这个问题'.format(question)))
     else:
@@ -129,15 +161,17 @@ async def _(bot: Bot, event: Event):
     question = str(event.get_message())
     lquestion = question.lower()
     gid = event.group_id if "group_id" in event.__dict__ else 0
-    num = (
-        Question.delete()
-        .where(
-            fn.Lower(Question.question) == lquestion,
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.question.ilike(lquestion),
             Question.group == gid,
-            Question.user == event.user_id,
+            Question.user == event.user_id
         )
-        .execute()
-    )
+        questions = session.execute(stmt).scalars().all()
+        for q in questions:
+            session.delete(q)
+        num = len(questions)
+        session.commit()
     if num == 0:
         await del_qa.finish(Message('我不记得"{}"这个问题'.format(question)))
     else:
@@ -165,15 +199,17 @@ async def _(bot: Bot, event: Event, state: T_State):
         return
     state["gid"] = event.group_id
     lquestion = state["question"].lower()
-    num = (
-        Question.delete()
-        .where(
-            fn.Lower(Question.question) == lquestion,
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.question.ilike(lquestion),
             Question.group == state["gid"],
-            Question.user == state["user_id"],
+            Question.user == state["user_id"]
         )
-        .execute()
-    )
+        questions = session.execute(stmt).scalars().all()
+        for q in questions:
+            session.delete(q)
+        num = len(questions)
+        session.commit()
     if num == 0:
         await del_pqa.finish(Message('我不记得"{}"这个问题'.format(state["question"])))
     else:
@@ -186,12 +222,12 @@ async def _(bot: Bot, event: Event, state: T_State):
 async def _(bot: Bot, event: Event):
     uid = event.user_id
     gid = event.group_id if "group_id" in event.__dict__ else 0
-    result = Question.select(Question.question).where(
-        Question.group == gid, Question.user == uid
-    )
-    msg = []
-    for res in result:
-        msg.append(res.question)
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.group == gid, Question.user == uid
+        )
+        result = session.execute(stmt).scalars().all()
+        msg = [res.question for res in result]
     await lookqa.finish(Message("您设置的问题有: " + " | ".join(msg)), at_sender=True)
 
 
@@ -199,12 +235,12 @@ async def _(bot: Bot, event: Event):
 async def _(bot: Bot, event: Event):
     uid = 0
     gid = event.group_id
-    result = Question.select(Question.question).where(
-        Question.group == gid, Question.user == uid
-    )
-    msg = []
-    for res in result:
-        msg.append(res.question)
+    with Session() as session:
+        stmt = select(Question).where(
+            Question.group == gid, Question.user == uid
+        )
+        result = session.execute(stmt).scalars().all()
+        msg = [res.question for res in result]
     await lookgqa.finish(
         Message('该群设置的"有人问"有: ' + " | ".join(msg)), at_sender=True
     )
@@ -220,7 +256,13 @@ async def _(state: T_State):
 @del_allqa.handle()
 async def _(event: Event):
     gid = event.group_id
-    num = Question.delete().where(Question.group == gid).execute()
+    with Session() as session:
+        stmt = select(Question).where(Question.group == gid)
+        questions = session.execute(stmt).scalars().all()
+        for q in questions:
+            session.delete(q)
+        num = len(questions)
+        session.commit()
     if num == 0:
         await del_allqa.finish(Message("该群没有设置任何问答"))
     else:
