@@ -58,6 +58,7 @@ class WeiboPost(Post):
             description=description,
             repost=repost,
         )
+
     @override
     def get_referer(self) -> str:
         """获取微博的referer"""
@@ -133,7 +134,7 @@ class WeiboPost(Post):
         res = [Message("\n".join(msg))]
         if immsg:
             num = 3
-            for i in (6,4,3):
+            for i in (6, 5, 4, 3):
                 if len(immsg) % i == 0:
                     num = i
                     break

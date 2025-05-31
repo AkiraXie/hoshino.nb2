@@ -64,18 +64,18 @@ async def answer_qa_rule(event: Event, state: T_State):
         stmt = select(Question).where(
             Question.question.ilike(question),
             Question.group == gid,
-            Question.user == uid
+            Question.user == uid,
         )
         answer = session.execute(stmt).scalar_one_or_none()
-        
+
         if not answer:
             stmt = select(Question).where(
                 Question.question.ilike(question),
                 Question.group == gid,
-                Question.user == 0
+                Question.user == 0,
             )
             answer = session.execute(stmt).scalar_one_or_none()
-            
+
         if answer:
             state["answer"] = answer.answer
             return True
@@ -103,13 +103,15 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
         stmt = select(Question).where(
             Question.question == question,
             Question.group == event.group_id,
-            Question.user == 0
+            Question.user == 0,
         )
         obj = session.execute(stmt).scalar_one_or_none()
         if obj:
             obj.answer = answer
         else:
-            obj = Question(question=question, answer=answer, group=event.group_id, user=0)
+            obj = Question(
+                question=question, answer=answer, group=event.group_id, user=0
+            )
             session.add(obj)
         session.commit()
     await group_ques.finish(Message(f"好的我记住{question}了"))
@@ -123,13 +125,15 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
         stmt = select(Question).where(
             Question.question == question,
             Question.group == gid,
-            Question.user == event.user_id
+            Question.user == event.user_id,
         )
         obj = session.execute(stmt).scalar_one_or_none()
         if obj:
             obj.answer = answer
         else:
-            obj = Question(question=question, answer=answer, group=gid, user=event.user_id)
+            obj = Question(
+                question=question, answer=answer, group=gid, user=event.user_id
+            )
             session.add(obj)
         session.commit()
     await person_ques.finish(Message(f"好的我记住{question}了"))
@@ -143,7 +147,7 @@ async def _(bot: Bot, event: Event):
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
             Question.group == event.group_id,
-            Question.user == 0
+            Question.user == 0,
         )
         questions = session.execute(stmt).scalars().all()
         for q in questions:
@@ -165,7 +169,7 @@ async def _(bot: Bot, event: Event):
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
             Question.group == gid,
-            Question.user == event.user_id
+            Question.user == event.user_id,
         )
         questions = session.execute(stmt).scalars().all()
         for q in questions:
@@ -203,7 +207,7 @@ async def _(bot: Bot, event: Event, state: T_State):
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
             Question.group == state["gid"],
-            Question.user == state["user_id"]
+            Question.user == state["user_id"],
         )
         questions = session.execute(stmt).scalars().all()
         for q in questions:
@@ -223,9 +227,7 @@ async def _(bot: Bot, event: Event):
     uid = event.user_id
     gid = event.group_id if "group_id" in event.__dict__ else 0
     with Session() as session:
-        stmt = select(Question).where(
-            Question.group == gid, Question.user == uid
-        )
+        stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
     await lookqa.finish(Message("您设置的问题有: " + " | ".join(msg)), at_sender=True)
@@ -236,9 +238,7 @@ async def _(bot: Bot, event: Event):
     uid = 0
     gid = event.group_id
     with Session() as session:
-        stmt = select(Question).where(
-            Question.group == gid, Question.user == uid
-        )
+        stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
     await lookgqa.finish(

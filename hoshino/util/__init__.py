@@ -358,14 +358,17 @@ async def finish(
         message, call_header=call_header, at_sender=at_sender, **kwargs
     )
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Cookies(Base):
     __tablename__ = "cookies"
     name: Mapped[str] = mapped_column(Text, primary_key=True)
     cookie: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
+
 
 db_path = db_dir / "cookies.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -376,6 +379,7 @@ if not db_path.exists():
     Base.metadata.create_all(engine)
 
 cookiejar: dict[str, str] = {}
+
 
 def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):
@@ -390,6 +394,7 @@ def save_cookies(name: str, cookies: Union[str, dict]):
             obj = Cookies(name=name, cookie=cookies, created_at=time())
             session.add(obj)
         session.commit()
+
 
 async def get_cookies(name: str) -> dict:
     try:

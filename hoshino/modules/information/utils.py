@@ -36,10 +36,9 @@ class Post:
 
     async def get_message(
         self, with_screenshot: bool = True
-    ) -> list[Message | MessageSegment]: 
-        ...
-    def get_referer(self) -> str:
-        ...
+    ) -> list[Message | MessageSegment]: ...
+    def get_referer(self) -> str: ...
+
 
 T = TypeVar("T", bound="Post")
 

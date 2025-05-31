@@ -131,11 +131,9 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | 
         cookies = await get_cookies("bilibili")
     cks = []
     for k, v in cookies.items():
-        if k == "SESSDATA":
-            cks.append({"name": k, "value": v, "domain": ".bilibili.com", "path": "/"})
-            break
-        else:
+        if not v:
             continue
+        cks.append({"name": k, "value": v, "domain": ".bilibili.com", "path": "/"})
     await c.add_cookies(cks)
     page = None
     c.set_default_timeout(10000)

@@ -70,7 +70,11 @@ async def _(bot: Bot, event: Event):
             if num:
                 await uid_manager.remove_uid(
                     uid,
-                    lambda u: bool(session.execute(select(db).where(db.uid == u)).scalar_one_or_none()),
+                    lambda u: bool(
+                        session.execute(
+                            select(db).where(db.uid == u)
+                        ).scalar_one_or_none()
+                    ),
                 )
         else:
             stmt = select(db).where(db.group == gid, db.name == uid)
@@ -84,7 +88,11 @@ async def _(bot: Bot, event: Event):
                 if num:
                     await uid_manager.remove_uid(
                         str(target_uid),
-                        lambda u: bool(session.execute(select(db).where(db.uid == int(u))).scalar_one_or_none()),
+                        lambda u: bool(
+                            session.execute(
+                                select(db).where(db.uid == int(u))
+                            ).scalar_one_or_none()
+                        ),
                     )
             else:
                 num = 0
@@ -159,7 +167,12 @@ async def get_bili_dyn():
             rows = session.execute(stmt).scalars().all()
         if not rows:
             await uid_manager.remove_uid(
-                uid_str, lambda u: bool(Session().execute(select(db).where(db.uid == u)).scalar_one_or_none())
+                uid_str,
+                lambda u: bool(
+                    Session()
+                    .execute(select(db).where(db.uid == u))
+                    .scalar_one_or_none()
+                ),
             )
             return
 

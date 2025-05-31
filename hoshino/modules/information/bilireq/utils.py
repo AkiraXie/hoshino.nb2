@@ -1,6 +1,13 @@
 import asyncio
 from nonebot.typing import override
-from sqlalchemy import Float, Integer, Text, create_engine, PrimaryKeyConstraint, BigInteger
+from sqlalchemy import (
+    Float,
+    Integer,
+    Text,
+    create_engine,
+    PrimaryKeyConstraint,
+    BigInteger,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Integer, Text
 from hoshino import db_dir, Message, MessageSegment
@@ -10,6 +17,7 @@ from time import time
 from functools import partial
 from ..utils import Post
 from typing import Sequence
+
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
@@ -101,6 +109,7 @@ class BiliBiliDynamic(Post):
             url=url,
             nickname=nickname,
         )
+
     @override
     async def get_referer(self) -> str:
         return "https://t.bilibili.com"
@@ -168,8 +177,10 @@ db_path = db_dir / "bilidata.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class DynamicDB(Base):
     __tablename__ = "dynamicdb"
@@ -177,6 +188,7 @@ class DynamicDB(Base):
     group: Mapped[int] = mapped_column(Integer, primary_key=True)
     time: Mapped[float] = mapped_column(Float, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+
 
 # 初始化数据库
 if not db_path.exists():

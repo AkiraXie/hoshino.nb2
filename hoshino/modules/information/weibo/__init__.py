@@ -67,7 +67,9 @@ async def add_subscription(bot: Bot, event: Event):
             obj.time = post.timestamp
             obj.keyword = kw
         else:
-            obj = db(group=gid, uid=uid, name=post.nickname, time=post.timestamp, keyword=kw)
+            obj = db(
+                group=gid, uid=uid, name=post.nickname, time=post.timestamp, keyword=kw
+            )
             session.add(obj)
         session.commit()
     await uid_manager.add_uid(uid)
@@ -95,7 +97,12 @@ async def remove_subscription(bot: Bot, event: Event):
             session.commit()
             if num:
                 await uid_manager.remove_uid(
-                    uid, lambda u: bool(session.execute(select(db).where(db.uid == u)).scalar_one_or_none())
+                    uid,
+                    lambda u: bool(
+                        session.execute(
+                            select(db).where(db.uid == u)
+                        ).scalar_one_or_none()
+                    ),
                 )
         else:
             stmt = select(db).where(db.group == gid, db.name == uid)
@@ -108,7 +115,12 @@ async def remove_subscription(bot: Bot, event: Event):
                 session.commit()
                 if num:
                     await uid_manager.remove_uid(
-                        target_uid, lambda u: bool(session.execute(select(db).where(db.uid == u)).scalar_one_or_none())
+                        target_uid,
+                        lambda u: bool(
+                            session.execute(
+                                select(db).where(db.uid == u)
+                            ).scalar_one_or_none()
+                        ),
                     )
             else:
                 num = 0
@@ -181,7 +193,12 @@ async def fetch_weibo_updates():
             rows = session.execute(stmt).scalars().all()
         if not rows:
             await uid_manager.remove_uid(
-                uid_str, lambda u: bool(Session().execute(select(db).where(db.uid == u)).scalar_one_or_none())
+                uid_str,
+                lambda u: bool(
+                    Session()
+                    .execute(select(db).where(db.uid == u))
+                    .scalar_one_or_none()
+                ),
             )
             return
 
