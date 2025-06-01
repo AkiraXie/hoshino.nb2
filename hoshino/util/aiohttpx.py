@@ -72,7 +72,7 @@ class BaseResponse:
         self.url: URL = url
         self.status_code: int = status_code
         self.headers: httpx.Headers = headers
-        self.ok: bool = 200 <= status_code < 300
+        self.ok: bool = 200 <= status_code < 300 or status_code == 304
         self._resp = _resp
 
 
@@ -94,6 +94,8 @@ class Response(BaseResponse):
 
     @property
     def json(self) -> Any:
+        if self._resp.encoding:
+            return simplejson.loads(self.content, encoding=self._resp.encoding)
         return simplejson.loads(self.content)
 
 

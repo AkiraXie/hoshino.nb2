@@ -186,12 +186,12 @@ async def get_sub_list(
             b = t > ts
         return d["card_type"] == 9 and b and kb
 
-    def cmp(d1, d2) -> bool:
+    def cmp(d1, d2):
         created1 = d1["mblog"]["created_at"]
         created2 = d2["mblog"]["created_at"]
         t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
         t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        return t1 >= t2
+        return t1 - t2
 
     k = functools.cmp_to_key(cmp)
     l = list(filter(custom_filter, res_data["data"]["cards"]))
@@ -242,18 +242,18 @@ async def get_sub_new(
             b = t > ts
         return d["card_type"] == 9 and b and kb
 
-    def cmp(d1, d2) -> bool:
+    def cmp(d1, d2):
         created1 = d1["mblog"]["created_at"]
         created2 = d2["mblog"]["created_at"]
         t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
         t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        return t1 >= t2
+        return t1 - t2
 
     k = functools.cmp_to_key(cmp)
     l = list(filter(custom_filter, res_data["data"]["cards"]))
     if not l:
         return None
-    l.sort(key=k, reverse=True)
+    l.sort(key=k)
     post = await parse_weibo_card(l[0])
 
     return post
