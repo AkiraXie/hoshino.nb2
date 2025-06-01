@@ -6,7 +6,9 @@ from pathlib import Path
 
 
 sv = Service("foods", enable_on_default=False, manage_perm=SUPERUSER)
-foods = [i for i in Path(os.path.dirname(__file__) + "/images").iterdir() if i.is_file()]
+foods = [
+    i for i in Path(os.path.dirname(__file__) + "/images").iterdir() if i.is_file()
+]
 
 
 @sv.on_regex(r"(.{1,9})吃(什么|啥)", priority=3)
