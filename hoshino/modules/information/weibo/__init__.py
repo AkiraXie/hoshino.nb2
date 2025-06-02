@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+import time
 from typing import List
 from hoshino import Bot, Event, on_startup
 from hoshino.schedule import scheduled_job
@@ -48,9 +49,9 @@ async def add_subscription(bot: Bot, event: Event):
                     event, "无效的UID格式，请输入数字ID或完整的微博个人主页链接"
                 )
                 return
-        post = await get_sub_new(uid, 0, keywords=keywords)
+        post = await get_sub_new(uid, ts=0, keywords=keywords)
         if not post:
-            post = await get_sub_new(uid, 0)
+            post = await get_sub_new(uid, ts=0)
         if not post:
             await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
             return
@@ -59,17 +60,16 @@ async def add_subscription(bot: Bot, event: Event):
         await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
         return
     kw = "-_-".join(keywords) if keywords else ""
+    ts = time.time()
     with Session() as session:
         stmt = select(db).where(db.group == gid, db.uid == uid)
         obj = session.execute(stmt).scalar_one_or_none()
         if obj:
             obj.name = post.nickname
-            obj.time = post.timestamp
+            obj.time = ts
             obj.keyword = kw
         else:
-            obj = db(
-                group=gid, uid=uid, name=post.nickname, time=post.timestamp, keyword=kw
-            )
+            obj = db(group=gid, uid=uid, name=post.nickname, time=ts, keyword=kw)
             session.add(obj)
         session.commit()
     await uid_manager.add_uid(uid)

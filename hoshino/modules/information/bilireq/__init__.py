@@ -1,4 +1,5 @@
 import asyncio
+import time
 from hoshino.schedule import scheduled_job
 from hoshino import Service, Bot, Event, on_startup
 import random
@@ -35,7 +36,7 @@ async def _(bot: Bot, event: Event):
         await bot.send(event, f"UID {uid} 不合法")
         return
     uid_int = dyn.uid
-    ts = dyn.timestamp
+    ts = time.time()
     name = dyn.nickname
     with Session() as session:
         stmt = select(db).where(db.group == gid, db.uid == uid_int)
