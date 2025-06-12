@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 # 使用统一的组件
 dyn_queue = PostQueue[BiliBiliDynamic]()
-uid_manager = UIDManager("bilibili")
+uid_manager = UIDManager()
 sv = Service("bilireq", enable_on_default=False)
 tz = timezone("Asia/Shanghai")
 

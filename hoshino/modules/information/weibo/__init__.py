@@ -22,7 +22,7 @@ import re
 import random
 
 weibo_queue = PostQueue[WeiboPost]()
-uid_manager = UIDManager("weibo")
+uid_manager = UIDManager()
 
 
 @sv.on_command(
@@ -242,12 +242,11 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             stmt = select(db).where(db.uid == uid)
             rows = session.execute(stmt).scalars().all()
         _gids = [row.group for row in rows]
-        await asyncio.sleep(random.uniform(1, 5))
+        await asyncio.sleep(random.uniform(0, 2))
         groups = await sv.get_enable_groups()
         gids = list(filter(lambda x: x in groups, _gids))
         if not gids:
             for gid in _gids:
-                await asyncio.sleep(0.1)
                 with Session() as session:
                     stmt = select(db).where(db.uid == uid, db.group == gid)
                     obj = session.execute(stmt).scalar_one_or_none()
@@ -261,7 +260,7 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
 
         msgs = await dyn.get_message(False)
         for gid in gids:
-            await asyncio.sleep(random.uniform(2, 5))
+            await asyncio.sleep(random.uniform(0, 1))
             bot = groups[gid][0]
             with Session() as session:
                 stmt = select(db).where(db.uid == uid, db.group == gid)
@@ -274,7 +273,7 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
                 if msgs:
                     m = msgs[0]
                     await bot.send_group_msg(group_id=gid, message=m)
-                    await asyncio.sleep(random.uniform(0, 2))
+                    await asyncio.sleep(random.uniform(0, 1))
                     await send_group_segments(bot, gid, msgs[1:])
                 else:
                     await bot.send(gid, "获取微博失败")

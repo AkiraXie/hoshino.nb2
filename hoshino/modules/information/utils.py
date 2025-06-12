@@ -46,8 +46,8 @@ T = TypeVar("T", bound="Post")
 class PostQueue(Queue, Generic[T]):
     """统一的队列管理器，支持泛型"""
 
-    def __init__(self, maxsize: int = 0) -> None:
-        super().__init__(maxsize)
+    def __init__(self) -> None:
+        super().__init__()
         self._set = set()
 
     def put(self, item: T) -> bool:
@@ -76,14 +76,13 @@ class PostQueue(Queue, Generic[T]):
 class UIDManager:
     """统一的UID管理器"""
 
-    def __init__(self, platform: str):
-        self.platform = platform
+    def __init__(self):
         self._uids: set[str] = set()
         self._uid_queue = asyncio.Queue()
         self._lock = asyncio.Lock()
         self._processing_uids: set[str] = set()
         self._last_fetch_times: dict[str, float] = {}
-        self._min_interval = 180
+        self._min_interval = 300
 
     async def init(self, uids: list[str]):
         """从UID列表初始化管理器"""
