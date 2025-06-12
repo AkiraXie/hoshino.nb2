@@ -116,7 +116,7 @@ class BiliBiliDynamic(Post):
 
     @override
     async def get_message(
-        self, with_screenshot: bool = False
+        self, with_screenshot: bool = True
     ) -> Sequence[Message | MessageSegment]:
         msg = [self.nickname + self.type]
         imgmsg = []

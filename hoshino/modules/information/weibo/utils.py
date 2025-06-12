@@ -296,7 +296,7 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
         res = await aiohttpx.get(
             url,
             cookies=await get_weibocookies(),
-            timeout=8.0,
+            timeout=5.0,
         )
         rj = res.json
     except Exception as e:
