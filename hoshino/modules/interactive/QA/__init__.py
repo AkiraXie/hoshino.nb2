@@ -6,7 +6,6 @@ from hoshino.permission import ADMIN
 from hoshino import Service, Bot, Event, Message, MessageSegment, Matcher
 from hoshino.event import MessageEvent
 from hoshino.config import config
-from peewee import fn
 from hoshino.util.aiohttpx import get
 from PIL import Image
 from sqlalchemy import select
