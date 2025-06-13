@@ -5,8 +5,6 @@ import functools
 import os
 import re
 from urllib.parse import unquote
-
-import peewee as pw
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker

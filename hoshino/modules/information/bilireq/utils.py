@@ -9,11 +9,9 @@ from sqlalchemy import (
     BigInteger,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from sqlalchemy.types import Integer, Text
 from hoshino import db_dir, Message, MessageSegment
 from hoshino.util import aiohttpx, get_cookies
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
-from time import time
 from functools import partial
 from ..utils import Post
 from typing import Sequence
@@ -140,7 +138,7 @@ class BiliBiliDynamic(Post):
 
 
 async def get_new_dynamic(uid: str) -> BiliBiliDynamic | None:
-    dyns = await get_dynamic(uid, time() - 86400)
+    dyns = await get_dynamic(uid, 0)
     if dyns:
         return dyns[0]
     else:
