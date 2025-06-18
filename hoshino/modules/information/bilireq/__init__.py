@@ -262,6 +262,6 @@ async def bili_dyn_dispatcher():
 async def start_bili_dyn_dispatcher():
     with Session() as session:
         stmt = select(db.uid).distinct()
-        uids = [str(row) for row in session.execute(stmt).scalars()]
+        uids = session.scalars(stmt).all()
     await uid_manager.init(uids)
     asyncio.create_task(bili_dyn_dispatcher())

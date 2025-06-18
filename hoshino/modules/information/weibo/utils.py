@@ -132,7 +132,7 @@ class WeiboPost(Post):
         res = [Message("\n".join(msg))]
         if immsg:
             num = 3
-            for i in (6, 5, 4, 3):
+            for i in (7, 6, 5, 4, 3):
                 if len(immsg) % i == 0:
                     num = i
                     break

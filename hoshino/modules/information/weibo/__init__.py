@@ -264,7 +264,7 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             bot = groups[gid][0]
             with Session() as session:
                 stmt = select(db).where(db.uid == uid, db.group == gid)
-                obj = session.execute(stmt).scalar_one_or_none()
+                obj = session.scalar(statement=stmt)
                 if obj:
                     obj.time = dyn.timestamp
                     obj.name = dyn.nickname
@@ -297,6 +297,6 @@ async def start_weibo_dispatcher():
     # 初始化 UID 管理器
     with Session() as session:
         stmt = select(db.uid).distinct()
-        uids = [str(row) for row in session.execute(stmt).scalars()]
+        uids = session.scalars(stmt).all()
     await uid_manager.init(uids)
     asyncio.create_task(weibo_dispatcher())
