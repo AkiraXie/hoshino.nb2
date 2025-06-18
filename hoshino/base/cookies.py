@@ -27,7 +27,7 @@ async def save_cookies_cmd(
     await send(f"保存 {name} cookies 成功")
 
 
-@sucmd("check_cookies", aliases={"检查cookies", "ckck"}, only_to_me=True)
+@sucmd("check_cookies", aliases={"检查cookies", "ckck"}, only_to_me=True).handle()
 async def check_cookies_cmd(
     event: MessageEvent,
 ):
@@ -37,7 +37,8 @@ async def check_cookies_cmd(
     else:
         cookies = {}
         name = msgs
-        cookies[name] = check_cookies(name)
+        if v:= check_cookies(name):
+            cookies[name] = v
     if not cookies:
         await send("没有可用的cookies")
     else:
