@@ -401,6 +401,8 @@ def check_cookies(name: str) -> bool:
         stmt = select(Cookies).where(Cookies.name == name)
         row = session.execute(stmt).scalar_one_or_none()
         if row:
+            if not row.created_at:
+                return False
             # 检查创建时间是否超过两天
             if time() - row.created_at > 86400 * 2:
                 return False
@@ -415,7 +417,7 @@ def check_all_cookies() -> dict[str, bool]:
         stmt = select(Cookies)
         rows = session.execute(stmt).scalars().all()
         for row in rows:
-            if time() - row.created_at > 86400 * 2:  # 超过两天
+            if not row.created_at or time() - row.created_at > 86400 * 2:  # 超过两天
                 session.delete(row)
                 res[row.name] = False
                 cookiejar.pop(row.name, None)
