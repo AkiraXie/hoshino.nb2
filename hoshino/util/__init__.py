@@ -396,6 +396,36 @@ def save_cookies(name: str, cookies: Union[str, dict]):
         session.commit()
 
 
+def check_cookies(name: str) -> bool:
+    with Session() as session:
+        stmt = select(Cookies).where(Cookies.name == name)
+        row = session.execute(stmt).scalar_one_or_none()
+        if row:
+            # 检查创建时间是否超过两天
+            if time() - row.created_at > 86400 * 2:
+                return False
+            cookiejar[name] = row.cookie
+            return True
+    return False
+
+
+def check_all_cookies() -> dict[str, bool]:
+    res = {}
+    with Session() as session:
+        stmt = select(Cookies)
+        rows = session.execute(stmt).scalars().all()
+        for row in rows:
+            if time() - row.created_at > 86400 * 2:  # 超过两天
+                session.delete(row)
+                res[row.name] = False
+                cookiejar.pop(row.name, None)
+            else:
+                res[row.name] = True
+                cookiejar[row.name] = row.cookie
+        session.commit()
+    return res
+
+
 async def get_cookies(name: str) -> dict:
     try:
         if name in cookiejar:
@@ -439,3 +469,8 @@ async def init_cookies():
     await get_cookies("xhs")
     await get_cookies("weibo")
     await get_cookies("bilibili")
+    dic = check_all_cookies()
+    await send_to_superuser(
+        "加载 cookies 完成, 当前可用 cookies: "
+        + ", ".join(k for k, v in dic.items() if v)
+    )

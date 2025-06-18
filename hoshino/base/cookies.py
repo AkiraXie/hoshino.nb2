@@ -1,4 +1,11 @@
-from hoshino.util import sucmd, finish, save_cookies, send
+from hoshino.util import (
+    sucmd,
+    finish,
+    save_cookies,
+    send,
+    check_all_cookies,
+    check_cookies,
+)
 from hoshino.event import MessageEvent
 
 
@@ -18,3 +25,20 @@ async def save_cookies_cmd(
 
     save_cookies(name, cookies)
     await send(f"保存 {name} cookies 成功")
+
+
+@sucmd("check_cookies", aliases={"检查cookies", "ckck"}, only_to_me=True)
+async def check_cookies_cmd(
+    event: MessageEvent,
+):
+    msgs = event.get_plaintext()
+    if len(msgs) == 0 or msgs == "all":
+        cookies = check_all_cookies()
+    else:
+        cookies = {}
+        name = msgs
+        cookies[name] = check_cookies(name)
+    if not cookies:
+        await send("没有可用的cookies")
+    else:
+        await send(f"可用的cookies: {', '.join(cookies)}")

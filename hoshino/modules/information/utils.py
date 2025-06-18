@@ -82,7 +82,7 @@ class UIDManager:
         self._lock = asyncio.Lock()
         self._processing_uids: set[str] = set()
         self._last_fetch_times: dict[str, float] = {}
-        self._min_interval = 300
+        self._min_interval = 360
 
     async def init(self, uids: list[str]):
         """从UID列表初始化管理器"""
