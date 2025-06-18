@@ -28,7 +28,7 @@ from nonebot.compat import type_validate_python
 from . import aiohttpx
 from sqlalchemy import Column, Text, Float, create_engine, PrimaryKeyConstraint, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from hoshino import db_dir, on_startup
+from hoshino import db_dir, on_bot_connect
 from time import time
 
 __SU_IMGLIST = "__superuser__imglist"
@@ -466,7 +466,7 @@ async def get_redirect(url: str, headers={}) -> str | None:
     return loc
 
 
-@on_startup
+@on_bot_connect
 async def init_cookies():
     await get_cookies("xhs")
     await get_cookies("weibo")
