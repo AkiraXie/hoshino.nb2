@@ -131,7 +131,7 @@ class WeiboPost(Post):
 
         res = [Message("\n".join(msg))]
         if immsg:
-            num = 3
+            num = 4
             for i in (7, 6, 5, 4, 3):
                 if len(immsg) % i == 0:
                     num = i
@@ -309,6 +309,53 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
         post.repost = repost
     return post
 
+async def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
+    pic_urls = []
+    video_urls = []
+    medias = dic.get("mix_media_info", {}).get("items", [])
+    for media in medias:
+        mediadata = media.get("data", {})
+        if media.get("type") == "pic":
+            pic_url = parse_pic_info(mediadata)
+            if pic_url:
+                pic_urls.append(pic_url)
+        elif media.get("type") == "video":
+            v_url, p_url = parse_video_info(mediadata)
+            if v_url:
+                video_urls.append(v_url)
+            if p_url:
+                pic_urls.append(p_url)
+    return pic_urls, video_urls
+
+def parse_pic_info(pic: dict) -> str:
+    pic_url = ""
+    for scale in ["original", "large"]:
+        if scale in pic:
+            if ur := pic[scale].get("url"):
+                pic_url = ur
+                break
+    return pic_url
+
+def parse_video_info(page_info: dict) -> str:
+    pic_url = ""
+    video_url = ""
+    media_info = page_info.get("media_info", {})
+    big_pic = media_info.get("big_pic_info", {}).get("pic_big", {}).get("url", "")
+    if big_pic:
+        pic_url = big_pic
+    else :
+        pic_url = page_info.get("page_pic", "")
+    for k in [
+        "mp4_720p_mp4",
+        "mp4_hd_url",
+        "mp4_sd_url",
+        "stream_url_hd",
+        "stream_url",
+    ]:
+        if k in media_info:
+            video_url = media_info[k]
+            break
+    return video_url, pic_url
 
 async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     mid = rj.get("mid")
@@ -321,29 +368,21 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     parsed_text = _get_text(rj["text"])
     pic_urls = []
     video_urls = []
-    pic_info: list = rj.get("pic_infos", {}).values()
-    for pic in pic_info:
-        for scale in ["original", "large"]:
-            if scale in pic:
-                if ur := pic[scale].get("url"):
-                    pic_urls.append(ur)
-                    break
-    page_info = rj.get("page_info", {})
-    if page_info.get("object_type") == "video":
-        page_pic = page_info.get("page_pic")
-        if page_pic:
-            pic_urls.append(page_pic)
-        media_info = page_info.get("media_info")
-        if media_info:
-            for k in [
-                "mp4_hd_url",
-                "mp4_sd_url",
-                "stream_url_hd",
-                "stream_url",
-            ]:
-                if k in media_info:
-                    video_urls.append(media_info[k])
-                    break
+    if "mix_media_info" in rj:
+        pic_urls, video_urls = await parse_mix_media_info(rj)
+    else:
+        pic_info: list = rj.get("pic_infos", {}).values()
+        for pic in pic_info:
+            pic_url = parse_pic_info(pic)
+            if pic_url:
+                pic_urls.append(pic_url)
+        page_info = rj.get("page_info", {})
+        if page_info.get("object_type") == "video":
+            video_url, pic_url = parse_video_info(page_info)
+            if video_url:
+                video_urls.append(video_url)
+            if pic_url:
+                pic_urls.append(pic_url)
     return WeiboPost(
         uid=uid,
         id=mid,

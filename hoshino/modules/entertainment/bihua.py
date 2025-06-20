@@ -10,7 +10,7 @@ configurl = "https://bihua.bleatingsheep.org/static/scripts/config.js"
 prefix = "https://bihua.bleatingsheep.org/meme/"
 m = sv.on_command("bihua", aliases=("b话", "壁画"), block=True)
 r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=True)
-
+s = sv.on_command("搜索壁画", aliases=("searchbihua", "搜索b话"), block=True)
 
 @scheduled_job("interval", seconds=240, id="bihua_config", jitter=5)
 async def fetch_bihua_config():
@@ -75,3 +75,28 @@ async def _(event: Event):
     link = prefix + matching_bihua
     link2 = quote(link, safe=":/") + bihuas[matching_bihua]
     await m.send(MessageSegment.image(link2))
+
+@s.handle()
+async def _(event: Event):
+    msg = event.get_plaintext()
+    if not msg:
+        await s.finish()
+    keywords = msg.split()
+    if not keywords:
+        await s.finish()
+    word_queries = set(keywords)
+    matching_bihuas = [
+        bihua
+        for bihua in bihuas
+        if all(word.lower() in bihua.lower() for word in word_queries)
+    ]
+    if not matching_bihuas:
+        await fetch_bihua_config()
+    matching_bihuas = [
+        bihua
+        for bihua in bihuas
+        if all(word.lower() in bihua.lower() for word in word_queries)
+    ]
+    if not matching_bihuas:
+        await s.finish()
+    await s.send(f"找到壁画：\n-----------\n{'\n'.join(matching_bihuas)}")
