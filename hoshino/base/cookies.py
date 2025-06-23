@@ -37,7 +37,7 @@ async def check_cookies_cmd(
     else:
         cookies = {}
         name = msgs
-        if v:= check_cookies(name):
+        if v := check_cookies(name):
             cookies[name] = v
     if not cookies:
         await send("没有可用的cookies")

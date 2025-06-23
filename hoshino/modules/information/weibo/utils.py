@@ -193,12 +193,12 @@ async def get_sub_list(
 
     k = functools.cmp_to_key(cmp)
     l = list(filter(custom_filter, res_data["data"]["cards"]))
-    l.sort(key=k)
+    l.sort(key=k, reverse=True)
     if not l:
         return []
     res = []
     for i in l:
-        post = await parse_weibo_card(i)
+        post = await parse_weibo_card_raw(i)
         if not post:
             continue
         if post.timestamp > ts:
@@ -251,8 +251,8 @@ async def get_sub_new(
     l = list(filter(custom_filter, res_data["data"]["cards"]))
     if not l:
         return None
-    l.sort(key=k)
-    post = await parse_weibo_card(l[0])
+    l.sort(key=k, reverse=True)
+    post = await parse_weibo_card_raw(l[0])
 
     return post
 
@@ -309,6 +309,7 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
         post.repost = repost
     return post
 
+
 async def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
     pic_urls = []
     video_urls = []
@@ -327,6 +328,7 @@ async def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
                 pic_urls.append(p_url)
     return pic_urls, video_urls
 
+
 def parse_pic_info(pic: dict) -> str:
     pic_url = ""
     for scale in ["original", "large"]:
@@ -336,6 +338,7 @@ def parse_pic_info(pic: dict) -> str:
                 break
     return pic_url
 
+
 def parse_video_info(page_info: dict) -> str:
     pic_url = ""
     video_url = ""
@@ -343,7 +346,7 @@ def parse_video_info(page_info: dict) -> str:
     big_pic = media_info.get("big_pic_info", {}).get("pic_big", {}).get("url", "")
     if big_pic:
         pic_url = big_pic
-    else :
+    else:
         pic_url = page_info.get("page_pic", "")
     for k in [
         "mp4_720p_mp4",
@@ -356,6 +359,7 @@ def parse_video_info(page_info: dict) -> str:
             video_url = media_info[k]
             break
     return video_url, pic_url
+
 
 async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     mid = rj.get("mid")
@@ -396,23 +400,27 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
 
 
 async def _parse_weibo_card(info: dict) -> WeiboPost | None:
-    if info["isLongText"] or info["pic_num"] > 9:
-        return await parse_weibo_with_bid(info["bid"])
+    ck = await get_weibocookies()
     parsed_text = _get_text(info["text"])
+    pic_num = info.get("pic_num", 0)
     raw_pics_list = info.get("pics", [])
     video_urls = []
     pic_urls = []
     if isinstance(raw_pics_list, dict):
+        if len(raw_pics_list.values()) < pic_num and ck:
+            return await parse_weibo_with_bid(info["bid"])
         for img in raw_pics_list.values():
             if img.get("large"):
                 pic_urls.append(img["large"]["url"])
             elif img.get("videoSrc"):
-                continue
+                video_urls.append(img["videoSrc"])
     elif isinstance(raw_pics_list, list):
+        if len(raw_pics_list) < pic_num and ck:
+            return await parse_weibo_with_bid(info["bid"])
         pic_urls = [img["large"]["url"] for img in raw_pics_list]
+        video_urls = [img["videoSrc"] for img in raw_pics_list if img.get("videoSrc")]
     else:
         pic_urls = []
-    # 视频cover
     if "page_info" in info and info["page_info"].get("type") == "video":
         page_pic = info["page_info"].get("page_pic")
         if page_pic:
@@ -447,14 +455,45 @@ async def _parse_weibo_card(info: dict) -> WeiboPost | None:
     )
 
 
-async def parse_weibo_card(raw: dict) -> WeiboPost | None:
+async def parse_weibo_card_raw(raw: dict) -> WeiboPost | None:
     info = raw["mblog"]
+    return await parse_weibo_card(info)
+
+
+async def parse_weibo_card(info: dict) -> WeiboPost | None:
     post = await _parse_weibo_card(info)
     if not post:
         return None
     if "retweeted_status" in info:
+        if info["retweeted_status"].get("visible", {}).get("type") != 0:
+            return post
         post.repost = await _parse_weibo_card(info["retweeted_status"])
     return post
+
+
+async def parse_weibo_with_id(id: str) -> WeiboPost | None:
+    url = "https://m.weibo.cn/statuses/show?id={}".format(id)
+    ck = "_T_WM=40835919903; WEIBOCN_FROM=1110006030; MLOGIN=0; XSRF-TOKEN=4399c8"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/ 91.0.4472.124 Safari/537.36",
+        "Cookie": ck,
+        "Referer": "https://m.weibo.cn/detail/{}".format(id),
+        "accept": "application/json",
+    }
+    res = await aiohttpx.get(
+        url,
+        headers=headers,
+        timeout=8.0,
+    )
+    if not res.ok:
+        sv.logger.error(f"获取微博失败: {res.status_code} {res.text}")
+        return None
+    rj = res.json
+    if not rj.get("ok", False):
+        sv.logger.error(f"获取微博失败: {res.status_code} {res.text}")
+        return None
+    rjdata = rj.get("data", {})
+    return await parse_weibo_card(rjdata)
 
 
 async def parse_mapp_weibo(url: str) -> WeiboPost | None:
@@ -470,7 +509,7 @@ async def parse_mapp_weibo(url: str) -> WeiboPost | None:
     if furl := await get_redirect(url, headers=headers):
         matched = re.search(r"m.weibo.cn\/(detail|status)\/(\w+)", furl)
         if matched:
-            return await parse_weibo_with_bid(matched.group(2))
+            return await parse_weibo_with_id(matched.group(2))
     resp = await aiohttpx.get(
         url,
         headers=headers,

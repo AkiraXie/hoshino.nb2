@@ -125,7 +125,8 @@ class BiliBiliDynamic(Post):
             )
             if img:
                 msg.append(str(img))
-        msg.append(self.content)
+        if not img:
+            msg.append(self.content)
         await asyncio.sleep(0.5)
         msg.append(self.url)
         res = [Message("\n".join(msg))]
