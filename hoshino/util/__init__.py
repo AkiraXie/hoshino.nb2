@@ -440,7 +440,7 @@ async def get_cookies(name: str) -> dict:
                     return {}
                 cookies = row.cookie
                 ts = row.created_at
-                if time() - ts > 86400 * 2:
+                if time() - ts > 86400 * 3:
                     session.delete(row)
                     session.commit()
                     cookiejar.pop(name, None)

@@ -258,7 +258,7 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             await asyncio.sleep(0.5)
             return
 
-        msgs = await dyn.get_message(False)
+        msgs = await dyn.get_message(True)
         for gid in gids:
             await asyncio.sleep(random.uniform(0, 1))
             bot = groups[gid][0]

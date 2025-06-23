@@ -83,27 +83,28 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
     c = await b.new_context(
         **context_params,
     )
-    if not cookies:
-        cookies = await get_cookies("weibo")
-    if cookies:
-        cks = []
-        for k, v in cookies.items():
-            if not v:
-                continue
-            cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
-        await c.add_cookies(cks)
+    ## maybe we dont need cookies here
+    # if not cookies:
+    #     cookies = await get_cookies("weibo")
+    # if cookies:
+    #     cks = []
+    #     for k, v in cookies.items():
+    #         if not v:
+    #             continue
+    #         cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
+    #     await c.add_cookies(cks)
     c.set_default_timeout(6000)
     page = None
     try:
         page: Page = await c.new_page()
         await page.goto(url)
-        await page.wait_for_selector("div.wrap", timeout=5000)
+        await page.wait_for_selector("div.wrap", timeout=8000)
         await page.add_script_tag(content=weibo_script)
         await page.wait_for_load_state("networkidle")
         selector = "div.f-weibo"
         element = None
         try:
-            element = await page.wait_for_selector(selector, timeout=5000)
+            element = await page.wait_for_selector(selector, timeout=8000)
         except (TimeoutError, Exception):
             logger.error("get_weibo_screenshot error: no element found")
             return None
@@ -144,9 +145,9 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | 
             return None
         await page.add_script_tag(path=bili_mobilejs)
         await page.wait_for_function("getMobileStyle()")
-        await page.wait_for_load_state(timeout=5000)
+        await page.wait_for_load_state(timeout=8000)
         element = await page.wait_for_selector(
-            ".opus-modules" if "opus" in page.url else ".dyn-card", timeout=5000
+            ".opus-modules" if "opus" in page.url else ".dyn-card", timeout=8000
         )
         if not element:
             logger.error("get_bili_dynamic_screenshot error: no element found")
