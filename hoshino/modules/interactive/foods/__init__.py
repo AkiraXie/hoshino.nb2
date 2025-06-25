@@ -17,5 +17,6 @@ async def _(m: Matcher, s: T_State):
         return
     res = random.choice(foods)
     name = s["_matched_groups"][0]
-    img = MessageSegment.image(res)
+    with open(res, "rb") as f:
+        img = MessageSegment.image(f.read())
     await m.send(f"{name}吃{res.stem}吧! \n" + img, call_header=True)
