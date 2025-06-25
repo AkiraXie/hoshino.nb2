@@ -2,9 +2,10 @@ import asyncio
 from io import BytesIO
 from PIL import Image
 from pathlib import Path
-from hoshino import Message, Bot, T_State, SUPERUSER, MessageSegment, img_dir
+from hoshino import Message, Bot, T_State, SUPERUSER, MessageSegment, img_dir,fav_dir,video_dir
 from hoshino.util import (
     __SU_IMGLIST,
+    __SU_VIDEOLIST,
     save_img,
     sucmd,
     finish,
@@ -13,8 +14,10 @@ from hoshino.util import (
     get_event_image_segments,
     send_to_superuser,
     _get_imgs_from_forward_msg,
+    _get_videos_from_forward_msg,
     aiohttpx,
     sumsg,
+    save_video
 )
 from hoshino.event import GroupReactionEvent, MessageEvent
 from nonebot.plugin import on_notice, on_keyword
@@ -33,14 +36,14 @@ async def reaction_img_rule(
     event: GroupReactionEvent,
     state: T_State,
 ) -> bool:
+    msg_id = event.message_id
+    msg = await bot.get_msg(message_id=msg_id)
+    sender = msg.get("sender", {}).get("user_id")
+    sender = str(sender)
+    if sender != bot.self_id and sender not in bot.config.superusers:
+        return False
+    msg = msg.get("message")
     if event.code == "76" or event.code == "66":
-        msg_id = event.message_id
-        msg = await bot.get_msg(message_id=msg_id)
-        sender = msg.get("sender", {}).get("user_id")
-        sender = str(sender)
-        if sender != bot.self_id and sender not in bot.config.superusers:
-            return False
-        msg = msg.get("message")
         if msg:
             msg = type_validate_python(Message, msg)
             img_list = [s for s in msg if s.type == "image"]
@@ -51,6 +54,28 @@ async def reaction_img_rule(
                 return True
     return False
 
+async def reaction_video_rule(
+    bot: Bot,
+    event: GroupReactionEvent,
+    state: T_State,
+) -> bool:
+    msg_id = event.message_id
+    msg = await bot.get_msg(message_id=msg_id)
+    sender = msg.get("sender", {}).get("user_id")
+    sender = str(sender)
+    if sender != bot.self_id and sender not in bot.config.superusers:
+        return False
+    msg = msg.get("message")
+    if event.code == "424":
+        if msg:
+            msg = type_validate_python(Message, msg)
+            img_list = [s for s in msg if s.type == "video"]
+            img_list.extend(await _get_videos_from_forward_msg(bot, msg))
+            if img_list:
+                state[__SU_VIDEOLIST] = img_list
+                return True
+    return False
+
 
 svimg_notice = on_notice(
     rule=reaction_img_rule,
@@ -58,7 +83,12 @@ svimg_notice = on_notice(
     priority=5,
     block=True,
 )
-
+svvideo_notice = on_notice(
+    rule=reaction_video_rule,
+    permission=SUPERUSER,
+    priority=5,
+    block=True,
+)
 
 @sumsg(
     only_to_me=True,
@@ -67,7 +97,7 @@ svimg_notice = on_notice(
 ).handle()
 @svimg_notice.handle()
 async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State):
-    segs: list[MessageSegment] = state[__SU_IMGLIST]
+    segs: list[MessageSegment] = state.get(__SU_IMGLIST, [])
     cnt = 0
     tasks = []
     is_fav = (
@@ -80,8 +110,7 @@ async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State)
         url = seg.data.get("file", seg.data.get("url"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
-        tasks.append(save_img(url, fname, is_fav))
-
+        tasks.append(save_img(url, fname, is_fav,False))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     for result in results:
         if isinstance(result, Exception):
@@ -92,6 +121,29 @@ async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State)
         await send_to_superuser(f"成功保存{cnt}张图片")
     else:
         await send_to_superuser("保存图片失败")
+
+@svvideo_notice.handle()
+async def save_vi_cmd(event: GroupReactionEvent, state: T_State):
+    segs: list[MessageSegment] = state.get(__SU_VIDEOLIST, [])
+    cnt = 0
+    tasks = []
+    for i, seg in enumerate(segs):
+        name = f"{event.message_id}_{event.get_session_id()}_{i}"
+        url = seg.data.get("file", seg.data.get("url"))
+        fname = seg.data.get("filename", name)
+        url = url.replace("https://", "http://")
+        tasks.append(save_video(url, fname, False))
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            logger.exception(f"保存视频失败: {result}")
+        elif result:
+            cnt += 1
+    if cnt != 0:
+        await send_to_superuser(f"成功保存{cnt}视频")
+    else:
+        await send_to_superuser("保存视频失败")
+
 
 
 @sucmd(
@@ -110,7 +162,10 @@ async def delete_img_cmd(
         if os.path.exists(path):
             os.remove(path)
             await send(f"删除图片{name}成功")
-
+        path = os.path.join(fav_dir, name)
+        if os.path.exists(path):
+            os.remove(path)
+            await send(f"删除收藏图片{name}成功")
 
 @sucmd(
     "看图",
@@ -135,7 +190,7 @@ async def show_img_cmd(
 
 @sucmd(
     "随图",
-    aliases={"raimg", "randomimg", "rimg"},
+    aliases={"raimg", "randomimg", "rim"},
     only_to_me=True,
 ).handle()
 async def random_img_cmd(
@@ -155,8 +210,46 @@ async def random_img_cmd(
     ra = random.SystemRandom(time() + event.message_id)
     selected_names = ra.sample(names, k=num)
     for name in selected_names:
-        fpath = os.path.join(path, name)
-        fpath = Path(fpath)
+        fpath = path / name
+        try:
+            im = Image.open(fpath)
+            img = MessageSegment.image(fpath)
+            imgs.append(img)
+            im.close()
+        except Exception:
+            logger.exception(f"打开图片失败: {fpath}")
+            os.remove(fpath)
+            continue
+    if imgs:
+        names = []
+        for i, name in enumerate(selected_names):
+            names.append(f"{i + 1}: {name}")
+        imgs.append("\n".join(names))
+        await send_segments(imgs)
+
+@sucmd(
+    "随收",
+    aliases={"rafav", "randomfav",'rfa'},
+    only_to_me=True,
+).handle()
+async def random_fav_cmd(
+    event: MessageEvent,
+):
+    path = fav_dir
+    names = os.listdir(path)
+    if not names:
+        await finish()
+    num = event.get_plaintext()
+    if num.isdigit():
+        num = int(num)
+    else:
+        num = 12
+    num = min(len(names), num)
+    imgs = []
+    ra = random.SystemRandom(time() + event.message_id)
+    selected_names = ra.sample(names, k=num)
+    for name in selected_names:
+        fpath = path / name
         try:
             im = Image.open(fpath)
             img = MessageSegment.image(fpath)
@@ -175,41 +268,37 @@ async def random_img_cmd(
 
 
 @sucmd(
-    "全图",
-    aliases={"aimg", "allimg", "qt"},
+    "随影",
+    aliases={"rvi", "rav"},
     only_to_me=True,
 ).handle()
-async def all_img_cmd(
+async def random_vi_cmd(
     event: MessageEvent,
 ):
-    path = img_dir
+    path = video_dir
     names = os.listdir(path)
     if not names:
         await finish()
+    num = event.get_plaintext()
+    if num.isdigit():
+        num = int(num)
+    else:
+        num = 2
+    num = min(len(names), num)
     imgs = []
-    ns = []
-    for name in names:
-        fpath = os.path.join(path, name)
-        fpath = Path(fpath)
-        try:
-            im = Image.open(fpath)
-            img = MessageSegment.image(fpath)
-            imgs.append(img)
-            ns.append(name)
-            im.close()
-        except Exception:
-            logger.exception(f"打开图片失败: {fpath}")
-            os.remove(fpath)
-            continue
+    ra = random.SystemRandom(time() + event.message_id)
+    selected_names = ra.sample(names, k=num)
+    for name in selected_names:
+        fpath = path / name
+        img = MessageSegment.video(fpath)
+        imgs.append(img)
+
     if imgs:
-        n = 9
-        await send(f"共{len(imgs)}张图片")
-        for i in range(0, len(imgs), n):
-            await asyncio.sleep(1)
-            chunk = imgs[i : i + n]
-            chunk.append(f"第{i + 1}-{min(i + n, len(imgs))}张")
-            chunk.append("\n".join(ns[i : i + n]))
-            await send_segments(chunk)
+        names = []
+        for i, name in enumerate(selected_names):
+            names.append(f"{i + 1}: {name}")
+        imgs.append("\n".join(names))
+        await send_segments(imgs)
 
 
 timg = on_keyword(

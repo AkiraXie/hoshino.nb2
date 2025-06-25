@@ -25,11 +25,15 @@ fav_dir = config.data_dir / "favorite"
 img_dir = config.data_dir / "image"
 db_dir = config.data_dir / "db"
 service_dir = config.data_dir / "service"
+video_dir = config.data_dir / "video"
+
+config.data_dir.mkdir(exist_ok=True)
+config.static_dir.mkdir(exist_ok=True)
 fav_dir.mkdir(exist_ok=True)
 img_dir.mkdir(exist_ok=True)
 db_dir.mkdir(exist_ok=True)
 service_dir.mkdir(exist_ok=True)
-
+video_dir.mkdir(exist_ok=True)
 
 # patch bot.send
 async def send(
