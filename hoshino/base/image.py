@@ -106,7 +106,7 @@ async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State)
         else False
     )
     for i, seg in enumerate(segs):
-        name = f"{event.message_id}_{event.get_session_id()}_{i}"
+        name = f"{event.message_id}_{event.get_session_id()}_{i}.jpg"
         url = seg.data.get("file", seg.data.get("url"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
@@ -128,7 +128,7 @@ async def save_vi_cmd(event: GroupReactionEvent, state: T_State):
     cnt = 0
     tasks = []
     for i, seg in enumerate(segs):
-        name = f"{event.message_id}_{event.get_session_id()}_{i}"
+        name = f"{event.message_id}_{event.get_session_id()}_{i}.mp4"
         url = seg.data.get("file", seg.data.get("url"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
