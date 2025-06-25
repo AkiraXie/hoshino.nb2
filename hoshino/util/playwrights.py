@@ -83,16 +83,15 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
     c = await b.new_context(
         **context_params,
     )
-    ## maybe we dont need cookies here
-    # if not cookies:
-    #     cookies = await get_cookies("weibo")
-    # if cookies:
-    #     cks = []
-    #     for k, v in cookies.items():
-    #         if not v:
-    #             continue
-    #         cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
-    #     await c.add_cookies(cks)
+    if not cookies:
+        cookies = await get_cookies("weibo")
+    if cookies:
+        cks = []
+        for k, v in cookies.items():
+            if not v:
+                continue
+            cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
+        await c.add_cookies(cks)
     c.set_default_timeout(6000)
     page = None
     try:
