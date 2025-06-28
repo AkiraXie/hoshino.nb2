@@ -58,7 +58,7 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment | None:
         card = await page.wait_for_selector(".card-wrap")
         if not card:
             await page.close()
-            logger.error("get_mapp_weibo_screenshot error: no card")
+            logger.error(f"get_mapp_weibo_screenshot error: no card url: {url}")
             return None
 
         image = await card.screenshot()
@@ -69,7 +69,7 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment | None:
         if page:
             await page.close()
             await c.close()
-        logger.error(f"get_mapp_weibo_screenshot error: {e}")
+        logger.error(f"get_mapp_weibo_screenshot error: {e} url: {url}")
         return None
     finally:
         if page:
@@ -90,14 +90,20 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
         for k, v in cookies.items():
             if not v:
                 continue
-            cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
+            cks.append({"name": k, "value": v, "domain": ".weibo.cn", "path": "/"})
         await c.add_cookies(cks)
     c.set_default_timeout(6000)
     page = None
     try:
         page: Page = await c.new_page()
         await page.goto(url)
-        await page.wait_for_selector("div.wrap", timeout=8000)
+        try:
+            await page.wait_for_selector("div.wrap", timeout=4000)
+        except (TimeoutError, Exception):
+            logger.warning(
+                f"get_weibo_screenshot get div.wrap error: no element found. url: {url}  "
+            )
+            pass
         await page.add_script_tag(content=weibo_script)
         await page.wait_for_load_state("networkidle")
         selector = "div.f-weibo"
@@ -105,10 +111,10 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
         try:
             element = await page.wait_for_selector(selector, timeout=8000)
         except (TimeoutError, Exception):
-            logger.error("get_weibo_screenshot error: no element found")
+            logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
             return None
         if not element:
-            logger.error("get_weibo_screenshot error: no element found")
+            logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
             return None
 
         image = await element.screenshot()
@@ -149,13 +155,15 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | 
             ".opus-modules" if "opus" in page.url else ".dyn-card", timeout=8000
         )
         if not element:
-            logger.error("get_bili_dynamic_screenshot error: no element found")
+            logger.error(
+                f"get_bili_dynamic_screenshot error: no element found url: {url}  "
+            )
             return None
         image = await element.screenshot()
 
         return MessageSegment.image(image)
     except Exception as e:
-        logger.error(f"get_bili_dynamic_screenshot error: {e}")
+        logger.error(f"get_bili_dynamic_screenshot error: {e} url: {url}")
         return None
     finally:
         if page:

@@ -9,9 +9,9 @@ from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Float, Integer, Text
-
-from hoshino import db_dir, Message, Service, MessageSegment
-from hoshino.util import aiohttpx, get_cookies, get_redirect
+from time import time
+from hoshino import db_dir, Message, Service, MessageSegment, config
+from hoshino.util import aiohttpx, get_cookies, get_redirect, save_video_by_path,save_img_by_path
 from hoshino.util.playwrights import get_mapp_weibo_screenshot, get_weibo_screenshot
 
 from ..utils import Post
@@ -20,6 +20,11 @@ from nonebot.typing import override
 sv = Service("weibo", enable_on_default=False, visible=False)
 
 db_path = os.path.join(db_dir, "weibodata.db")
+weibo_img_dir = config.data_dir / "weiboimages"
+weibo_img_dir.mkdir(parents=True, exist_ok=True)
+weibo_video_dir = config.data_dir / "weibovideos"
+weibo_video_dir.mkdir(parents=True, exist_ok=True)
+
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 
@@ -61,6 +66,52 @@ class WeiboPost(Post):
     def get_referer(self) -> str:
         """获取微博的referer"""
         return "https://weibo.com"
+
+    async def download_images(self) -> list[str]:
+        """下载微博图片"""
+        if not self.images:
+            return []
+        headers = {"referer": self.get_referer()}
+        saved_images = []
+        for i, img_url in enumerate(self.images):
+            try:
+                if not self.description:
+                    filename = f"{self.content[:20]}_{self.nickname}_{self.id}_{i}.jpg"
+                else:
+                    ts = int(time())
+                    filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.jpg"
+                filepath = weibo_img_dir / filename
+                success = await save_img_by_path(img_url, filepath, verify=True, headers=headers)
+                if success:
+                    saved_images.append(filename)
+                else:
+                    sv.logger.error(f"Failed to save image {img_url}")
+            except Exception as e:
+                sv.logger.error(f"Error downloading image {img_url}: {e}")
+        return saved_images
+
+    async def download_videos(self) -> list[str]:
+        """下载微博视频"""
+        if not self.videos:
+            return []
+        headers = {"referer": self.get_referer()}
+        saved_videos = []
+        for i, video_url in enumerate(self.videos):
+            try:
+                if not self.description:
+                    filename = f"{self.content[:20]}_{self.nickname}_{self.id}_{i}.mp4"
+                else:
+                    ts = int(time())
+                    filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.mp4"
+                filepath = weibo_video_dir / filename
+                success = await save_video_by_path(video_url, filepath, verify=True, headers=headers)
+                if success:
+                    saved_videos.append(filename)
+                else:
+                    sv.logger.error(f"Failed to save video {video_url}")
+            except Exception as e:
+                sv.logger.error(f"Error downloading video {video_url}: {e}")
+        return saved_videos
 
     @override
     async def get_message(
@@ -152,18 +203,32 @@ get_weibocookies = functools.partial(get_cookies, "weibo")
 async def get_sub_list(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
+    return await get_weibos_by_containerid(target, ts, keywords)
+
+
+async def get_sub_new(
+    target: str, ts: float = 0.0, keywords: list[str] = list()
+) -> WeiboPost | None:
+    ls = await get_weibos_by_containerid(target, ts, keywords)
+    return ls[0] if ls else None
+
+
+async def get_weibos_by_containerid(
+    target: str, ts: float = 0.0, keywords: list[str] = list()
+) -> list[WeiboPost]:
     header = {
         "Referer": f"https://m.weibo.cn/u/{target}",
         "MWeibo-Pwa": "1",
         "X-Requested-With": "XMLHttpRequest",
     }
     params = {"containerid": "107603" + target}
+    ck = await get_weibocookies()
     res = await aiohttpx.get(
         "https://m.weibo.cn/api/container/getIndex?",
         headers=header,
         params=params,
-        cookies=await get_weibocookies(),
-        timeout=8.0,
+        cookies=ck if ck else None,
+        timeout=6.0,
     )
     res_data = res.json
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
@@ -182,7 +247,7 @@ async def get_sub_list(
         if created:
             t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
             b = t > ts
-        return d["card_type"] == 9 and b and kb
+        return d["card_type"] in [9, 6, 7] and b and kb
 
     def cmp(d1, d2):
         created1 = d1["mblog"]["created_at"]
@@ -204,57 +269,6 @@ async def get_sub_list(
         if post.timestamp > ts:
             res.append(post)
     return res
-
-
-async def get_sub_new(
-    target: str, ts: float = 0.0, keywords: list[str] = list()
-) -> WeiboPost | None:
-    header = {
-        "Referer": f"https://m.weibo.cn/u/{target}",
-        "MWeibo-Pwa": "1",
-        "X-Requested-With": "XMLHttpRequest",
-    }
-    params = {"containerid": "107603" + target}
-    res = await aiohttpx.get(
-        "https://m.weibo.cn/api/container/getIndex?",
-        headers=header,
-        params=params,
-        timeout=4.0,
-    )
-    res_data = res.json
-    if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
-        return None
-
-    def custom_filter(d) -> bool:
-        if d.get("mblog") is None:
-            return False
-        text = d["mblog"]["text"]
-        kb = False if keywords else True
-        if keywords:
-            for keyword in keywords:
-                if keyword in text:
-                    kb = True
-        created = d["mblog"]["created_at"]
-        if created:
-            t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
-            b = t > ts
-        return d["card_type"] == 9 and b and kb
-
-    def cmp(d1, d2):
-        created1 = d1["mblog"]["created_at"]
-        created2 = d2["mblog"]["created_at"]
-        t1 = datetime.strptime(created1, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        t2 = datetime.strptime(created2, "%a %b %d %H:%M:%S %z %Y").timestamp()
-        return t1 - t2
-
-    k = functools.cmp_to_key(cmp)
-    l = list(filter(custom_filter, res_data["data"]["cards"]))
-    if not l:
-        return None
-    l.sort(key=k, reverse=True)
-    post = await parse_weibo_card_raw(l[0])
-
-    return post
 
 
 def _get_text(raw_text: str) -> str:
@@ -300,14 +314,7 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
     except Exception as e:
         sv.logger.error(f"获取微博失败: {e}")
         return None
-    repost = None
-    post = await _parse_weibo_with_bid_dict(rj)
-    if rj.get("retweeted_status"):
-        rj_rt = rj["retweeted_status"]
-        repost = await _parse_weibo_with_bid_dict(rj_rt)
-    if repost:
-        post.repost = repost
-    return post
+    return await parse_weibo_with_bid_dict(rj)
 
 
 async def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
@@ -361,7 +368,23 @@ def parse_video_info(page_info: dict) -> str:
     return video_url, pic_url
 
 
+async def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
+    post = await _parse_weibo_with_bid_dict(rj)
+    if not post:
+        return None
+    if "retweeted_status" in rj:
+        if rj["retweeted_status"].get("visible", {}).get("type") == 10:
+            return post
+        repost = await _parse_weibo_with_bid_dict(rj["retweeted_status"])
+        if repost:
+            post.repost = repost
+    return post
+
+
 async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
+    if rj.get("user") is None:
+        sv.logger.error("获取微博失败: User is None")
+        return None
     mid = rj.get("mid")
     bid = rj.get("mblogid")
     uid = rj.get("user", {}).get("idstr")
@@ -389,7 +412,7 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
                 pic_urls.append(pic_url)
     return WeiboPost(
         uid=uid,
-        id=mid,
+        id=bid,
         timestamp=created_at.timestamp(),
         content=parsed_text,
         url=detail_url,
@@ -400,23 +423,18 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
 
 
 async def _parse_weibo_card(info: dict) -> WeiboPost | None:
-    ck = await get_weibocookies()
     parsed_text = _get_text(info["text"])
     pic_num = info.get("pic_num", 0)
     raw_pics_list = info.get("pics", [])
     video_urls = []
     pic_urls = []
     if isinstance(raw_pics_list, dict):
-        if len(raw_pics_list.values()) < pic_num and ck:
-            return await parse_weibo_with_bid(info["bid"])
         for img in raw_pics_list.values():
             if img.get("large"):
                 pic_urls.append(img["large"]["url"])
             elif img.get("videoSrc"):
                 video_urls.append(img["videoSrc"])
     elif isinstance(raw_pics_list, list):
-        if len(raw_pics_list) < pic_num and ck:
-            return await parse_weibo_with_bid(info["bid"])
         pic_urls = [img["large"]["url"] for img in raw_pics_list]
         video_urls = [img["videoSrc"] for img in raw_pics_list if img.get("videoSrc")]
     else:
@@ -445,7 +463,7 @@ async def _parse_weibo_card(info: dict) -> WeiboPost | None:
     created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
     return WeiboPost(
         uid=info["user"]["id"],
-        id=info["mid"],
+        id=info["bid"],
         timestamp=created_at.timestamp(),
         content=parsed_text,
         url=detail_url,
@@ -472,6 +490,9 @@ async def parse_weibo_card(info: dict) -> WeiboPost | None:
 
 
 async def parse_weibo_with_id(id: str) -> WeiboPost | None:
+    ck = await get_weibocookies()
+    if ck:
+        return await parse_weibo_with_bid(id)
     url = "https://m.weibo.cn/statuses/show?id={}".format(id)
     ck = "_T_WM=40835919903; WEIBOCN_FROM=1110006030; MLOGIN=0; XSRF-TOKEN=4399c8"
     headers = {

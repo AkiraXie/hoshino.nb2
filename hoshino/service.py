@@ -174,13 +174,11 @@ class Service:
         )
 
     def check_service(self, only_to_me: bool = False, only_group: bool = True) -> Rule:
-        async def _cs(
-            event: GroupMessageEvent | PrivateMessageEvent, state: T_State
-        ) -> bool:
-            if not isinstance(event, GroupMessageEvent):
+        async def _cs(event: Event) -> bool:
+            if not "group_id" in event.dict():
                 return not only_group
             else:
-                group_id = event.group_id
+                group_id = int(event.group_id) 
                 return self.check_enabled(group_id)
 
         rule = Rule(_cs)
@@ -448,14 +446,16 @@ class Service:
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    def on_notice(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
-        rule = self.check_service(False, only_group) & kwargs.pop("rule", Rule())
+    def on_notice(
+        self, rule: Rule = Rule(), only_group: bool = True, permission=NORMAL, **kwargs
+    ) -> "MatcherWrapper":
+        rule = self.check_service(False, only_group) & rule
         priority = kwargs.get("priority", 1)
         mw = MatcherWrapper(
             self,
             "Notice",
             priority,
-            on_notice(rule, **kwargs),
+            on_notice(rule=rule, permission=permission, **kwargs),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
