@@ -3,10 +3,9 @@
 import asyncio
 from datetime import datetime
 import time
-from typing import List
-from hoshino import Bot, Event, on_startup
+from hoshino import Bot, Event, on_startup, Message, SUPERUSER
 from hoshino.schedule import scheduled_job
-from hoshino.util import send_group_segments, send_segments
+from hoshino.util import send_group_segments, send_segments, send_to_superuser, random_image_or_video_by_path
 from .utils import (
     get_sub_list,
     sv,
@@ -14,7 +13,14 @@ from .utils import (
     WeiboPost,
     get_sub_new,
     Session,
+    parse_mapp_weibo,
+    parse_weibo_with_id,
+    weibo_img_dir,
+    weibo_video_dir
 )
+from hoshino.event import GroupReactionEvent
+from nonebot.typing import T_State
+from nonebot.compat import type_validate_python
 from ..utils import PostQueue, UIDManager
 from sqlalchemy import select
 
@@ -24,6 +30,127 @@ import random
 weibo_queue = PostQueue[WeiboPost]()
 uid_manager = UIDManager()
 
+
+weibo_regexs = {
+    "weibo": re.compile(r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)"),
+    "mweibo": re.compile(r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)"),
+    "mappweibo": re.compile(r"(http:|https:)\/\/mapp\.api\.weibo\.cn\/fx\/(\w+)\.html"),
+}
+
+
+async def reaction_weibo_img_rule(
+    bot: Bot,
+    event: GroupReactionEvent,
+    state: T_State,
+) -> bool:
+    if event.code != "282" and event.code != "319":
+        return False
+    msg_id = event.message_id
+    msg = await bot.get_msg(message_id=msg_id)
+    sender = msg.get("sender", {}).get("user_id")
+    sender = str(sender)
+    if sender != bot.self_id and sender not in bot.config.superusers:
+        return False
+    msg = msg.get("message")
+    if msg:
+        msg = type_validate_python(Message, msg)
+        text = msg.extract_plain_text()
+        url = text.strip()
+        for name, regex in weibo_regexs.items():
+            matched = regex.search(url)
+            if matched:
+                state["__weibo_name"] = name
+                state["__weibo_url"] = matched.group(0)
+                state["__weibo_matched"] = matched
+                state["__weibo_included_video"] = event.code == "319"
+                return True
+    return False
+
+
+svimg_notice = sv.on_notice(
+    rule=reaction_weibo_img_rule,
+    permission=SUPERUSER,
+    priority=5,
+    block=True,
+)
+
+
+@svimg_notice.handle()
+async def handle_weibo_img_reaction(state: T_State):
+    if not (name := state.get("__weibo_name")):
+        return
+    if not (matched := state.get("__weibo_matched")):
+        return
+    if not (url := state.get("__weibo_url")):
+        return
+    included_video = state.get("__weibo_included_video", False)
+    name = name.lower()
+    post = None
+    match name:
+        case "weibo":
+            _, _, bid = matched.groups()
+            post = await parse_weibo_with_id(bid)
+        case "mweibo":
+            _, _, bid = matched.groups()
+            post = await parse_weibo_with_id(bid)
+        case "mappweibo":
+            post = await parse_mapp_weibo(url)
+    if not post:
+        await send_to_superuser(f"无法解析微博链接: {url}")
+        return
+    res = await post.download_images()
+    if included_video:
+        video_res = await post.download_videos()
+        if video_res:
+            res.extend(video_res)
+    if not res:
+        await send_to_superuser("获取微博图片失败")
+        return
+    await send_to_superuser(f"获取微博图片成功:\n {'\n'.join(res)}")
+    return
+
+@sv.on_command(
+    "微博随图",
+    aliases=("wbimg", "wim"),
+    only_group= False,
+    only_to_me= True,
+    permission=SUPERUSER,
+    priority=5,
+)
+async def weibo_random_image(event: Event):
+    path = weibo_img_dir
+    num = 12
+    if event.get_plaintext().isdigit():
+        num = int(event.get_plaintext())
+    seed = time.time() + event.message_id
+    imgs = random_image_or_video_by_path(
+        path,
+        num=num,
+        seed=seed
+    )
+    await send_segments(imgs)
+
+@sv.on_command(
+    "微博随影",
+    aliases=("wbvid", "wvi"),
+    only_to_me= True,
+    only_group= False,
+    permission=SUPERUSER,
+    priority=5,
+)
+async def weibo_random_video(event: Event):
+    path = weibo_video_dir
+    num = 2
+    if event.get_plaintext().isdigit():
+        num = int(event.get_plaintext())
+    seed = time.time() + event.message_id
+    imgs = random_image_or_video_by_path(
+        path,
+        num=num,
+        seed=seed,
+        video=True
+    )
+    await send_segments(imgs)
 
 @sv.on_command(
     "添加微博订阅",

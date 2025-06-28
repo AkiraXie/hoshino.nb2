@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pathlib import Path
 import random
 import pytz
 import nonebot
@@ -33,6 +34,7 @@ from time import time
 
 __SU_IMGLIST = "__superuser__imglist"
 __SU_VIDEOLIST = "__superuser__videolist"
+
 
 def Cooldown(
     cooldown: float = 10,
@@ -198,6 +200,7 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
                                 res.extend(p)
     return res
 
+
 async def _get_videos_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegment]:
     res = []
     for s in msg:
@@ -213,11 +216,7 @@ async def _get_videos_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSe
                             content = data.get("content")
                             if content:
                                 content = type_validate_python(Message, content)
-                                p = [
-                                    s
-                                    for s in content
-                                    if s.type == "video"
-                                ]
+                                p = [s for s in content if s.type == "video"]
                                 res.extend(p)
     return res
 
@@ -268,11 +267,20 @@ async def save_img(
         idir = fav_dir
     else:
         idir = img_dir
-    r = await aiohttpx.get(url, verify=verify)
+    image_path = idir / name
+    return await save_img_by_path(url, image_path, verify=verify)
+
+
+async def save_video(url: str, name: str, verify: bool = False) -> bool:
+    idir = video_dir
+    video_path = idir / name
+    return await save_video_by_path(url, video_path, verify=verify)
+
+async def save_img_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> bool:
+    r = await aiohttpx.get(url, verify=verify, headers=headers)
     try:
         im = Image.open(bio := BytesIO(r.content))
-        name = os.path.join(idir, name)
-        im.save(name)
+        im.save(path)
         im.close()
         bio.close()
         return True
@@ -280,46 +288,69 @@ async def save_img(
         nonebot.logger.error(f"保存图片失败: {e}")
     return False
 
-async def save_video(
-    url: str, name: str, verify: bool = False
-) -> bool:
-    idir = video_dir
-    r = await aiohttpx.get(url, verify=verify)
+async def save_video_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> bool:
+    r = await aiohttpx.get(url, verify=verify, headers=headers)
     video_signatures = [
-                b'\x00\x00\x00\x18ftypmp4',  
-                b'\x1aE\xdf\xa3',            
-                b'FLV',                    
-                b'GIF',                     
-                b'RIFF',                     
-                b'\x00\x00\x01\x00',         
-                b'ftypqt',                  
-                b'moov',                     
+        b"\x00\x00\x00\x18ftypmp4",
+        b"\x1aE\xdf\xa3",
+        b"FLV",
+        b"GIF",
+        b"RIFF",
+        b"\x00\x00\x01\x00",
+        b"ftypqt",
+        b"moov",
     ]
-    if len(r.content) < 200: 
+    if len(r.content) < 200:
         nonebot.logger.error(f"视频文件过小，可能无效: {url}")
         return False
-    
+
     # 检查视频文件的签名
     is_video = False
     for sig in video_signatures:
         if r.content.startswith(sig):
             is_video = True
             break
-            
-    if not is_video :
-        if b'ftyp' in r.content[:50] or b'moov' in r.content[:50] or b'mdat' in r.content[:50]:
+
+    if not is_video:
+        if (
+            b"ftyp" in r.content[:50]
+            or b"moov" in r.content[:50]
+            or b"mdat" in r.content[:50]
+        ):
             is_video = True
-    
+
     if not is_video:
         nonebot.logger.error("下载的文件不是视频格式")
         return False
-        
-    video_path = os.path.join(idir, name)
-    with open(video_path, 'wb') as f:
+
+    with open(path, "wb") as f:
         f.write(r.content)
-    
+
     return True
 
+def random_image_or_video_by_path(
+    path: Path = img_dir,
+    num: int = 12,
+    seed: Optional[int] = None,
+    video: bool = False,
+)-> list[MessageSegment]:
+    names = os.listdir(path)
+    if not names:
+        return []
+    num = min(len(names), num)
+    imgs = []
+    ra = random.SystemRandom(seed)
+    selected_names = ra.sample(names, k=num)
+    for name in selected_names:
+        fpath = path / name
+        img = MessageSegment.image(fpath) if not video else MessageSegment.video(fpath)
+        imgs.append(img)
+    if imgs:
+        names = []
+        for i, name in enumerate(selected_names):
+            names.append(f"{i + 1}: {name}")
+        imgs.append("\n".join(names))
+    return imgs
 
 
 def random_modify_pixel(img: Image.Image):
