@@ -524,7 +524,7 @@ def check_cookies(name: str) -> bool:
             if not row.created_at:
                 return False
             # 检查创建时间是否超过两天
-            if time() - row.created_at > 86400 * 2:
+            if time() - row.created_at > 86400 * 5:
                 return False
             cookiejar[name] = row.cookie
             return True
@@ -537,7 +537,7 @@ def check_all_cookies() -> dict[str, bool]:
         stmt = select(Cookies)
         rows = session.execute(stmt).scalars().all()
         for row in rows:
-            if not row.created_at or time() - row.created_at > 86400 * 2:  # 超过两天
+            if not row.created_at or time() - row.created_at > 86400 * 5:  # 超过两天
                 session.delete(row)
                 res[row.name] = False
                 cookiejar.pop(row.name, None)
@@ -560,7 +560,7 @@ async def get_cookies(name: str) -> dict:
                     return {}
                 cookies = row.cookie
                 ts = row.created_at
-                if time() - ts > 86400 * 3:
+                if time() - ts > 86400 * 5:
                     session.delete(row)
                     session.commit()
                     cookiejar.pop(name, None)
