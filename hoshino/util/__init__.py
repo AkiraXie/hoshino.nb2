@@ -280,6 +280,10 @@ async def save_img_by_path(url: str, path: str|Path, verify: bool = False, heade
     r = await aiohttpx.get(url, verify=verify, headers=headers)
     try:
         im = Image.open(bio := BytesIO(r.content))
+        # 根据图片格式更改文件后缀
+        if im.format:
+            format_ext = im.format.lower()
+            path = Path(path).with_suffix(f'.{format_ext}')
         im.save(path)
         im.close()
         bio.close()
@@ -304,11 +308,27 @@ async def save_video_by_path(url: str, path: str|Path, verify: bool = False, hea
         nonebot.logger.error(f"视频文件过小，可能无效: {url}")
         return False
 
-    # 检查视频文件的签名
+    # 检查视频文件的签名并确定格式
     is_video = False
+    video_format = None
+    
     for sig in video_signatures:
         if r.content.startswith(sig):
             is_video = True
+            if sig == b"\x00\x00\x00\x18ftypmp4":
+                video_format = "mp4"
+            elif sig == b"\x1aE\xdf\xa3":
+                video_format = "mkv"
+            elif sig == b"FLV":
+                video_format = "flv"
+            elif sig == b"GIF":
+                video_format = "gif"
+            elif sig == b"RIFF":
+                video_format = "avi"
+            elif sig == b"ftypqt":
+                video_format = "mov"
+            elif sig == b"moov":
+                video_format = "mov"
             break
 
     if not is_video:
@@ -318,6 +338,11 @@ async def save_video_by_path(url: str, path: str|Path, verify: bool = False, hea
             or b"mdat" in r.content[:50]
         ):
             is_video = True
+            video_format = "mp4"  # 默认为mp4格式
+    
+    # 根据检测到的格式更改文件后缀
+    if is_video and video_format:
+        path = Path(path).with_suffix(f'.{video_format}')
 
     if not is_video:
         nonebot.logger.error("下载的文件不是视频格式")
