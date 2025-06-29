@@ -81,9 +81,9 @@ class WeiboPost(Post):
                     ts = int(time())
                     filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.jpg"
                 filepath = weibo_img_dir / filename
-                success = await save_img_by_path(img_url, filepath, verify=True, headers=headers)
-                if success:
-                    saved_images.append(filename)
+                result_path = await save_img_by_path(img_url, filepath, True, headers=headers)
+                if result_path:
+                    saved_images.append(result_path.name)
                 else:
                     sv.logger.error(f"Failed to save image {img_url}")
             except Exception as e:
@@ -104,9 +104,9 @@ class WeiboPost(Post):
                     ts = int(time())
                     filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.mp4"
                 filepath = weibo_video_dir / filename
-                success = await save_video_by_path(video_url, filepath, verify=True, headers=headers)
-                if success:
-                    saved_videos.append(filename)
+                result_path = await save_video_by_path(video_url, filepath, True, headers=headers)
+                if result_path:
+                    saved_videos.append(result_path.name)
                 else:
                     sv.logger.error(f"Failed to save video {video_url}")
             except Exception as e:
