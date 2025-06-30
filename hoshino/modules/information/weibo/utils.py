@@ -60,35 +60,6 @@ Session = sessionmaker(bind=engine, expire_on_commit=False)
 class WeiboPost(Post):
     """微博POST数据类"""
 
-    def __init__(
-        self,
-        uid: str,
-        id: str,
-        content: str,
-        title: str = "",
-        images: list = [],
-        videos: list = [],
-        timestamp: float = 0.0,
-        url: str = "",
-        nickname: str = "",
-        description: str = "",
-        repost: "WeiboPost" = None,
-    ):
-        super().__init__(
-            uid=uid,
-            id=id,
-            content=content,
-            platform="weibo",
-            title=title,
-            images=images,
-            videos=videos,
-            timestamp=timestamp,
-            url=url,
-            nickname=nickname,
-            description=description,
-            repost=repost,
-        )
-
     @override
     def get_referer(self) -> str:
         """获取微博的referer"""
@@ -125,6 +96,10 @@ class WeiboPost(Post):
                     sv.logger.error(f"Failed to save image {img_url}")
             except Exception as e:
                 sv.logger.error(f"Error downloading image {img_url}: {e}")
+        if self.repost and self.repost.images:
+            saved_images.extend(
+                await self.repost.download_images()
+            )
         return saved_images
 
     async def download_videos(self) -> list[str]:
@@ -158,6 +133,10 @@ class WeiboPost(Post):
                     sv.logger.error(f"Failed to save video {video_url}")
             except Exception as e:
                 sv.logger.error(f"Error downloading video {video_url}: {e}")
+        if self.repost and self.repost.videos:
+            saved_videos.extend(
+                await self.repost.download_videos()
+            )
         return saved_videos
 
     @override
