@@ -268,37 +268,36 @@ async def save_img(
     else:
         idir = img_dir
     image_path = idir / name
-    return await save_img_by_path(url, image_path, verify=verify)
+    result = await save_img_by_path(url, image_path, verify=verify)
+    return result is not None
 
 
 async def save_video(url: str, name: str, verify: bool = False) -> bool:
     idir = video_dir
     video_path = idir / name
-    return await save_video_by_path(url, video_path, verify=verify)
+    result = await save_video_by_path(url, video_path, verify=verify)
+    return result is not None
 
 
-async def save_img_by_path(
-    url: str, path: str | Path, verify: bool = False, headers={}
-) -> bool:
+async def save_img_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> Path | None:
     r = await aiohttpx.get(url, verify=verify, headers=headers)
     try:
         im = Image.open(bio := BytesIO(r.content))
         # 根据图片格式更改文件后缀
         if im.format:
             format_ext = im.format.lower()
-            path = Path(path).with_suffix(f".{format_ext}")
+            if format_ext == 'jpeg':
+                format_ext = 'jpg'
+            path = Path(path).with_suffix(f'.{format_ext}')
         im.save(path)
         im.close()
         bio.close()
-        return True
+        return path
     except Exception as e:
         nonebot.logger.error(f"保存图片失败: {e}")
-    return False
+    return None
 
-
-async def save_video_by_path(
-    url: str, path: str | Path, verify: bool = False, headers={}
-) -> bool:
+async def save_video_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> Path | None:
     r = await aiohttpx.get(url, verify=verify, headers=headers)
     video_signatures = [
         b"\x00\x00\x00\x18ftypmp4",
@@ -312,7 +311,7 @@ async def save_video_by_path(
     ]
     if len(r.content) < 200:
         nonebot.logger.error(f"视频文件过小，可能无效: {url}")
-        return False
+        return None
 
     # 检查视频文件的签名并确定格式
     is_video = False
@@ -352,12 +351,12 @@ async def save_video_by_path(
 
     if not is_video:
         nonebot.logger.error("下载的文件不是视频格式")
-        return False
+        return None
 
     with open(path, "wb") as f:
         f.write(r.content)
 
-    return True
+    return path
 
 
 def random_image_or_video_by_path(
