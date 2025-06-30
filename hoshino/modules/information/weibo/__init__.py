@@ -409,9 +409,6 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             weibo_queue.remove_id(dyn.id)
             await asyncio.sleep(0.5)
             return
-        await asyncio.sleep(0.2)
-        await dyn.download_images()
-        await dyn.download_videos()
 
         msgs = await dyn.get_message(True)
         for gid in gids:
@@ -430,8 +427,9 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
                     await bot.send_group_msg(group_id=gid, message=m)
                     await asyncio.sleep(random.uniform(0, 1))
                     await send_group_segments(bot, gid, msgs[1:])
-                else:
-                    await bot.send(gid, "获取微博失败")
+                await asyncio.sleep(0.2)
+                await dyn.download_images()
+                await dyn.download_videos()
             except Exception as e:
                 sv.logger.error(f"发送 weibo post 失败: {e}")
         weibo_queue.remove_id(dyn.id)
