@@ -276,14 +276,17 @@ async def save_video(url: str, name: str, verify: bool = False) -> bool:
     video_path = idir / name
     return await save_video_by_path(url, video_path, verify=verify)
 
-async def save_img_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> bool:
+
+async def save_img_by_path(
+    url: str, path: str | Path, verify: bool = False, headers={}
+) -> bool:
     r = await aiohttpx.get(url, verify=verify, headers=headers)
     try:
         im = Image.open(bio := BytesIO(r.content))
         # 根据图片格式更改文件后缀
         if im.format:
             format_ext = im.format.lower()
-            path = Path(path).with_suffix(f'.{format_ext}')
+            path = Path(path).with_suffix(f".{format_ext}")
         im.save(path)
         im.close()
         bio.close()
@@ -292,7 +295,10 @@ async def save_img_by_path(url: str, path: str|Path, verify: bool = False, heade
         nonebot.logger.error(f"保存图片失败: {e}")
     return False
 
-async def save_video_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> bool:
+
+async def save_video_by_path(
+    url: str, path: str | Path, verify: bool = False, headers={}
+) -> bool:
     r = await aiohttpx.get(url, verify=verify, headers=headers)
     video_signatures = [
         b"\x00\x00\x00\x18ftypmp4",
@@ -311,7 +317,7 @@ async def save_video_by_path(url: str, path: str|Path, verify: bool = False, hea
     # 检查视频文件的签名并确定格式
     is_video = False
     video_format = None
-    
+
     for sig in video_signatures:
         if r.content.startswith(sig):
             is_video = True
@@ -339,10 +345,10 @@ async def save_video_by_path(url: str, path: str|Path, verify: bool = False, hea
         ):
             is_video = True
             video_format = "mp4"  # 默认为mp4格式
-    
+
     # 根据检测到的格式更改文件后缀
     if is_video and video_format:
-        path = Path(path).with_suffix(f'.{video_format}')
+        path = Path(path).with_suffix(f".{video_format}")
 
     if not is_video:
         nonebot.logger.error("下载的文件不是视频格式")
@@ -353,19 +359,29 @@ async def save_video_by_path(url: str, path: str|Path, verify: bool = False, hea
 
     return True
 
+
 def random_image_or_video_by_path(
     path: Path = img_dir,
     num: int = 12,
     seed: Optional[int] = None,
     video: bool = False,
-)-> list[MessageSegment]:
-    names = os.listdir(path)
-    if not names:
+    keyword: Optional[str] = None,
+) -> list[MessageSegment]:
+    files = []
+    for file_path in path.iterdir():
+        if file_path.is_file():
+            # 如果提供了关键词，则筛选包含关键词的文件名
+            if keyword and keyword.lower() not in file_path.name.lower():
+                continue
+            files.append(file_path.name)
+
+    if not files:
         return []
-    num = min(len(names), num)
+
+    num = min(len(files), num)
     imgs = []
     ra = random.SystemRandom(seed)
-    selected_names = ra.sample(names, k=num)
+    selected_names = ra.sample(files, k=num)
     for name in selected_names:
         fpath = path / name
         img = MessageSegment.image(fpath) if not video else MessageSegment.video(fpath)

@@ -27,7 +27,7 @@ from hoshino.util import (
     aiohttpx,
     sumsg,
     save_video,
-    random_image_or_video_by_path
+    random_image_or_video_by_path,
 )
 from hoshino.event import GroupReactionEvent, MessageEvent
 from nonebot.plugin import on_notice, on_keyword
@@ -36,7 +36,6 @@ from nonebot.compat import type_validate_python
 from nonebot.log import logger
 from nonebot.consts import KEYWORD_KEY
 import os
-import random
 from time import time
 from httpx import URL
 
@@ -242,6 +241,8 @@ async def random_fav_cmd(
         seed=seed,
     )
     await send_segments(imgs)
+
+
 @sucmd(
     "随影",
     aliases={"rvi", "rav"},
