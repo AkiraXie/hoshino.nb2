@@ -409,6 +409,9 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             weibo_queue.remove_id(dyn.id)
             await asyncio.sleep(0.5)
             return
+        await asyncio.sleep(0.2)
+        await dyn.download_images()
+        await dyn.download_videos()
 
         msgs = await dyn.get_message(True)
         for gid in gids:
