@@ -5,6 +5,12 @@ from hoshino import Message, MessageSegment
 from typing import Union, TypeVar, Generic
 import time
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
+T = TypeVar("T", bound="Post")
 
 @dataclass
 class Post:
@@ -16,8 +22,6 @@ class Post:
     """动态/微博ID"""
     content: str
     """文本内容"""
-    platform: str
-    """平台标识: 'weibo' 或 'bilibili'"""
     title: str = ""
     images: list[str] = field(default_factory=list)
     """图片列表"""
@@ -31,16 +35,13 @@ class Post:
     """发布者昵称"""
     description: str = ""
     """描述信息"""
-    repost: Union["Post", None] = None
+    repost: Union[Self, None] = None
     """转发的Post"""
 
     async def get_message(
         self, with_screenshot: bool
     ) -> list[Message | MessageSegment]: ...
     def get_referer(self) -> str: ...
-
-
-T = TypeVar("T", bound="Post")
 
 
 class PostQueue(Queue, Generic[T]):

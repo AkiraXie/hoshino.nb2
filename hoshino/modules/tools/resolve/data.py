@@ -44,7 +44,7 @@ async def get_dynamic_from_url(url: str) -> BiliBiliDynamic | None:
                 card = data.get("item", {})
                 if not card:
                     return None
-                dyn = BiliBiliDynamic(card)
+                dyn = BiliBiliDynamic.from_dict(card)
                 return dyn
     return None
 
