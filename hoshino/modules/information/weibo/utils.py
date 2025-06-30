@@ -25,6 +25,27 @@ from nonebot.typing import override
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
+def clean_filename(text: str) -> str:
+    """清理文件名，替换空格、换行符和其他问题字符为短横线"""
+    if not text:
+        return "unnamed"
+    
+    # 替换空格、换行符、制表符等空白字符为短横线
+    cleaned = re.sub(r'\s+', '-', text.strip())
+    
+    # 移除或替换文件系统不支持的字符
+    # Windows/Linux 文件名不能包含: \ / : * ? " < > |
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]', '-', cleaned)
+    
+    # 移除连续的短横线
+    cleaned = re.sub(r'-+', '-', cleaned)
+    
+    # 移除开头和结尾的短横线
+    cleaned = cleaned.strip('-')
+    
+    # 如果清理后为空，返回默认名称
+    return cleaned if cleaned else "unnamed"
+
 db_path = os.path.join(db_dir, "weibodata.db")
 weibo_img_dir = config.data_dir / "weiboimages"
 weibo_img_dir.mkdir(parents=True, exist_ok=True)
@@ -82,16 +103,24 @@ class WeiboPost(Post):
         for i, img_url in enumerate(self.images):
             try:
                 if not self.description:
-                    filename = f"{self.content[:20]}_{self.nickname}_{self.id}_{i}.jpg"
+                    content_part = clean_filename(self.content[:20])
+                    nickname_part = clean_filename(self.nickname)
+                    filename = f"{content_part}_{nickname_part}_{self.id}_{i}.jpg"
                 else:
                     ts = int(time())
-                    filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.jpg"
+                    content_part = clean_filename(self.content[:20])
+                    desc_part = clean_filename(self.description)
+                    nickname_part = clean_filename(self.nickname)
+                    filename = f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.jpg"
                 filepath = weibo_img_dir / filename
                 success = await save_img_by_path(
                     img_url, filepath, verify=True, headers=headers
                 )
                 if success:
                     saved_images.append(filename)
+                result_path = await save_img_by_path(img_url, filepath, True, headers=headers)
+                if result_path:
+                    saved_images.append(result_path.name)
                 else:
                     sv.logger.error(f"Failed to save image {img_url}")
             except Exception as e:
@@ -107,16 +136,24 @@ class WeiboPost(Post):
         for i, video_url in enumerate(self.videos):
             try:
                 if not self.description:
-                    filename = f"{self.content[:20]}_{self.nickname}_{self.id}_{i}.mp4"
+                    content_part = clean_filename(self.content[:12])
+                    nickname_part = clean_filename(self.nickname)
+                    filename = f"{content_part}_{nickname_part}_{self.id}_{i}.mp4"
                 else:
                     ts = int(time())
-                    filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.mp4"
+                    content_part = clean_filename(self.content[:12])
+                    desc_part = clean_filename(self.description)
+                    nickname_part = clean_filename(self.nickname)
+                    filename = f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.mp4"
                 filepath = weibo_video_dir / filename
                 success = await save_video_by_path(
                     video_url, filepath, verify=True, headers=headers
                 )
                 if success:
                     saved_videos.append(filename)
+                result_path = await save_video_by_path(video_url, filepath, True, headers=headers)
+                if result_path:
+                    saved_videos.append(result_path.name)
                 else:
                     sv.logger.error(f"Failed to save video {video_url}")
             except Exception as e:
