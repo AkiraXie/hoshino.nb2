@@ -11,7 +11,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Float, Integer, Text
 from time import time
 from hoshino import db_dir, Message, Service, MessageSegment, config
-from hoshino.util import aiohttpx, get_cookies, get_redirect, save_video_by_path,save_img_by_path
+from hoshino.util import (
+    aiohttpx,
+    get_cookies,
+    get_redirect,
+    save_video_by_path,
+    save_img_by_path,
+)
 from hoshino.util.playwrights import get_mapp_weibo_screenshot, get_weibo_screenshot
 
 from ..utils import Post
@@ -81,7 +87,9 @@ class WeiboPost(Post):
                     ts = int(time())
                     filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.jpg"
                 filepath = weibo_img_dir / filename
-                success = await save_img_by_path(img_url, filepath, verify=True, headers=headers)
+                success = await save_img_by_path(
+                    img_url, filepath, verify=True, headers=headers
+                )
                 if success:
                     saved_images.append(filename)
                 else:
@@ -104,7 +112,9 @@ class WeiboPost(Post):
                     ts = int(time())
                     filename = f"{self.content[:20]}_{self.description}_{self.nickname}_{ts}_{i}.mp4"
                 filepath = weibo_video_dir / filename
-                success = await save_video_by_path(video_url, filepath, verify=True, headers=headers)
+                success = await save_video_by_path(
+                    video_url, filepath, verify=True, headers=headers
+                )
                 if success:
                     saved_videos.append(filename)
                 else:

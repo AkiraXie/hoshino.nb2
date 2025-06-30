@@ -5,7 +5,12 @@ from datetime import datetime
 import time
 from hoshino import Bot, Event, on_startup, Message, SUPERUSER
 from hoshino.schedule import scheduled_job
-from hoshino.util import send_group_segments, send_segments, send_to_superuser, random_image_or_video_by_path
+from hoshino.util import (
+    send_group_segments,
+    send_segments,
+    send_to_superuser,
+    random_image_or_video_by_path,
+)
 from .utils import (
     get_sub_list,
     sv,
@@ -16,7 +21,7 @@ from .utils import (
     parse_mapp_weibo,
     parse_weibo_with_id,
     weibo_img_dir,
-    weibo_video_dir
+    weibo_video_dir,
 )
 from hoshino.event import GroupReactionEvent
 from nonebot.typing import T_State
@@ -109,48 +114,68 @@ async def handle_weibo_img_reaction(state: T_State):
     await send_to_superuser(f"获取微博图片成功:\n {'\n'.join(res)}")
     return
 
+
 @sv.on_command(
     "微博随图",
     aliases=("wbimg", "wim"),
-    only_group= False,
-    only_to_me= True,
+    only_group=False,
+    only_to_me=True,
     permission=SUPERUSER,
     priority=5,
 )
 async def weibo_random_image(event: Event):
     path = weibo_img_dir
     num = 12
-    if event.get_plaintext().isdigit():
-        num = int(event.get_plaintext())
+    text = event.get_plaintext().strip()
+    texts = text.split(maxsplit=1)
+    keyword = None
+    if len(texts) == 2:
+        keyword, num_str = texts
+        if num_str.isdigit():
+            num = int(num_str)
+        else:
+            keyword = keyword + num_str
+    elif len(texts) == 1:
+        keyword = texts[0]
+        if keyword.isdigit():
+            num = int(keyword)
     seed = time.time() + event.message_id
     imgs = random_image_or_video_by_path(
-        path,
-        num=num,
-        seed=seed
+        path, num=num, seed=seed, video=False, keyword=keyword
     )
     await send_segments(imgs)
+
 
 @sv.on_command(
     "微博随影",
     aliases=("wbvid", "wvi"),
-    only_to_me= True,
-    only_group= False,
+    only_to_me=True,
+    only_group=False,
     permission=SUPERUSER,
     priority=5,
 )
 async def weibo_random_video(event: Event):
     path = weibo_video_dir
     num = 2
-    if event.get_plaintext().isdigit():
-        num = int(event.get_plaintext())
+    text = event.get_plaintext().strip()
+    texts = text.split(maxsplit=1)
+    keyword = None
+    if len(texts) == 2:
+        keyword, num_str = texts
+        if num_str.isdigit():
+            num = int(num_str)
+        else:
+            keyword = keyword + num_str
+    elif len(texts) == 1:
+        keyword = texts[0]
+        if keyword.isdigit():
+            num = int(keyword)
     seed = time.time() + event.message_id
     imgs = random_image_or_video_by_path(
-        path,
-        num=num,
-        seed=seed,
-        video=True
+        path, num=num, seed=seed, video=True, keyword=keyword
     )
     await send_segments(imgs)
+
 
 @sv.on_command(
     "添加微博订阅",

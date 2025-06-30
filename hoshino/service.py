@@ -178,7 +178,7 @@ class Service:
             if not "group_id" in event.dict():
                 return not only_group
             else:
-                group_id = int(event.group_id) 
+                group_id = int(event.group_id)
                 return self.check_enabled(group_id)
 
         rule = Rule(_cs)
