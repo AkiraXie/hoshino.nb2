@@ -12,6 +12,7 @@ except ImportError:
 
 T = TypeVar("T", bound="Post")
 
+
 @dataclass
 class Post:
     """统一的动态/微博数据基类"""

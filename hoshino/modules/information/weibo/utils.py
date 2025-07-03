@@ -25,26 +25,28 @@ from nonebot.typing import override
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
+
 def clean_filename(text: str) -> str:
     """清理文件名，替换空格、换行符和其他问题字符为短横线"""
     if not text:
         return "unnamed"
-    
+
     # 替换空格、换行符、制表符等空白字符为短横线
-    cleaned = re.sub(r'\s+', '-', text.strip())
-    
+    cleaned = re.sub(r"\s+", "-", text.strip())
+
     # 移除或替换文件系统不支持的字符
     # Windows/Linux 文件名不能包含: \ / : * ? " < > |
-    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]', '-', cleaned)
-    
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]', "-", cleaned)
+
     # 移除连续的短横线
-    cleaned = re.sub(r'-+', '-', cleaned)
-    
+    cleaned = re.sub(r"-+", "-", cleaned)
+
     # 移除开头和结尾的短横线
-    cleaned = cleaned.strip('-')
-    
+    cleaned = cleaned.strip("-")
+
     # 如果清理后为空，返回默认名称
     return cleaned if cleaned else "unnamed"
+
 
 db_path = os.path.join(db_dir, "weibodata.db")
 weibo_img_dir = config.data_dir / "weiboimages"
@@ -82,14 +84,13 @@ class WeiboPost(Post):
                     content_part = clean_filename(self.content[:20])
                     desc_part = clean_filename(self.description)
                     nickname_part = clean_filename(self.nickname)
-                    filename = f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.jpg"
+                    filename = (
+                        f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.jpg"
+                    )
                 filepath = weibo_img_dir / filename
-                success = await save_img_by_path(
-                    img_url, filepath, verify=True, headers=headers
+                result_path = await save_img_by_path(
+                    img_url, filepath, True, headers=headers
                 )
-                if success:
-                    saved_images.append(filename)
-                result_path = await save_img_by_path(img_url, filepath, True, headers=headers)
                 if result_path:
                     saved_images.append(result_path.name)
                 else:
@@ -97,9 +98,7 @@ class WeiboPost(Post):
             except Exception as e:
                 sv.logger.error(f"Error downloading image {img_url}: {e}")
         if self.repost and self.repost.images:
-            saved_images.extend(
-                await self.repost.download_images()
-            )
+            saved_images.extend(await self.repost.download_images())
         return saved_images
 
     async def download_videos(self) -> list[str]:
@@ -119,14 +118,13 @@ class WeiboPost(Post):
                     content_part = clean_filename(self.content[:12])
                     desc_part = clean_filename(self.description)
                     nickname_part = clean_filename(self.nickname)
-                    filename = f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.mp4"
+                    filename = (
+                        f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.mp4"
+                    )
                 filepath = weibo_video_dir / filename
-                success = await save_video_by_path(
-                    video_url, filepath, verify=True, headers=headers
+                result_path = await save_video_by_path(
+                    video_url, filepath, True, headers=headers
                 )
-                if success:
-                    saved_videos.append(filename)
-                result_path = await save_video_by_path(video_url, filepath, True, headers=headers)
                 if result_path:
                     saved_videos.append(result_path.name)
                 else:
@@ -134,9 +132,7 @@ class WeiboPost(Post):
             except Exception as e:
                 sv.logger.error(f"Error downloading video {video_url}: {e}")
         if self.repost and self.repost.videos:
-            saved_videos.extend(
-                await self.repost.download_videos()
-            )
+            saved_videos.extend(await self.repost.download_videos())
         return saved_videos
 
     @override

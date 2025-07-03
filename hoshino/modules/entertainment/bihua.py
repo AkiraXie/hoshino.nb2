@@ -6,8 +6,8 @@ import random
 sv = Service("bihua", visible=False, enable_on_default=False)
 
 bihuas = dict()
-configurl = "https://bihua.bleatingsheep.org/static/scripts/config.js"
-prefix = "https://bihua.bleatingsheep.org/meme/"
+configurl = "https://bihua.bhu.social/static/scripts/config.js"
+prefix = "https://bihua.bhu.social/meme/"
 m = sv.on_command("bihua", aliases=("b话", "壁画"), block=True)
 r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=True)
 s = sv.on_command("搜索壁画", aliases=("searchbihua", "搜索b话"), block=True)

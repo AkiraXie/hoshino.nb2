@@ -279,16 +279,18 @@ async def save_video(url: str, name: str, verify: bool = False) -> bool:
     return result is not None
 
 
-async def save_img_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> Path | None:
+async def save_img_by_path(
+    url: str, path: str | Path, verify: bool = False, headers={}
+) -> Path | None:
     r = await aiohttpx.get(url, verify=verify, headers=headers)
     try:
         im = Image.open(bio := BytesIO(r.content))
         # 根据图片格式更改文件后缀
         if im.format:
             format_ext = im.format.lower()
-            if format_ext == 'jpeg':
-                format_ext = 'jpg'
-            path = Path(path).with_suffix(f'.{format_ext}')
+            if format_ext == "jpeg":
+                format_ext = "jpg"
+            path = Path(path).with_suffix(f".{format_ext}")
         im.save(path)
         im.close()
         bio.close()
@@ -297,7 +299,10 @@ async def save_img_by_path(url: str, path: str|Path, verify: bool = False, heade
         nonebot.logger.error(f"保存图片失败: {e}")
     return None
 
-async def save_video_by_path(url: str, path: str|Path, verify: bool = False, headers = {}) -> Path | None:
+
+async def save_video_by_path(
+    url: str, path: str | Path, verify: bool = False, headers={}
+) -> Path | None:
     r = await aiohttpx.get(url, verify=verify, headers=headers)
     video_signatures = [
         b"\x00\x00\x00\x18ftypmp4",
