@@ -272,6 +272,9 @@ async def get_weibos_by_mymblog(
         visible = d.get("visible", {})
         if visible.get("type") not in [0, 6, 7, 8, 9]:
             return False
+        user = d.get("user", {})
+        if not user or user.get("idstr") != target:
+            return False
         text = d["text"]
         parsed_text = _get_text(text)
         kb = False if keywords else True
