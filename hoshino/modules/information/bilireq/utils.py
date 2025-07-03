@@ -14,6 +14,7 @@ from functools import partial
 from ..utils import Post
 from typing import Sequence
 from dataclasses import dataclass
+
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
@@ -31,10 +32,10 @@ get_bilicookies = partial(get_cookies, "bilibili")
 def parse_bilibili_dynamic(dynamic: dict) -> dict:
     """
     解析B站动态数据，返回用于创建BiliBiliDynamic的数据字典
-    
+
     Args:
         dynamic: B站动态原始数据
-        
+
     Returns:
         包含解析后数据的字典
     """
@@ -119,7 +120,7 @@ class BiliBiliDynamic(Post):
     dynamic: dict = None
     is_opus: bool = False
     type: str = ""
-    
+
     @classmethod
     def from_dict(cls, dynamic: dict) -> "BiliBiliDynamic":
         """从动态数据字典创建BiliBiliDynamic实例"""
