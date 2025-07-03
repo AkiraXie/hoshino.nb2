@@ -225,14 +225,81 @@ get_weibocookies = functools.partial(get_cookies, "weibo")
 async def get_sub_list(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
-    return await get_weibos_by_containerid(target, ts, keywords)
+    ck = await get_weibocookies()
+    if not ck:
+        return await get_weibos_by_containerid(target, ts, keywords)
+    return await get_weibos_by_mymblog(target, ts, keywords)
 
 
 async def get_sub_new(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> WeiboPost | None:
-    ls = await get_weibos_by_containerid(target, ts, keywords)
+    ls = await get_sub_list(target, ts, keywords)
     return ls[0] if ls else None
+
+
+async def get_weibos_by_mymblog(
+    target: str, ts: float = 0.0, keywords: list[str] = list()
+) -> list[WeiboPost]:
+    header = {
+        "Referer": f"https://weibo.com/u/{target}",
+    }
+    params = {
+        "uid": target,
+        "page": 1,
+        "feature": 0,
+    }
+    ck = await get_weibocookies()
+    if not ck:
+        sv.logger.error("error get_weibos_by_mymblog : 获取微博cookies失败")
+        return []
+    res = await aiohttpx.get(
+        "https://weibo.com/ajax/statuses/mymblog",
+        headers=header,
+        params=params,
+        cookies=ck,
+        timeout=6.0,
+    )
+    if not res.ok:
+        sv.logger.error(f"获取微博失败: {res.status_code}")
+        return []
+    res_data = res.json
+    if not res_data["ok"]:
+        sv.logger.error(f"获取微博失败: {res_data['ok']} {res_data['msg']}")
+        return []
+
+    def custom_filter(d) -> bool:
+        visible = d.get("visible", {})
+        if visible.get("type") not in [0, 6, 7, 8, 9]:
+            return False
+        text = d["text"]
+        parsed_text = _get_text(text)
+        kb = False if keywords else True
+        if keywords:
+            for keyword in keywords:
+                if keyword in parsed_text:
+                    kb = True
+        created = d["created_at"]
+        if created:
+            t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
+            b = t > ts
+        return b and kb
+
+    datalist = res_data.get("data", {}).get("list", [])
+    if not datalist:
+        sv.logger.error(f"获取微博失败: 没有数据, target: {target}")
+        return []
+    filterlist = list(filter(custom_filter, datalist))
+    if not filterlist:
+        return []
+    postlist = []
+    for i in filterlist:
+        post = parse_weibo_with_bid_dict(i)
+        if not post:
+            continue
+        postlist.append(post)
+    postlist.sort(key=lambda x: x.timestamp, reverse=True)
+    return postlist
 
 
 async def get_weibos_by_containerid(
@@ -279,13 +346,13 @@ async def get_weibos_by_containerid(
         return t1 - t2
 
     k = functools.cmp_to_key(cmp)
-    l = list(filter(custom_filter, res_data["data"]["cards"]))
-    l.sort(key=k, reverse=True)
-    if not l:
+    ls = list(filter(custom_filter, res_data["data"]["cards"]))
+    ls.sort(key=k, reverse=True)
+    if not ls:
         return []
     res = []
-    for i in l:
-        post = await parse_weibo_card_raw(i)
+    for i in ls:
+        post = parse_weibo_card_raw(i)
         if not post:
             continue
         if post.timestamp > ts:
@@ -336,10 +403,10 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
     except Exception as e:
         sv.logger.error(f"获取微博失败: {e}")
         return None
-    return await parse_weibo_with_bid_dict(rj)
+    return parse_weibo_with_bid_dict(rj)
 
 
-async def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
+def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
     pic_urls = []
     video_urls = []
     medias = dic.get("mix_media_info", {}).get("items", [])
@@ -390,20 +457,20 @@ def parse_video_info(page_info: dict) -> str:
     return video_url, pic_url
 
 
-async def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
-    post = await _parse_weibo_with_bid_dict(rj)
+def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
+    post = _parse_weibo_with_bid_dict(rj)
     if not post:
         return None
     if "retweeted_status" in rj:
         if rj["retweeted_status"].get("visible", {}).get("type") == 10:
             return post
-        repost = await _parse_weibo_with_bid_dict(rj["retweeted_status"])
+        repost = _parse_weibo_with_bid_dict(rj["retweeted_status"])
         if repost:
             post.repost = repost
     return post
 
 
-async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
+def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     if rj.get("user") is None:
         sv.logger.error("获取微博失败: User is None")
         return None
@@ -418,7 +485,7 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     pic_urls = []
     video_urls = []
     if "mix_media_info" in rj:
-        pic_urls, video_urls = await parse_mix_media_info(rj)
+        pic_urls, video_urls = parse_mix_media_info(rj)
     else:
         pic_info: list = rj.get("pic_infos", {}).values()
         for pic in pic_info:
@@ -444,7 +511,7 @@ async def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     )
 
 
-async def _parse_weibo_card(info: dict) -> WeiboPost | None:
+def _parse_weibo_card(info: dict) -> WeiboPost | None:
     parsed_text = _get_text(info["text"])
     pic_num = info.get("pic_num", 0)
     raw_pics_list = info.get("pics", [])
@@ -495,19 +562,19 @@ async def _parse_weibo_card(info: dict) -> WeiboPost | None:
     )
 
 
-async def parse_weibo_card_raw(raw: dict) -> WeiboPost | None:
+def parse_weibo_card_raw(raw: dict) -> WeiboPost | None:
     info = raw["mblog"]
-    return await parse_weibo_card(info)
+    return parse_weibo_card(info)
 
 
 async def parse_weibo_card(info: dict) -> WeiboPost | None:
-    post = await _parse_weibo_card(info)
+    post = _parse_weibo_card(info)
     if not post:
         return None
     if "retweeted_status" in info:
         if info["retweeted_status"].get("visible", {}).get("type") != 0:
             return post
-        post.repost = await _parse_weibo_card(info["retweeted_status"])
+        post.repost = _parse_weibo_card(info["retweeted_status"])
     return post
 
 
@@ -536,7 +603,7 @@ async def parse_weibo_with_id(id: str) -> WeiboPost | None:
         sv.logger.error(f"获取微博失败: {res.status_code} {res.text}")
         return None
     rjdata = rj.get("data", {})
-    return await parse_weibo_card(rjdata)
+    return parse_weibo_card(rjdata)
 
 
 async def parse_mapp_weibo(url: str) -> WeiboPost | None:
