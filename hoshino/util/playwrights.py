@@ -20,14 +20,14 @@ document.querySelector('div.lite-page-editor')?.remove();
 
 context_params = {
     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.5 Safari/537.36",
-    "viewport": {"width": 1440, "height": 2560},
-    "device_scale_factor": 2,
+    "viewport": {"width": 1080, "height": 2560},
+    "device_scale_factor": 2.5,
     "is_mobile": False,
 }
 mobile_context_params = {
     "user_agent": "Mozilla/5.0 (Linux; Android 10; M2007J3SC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.5 Mobile Safari/537.36",
-    "viewport": {"width": 1440, "height": 2560},
-    "device_scale_factor": 2,
+    "viewport": {"width": 720, "height": 2560},
+    "device_scale_factor": 3,
     "is_mobile": True,
 }
 
