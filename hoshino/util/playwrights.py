@@ -34,8 +34,8 @@ mobile_context_params = {
 
 @on_startup
 async def get_b() -> Browser:
-    global ap, _b, device_dict
-    if not ap or not _b or not device_dict:
+    global ap, _b
+    if not ap or not _b:
         ap = await async_playwright().start()
         _b = await ap.chromium.launch(timeout=10000, headless=True)
     return _b
