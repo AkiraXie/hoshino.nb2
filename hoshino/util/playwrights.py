@@ -26,7 +26,7 @@ context_params = {
 }
 mobile_context_params = {
     "user_agent": "Mozilla/5.0 (Linux; Android 10; M2007J3SC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.5 Mobile Safari/537.36",
-    "viewport": {"width": 720, "height": 2560},
+    "viewport": {"width": 540, "height": 2340},
     "device_scale_factor": 3,
     "is_mobile": True,
 }
