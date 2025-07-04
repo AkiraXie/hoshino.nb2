@@ -17,7 +17,19 @@ document.querySelector('div.wrap')?.remove();
 document.querySelector('div.ad-wrap')?.remove();
 document.querySelector('div.lite-page-editor')?.remove();
 """
-device_dict = {}
+
+context_params = {
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.5 Safari/537.36",
+    "viewport": {"width": 1440, "height": 2560},
+    "device_scale_factor": 2,
+    "is_mobile": False,
+}
+mobile_context_params = {
+    "user_agent": "Mozilla/5.0 (Linux; Android 10; M2007J3SC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.7258.5 Mobile Safari/537.36",
+    "viewport": {"width": 1440, "height": 2560},
+    "device_scale_factor": 2,
+    "is_mobile": True,
+}
 
 
 @on_startup
@@ -25,7 +37,6 @@ async def get_b() -> Browser:
     global ap, _b, device_dict
     if not ap or not _b or not device_dict:
         ap = await async_playwright().start()
-        device_dict = ap.devices["iPhone 15 Pro Max"]
         _b = await ap.chromium.launch(timeout=10000, headless=True)
     return _b
 
@@ -43,13 +54,13 @@ async def refresh_playwright():
 
 async def get_mapp_weibo_screenshot(url: str) -> MessageSegment | None:
     b: Browser = await get_b()
-    context_params = device_dict.copy()
-    context_params["user_agent"] = (
-        context_params["user_agent"]
+    d = mobile_context_params.copy()
+    d["user_agent"] = (
+        d["user_agent"]
         + " XWEB/13655 Flue NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf254032b)"
     )
 
-    c = await b.new_context(**context_params)
+    c = await b.new_context(**d)
     c.set_default_timeout(10000)
     page = None
     try:
@@ -77,11 +88,55 @@ async def get_mapp_weibo_screenshot(url: str) -> MessageSegment | None:
             await c.close()
 
 
-async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment | None:
+async def get_weibo_screenshot_desktop(
+    url: str, cookies: dict = {}
+) -> MessageSegment | None:
     b: Browser = await get_b()
-    context_params = device_dict.copy()
     c = await b.new_context(
         **context_params,
+    )
+    if not cookies:
+        cookies = await get_cookies("weibo")
+    if cookies:
+        cks = []
+        for k, v in cookies.items():
+            if not v:
+                continue
+            cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
+        await c.add_cookies(cks)
+    c.set_default_timeout(6000)
+    page = None
+    try:
+        page: Page = await c.new_page()
+        await page.goto(url)
+        selector = "article.woo-panel-main"
+        element = None
+        try:
+            element = await page.wait_for_selector(selector, timeout=8000)
+        except (TimeoutError, Exception):
+            logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
+            return None
+        if not element:
+            logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
+            return None
+        image = await element.screenshot()
+        return MessageSegment.image(image)
+    except Exception as e:
+        logger.error(f"get_weibo_screenshot error: {e}")
+        return None
+    finally:
+        if page:
+            await page.close()
+        if c:
+            await c.close()
+
+
+async def get_weibo_screenshot_mobile(
+    url: str, cookies: dict = {}
+) -> MessageSegment | None:
+    b: Browser = await get_b()
+    c = await b.new_context(
+        **mobile_context_params,
     )
     if not cookies:
         cookies = await get_cookies("weibo")
@@ -131,8 +186,7 @@ async def get_weibo_screenshot(url: str, cookies: dict = {}) -> MessageSegment |
 
 async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | None:
     b: Browser = await get_b()
-    context_params = device_dict.copy()
-    c = await b.new_context(**context_params)
+    c = await b.new_context(**mobile_context_params)
     if not cookies:
         cookies = await get_cookies("bilibili")
     cks = []

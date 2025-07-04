@@ -18,7 +18,11 @@ from hoshino.util import (
     save_video_by_path,
     save_img_by_path,
 )
-from hoshino.util.playwrights import get_mapp_weibo_screenshot, get_weibo_screenshot
+from hoshino.util.playwrights import (
+    get_mapp_weibo_screenshot,
+    get_weibo_screenshot_mobile,
+    get_weibo_screenshot_desktop,
+)
 
 from ..utils import Post
 from nonebot.typing import override
@@ -75,11 +79,11 @@ class WeiboPost(Post):
         saved_images = []
         for i, img_url in enumerate(self.images):
             try:
-                if not self.description:
+                if not self.description or self.description == "desktop":
                     content_part = clean_filename(self.content[:20])
                     nickname_part = clean_filename(self.nickname)
                     filename = f"{content_part}_{nickname_part}_{self.id}_{i}.jpg"
-                else:
+                elif self.description == "mapp":
                     ts = int(time())
                     content_part = clean_filename(self.content[:20])
                     desc_part = clean_filename(self.description)
@@ -109,11 +113,11 @@ class WeiboPost(Post):
         saved_videos = []
         for i, video_url in enumerate(self.videos):
             try:
-                if not self.description:
+                if not self.description or self.description == "desktop":
                     content_part = clean_filename(self.content[:12])
                     nickname_part = clean_filename(self.nickname)
                     filename = f"{content_part}_{nickname_part}_{self.id}_{i}.mp4"
-                else:
+                elif self.description == "mapp":
                     ts = int(time())
                     content_part = clean_filename(self.content[:12])
                     desc_part = clean_filename(self.description)
@@ -166,13 +170,17 @@ class WeiboPost(Post):
             for image_url in self.images:
                 headers = {"referer": self.get_referer()}
                 tasks.append(aiohttpx.get(image_url, headers=headers))
+        # Prepare screenshot task
         screenshot_task = None
         if with_screenshot:
             if not self.description:
-                screenshot_task = get_weibo_screenshot(self.url)
+                screenshot_task = get_weibo_screenshot_mobile(self.url)
                 tasks.append(screenshot_task)
             elif self.description == "mapp":
                 screenshot_task = get_mapp_weibo_screenshot(self.url)
+                tasks.append(screenshot_task)
+            elif self.description == "desktop":
+                screenshot_task = get_weibo_screenshot_desktop(self.url)
                 tasks.append(screenshot_task)
         responses = await asyncio.gather(*tasks, return_exceptions=True)
         image_count = len(self.images) if self.images else 0
@@ -477,6 +485,12 @@ def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     if rj.get("user") is None:
         sv.logger.error("获取微博失败: User is None")
         return None
+    visible = rj.get("visible", {})
+    type_ = visible.get("type", 0)
+    if type_ not in [0, 6, 7, 8, 9]:
+        sv.logger.error(f"获取微博失败: visible type {type_} not supported")
+        return None
+    description = "" if type_ == 0 else "desktop"
     mid = rj.get("mid")
     bid = rj.get("mblogid")
     uid = rj.get("user", {}).get("idstr")
@@ -511,6 +525,7 @@ def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
         images=pic_urls,
         nickname=nickname,
         videos=video_urls,
+        description=description,
     )
 
 
