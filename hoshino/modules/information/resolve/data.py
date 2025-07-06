@@ -6,7 +6,7 @@ from time import strftime, localtime
 import re
 from urllib.parse import parse_qs, urlparse
 from functools import partial
-from hoshino.modules.information.bilireq.utils import BiliBiliDynamic
+from ..bilireq.utils import BiliBiliDynamic
 from hoshino.util import get_redirect
 
 sv = Service("resolve")
