@@ -108,8 +108,8 @@ async def get_weibo_screenshot_desktop(
     page = None
     try:
         page: Page = await c.new_page()
-        await page.goto(url)
-        selector = "article.woo-panel-main"
+        await page.goto(url,wait_until="networkidle")
+        selector = "article"
         element = None
         try:
             element = await page.wait_for_selector(selector, timeout=8000)

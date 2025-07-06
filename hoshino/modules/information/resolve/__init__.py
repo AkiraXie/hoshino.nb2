@@ -12,7 +12,7 @@ from .data import (
 )
 from json import loads
 import re
-from hoshino.modules.information.weibo.utils import (
+from ..weibo.utils import (
     parse_mapp_weibo,
     parse_weibo_with_id,
 )
