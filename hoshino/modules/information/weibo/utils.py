@@ -585,7 +585,7 @@ def parse_weibo_card_raw(raw: dict) -> WeiboPost | None:
     return parse_weibo_card(info)
 
 
-async def parse_weibo_card(info: dict) -> WeiboPost | None:
+def parse_weibo_card(info: dict) -> WeiboPost | None:
     post = _parse_weibo_card(info)
     if not post:
         return None
