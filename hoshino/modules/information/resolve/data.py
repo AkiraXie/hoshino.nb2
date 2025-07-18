@@ -154,7 +154,17 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
     elif resource_type == "video":
         video_url = note_data["video"]["media"]["stream"]["h264"][0]["masterUrl"]
         msg = [title_desc, f"笔记链接: {resp.url}"]
-        msg.append(MessageSegment.video(video_url))
+        header = {
+            "Referer": resp.url,
+        }
+        vresp = await aiohttpx.get(
+            video_url, headers=header, cookies=await get_xhscookies()
+        )
+        if not vresp.ok:
+            sv.logger.warning("Failed to fetch video URL from Xiaohongshu")
+            msg.append(MessageSegment.video(video_url))
+        else:
+            msg.append(MessageSegment.video(vresp.content))
         return msg
     else:
         sv.logger.error(
