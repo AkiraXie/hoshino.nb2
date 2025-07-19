@@ -108,7 +108,7 @@ async def get_weibo_screenshot_desktop(
     page = None
     try:
         page: Page = await c.new_page()
-        await page.goto(url,wait_until="networkidle")
+        await page.goto(url, wait_until="networkidle")
         selector = "article"
         element = None
         try:
@@ -199,7 +199,7 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | 
     c.set_default_timeout(10000)
     try:
         page: Page = await c.new_page()
-        await page.goto(url,wait_until='networkidle')
+        await page.goto(url, wait_until="networkidle")
         if page.url.startswith("https://m.bilibili.com/404"):
             return None
         await page.add_script_tag(path=bili_mobilejs)

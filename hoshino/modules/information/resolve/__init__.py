@@ -1,6 +1,7 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
 import asyncio
-from hoshino import Event
+from pathlib import Path
+from hoshino import Event, MessageSegment, Bot
 from nonebot.typing import T_State
 from hoshino.util import send_segments, get_redirect, send
 from .data import (
@@ -66,6 +67,7 @@ async def check_json_or_text(ev: Event, state: T_State) -> bool:
             state["__url_name"] = name
             state["__url"] = matched.group(0)
             state["__url_matched"] = matched
+            sv.logger.info(f"Matched URL: {state['__url']}")
             return True
     return False
 
@@ -74,7 +76,7 @@ m = sv.on_message(rule=check_json_or_text, log=True, priority=3, block=False)
 
 
 @m
-async def _(state: T_State):
+async def _(bot: Bot, state: T_State, ev: Event):
     if not (name := state.get("__url_name")):
         return
     if not (matched := state.get("__url_matched")):
@@ -154,8 +156,18 @@ async def _(state: T_State):
         await asyncio.sleep(0.3)
         await m.finish(msg)
     if xhs_url:
-        msgs = await parse_xhs(xhs_url)
+        msgs, res = await parse_xhs(xhs_url)
         if not msgs:
+            return
+        if res:
+            name = res.name
+            await asyncio.sleep(0.3)
+            await send_segments(msgs)
+            await bot.upload_group_file(
+                group_id=ev.group_id,
+                name=name,
+                file=res.resolve().as_posix(),
+            )
             return
         await asyncio.sleep(0.3)
         await send_segments(msgs)
