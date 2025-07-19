@@ -26,7 +26,7 @@ img_dir = config.data_dir / "image"
 db_dir = config.data_dir / "db"
 service_dir = config.data_dir / "service"
 video_dir = config.data_dir / "video"
-
+data_dir = config.data_dir
 config.data_dir.mkdir(exist_ok=True)
 config.static_dir.mkdir(exist_ok=True)
 fav_dir.mkdir(exist_ok=True)

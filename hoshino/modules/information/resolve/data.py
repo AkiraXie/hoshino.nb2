@@ -1,7 +1,8 @@
 import json
-from hoshino import MessageSegment, Message
+from pathlib import Path
+from hoshino import MessageSegment, Message, data_dir
 from hoshino.service import Service
-from hoshino.util import aiohttpx, get_cookies
+from hoshino.util import aiohttpx, get_cookies, save_img_by_path, save_video_by_path
 from time import strftime, localtime
 import re
 from urllib.parse import parse_qs, urlparse
@@ -19,6 +20,12 @@ bili_video_pat = re.compile(r"bilibili.com/video/(BV[A-Za-z0-9]{10})")
 dyn_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 
 get_xhscookies = partial(get_cookies, "xhs")
+xhs_dir = data_dir / "xhs"
+xhs_dir.mkdir(exist_ok=True)
+xhs_img_dir = xhs_dir / "image"
+xhs_img_dir.mkdir(exist_ok=True)
+xhs_video_dir = xhs_dir / "video"
+xhs_video_dir.mkdir(exist_ok=True)
 
 
 async def get_dynamic_from_url(url: str) -> BiliBiliDynamic | None:
@@ -100,13 +107,16 @@ xhs_headers = {
 }
 
 
-async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
+async def parse_xhs(
+    url: str,
+) -> tuple[list[Message | MessageSegment | str] | None, Path | None]:
     if "xhslink" in url:
         url = await get_redirect(url, xhs_headers)
     pattern = r"(?:/explore/|/discovery/item/|source=note&noteId=)(\w+)"
     matched = re.search(pattern, url)
     if not matched:
-        return None
+        sv.logger.error(f"Xiaohongshu URL does not match expected pattern,url: {url}")
+        return None, None
     xhs_id = matched.group(1)
     parsed_url = urlparse(url)
     params = parse_qs(parsed_url.query)
@@ -120,16 +130,16 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         )
     except Exception as e:
         sv.logger.error(f"Error fetching Xiaohongshu data: {e}")
-        return None
+        return None, None
     if not resp.ok:
         sv.logger.error("Error fetching Xiaohongshu data")
-        return None
+        return None, None
     data = resp.text
     pattern = r"window.__INITIAL_STATE__=(.*?)</script>"
     matched = re.search(pattern, data)
     if not matched:
         sv.logger.error("Xiaohongshu cookies may be invalid")
-        return None
+        return None, None
     json_str = matched.group(1)
     json_str = json_str.replace("undefined", "null")
     json_obj = json.loads(json_str)
@@ -137,7 +147,7 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         note_data = json_obj["note"]["noteDetailMap"][xhs_id]["note"]
     except KeyError:
         sv.logger.error("Xiaohongshu cookies may be invalid")
-        return None
+        return None, None
     resource_type = note_data["type"]
     note_title = note_data["title"]
     note_desc = note_data["desc"]
@@ -150,24 +160,27 @@ async def parse_xhs(url: str) -> list[Message | MessageSegment | str] | None:
         msg = [title_desc, f"笔记链接: {resp.url}"]
         for img_url in img_urls:
             msg.append(MessageSegment.image(img_url))
-        return msg
+        return msg, None
     elif resource_type == "video":
         video_url = note_data["video"]["media"]["stream"]["h264"][0]["masterUrl"]
         msg = [title_desc, f"笔记链接: {resp.url}"]
         header = {
-            "Referer": resp.url,
+            "Referer": "https://www.xiaohongshu.com/",
         }
-        vresp = await aiohttpx.get(
-            video_url, headers=header, cookies=await get_xhscookies()
-        )
-        if not vresp.ok:
-            sv.logger.warning("Failed to fetch video URL from Xiaohongshu")
-            msg.append(MessageSegment.video(video_url))
+        path = xhs_video_dir / f"{note_title}_{xhs_id}.mp4"
+        path = await save_video_by_path(video_url, path, headers=header)
+        res = None
+        if not path:
+            sv.logger.error("Failed to save video")
+            return None, None
         else:
-            msg.append(MessageSegment.video(vresp.content))
-        return msg
+            if path.stat().st_size >= 100 * 1000 * 1000:  # 100MB limit
+                res = path
+            else:
+                msg.append(MessageSegment.video(path))
+        return msg, res
     else:
         sv.logger.error(
             "Unsupported Xiaohongshu resource type {}".format(resource_type)
         )
-        return None
+        return None, None
