@@ -252,7 +252,6 @@ async def get_weibos_by_mymblog(
     header = {
         "Referer": f"https://weibo.com/u/{target}",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/ 91.0.4472.124 Safari/537.36",
-        "accept": "application/json",
     }
     params = {
         "uid": target,
@@ -263,6 +262,8 @@ async def get_weibos_by_mymblog(
     if not ck:
         sv.logger.error("error get_weibos_by_mymblog : 获取微博cookies失败")
         return []
+    token = ck.get("XSRF-TOKEN", "")
+    header["X-Xsrf-Token"] = token
     res = await aiohttpx.get(
         "https://weibo.com/ajax/statuses/mymblog",
         headers=header,
@@ -410,6 +411,9 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
         res = await aiohttpx.get(
             url,
             cookies=await get_weibocookies(),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/ 91.0.4472.124 Safari/537.36",
+            },
             timeout=5.0,
         )
         rj = res.json
