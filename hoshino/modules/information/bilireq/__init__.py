@@ -242,7 +242,11 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
                     obj.name = dyn.nickname
                     session.commit()
             try:
-                await send_group_segments(bot, gid, msgs)
+                if msgs:
+                    m = msgs[0]
+                    await bot.send_group_msg(group_id=gid, message=m)
+                    await asyncio.sleep(random.uniform(0, 0.5))
+                    await send_group_segments(bot, gid, msgs[1:])
             except Exception as e:
                 sv.logger.error(f"发送 bili 动态失败: {e}")
         dyn_queue.remove_id(dyn.id)

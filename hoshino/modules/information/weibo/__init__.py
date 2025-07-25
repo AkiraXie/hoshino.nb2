@@ -111,6 +111,7 @@ async def handle_weibo_img_reaction(state: T_State):
     if not res:
         await send_to_superuser("获取微博图片失败")
         return
+    res = [i.name for i in res]
     await send_to_superuser(f"获取微博图片成功:\n {'\n'.join(res)}")
     return
 
@@ -425,11 +426,8 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
                 if msgs:
                     m = msgs[0]
                     await bot.send_group_msg(group_id=gid, message=m)
-                    await asyncio.sleep(random.uniform(0, 1))
+                    await asyncio.sleep(random.uniform(0, 0.5))
                     await send_group_segments(bot, gid, msgs[1:])
-                await asyncio.sleep(0.2)
-                await dyn.download_images()
-                await dyn.download_videos()
             except Exception as e:
                 sv.logger.error(f"发送 weibo post 失败: {e}")
         weibo_queue.remove_id(dyn.id)

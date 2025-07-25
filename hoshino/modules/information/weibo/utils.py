@@ -1,8 +1,8 @@
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 import functools
 import os
+from pathlib import Path
 import re
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
@@ -71,8 +71,8 @@ class WeiboPost(Post):
         """获取微博的referer"""
         return "https://weibo.com"
 
-    async def download_images(self) -> list[str]:
-        """下载微博图片"""
+    async def download_images(self) -> list[Path]:
+        """下载微博图片，返回文件路径列表"""
         if not self.images:
             return []
         headers = {"referer": self.get_referer()}
@@ -96,7 +96,7 @@ class WeiboPost(Post):
                     img_url, filepath, True, headers=headers
                 )
                 if result_path:
-                    saved_images.append(result_path.name)
+                    saved_images.append(result_path)
                 else:
                     sv.logger.error(f"Failed to save image {img_url}")
             except Exception as e:
@@ -105,8 +105,8 @@ class WeiboPost(Post):
             saved_images.extend(await self.repost.download_images())
         return saved_images
 
-    async def download_videos(self) -> list[str]:
-        """下载微博视频"""
+    async def download_videos(self) -> list[Path]:
+        """下载微博视频，返回文件路径列表"""
         if not self.videos:
             return []
         headers = {"referer": self.get_referer()}
@@ -130,7 +130,7 @@ class WeiboPost(Post):
                     video_url, filepath, True, headers=headers
                 )
                 if result_path:
-                    saved_videos.append(result_path.name)
+                    saved_videos.append(result_path)
                 else:
                     sv.logger.error(f"Failed to save video {video_url}")
             except Exception as e:
@@ -147,61 +147,45 @@ class WeiboPost(Post):
         msg = []
         immsg = []
         ms = None
-        videos = self.videos
         cts = []
         if self.nickname:
             msg.append(self.nickname + "微博~")
         if self.content:
             cts.append(self.content)
+        
+        # 下载图片和视频，获取本地路径
+        image_paths = await self.download_images()
+        video_paths = await self.download_videos()
+        
         # 处理转推
         if self.repost:
             cts.append("------------")
             cts.append("转发自 " + self.repost.nickname)
             cts.append(self.repost.content)
             cts.append("------------")
-            if self.repost.images:
-                for img in self.repost.images:
-                    immsg.append(MessageSegment.image(img))
-            if self.repost.videos:
-                videos.extend(self.repost.videos)
-        tasks = []
-        # Prepare image fetch tasks
-        if self.images:
-            for image_url in self.images:
-                headers = {"referer": self.get_referer()}
-                tasks.append(aiohttpx.get(image_url, headers=headers))
-        # Prepare screenshot task
+            
+        # 添加本地图片路径到消息
+        for image_path in image_paths:
+            immsg.append(MessageSegment.image(image_path))
+            
+        # 准备截图任务
         screenshot_task = None
         if with_screenshot:
             if not self.description:
                 screenshot_task = get_weibo_screenshot_mobile(self.url)
-                tasks.append(screenshot_task)
             elif self.description == "mapp":
                 screenshot_task = get_mapp_weibo_screenshot(self.url)
-                tasks.append(screenshot_task)
             elif self.description == "desktop":
                 screenshot_task = get_weibo_screenshot_desktop(self.url)
-                tasks.append(screenshot_task)
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        image_count = len(self.images) if self.images else 0
-        for i in range(image_count):
-            resp = responses[i]
-            if isinstance(resp, Exception):
-                sv.logger.error(f"Error fetching image: {resp}")
-                immsg.append(MessageSegment.image(self.images[i]))
-            elif resp.ok:
-                immsg.append(MessageSegment.image(resp.content))
-            else:
-                immsg.append(MessageSegment.image(self.images[i]))
-
+                
         if screenshot_task:
-            if isinstance(responses[-1], Exception):
-                sv.logger.error(f"Error fetching screenshot: {responses[-1]}")
-            elif isinstance(responses[-1], MessageSegment):
-                ms = responses[-1]
-
-            if ms:
-                msg.append(str(ms))
+            try:
+                ms = await screenshot_task
+                if ms:
+                    msg.append(str(ms))
+            except Exception as e:
+                sv.logger.error(f"Error fetching screenshot: {e}")
+                
         if not ms:
             msg.append("\n".join(cts))
 
@@ -220,10 +204,11 @@ class WeiboPost(Post):
             for i in range(0, len(immsg), num):
                 group = immsg[i : i + num]
                 res.append(Message(group))
-        if videos:
-            # no download , or it may cause oom
-            for video in videos:
-                res.append(MessageSegment.video(video))
+        
+        # 添加本地视频路径到消息
+        for video_path in video_paths:
+            res.append(MessageSegment.video(video_path))
+            
         return res
 
 
