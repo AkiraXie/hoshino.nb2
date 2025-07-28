@@ -73,8 +73,6 @@ class WeiboPost(Post):
 
     async def download_images(self) -> list[Path]:
         """下载微博图片，返回文件路径列表"""
-        if not self.images:
-            return []
         headers = {"referer": self.get_referer()}
         saved_images = []
         for i, img_url in enumerate(self.images):
@@ -107,8 +105,6 @@ class WeiboPost(Post):
 
     async def download_videos(self) -> list[Path]:
         """下载微博视频，返回文件路径列表"""
-        if not self.videos:
-            return []
         headers = {"referer": self.get_referer()}
         saved_videos = []
         for i, video_url in enumerate(self.videos):
@@ -152,22 +148,22 @@ class WeiboPost(Post):
             msg.append(self.nickname + "微博~")
         if self.content:
             cts.append(self.content)
-        
+
         # 下载图片和视频，获取本地路径
         image_paths = await self.download_images()
         video_paths = await self.download_videos()
-        
+
         # 处理转推
         if self.repost:
             cts.append("------------")
             cts.append("转发自 " + self.repost.nickname)
             cts.append(self.repost.content)
             cts.append("------------")
-            
+
         # 添加本地图片路径到消息
         for image_path in image_paths:
             immsg.append(MessageSegment.image(image_path))
-            
+
         # 准备截图任务
         screenshot_task = None
         if with_screenshot:
@@ -177,7 +173,7 @@ class WeiboPost(Post):
                 screenshot_task = get_mapp_weibo_screenshot(self.url)
             elif self.description == "desktop":
                 screenshot_task = get_weibo_screenshot_desktop(self.url)
-                
+
         if screenshot_task:
             try:
                 ms = await screenshot_task
@@ -185,7 +181,7 @@ class WeiboPost(Post):
                     msg.append(str(ms))
             except Exception as e:
                 sv.logger.error(f"Error fetching screenshot: {e}")
-                
+
         if not ms:
             msg.append("\n".join(cts))
 
@@ -204,11 +200,11 @@ class WeiboPost(Post):
             for i in range(0, len(immsg), num):
                 group = immsg[i : i + num]
                 res.append(Message(group))
-        
+
         # 添加本地视频路径到消息
         for video_path in video_paths:
             res.append(MessageSegment.video(video_path))
-            
+
         return res
 
 
