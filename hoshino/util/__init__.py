@@ -599,7 +599,7 @@ async def get_cookies(name: str) -> dict:
 
 
 async def get_redirect(url: str, headers={}) -> str | None:
-    resp = await aiohttpx.head(url, follow_redirects=False, headers=headers,verify=False)
+    resp = await aiohttpx.get(url, follow_redirects=False, headers=headers,verify=False)
     loc = resp.headers.get("Location")
     if not loc:
         return url

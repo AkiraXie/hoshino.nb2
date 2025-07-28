@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+import asyncio
 import functools
 import os
 from pathlib import Path
@@ -74,8 +75,9 @@ class WeiboPost(Post):
     async def download_images(self) -> list[Path]:
         """下载微博图片，返回文件路径列表"""
         headers = {"referer": self.get_referer()}
-        saved_images = []
-        for i, img_url in enumerate(self.images):
+        
+        async def download_single_image(i: int, img_url: str) -> Path | None:
+            """下载单个图片"""
             try:
                 if not self.description or self.description == "desktop":
                     content_part = clean_filename(self.content[:20])
@@ -94,20 +96,38 @@ class WeiboPost(Post):
                     img_url, filepath, True, headers=headers
                 )
                 if result_path:
-                    saved_images.append(result_path)
+                    return result_path
                 else:
                     sv.logger.error(f"Failed to save image {img_url}")
+                    return None
             except Exception as e:
                 sv.logger.error(f"Error downloading image {img_url}: {e}")
+                return None
+        
+        # 并发下载所有图片
+        tasks = [download_single_image(i, img_url) for i, img_url in enumerate(self.images)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        saved_images = []
+        for result in results:
+            if isinstance(result, Path):
+                saved_images.append(result)
+            elif isinstance(result, Exception):
+                sv.logger.error(f"Error in download task: {result}")
+        
+        # 处理转发的图片
         if self.repost and self.repost.images:
-            saved_images.extend(await self.repost.download_images())
+            repost_images = await self.repost.download_images()
+            saved_images.extend(repost_images)
+            
         return saved_images
 
     async def download_videos(self) -> list[Path]:
         """下载微博视频，返回文件路径列表"""
         headers = {"referer": self.get_referer()}
-        saved_videos = []
-        for i, video_url in enumerate(self.videos):
+        
+        async def download_single_video(i: int, video_url: str) -> Path | None:
+            """下载单个视频"""
             try:
                 if not self.description or self.description == "desktop":
                     content_part = clean_filename(self.content[:12])
@@ -126,13 +146,30 @@ class WeiboPost(Post):
                     video_url, filepath, True, headers=headers
                 )
                 if result_path:
-                    saved_videos.append(result_path)
+                    return result_path
                 else:
                     sv.logger.error(f"Failed to save video {video_url}")
+                    return None
             except Exception as e:
                 sv.logger.error(f"Error downloading video {video_url}: {e}")
+                return None
+        
+        # 并发下载所有视频
+        tasks = [download_single_video(i, video_url) for i, video_url in enumerate(self.videos)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        saved_videos = []
+        for result in results:
+            if isinstance(result, Path):
+                saved_videos.append(result)
+            elif isinstance(result, Exception):
+                sv.logger.error(f"Error in download task: {result}")
+        
+        # 处理转发的视频
         if self.repost and self.repost.videos:
-            saved_videos.extend(await self.repost.download_videos())
+            repost_videos = await self.repost.download_videos()
+            saved_videos.extend(repost_videos)
+            
         return saved_videos
 
     @override
@@ -232,7 +269,7 @@ async def get_weibos_by_mymblog(
 ) -> list[WeiboPost]:
     header = {
         "Referer": f"https://weibo.com/u/{target}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/ 91.0.4472.124 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
     }
     params = {
         "uid": target,
@@ -243,8 +280,8 @@ async def get_weibos_by_mymblog(
     if not ck:
         sv.logger.error("error get_weibos_by_mymblog : 获取微博cookies失败")
         return []
-    token = ck.get("XSRF-TOKEN", "")
-    header["X-Xsrf-Token"] = token
+    # token = ck.get("XSRF-TOKEN", "")
+    # header["X-Xsrf-Token"] = token
     res = await aiohttpx.get(
         "https://weibo.com/ajax/statuses/mymblog",
         headers=header,
@@ -253,7 +290,7 @@ async def get_weibos_by_mymblog(
         timeout=6.0,
     )
     if not res.ok:
-        sv.logger.error(f"获取微博失败: {res.status_code}")
+        sv.logger.error(f"获取微博失败: {res.status_code} {res.headers}")
         return []
     res_data = res.json
     if not res_data["ok"]:
@@ -393,7 +430,7 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
             url,
             cookies=await get_weibocookies(),
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/ 91.0.4472.124 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
             },
             timeout=5.0,
         )
@@ -411,9 +448,11 @@ def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
     for media in medias:
         mediadata = media.get("data", {})
         if media.get("type") == "pic":
-            pic_url = parse_pic_info(mediadata)
+            pic_url, video_url = parse_pic_info(mediadata)
             if pic_url:
                 pic_urls.append(pic_url)
+            if video_url:
+                video_urls.append(video_url)
         elif media.get("type") == "video":
             v_url, p_url = parse_video_info(mediadata)
             if v_url:
@@ -423,17 +462,20 @@ def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
     return pic_urls, video_urls
 
 
-def parse_pic_info(pic: dict) -> str:
+def parse_pic_info(pic: dict) -> tuple[str,str]:
     pic_url = ""
-    for scale in ["original", "large"]:
+    video_url = ""
+    if vd:=pic.get("video"):
+        video_url = vd
+    for scale in ["largest", "original", "large"]:
         if scale in pic:
             if ur := pic[scale].get("url"):
                 pic_url = ur
                 break
-    return pic_url
+    return pic_url, video_url
 
 
-def parse_video_info(page_info: dict) -> str:
+def parse_video_info(page_info: dict) -> tuple[str,str]:
     pic_url = ""
     video_url = ""
     media_info = page_info.get("media_info", {})
@@ -493,9 +535,11 @@ def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     else:
         pic_info: list = rj.get("pic_infos", {}).values()
         for pic in pic_info:
-            pic_url = parse_pic_info(pic)
+            pic_url, video_url = parse_pic_info(pic)
             if pic_url:
                 pic_urls.append(pic_url)
+            if video_url:
+                video_urls.append(video_url)
         page_info = rj.get("page_info", {})
         if page_info.get("object_type") == "video":
             video_url, pic_url = parse_video_info(page_info)
