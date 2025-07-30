@@ -584,7 +584,6 @@ async def get_cookies(name: str) -> dict:
                     session.delete(row)
                     session.commit()
                     cookiejar.pop(name, None)
-                    await send_to_superuser(f"cookie {name} 已过期,请重新设置")
                     return {}
                 cookiejar[name] = cookies
         if not cookies:
