@@ -8,13 +8,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir, Message, MessageSegment
+from hoshino.service import Service
 from hoshino.util import aiohttpx, get_cookies
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
 from functools import partial
 from ..utils import Post
 from typing import Sequence
 from dataclasses import dataclass
-
+sv = Service("bilireq", enable_on_default=False)
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
@@ -178,12 +179,15 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     res = await aiohttpx.get(
         url, params=params, headers=h, cookies=await get_bilicookies()
     )
-    data = res.json.get("data", {})
+    rj = res.json()
+    data = rj.get("data", {})
 
     if not data:
+        sv.logger.error(f"获取Bili动态失败 UID {uid}: 无数据返回, code: {rj.get('code', '未知')}")
         return []
     cards = data.get("items", [])
     if not cards:
+        sv.logger.error(f"获取Bili动态失败 UID {uid}: 无动态数据, code: {rj.get('code', '未知')}")
         return []
     dyn = cards[4::-1]
     dyns = [BiliBiliDynamic.from_dict(d) for d in dyn]
