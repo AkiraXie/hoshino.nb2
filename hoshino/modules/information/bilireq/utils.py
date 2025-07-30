@@ -179,7 +179,7 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     res = await aiohttpx.get(
         url, params=params, headers=h, cookies=await get_bilicookies()
     )
-    rj = res.json()
+    rj = res.json
     data = rj.get("data", {})
 
     if not data:
