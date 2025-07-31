@@ -67,7 +67,7 @@ async def _refresh_wbi_key():
         url,
         headers=headers,
     )
-    rj = resp.json()
+    rj = resp.json
     img_url: str = rj['data']['wbi_img']['img_url']
     sub_url: str = rj['data']['wbi_img']['sub_url']
     img_key = img_url.rsplit('/', 1)[1].split('.')[0]
