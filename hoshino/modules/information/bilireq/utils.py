@@ -402,6 +402,7 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     dyn = cards[4::-1]
     dyns = [BiliBiliDynamic.from_dict(d) for d in dyn]
     dyns = [d for d in dyns if d.timestamp > ts]
+    dyns = sorted(dyns, key=lambda x: x.timestamp, reverse=True)
     return dyns
 
 
