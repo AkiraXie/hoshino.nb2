@@ -433,7 +433,7 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     params = {
         "x-bili-device-req-json": '{"platform":"web","device":"pc"}',
         "x-bili-web-req-json": '{"spm_id":"333.1387"}',
-        "host_mid": uid,
+        "host_mid": int(uid),
         "timezone_offset": -480,
         "offset": "",
         "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
