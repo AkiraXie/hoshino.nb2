@@ -1,4 +1,5 @@
 import asyncio
+import random
 import re
 import uuid
 from nonebot.typing import override
@@ -9,7 +10,7 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from hoshino import db_dir, Message, MessageSegment, SUPERUSER
+from hoshino import db_dir, Message, MessageSegment, SUPERUSER,scheduled_job,on_startup
 from hoshino.service import Service
 from hoshino.util import (
     aiohttpx,
@@ -20,7 +21,9 @@ from hoshino.util import (
     send_to_superuser,
 )
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
-from functools import partial
+from urllib.parse import urlencode
+from hashlib import md5
+from functools import  reduce
 from ..utils import Post
 from typing import Sequence
 from dataclasses import dataclass
@@ -37,6 +40,7 @@ dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
 refresh_csrf_url = "https://www.bilibili.com/correspond/1/{}"
 refresh_cookie_url = "https://passport.bilibili.com/x/passport-login/web/cookie/refresh"
+nav_url = "https://api.bilibili.com/x/web-interface/nav"
 
 # 异步锁，防止并发调用get_bilicookies时的竞态条件
 _cookies_lock = asyncio.Lock()
@@ -47,7 +51,57 @@ headers = {
     ),
     "Referer": "https://www.bilibili.com",
 }
+mixinKeyEncTab = [
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
+    33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
+    61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
+    36, 20, 34, 44, 52
+]
+imgsubkey = ''
 
+@on_startup
+@scheduled_job("cron", hour="0", minute="5")
+async def _refresh_wbi_key():
+    url = nav_url
+    resp = await aiohttpx.get(
+        url,
+        headers=headers,
+    )
+    rj = resp.json()
+    img_url: str = rj['data']['wbi_img']['img_url']
+    sub_url: str = rj['data']['wbi_img']['sub_url']
+    img_key = img_url.rsplit('/', 1)[1].split('.')[0]
+    sub_key = sub_url.rsplit('/', 1)[1].split('.')[0]
+    global imgsubkey
+    imgsubkey = img_key + sub_key
+
+async def _enc_wbi(params:dict) -> dict:
+    dm_rand = "ABCDEFGHIJK"
+    p = params.copy()
+    p.update(        {
+            "dm_img_list": "[]",  # 鼠标/键盘操作记录
+            "dm_img_str": "".join(random.sample(dm_rand, 2)),
+            "dm_cover_img_str": "".join(random.sample(dm_rand, 2)),
+            "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}',
+        }
+    )
+    params = p
+    def getMixinKey(orig: str):
+        return reduce(lambda s, i: s + orig[i], mixinKeyEncTab, '')[:32]
+    mixin_key = getMixinKey(imgsubkey)
+    params['wts'] = round(time.time())
+    if not params.get("web_location"):
+        params["web_location"] = 1550101
+    params = dict(sorted(params.items())) 
+    params = {
+        k : ''.join(filter(lambda chr: chr not in "!'()*", str(v)))
+        for k, v 
+        in params.items()
+    }
+    query = urlencode(params)                      # 序列化参数
+    wbi_sign = md5((query + mixin_key).encode()).hexdigest()    # 计算 w_rid
+    params['w_rid'] = wbi_sign
+    return params
 
 def _getCorrespondPath() -> str:
     key = RSA.importKey(
@@ -381,7 +435,7 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
         "offset": "",
         "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
     }
-
+    params = await _enc_wbi(params)
     res = await aiohttpx.get(
         url, params=params, headers=h, cookies=await get_bilicookies()
     )
