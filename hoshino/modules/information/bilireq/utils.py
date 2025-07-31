@@ -95,7 +95,6 @@ async def _refresh_cookies(cookies: dict) -> dict:
         "refresh_token": cookies["ac_time_value"],
         "source": "main_web",
     }
-    cookies["buvid3"] = str(uuid.uuid1())
     resp = await aiohttpx.post(
         url,
         cookies=cookies,
@@ -106,7 +105,8 @@ async def _refresh_cookies(cookies: dict) -> dict:
         sv.logger.error(f"refresh cookies error: {resp.status_code} {resp.text}")
         return {}
     rj = resp.json
-    res = dict(resp.cookies)
+    res = cookies.copy()
+    res.update(resp.cookies)
     res["ac_time_value"] = rj.get("data", {}).get("refresh_token", "")
     return res
 
