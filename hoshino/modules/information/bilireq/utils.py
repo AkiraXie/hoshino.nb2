@@ -74,6 +74,7 @@ async def _refresh_wbi_key():
     sub_key = sub_url.rsplit('/', 1)[1].split('.')[0]
     global imgsubkey
     imgsubkey = img_key + sub_key
+    sv.logger.info(f"wbi key refreshed: {imgsubkey}")
 
 async def _enc_wbi(params:dict) -> dict:
     dm_rand = "ABCDEFGHIJK"
@@ -444,13 +445,13 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
 
     if not data:
         sv.logger.error(
-            f"获取Bili动态失败 UID {uid}: 无数据返回, code: {rj.get('code', '未知')}"
+            f"获取Bili动态失败 UID {uid}: 无数据返回, code: {rj.get('code', '未知')}, params: {params}"
         )
         return []
     cards = data.get("items", [])
     if not cards:
         sv.logger.error(
-            f"获取Bili动态失败 UID {uid}: 无动态数据, code: {rj.get('code', '未知')}"
+            f"获取Bili动态失败 UID {uid}: 无动态数据, code: {rj.get('code', '未知')}, params: {params}"
         )
         return []
     dyn = cards[4::-1]
