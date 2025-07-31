@@ -75,7 +75,7 @@ class WeiboPost(Post):
     async def download_images(self) -> list[Path]:
         """下载微博图片，返回文件路径列表"""
         headers = {"referer": self.get_referer()}
-        
+
         async def download_single_image(i: int, img_url: str) -> Path | None:
             """下载单个图片"""
             try:
@@ -103,29 +103,31 @@ class WeiboPost(Post):
             except Exception as e:
                 sv.logger.error(f"Error downloading image {img_url}: {e}")
                 return None
-        
+
         # 并发下载所有图片
-        tasks = [download_single_image(i, img_url) for i, img_url in enumerate(self.images)]
+        tasks = [
+            download_single_image(i, img_url) for i, img_url in enumerate(self.images)
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         saved_images = []
         for result in results:
             if isinstance(result, Path):
                 saved_images.append(result)
             elif isinstance(result, Exception):
                 sv.logger.error(f"Error in download task: {result}")
-        
+
         # 处理转发的图片
         if self.repost and self.repost.images:
             repost_images = await self.repost.download_images()
             saved_images.extend(repost_images)
-            
+
         return saved_images
 
     async def download_videos(self) -> list[Path]:
         """下载微博视频，返回文件路径列表"""
         headers = {"referer": self.get_referer()}
-        
+
         async def download_single_video(i: int, video_url: str) -> Path | None:
             """下载单个视频"""
             try:
@@ -153,23 +155,26 @@ class WeiboPost(Post):
             except Exception as e:
                 sv.logger.error(f"Error downloading video {video_url}: {e}")
                 return None
-        
+
         # 并发下载所有视频
-        tasks = [download_single_video(i, video_url) for i, video_url in enumerate(self.videos)]
+        tasks = [
+            download_single_video(i, video_url)
+            for i, video_url in enumerate(self.videos)
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         saved_videos = []
         for result in results:
             if isinstance(result, Path):
                 saved_videos.append(result)
             elif isinstance(result, Exception):
                 sv.logger.error(f"Error in download task: {result}")
-        
+
         # 处理转发的视频
         if self.repost and self.repost.videos:
             repost_videos = await self.repost.download_videos()
             saved_videos.extend(repost_videos)
-            
+
         return saved_videos
 
     @override
@@ -431,6 +436,7 @@ async def parse_weibo_with_bid(bid: str) -> WeiboPost | None:
             cookies=await get_weibocookies(),
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+                "Referer": "https://weibo.com/",
             },
             timeout=5.0,
         )
@@ -462,10 +468,10 @@ def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
     return pic_urls, video_urls
 
 
-def parse_pic_info(pic: dict) -> tuple[str,str]:
+def parse_pic_info(pic: dict) -> tuple[str, str]:
     pic_url = ""
     video_url = ""
-    if vd:=pic.get("video"):
+    if vd := pic.get("video"):
         video_url = vd
     for scale in ["largest", "original", "large"]:
         if scale in pic:
@@ -475,7 +481,7 @@ def parse_pic_info(pic: dict) -> tuple[str,str]:
     return pic_url, video_url
 
 
-def parse_video_info(page_info: dict) -> tuple[str,str]:
+def parse_video_info(page_info: dict) -> tuple[str, str]:
     pic_url = ""
     video_url = ""
     media_info = page_info.get("media_info", {})
@@ -498,6 +504,9 @@ def parse_video_info(page_info: dict) -> tuple[str,str]:
 
 
 def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
+    if rj.get("user") is None:
+        sv.logger.error(f"获取微博失败: User is None, json: {rj}")
+        return None
     post = _parse_weibo_with_bid_dict(rj)
     if not post:
         return None
@@ -511,13 +520,10 @@ def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
 
 
 def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
-    if rj.get("user") is None:
-        sv.logger.error("获取微博失败: User is None")
-        return None
     visible = rj.get("visible", {})
     type_ = visible.get("type", 0)
     if type_ not in [0, 6, 7, 8, 9]:
-        sv.logger.error(f"获取微博失败: visible type {type_} not supported")
+        sv.logger.error(f"获取微博失败: visible type {type_} not supported, json: {rj}")
         return None
     description = "" if type_ == 0 else "desktop"
     mid = rj.get("mid")

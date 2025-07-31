@@ -1,7 +1,7 @@
 import asyncio
 import time
 from hoshino.schedule import scheduled_job
-from hoshino import  Bot, Event, on_startup
+from hoshino import Bot, Event, on_startup
 import random
 from hoshino.util import send_group_segments, send_segments
 from .utils import (
@@ -10,7 +10,7 @@ from .utils import (
     get_dynamic,
     get_new_dynamic,
     Session,
-    sv
+    sv,
 )
 from ..utils import PostQueue, UIDManager
 from pytz import timezone

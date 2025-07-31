@@ -543,8 +543,8 @@ def check_cookies(name: str) -> bool:
         if row:
             if not row.created_at:
                 return False
-            # 检查创建时间是否超过两天
-            if time() - row.created_at > 86400 * 5:
+            # 检查创建时间是否超过三天
+            if time() - row.created_at > 86400 * 3:
                 return False
             cookiejar[name] = row.cookie
             return True
@@ -557,7 +557,7 @@ def check_all_cookies() -> dict[str, bool]:
         stmt = select(Cookies)
         rows = session.execute(stmt).scalars().all()
         for row in rows:
-            if not row.created_at or time() - row.created_at > 86400 * 5:  # 超过两天
+            if not row.created_at or time() - row.created_at > 86400 * 3:
                 session.delete(row)
                 res[row.name] = False
                 cookiejar.pop(row.name, None)
@@ -566,6 +566,29 @@ def check_all_cookies() -> dict[str, bool]:
                 cookiejar[row.name] = row.cookie
         session.commit()
     return res
+
+
+async def get_cookies_with_ts(name: str) -> tuple[dict, float]:
+    try:
+        if name in cookiejar:
+            cookies = cookiejar[name]
+        else:
+            with Session() as session:
+                stmt = select(Cookies).where(Cookies.name == name)
+                row = session.execute(stmt).scalar_one_or_none()
+                if not row:
+                    return {}, 0
+                cookies = row.cookie
+                ts = row.created_at
+        if not cookies:
+            return {}, 0
+        cookie_dict = {}
+        for item in cookies.split("; "):
+            key, value = item.split("=", 1)
+            cookie_dict[key] = value
+        return cookie_dict, ts
+    except Exception:
+        return {}, 0
 
 
 async def get_cookies(name: str) -> dict:
@@ -580,7 +603,7 @@ async def get_cookies(name: str) -> dict:
                     return {}
                 cookies = row.cookie
                 ts = row.created_at
-                if time() - ts > 86400 * 5:
+                if time() - ts > 86400 * 3:
                     session.delete(row)
                     session.commit()
                     cookiejar.pop(name, None)
@@ -598,7 +621,9 @@ async def get_cookies(name: str) -> dict:
 
 
 async def get_redirect(url: str, headers={}) -> str | None:
-    resp = await aiohttpx.get(url, follow_redirects=False, headers=headers,verify=False)
+    resp = await aiohttpx.get(
+        url, follow_redirects=False, headers=headers, verify=False
+    )
     loc = resp.headers.get("Location")
     if not loc:
         return url
