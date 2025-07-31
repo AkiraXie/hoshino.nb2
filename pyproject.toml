@@ -24,6 +24,7 @@ simplejson = "^3.20.1"
 sqlalchemy = "^2.0.41"
 aiosqlite = "^0.21.0"
 urllib3 = "^2.4.0"
+pycryptodomex = "^3.23.0"
 
 
 [tool.poetry.group.dev.dependencies]
