@@ -435,7 +435,7 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
         "x-bili-web-req-json": '{"spm_id":"333.1387"}',
         "host_mid": uid,
         "timezone_offset": -480,
-        "offset": 0,
+        "offset": "",
         "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
     }
     params = await _enc_wbi(params)
