@@ -198,6 +198,15 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
                                     if s.type == "image" or s.type == "mface"
                                 ]
                                 res.extend(p)
+                if not msgs:
+                    msgs = dic.get("messages")
+                    for m in msgs:
+                        content = type_validate_python(Message, m)
+                        p = [
+                            s for s in content if s.type == "image" or s.type == "mface"
+                        ]
+                        res.extend(p)
+
     return res
 
 
@@ -218,6 +227,14 @@ async def _get_videos_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSe
                                 content = type_validate_python(Message, content)
                                 p = [s for s in content if s.type == "video"]
                                 res.extend(p)
+                if not msgs:
+                    msgs = dic.get("messages")
+                    for m in msgs:
+                        content = type_validate_python(Message, m)
+                        p = [
+                            s for s in content if s.type == "image" or s.type == "mface"
+                        ]
+                        res.extend(p)
     return res
 
 

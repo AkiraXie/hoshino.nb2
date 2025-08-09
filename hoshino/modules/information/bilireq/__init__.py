@@ -151,7 +151,7 @@ async def _(bot: Bot, event: Event):
         await send_segments(msgs)
 
 
-@scheduled_job("interval", seconds=1, jitter=0.2, id="获取bili动态")
+@scheduled_job("interval", seconds=50, jitter=5, id="获取bili动态")
 async def get_bili_dyn():
     ready_count = uid_manager.get_count()
     if ready_count == 0:

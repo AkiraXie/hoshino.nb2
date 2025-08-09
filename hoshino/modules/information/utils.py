@@ -164,8 +164,7 @@ class UIDManager:
         """标记 UID 处理完成"""
         async with self._lock:
             self._processing_uids.discard(uid)
-            if success:
-                self._update_fetch_time(uid)
+            self._update_fetch_time(uid)
 
     def get_count(self) -> int:
         """获取可以立即抓取的UID数量"""
