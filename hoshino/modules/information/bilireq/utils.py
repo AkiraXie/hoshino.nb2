@@ -10,7 +10,14 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from hoshino import db_dir, Message, MessageSegment, SUPERUSER,scheduled_job,on_startup
+from hoshino import (
+    db_dir,
+    Message,
+    MessageSegment,
+    SUPERUSER,
+    scheduled_job,
+    on_startup,
+)
 from hoshino.service import Service
 from hoshino.util import (
     aiohttpx,
@@ -23,7 +30,7 @@ from hoshino.util import (
 from hoshino.util.playwrights import get_bili_dynamic_screenshot
 from urllib.parse import urlencode
 from hashlib import md5
-from functools import  reduce
+from functools import reduce
 from ..utils import Post
 from typing import Sequence
 from dataclasses import dataclass
@@ -52,12 +59,73 @@ headers = {
     "Referer": "https://www.bilibili.com",
 }
 mixinKeyEncTab = [
-    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
-    33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
-    61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
-    36, 20, 34, 44, 52
+    46,
+    47,
+    18,
+    2,
+    53,
+    8,
+    23,
+    32,
+    15,
+    50,
+    10,
+    31,
+    58,
+    3,
+    45,
+    35,
+    27,
+    43,
+    5,
+    49,
+    33,
+    9,
+    42,
+    19,
+    29,
+    28,
+    14,
+    39,
+    12,
+    38,
+    41,
+    13,
+    37,
+    48,
+    7,
+    16,
+    24,
+    55,
+    40,
+    61,
+    26,
+    17,
+    0,
+    1,
+    60,
+    51,
+    30,
+    4,
+    22,
+    25,
+    54,
+    21,
+    56,
+    59,
+    6,
+    63,
+    57,
+    62,
+    11,
+    36,
+    20,
+    34,
+    44,
+    52,
 ]
-imgsubkey = ''
+imgsubkey = ""
+
 
 @on_startup
 @scheduled_job("cron", hour="0", minute="5")
@@ -68,18 +136,20 @@ async def _refresh_wbi_key():
         headers=headers,
     )
     rj = resp.json
-    img_url: str = rj['data']['wbi_img']['img_url']
-    sub_url: str = rj['data']['wbi_img']['sub_url']
-    img_key = img_url.rsplit('/', 1)[1].split('.')[0]
-    sub_key = sub_url.rsplit('/', 1)[1].split('.')[0]
+    img_url: str = rj["data"]["wbi_img"]["img_url"]
+    sub_url: str = rj["data"]["wbi_img"]["sub_url"]
+    img_key = img_url.rsplit("/", 1)[1].split(".")[0]
+    sub_key = sub_url.rsplit("/", 1)[1].split(".")[0]
     global imgsubkey
     imgsubkey = img_key + sub_key
     sv.logger.info(f"wbi key refreshed: {imgsubkey}")
 
-async def _enc_wbi(params:dict) -> dict:
+
+async def _enc_wbi(params: dict) -> dict:
     dm_rand = "ABCDEFGHIJK"
     p = params.copy()
-    p.update(        {
+    p.update(
+        {
             "dm_img_list": "[]",  # 鼠标/键盘操作记录
             "dm_img_str": "".join(random.sample(dm_rand, 2)),
             "dm_cover_img_str": "".join(random.sample(dm_rand, 2)),
@@ -87,22 +157,24 @@ async def _enc_wbi(params:dict) -> dict:
         }
     )
     params = p
+
     def getMixinKey(orig: str):
-        return reduce(lambda s, i: s + orig[i], mixinKeyEncTab, '')[:32]
+        return reduce(lambda s, i: s + orig[i], mixinKeyEncTab, "")[:32]
+
     mixin_key = getMixinKey(imgsubkey)
-    params['wts'] = round(time.time())
+    params["wts"] = round(time.time())
     if not params.get("web_location"):
         params["web_location"] = 1550101
-    params = dict(sorted(params.items())) 
+    params = dict(sorted(params.items()))
     params = {
-        k : ''.join(filter(lambda chr: chr not in "!'()*", str(v)))
-        for k, v 
-        in params.items()
+        k: "".join(filter(lambda chr: chr not in "!'()*", str(v)))
+        for k, v in params.items()
     }
-    query = urlencode(params)                      # 序列化参数
-    wbi_sign = md5((query + mixin_key).encode()).hexdigest()    # 计算 w_rid
-    params['w_rid'] = wbi_sign
+    query = urlencode(params)  # 序列化参数
+    wbi_sign = md5((query + mixin_key).encode()).hexdigest()  # 计算 w_rid
+    params["w_rid"] = wbi_sign
     return params
+
 
 def _getCorrespondPath() -> str:
     key = RSA.importKey(
@@ -444,7 +516,13 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     )
     rj = res.json
     data = rj.get("data", {})
-
+    code = int(rj.get("code", 0))
+    if code == -352:
+        res = await aiohttpx.get(
+            url, params=params, headers=h, cookies=await get_bilicookies()
+        )
+        rj = res.json
+        data = rj.get("data", {})
     if not data:
         sv.logger.error(
             f"获取Bili动态失败 UID {uid}: 无数据返回, code: {rj.get('code', '未知')}, params: {params}"

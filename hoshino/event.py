@@ -7,6 +7,7 @@ from nonebot.adapters.onebot.v11.event import (
     LifecycleMetaEvent,
     NoticeEvent,
 )
+from pydantic import BaseModel
 from typing_extensions import override
 
 
@@ -39,7 +40,36 @@ class GroupReactionEvent(NoticeEvent):
         return self.sub_type == "add"
 
 
+class GroupMsgEmojiLikeEvent(NoticeEvent):
+    """
+    LLOneBot GroupMsgEmojiLike
+    """
+
+    class Like(BaseModel):
+        emoji_id: str
+        count: int
+
+    group_id: int
+    notice_type: Literal["group_msg_emoji_like"]
+    message_id: int
+    user_id: int
+    likes: list[Like]
+
+    @override
+    def get_user_id(self) -> str:
+        return str(self.user_id)
+
+    @override
+    def get_session_id(self) -> str:
+        return f"group_{self.group_id}_{self.user_id}"
+
+    @override
+    def is_tome(self):
+        return super().is_tome()
+
+
 Adapter.add_custom_model(GroupReactionEvent)
+Adapter.add_custom_model(GroupMsgEmojiLikeEvent)
 
 
 def get_event(event: Event) -> str:

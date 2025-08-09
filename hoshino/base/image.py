@@ -29,7 +29,12 @@ from hoshino.util import (
     save_video,
     random_image_or_video_by_path,
 )
-from hoshino.event import GroupReactionEvent, MessageEvent
+from hoshino.event import (
+    GroupReactionEvent,
+    MessageEvent,
+    GroupMsgEmojiLikeEvent,
+    NoticeEvent,
+)
 from nonebot.plugin import on_notice, on_keyword
 from nonebot.rule import Rule, KeywordsRule
 from nonebot.compat import type_validate_python
@@ -38,6 +43,34 @@ from nonebot.consts import KEYWORD_KEY
 import os
 from time import time
 from httpx import URL
+
+
+async def like_img_rule(
+    bot: Bot,
+    event: GroupMsgEmojiLikeEvent,
+    state: T_State,
+) -> bool:
+    code = event.likes[0].emoji_id if event.likes else ""
+    if not code:
+        return False
+    if code != "76" and code != "66":
+        return False
+    msg_id = event.message_id
+    msg = await bot.get_msg(message_id=msg_id)
+    sender = msg.get("sender", {}).get("user_id")
+    sender = str(sender)
+    if sender != bot.self_id and sender not in bot.config.superusers:
+        return False
+    msg = msg.get("message")
+    if msg:
+        msg = type_validate_python(Message, msg)
+        img_list = [s for s in msg if s.type == "image"]
+        img_list.extend(await _get_imgs_from_forward_msg(bot, msg))
+        if img_list:
+            state[__SU_IMGLIST] = img_list
+            state["__IMG_FAV"] = True if code == "66" else False
+            return True
+    return False
 
 
 async def reaction_img_rule(
@@ -65,6 +98,18 @@ async def reaction_img_rule(
     return False
 
 
+async def img_rule(
+    bot: Bot,
+    event: NoticeEvent,
+    state: T_State,
+):
+    if isinstance(event, GroupMsgEmojiLikeEvent):
+        return await like_img_rule(bot, event, state)
+    elif isinstance(event, GroupReactionEvent):
+        return await reaction_img_rule(bot, event, state)
+    return False
+
+
 async def reaction_video_rule(
     bot: Bot,
     event: GroupReactionEvent,
@@ -88,14 +133,52 @@ async def reaction_video_rule(
     return False
 
 
+async def like_video_rule(
+    bot: Bot,
+    event: GroupMsgEmojiLikeEvent,
+    state: T_State,
+) -> bool:
+    msg_id = event.message_id
+    code = event.likes[0].emoji_id if event.likes else ""
+    if not code:
+        return False
+    if code != "424":
+        return False
+    msg = await bot.get_msg(message_id=msg_id)
+    sender = msg.get("sender", {}).get("user_id")
+    sender = str(sender)
+    if sender != bot.self_id and sender not in bot.config.superusers:
+        return False
+    msg = msg.get("message")
+    if msg:
+        msg = type_validate_python(Message, msg)
+        img_list = [s for s in msg if s.type == "video"]
+        img_list.extend(await _get_videos_from_forward_msg(bot, msg))
+        if img_list:
+            state[__SU_VIDEOLIST] = img_list
+            return True
+    return False
+
+
+async def video_rule(
+    bot: Bot,
+    event: NoticeEvent,
+    state: T_State,
+):
+    if isinstance(event, GroupMsgEmojiLikeEvent):
+        return await like_video_rule(bot, event, state)
+    elif isinstance(event, GroupReactionEvent):
+        return await reaction_video_rule(bot, event, state)
+
+
 svimg_notice = on_notice(
-    rule=reaction_img_rule,
+    rule=img_rule,
     permission=SUPERUSER,
     priority=5,
     block=True,
 )
 svvideo_notice = on_notice(
-    rule=reaction_video_rule,
+    rule=video_rule,
     permission=SUPERUSER,
     priority=5,
     block=True,
