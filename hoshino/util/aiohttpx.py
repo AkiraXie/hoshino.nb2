@@ -92,6 +92,9 @@ class Response(BaseResponse):
         self.cookies = cookies
         self.text = text
 
+    def raise_for_status(self):
+        self._resp.raise_for_status()
+
     @property
     def json(self) -> Any:
         if self._resp.encoding:
