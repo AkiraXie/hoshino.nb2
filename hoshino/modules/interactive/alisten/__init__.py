@@ -35,11 +35,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 house_id=house_id,
                 house_password=house_password
             )
-            print(newconfig)
             session.add(newconfig)
-            print("added")
         session.commit()
-        print("committed")
     await configset.finish("听歌房配置已更新\n"
         f"服务器地址: {server_url}\n"
         f"房间ID: {house_id}\n"
@@ -54,8 +51,8 @@ async def _(bot: Bot, event: GroupMessageEvent, config: AlistenConfig | None = D
         f"房间ID: {config.house_id}\n"
         f"房间密码: {config.house_password}\n")
 
-pickmusic = sv.on_command("点歌", aliases={"pickmusic"})
-pickmusicid = sv.on_command("id点歌", aliases={"idpickmusic","ID点歌","Id点歌"})
+pickmusic = sv.on_command("点歌", aliases={"pickmusic"},force_whitespace=True)
+pickmusicid = sv.on_command("id点歌", aliases={"idpickmusic","ID点歌","Id点歌"},force_whitespace=True)
 
 
 async def get_user_name(bot: Bot, event: GroupMessageEvent) -> str:
