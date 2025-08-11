@@ -1,11 +1,11 @@
 from pydantic import BaseModel
 from sqlalchemy.orm import Mapped, mapped_column,DeclarativeBase,sessionmaker
-from sqlalchemy import select, create_engine
+from sqlalchemy import select, create_engine,Integer, Float, Text
 from hoshino import db_dir
-from hoshino.permission import SUPERUSER,ADMIN
 from hoshino.service import Service
-from hoshino.util.aiohttpx import get,post
-db_path = db_dir / "bilidata.db"
+from hoshino.util.aiohttpx import post
+from hoshino.event import GroupMessageEvent
+db_path = db_dir / "alisten.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)
 sv = Service("alisten",enable_on_default=False,visible=False)
@@ -19,18 +19,16 @@ class AlistenConfig(Base):
 
     __tablename__ = "alisten_config"
 
-    gid: Mapped[int] = mapped_column(primary_key=True)
-    gemail: Mapped[str] = mapped_column(unique=True)    
-    server_url: Mapped[str]
-    """alisten 服务器地址"""
-    house_id: Mapped[str]
-    """房间 ID"""
-    house_password: Mapped[str] = mapped_column(default="")
-    """房间密码"""
+    gid: Mapped[int] = mapped_column(Integer,primary_key=True)
+    gemail: Mapped[int] = mapped_column(Text)
+    house_id: Mapped[str] = mapped_column(Text, nullable=False)
+    house_password: Mapped[str] = mapped_column(Text, nullable=True)
+    server_url: Mapped[str] = mapped_column(Text, nullable=False)
 
-session = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
 
-def get_config(gid:int) -> AlistenConfig | None:
+async def get_config(event:GroupMessageEvent) -> AlistenConfig | None:
+    gid = event.group_id
     with Session() as session:
         stmt = select(AlistenConfig).where(AlistenConfig.gid == gid)
         result = session.execute(stmt)
@@ -81,9 +79,9 @@ async def pick_music(source: str, user_name: str, config: AlistenConfig,id_="",n
     
     url = f"{config.server_url}/music/pick"
     try:
-        response = await post(url, json=request.dict())
+        response = await post(url, json=request.model_dump(),verify=False)
         response.raise_for_status()
-        rj = response.json()
+        rj = response.json
         resp = SuccessResponse.model_validate(rj)
         return resp
     except Exception as e:

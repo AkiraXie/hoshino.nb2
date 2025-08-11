@@ -4,6 +4,7 @@ import random
 import pytz
 import nonebot
 import unicodedata
+import asyncio
 import os
 from asyncio import get_running_loop
 from typing import List, Optional, Type, Union, Sequence
@@ -182,8 +183,10 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
     for s in msg:
         if s.type == "forward":
             id_ = s.data["id"]
-            dic = await bot.get_forward_msg(id=id_)
-            if dic:
+        else:
+            continue       
+        dic = await bot.get_forward_msg(id=id_)
+        if dic:
                 msgs = dic.get("message")
                 if msgs:
                     for msg in msgs:
@@ -428,9 +431,10 @@ def get_event_imageurl(event: MessageEvent) -> List[str]:
 
 
 async def send_to_superuser(msg=""):
-    bot = nonebot.get_bot()
+    bot:Bot = nonebot.get_bot()
     sus = bot.config.superusers
     for su in sus:
+        await asyncio.sleep(0.5)
         await bot.send_private_msg(user_id=int(su), message=msg)
 
 

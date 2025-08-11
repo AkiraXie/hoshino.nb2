@@ -7,7 +7,7 @@ from hoshino.util import (
     check_cookies,
 )
 from hoshino.event import MessageEvent
-
+from simplejson import loads
 
 @sucmd(
     "save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True
@@ -18,6 +18,10 @@ async def save_cookies_cmd(
     msgs = event.get_plaintext().split(None, 1)
     name = msgs[0]
     cookies = msgs[1]
+    try:
+        cookies = loads(cookies)
+    except Exception as e:
+        pass
     if not name:
         await finish("请提供cookie名称")
     if not cookies:

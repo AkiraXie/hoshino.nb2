@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from .util import AlistenConfig, get_config, sv,Session,pick_music
 from hoshino.permission import ADMIN
 from hoshino import Bot,Event,hsn_nickname
@@ -7,7 +8,7 @@ configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permissi
 configshow = sv.on_command("听歌房显示配置", aliases={"alistenshowconfig"}, permission=ADMIN)
 
 @configset
-async def _(bot: Bot, event: GroupMessageEvent, config: AlistenConfig | None = Depends(get_config)):
+async def _(bot: Bot, event: GroupMessageEvent):
     msgs= event.get_plaintext().strip().split()
     if len(msgs) not in (3,4):
         await configset.finish("请检查参数个数")
@@ -16,24 +17,33 @@ async def _(bot: Bot, event: GroupMessageEvent, config: AlistenConfig | None = D
         house_password = ""
     else:
         email, server_url, house_id, house_password = msgs
-    if config:
-        config.server_url = server_url
-        config.house_id = house_id
-        config.house_password = house_password
-    else:
-        config = AlistenConfig(
-            gid=event.group_id,
-            gemail=email,
-            server_url=server_url,
-            house_id=house_id,
-            house_password=house_password
-        )
     with Session() as session:
-        session.add(config)
+        gid = event.group_id
+        stmt = select(AlistenConfig).where(AlistenConfig.gid == gid)
+        result = session.execute(stmt)
+        config = result.scalar_one_or_none()
+        if config:
+            config.server_url = server_url
+            config.house_id = house_id
+            config.house_password = house_password
+            config.gemail = email
+        else:
+            newconfig = AlistenConfig(
+                gid=event.group_id,
+                gemail=email,
+                server_url=server_url,
+                house_id=house_id,
+                house_password=house_password
+            )
+            print(newconfig)
+            session.add(newconfig)
+            print("added")
         session.commit()
+        print("committed")
     await configset.finish("听歌房配置已更新\n"
         f"服务器地址: {server_url}\n"
-        f"房间ID: {house_id}\n")
+        f"房间ID: {house_id}\n"
+        f"群 email: {email}\n")
 
 @configshow
 async def _(bot: Bot, event: GroupMessageEvent, config: AlistenConfig | None = Depends(get_config)):
