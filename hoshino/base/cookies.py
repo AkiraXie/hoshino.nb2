@@ -9,6 +9,7 @@ from hoshino.util import (
 from hoshino.event import MessageEvent
 from simplejson import loads
 
+
 @sucmd(
     "save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True
 ).handle()
