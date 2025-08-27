@@ -184,31 +184,29 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
         if s.type == "forward":
             id_ = s.data["id"]
         else:
-            continue       
+            continue
         dic = await bot.get_forward_msg(id=id_)
         if dic:
-                msgs = dic.get("message")
-                if msgs:
-                    for msg in msgs:
-                        data = msg.get("data")
-                        if data:
-                            content = data.get("content")
-                            if content:
-                                content = type_validate_python(Message, content)
-                                p = [
-                                    s
-                                    for s in content
-                                    if s.type == "image" or s.type == "mface"
-                                ]
-                                res.extend(p)
-                if not msgs:
-                    msgs = dic.get("messages")
-                    for m in msgs:
-                        content = type_validate_python(Message, m)
-                        p = [
-                            s for s in content if s.type == "image" or s.type == "mface"
-                        ]
-                        res.extend(p)
+            msgs = dic.get("message")
+            if msgs:
+                for msg in msgs:
+                    data = msg.get("data")
+                    if data:
+                        content = data.get("content")
+                        if content:
+                            content = type_validate_python(Message, content)
+                            p = [
+                                s
+                                for s in content
+                                if s.type == "image" or s.type == "mface"
+                            ]
+                            res.extend(p)
+            if not msgs:
+                msgs = dic.get("messages")
+                for m in msgs:
+                    content = type_validate_python(Message, m)
+                    p = [s for s in content if s.type == "image" or s.type == "mface"]
+                    res.extend(p)
 
     return res
 
@@ -431,7 +429,7 @@ def get_event_imageurl(event: MessageEvent) -> List[str]:
 
 
 async def send_to_superuser(msg=""):
-    bot:Bot = nonebot.get_bot()
+    bot: Bot = nonebot.get_bot()
     sus = bot.config.superusers
     for su in sus:
         await asyncio.sleep(0.5)

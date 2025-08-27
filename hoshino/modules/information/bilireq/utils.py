@@ -523,17 +523,7 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
         )
         rj = res.json
         data = rj.get("data", {})
-    if not data:
-        sv.logger.error(
-            f"获取Bili动态失败 UID {uid}: 无数据返回, code: {rj.get('code', '未知')}, params: {params}"
-        )
-        return []
     cards = data.get("items", [])
-    if not cards:
-        sv.logger.error(
-            f"获取Bili动态失败 UID {uid}: 无动态数据, code: {rj.get('code', '未知')}, params: {params}"
-        )
-        return []
     dyn = cards[4::-1]
     dyns = [BiliBiliDynamic.from_dict(d) for d in dyn]
     dyns = [d for d in dyns if d.timestamp > ts]
