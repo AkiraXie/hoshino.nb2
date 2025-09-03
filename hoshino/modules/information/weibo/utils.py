@@ -258,7 +258,7 @@ async def get_sub_list(
 ) -> list[WeiboPost]:
     ck = await get_weibocookies()
     if not ck:
-        return await get_weibos_by_containerid(target, ts, keywords)
+        return list()
     return await get_weibos_by_mymblog(target, ts, keywords)
 
 
@@ -343,9 +343,8 @@ async def get_weibos_by_containerid(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
     header = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
         "Referer": f"https://m.weibo.cn/u/{target}",
-        "MWeibo-Pwa": "1",
-        "X-Requested-With": "XMLHttpRequest",
     }
     params = {"containerid": "107603" + target}
     ck = await get_weibocookies()
