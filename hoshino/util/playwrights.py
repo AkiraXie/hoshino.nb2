@@ -161,7 +161,7 @@ async def get_weibo_screenshot_mobile(
             pass
         await page.add_script_tag(content=weibo_script)
         await page.wait_for_load_state("networkidle")
-        selector = "div.f-weibo"
+        selector = "div.m-panel"
         element = None
         try:
             element = await page.wait_for_selector(selector, timeout=8000)
