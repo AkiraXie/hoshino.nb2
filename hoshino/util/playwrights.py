@@ -109,7 +109,7 @@ async def get_weibo_screenshot_desktop(
     try:
         page: Page = await c.new_page()
         await page.goto(url, wait_until="networkidle")
-        selector = "article"
+        selector = 'div.Feed_body_3R0rO'
         element = None
         try:
             element = await page.wait_for_selector(selector, timeout=8000)
