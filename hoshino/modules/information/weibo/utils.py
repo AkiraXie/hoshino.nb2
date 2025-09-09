@@ -210,7 +210,7 @@ class WeiboPost(Post):
         screenshot_task = None
         if with_screenshot:
             if not self.description:
-                screenshot_task = get_weibo_screenshot_mobile(self.url)
+                screenshot_task = get_weibo_screenshot_desktop(self.url)
             elif self.description == "mapp":
                 screenshot_task = get_mapp_weibo_screenshot(self.url)
             elif self.description == "desktop":
