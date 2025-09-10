@@ -127,8 +127,8 @@ mixinKeyEncTab = [
 imgsubkey = ""
 
 
-# @on_startup
-# @scheduled_job("cron", hour="0", minute="5")
+@on_startup
+@scheduled_job("cron", hour="0", minute="5")
 async def _refresh_wbi_key():
     url = nav_url
     resp = await aiohttpx.get(
@@ -288,8 +288,6 @@ async def refresh_bili_cookies(cookies: dict) -> dict:
     except Exception as e:
         sv.logger.error(f"刷新B站cookies时发生错误: {e}")
         return {}
-
-
 
 
 async def get_bilicookies() -> dict:
