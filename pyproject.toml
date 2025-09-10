@@ -1,35 +1,39 @@
-[tool.poetry]
+[project]
 name = "hoshino-nb2"
 version = "0.1.0"
 description = "HoshinoBot on NoneBot2"
-authors = ["AkiraXie"]
-license = "GPL-3"
+authors = [{ name = "AkiraXie" }]
+requires-python = ">=3.10"
 readme = "README.md"
-packages = [{include = "hoshino"}]
+license = "GPL-3.0"
+dependencies = [
+    "nonebot-adapter-onebot~=2.4.0",
+    "nonebot2[fastapi]~=2.3.0",
+    "pillow>=11.0.0,<12",
+    "nonebot-plugin-apscheduler==0.5.0",
+    "beautifulsoup4>=4.12.3,<5",
+    "psutil>=5.8.0,<6",
+    "playwright~=1.48.0",
+    "lxml>=5.4.0,<6",
+    "httpx>=0.28.1,<0.29",
+    "pytz~=2025.2",
+    "types-html5lib>=1.1.11.20250516,<2",
+    "simplejson>=3.20.1,<4",
+    "sqlalchemy>=2.0.41,<3",
+    "aiosqlite>=0.21.0,<0.22",
+    "urllib3>=2.4.0,<3",
+    "pycryptodomex>=3.23.0,<4",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-nonebot-adapter-onebot = "~2.4.0"
-nonebot2 = {version = "~2.3.0", extras = ["fastapi"]}
-pillow = "^11.0.0"
-nonebot-plugin-apscheduler = "0.5.0"
-beautifulsoup4 = "^4.12.3"
-psutil = "^5.8.0"
-playwright = "~1.48.0"
-lxml = "^5.4.0"
-httpx = "^0.28.1"
-pytz = "^2025.2"
-types-html5lib = "^1.1.11.20250516"
-simplejson = "^3.20.1"
-sqlalchemy = "^2.0.41"
-aiosqlite = "^0.21.0"
-urllib3 = "^2.4.0"
-pycryptodomex = "^3.23.0"
+[dependency-groups]
+dev = ["ruff>=0.11.12,<0.12"]
 
+[tool.hatch.build.targets.sdist]
+include = ["hoshino"]
 
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.11.12"
+[tool.hatch.build.targets.wheel]
+include = ["hoshino"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
