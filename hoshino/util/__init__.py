@@ -186,28 +186,18 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
             id_ = s.data["id"]
         else:
             continue
-        dic = await bot.get_forward_msg(id=id_)
+        dic: dict = await bot.get_forward_msg(id=id_)
         if dic:
-            msgs = dic.get("message")
+            msgs = dic.get("message", dic.get("messages"))
             if msgs:
                 for msg in msgs:
-                    data = msg.get("data")
-                    if data:
-                        content = data.get("content")
-                        if content:
-                            content = type_validate_python(Message, content)
-                            p = [
-                                s
-                                for s in content
-                                if s.type == "image" or s.type == "mface"
-                            ]
-                            res.extend(p)
-            if not msgs:
-                msgs = dic.get("messages")
-                for m in msgs:
-                    content = type_validate_python(Message, m)
-                    p = [s for s in content if s.type == "image" or s.type == "mface"]
-                    res.extend(p)
+                    content = msg.get("content", msg.get("data", {}).get("content"))
+                    if content:
+                        content = type_validate_python(Message, content)
+                        p = [
+                            s for s in content if s.type == "image" or s.type == "mface"
+                        ]
+                        res.extend(p)
 
     return res
 
