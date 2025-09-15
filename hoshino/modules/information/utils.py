@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from asyncio import Queue
+import re
 from hoshino import Message, MessageSegment
 from typing import Union, TypeVar, Generic
 import time
@@ -11,6 +12,28 @@ except ImportError:
     from typing_extensions import Self
 
 T = TypeVar("T", bound="Post")
+
+def clean_filename(text: str) -> str:
+    """清理文件名，替换空格、换行符和其他问题字符为短横线"""
+    if not text:
+        return "unnamed"
+
+    # 替换空格、换行符、制表符等空白字符为短横线
+    cleaned = re.sub(r"\s+", "-", text.strip())
+
+    # 移除或替换文件系统不支持的字符
+    # Windows/Linux 文件名不能包含: \ / : * ? " < > |
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]', "-", cleaned)
+
+    # 移除连续的短横线
+    cleaned = re.sub(r"-+", "-", cleaned)
+
+    # 移除开头和结尾的短横线
+    cleaned = cleaned.strip("-")
+
+    # 如果清理后为空，返回默认名称
+    return cleaned if cleaned else "unnamed"
+
 
 
 @dataclass
@@ -40,7 +63,7 @@ class Post:
     """转发的Post"""
 
     async def get_message(
-        self, with_screenshot: bool
+        self, with_screenshot: bool = False
     ) -> list[Message | MessageSegment]: ...
     def get_referer(self) -> str: ...
 
