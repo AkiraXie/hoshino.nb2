@@ -17,6 +17,9 @@ from ..weibo.utils import (
     parse_mapp_weibo,
     parse_weibo_with_id,
 )
+from .douyin import DouyinParser
+
+dparser = DouyinParser()
 
 urlmaps = {
     "detail_1": "qqdocurl",
@@ -39,6 +42,8 @@ regexs = {
     "bilibilidyn": re.compile(
         r"(http:|https:)\/\/(t|www|m)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)"
     ),
+    "vdouyin": re.compile(r"https://v\.douyin\.com/[a-zA-Z0-9_\-]+"),
+    "douyin": re.compile(r"https://www\.(?:douyin|iesdouyin)\.com/(?:video|note|share/(?:video|note|slides))/[0-9]+"),
 }
 
 
@@ -141,6 +146,17 @@ async def _(bot: Bot, state: T_State, ev: Event):
         await asyncio.sleep(0.2)
         await send_segments(ms[1:])
         await m.finish()
+    elif name == "vdouyin" or name == "douyin":
+        post = await dparser.parse_share_url(url)
+        if not post:
+            sv.logger.error(f"{name} parse error")
+            return
+        msgs = await post.get_message()
+        if not msgs:
+            return
+        await asyncio.sleep(0.3)
+        await send_segments(msgs)
+        await m.finish()    
     if not bvid and not xhs_url and not burl and not avid:
         return
     if bvid:

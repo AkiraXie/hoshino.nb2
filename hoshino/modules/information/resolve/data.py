@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from hoshino import MessageSegment, Message, data_dir
 from hoshino.service import Service
+from ..utils import Post
 from hoshino.util import aiohttpx, get_cookies, save_img_by_path, save_video_by_path
 from time import strftime, localtime
 import re
@@ -184,3 +185,4 @@ async def parse_xhs(
             "Unsupported Xiaohongshu resource type {}".format(resource_type)
         )
         return None, None
+

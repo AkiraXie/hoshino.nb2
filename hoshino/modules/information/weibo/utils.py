@@ -25,33 +25,10 @@ from hoshino.util.playwrights import (
     get_weibo_screenshot_desktop,
 )
 
-from ..utils import Post
+from ..utils import Post,clean_filename
 from nonebot.typing import override
 
 sv = Service("weibo", enable_on_default=False, visible=False)
-
-
-def clean_filename(text: str) -> str:
-    """清理文件名，替换空格、换行符和其他问题字符为短横线"""
-    if not text:
-        return "unnamed"
-
-    # 替换空格、换行符、制表符等空白字符为短横线
-    cleaned = re.sub(r"\s+", "-", text.strip())
-
-    # 移除或替换文件系统不支持的字符
-    # Windows/Linux 文件名不能包含: \ / : * ? " < > |
-    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]', "-", cleaned)
-
-    # 移除连续的短横线
-    cleaned = re.sub(r"-+", "-", cleaned)
-
-    # 移除开头和结尾的短横线
-    cleaned = cleaned.strip("-")
-
-    # 如果清理后为空，返回默认名称
-    return cleaned if cleaned else "unnamed"
-
 
 db_path = os.path.join(db_dir, "weibodata.db")
 weibo_img_dir = config.data_dir / "weiboimages"
@@ -187,7 +164,7 @@ class WeiboPost(Post):
         ms = None
         cts = []
         if self.nickname:
-            msg.append(self.nickname + "微博~")
+            msg.append(self.nickname + " 微博~")
         if self.content:
             cts.append(self.content)
 
