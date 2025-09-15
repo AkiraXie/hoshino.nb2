@@ -228,7 +228,7 @@ class Service:
         aliases: Optional[set | list | tuple | str] = None,
         only_group: bool = True,
         permission: Permission = NORMAL,
-        force_whitespace: bool = False,
+        force_whitespace: bool | None = None,
         **kwargs,
     ) -> "MatcherWrapper":
         kwargs["permission"] = permission
