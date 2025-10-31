@@ -25,7 +25,7 @@ from hoshino.util.playwrights import (
     get_weibo_screenshot_desktop,
 )
 
-from ..utils import Post,clean_filename
+from ..utils import Post, clean_filename
 from nonebot.typing import override
 
 sv = Service("weibo", enable_on_default=False, visible=False)
@@ -480,9 +480,6 @@ def parse_video_info(page_info: dict) -> tuple[str, str]:
 
 
 def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
-    if rj.get("user") is None:
-        sv.logger.error(f"获取微博失败: User is None, json: {rj}")
-        return None
     post = _parse_weibo_with_bid_dict(rj)
     if not post:
         return None
@@ -496,16 +493,19 @@ def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
 
 
 def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
+    user = rj.get("user")
+    if not user:
+        sv.logger.error(f"获取微博失败: User is None, json: {rj}")
+        return None
     visible = rj.get("visible", {})
     type_ = visible.get("type", 0)
     if type_ not in [0, 6, 7, 8, 9]:
         sv.logger.error(f"获取微博失败: visible type {type_} not supported, json: {rj}")
         return None
     description = "" if type_ == 0 else "desktop"
-    mid = rj.get("mid")
     bid = rj.get("mblogid")
-    uid = rj.get("user", {}).get("idstr")
-    nickname = rj.get("user", {}).get("screen_name")
+    uid = user.get("idstr")
+    nickname = user.get("screen_name")
     ts = rj["created_at"]
     created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
     detail_url = f"https://weibo.com/{uid}/{bid}"
@@ -544,7 +544,6 @@ def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
 
 def _parse_weibo_card(info: dict) -> WeiboPost | None:
     parsed_text = _get_text(info["text"])
-    pic_num = info.get("pic_num", 0)
     raw_pics_list = info.get("pics", [])
     video_urls = []
     pic_urls = []

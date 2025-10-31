@@ -291,7 +291,7 @@ async def save_video(url: str, name: str, verify: bool = False) -> bool:
 async def save_img_by_path(
     url: str, path: str | Path, verify: bool = False, headers={}
 ) -> Path | None:
-    r = await aiohttpx.get(url, verify=verify, headers=headers,follow_redirects=True)
+    r = await aiohttpx.get(url, verify=verify, headers=headers, follow_redirects=True)
     try:
         im = Image.open(bio := BytesIO(r.content))
         # 根据图片格式更改文件后缀
@@ -312,7 +312,7 @@ async def save_img_by_path(
 async def save_video_by_path(
     url: str, path: str | Path, verify: bool = False, headers={}
 ) -> Path | None:
-    r = await aiohttpx.get(url, verify=verify, headers=headers,follow_redirects=True)
+    r = await aiohttpx.get(url, verify=verify, headers=headers, follow_redirects=True)
     video_signatures = [
         b"\x00\x00\x00\x18ftypmp4",
         b"\x1aE\xdf\xa3",

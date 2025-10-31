@@ -1,3 +1,14 @@
+import asyncio
+from pathlib import Path
+from pydantic import BaseModel, Field
+from typing import Any, List, Optional
+import re
+from hoshino.util import aiohttpx, get_redirect, save_img_by_path, save_video_by_path
+from hoshino import data_dir
+from ..utils import Post as BasePost, clean_filename
+from .sv import sv
+from hoshino import Message, MessageSegment
+
 COMMON_HEADER = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/55.0.2883.87 UBrowser/6.2.4098.3 Safari/537.36"
@@ -12,25 +23,14 @@ ANDROID_HEADER = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 15; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/132.0.0.0 Mobile Safari/537.36 Edg/132.0.0.0"
 }
-import asyncio
-from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import Any, List, Optional, Self
-import re
-from hoshino.util import aiohttpx,get_redirect, save_img_by_path, save_video_by_path
-from hoshino import data_dir
-from ..utils import Post as BasePost, clean_filename
-from .data import sv
-from hoshino import Message, MessageSegment
 douyin_img_dir = data_dir / "douyinimages"
 douyin_img_dir.mkdir(exist_ok=True)
 douyin_video_dir = data_dir / "douyinvideos"
 douyin_video_dir.mkdir(exist_ok=True)
 
+
 class Post(BasePost):
-
     async def download_images(self) -> list[Path]:
-
         async def download_single_image(i: int, img_url: str) -> Path | None:
             """下载单个图片"""
             try:
@@ -38,9 +38,7 @@ class Post(BasePost):
                 nickname_part = clean_filename(self.nickname)
                 filename = f"{content_part}_{nickname_part}_{self.id}_{i}.jpg"
                 filepath = douyin_img_dir / filename
-                result_path = await save_img_by_path(
-                    img_url, filepath, True
-                )
+                result_path = await save_img_by_path(img_url, filepath, True)
                 if result_path:
                     return result_path
                 else:
@@ -49,6 +47,7 @@ class Post(BasePost):
             except Exception as e:
                 sv.logger.error(f"Error downloading image {img_url}: {e}")
                 return None
+
         # 并发下载所有图片
         tasks = [
             download_single_image(i, img_url) for i, img_url in enumerate(self.images)
@@ -65,7 +64,6 @@ class Post(BasePost):
         return saved_images
 
     async def download_videos(self) -> list[Path]:
-
         async def download_single_video(i: int, video_url: str) -> Path | None:
             """下载单个视频"""
             try:
@@ -73,10 +71,8 @@ class Post(BasePost):
                 nickname_part = clean_filename(self.nickname)
                 filename = f"{content_part}_{nickname_part}_{self.id}_{i}.mp4"
                 filepath = douyin_video_dir / filename
-                result_path = await save_video_by_path(
-                    video_url, filepath, True
-                )
-                
+                result_path = await save_video_by_path(video_url, filepath, True)
+
                 if result_path:
                     return result_path
                 else:
@@ -85,6 +81,7 @@ class Post(BasePost):
             except Exception as e:
                 sv.logger.error(f"Error downloading video {video_url}: {e}")
                 return None
+
         # 并发下载所有视频
         tasks = [
             download_single_video(i, video_url)
@@ -100,10 +97,13 @@ class Post(BasePost):
                 sv.logger.error(f"Error in download task: {result}")
 
         return saved_videos
+
     async def get_referer(self) -> str:
         return "https://douyin.com/"
 
-    async def get_message(self, with_screenshot: bool=False) -> list[Message | MessageSegment]:
+    async def get_message(
+        self, with_screenshot: bool = False
+    ) -> list[Message | MessageSegment]:
         imgs = await self.download_images()
         vids = await self.download_videos()
         cnt = self.content or ""
@@ -112,6 +112,7 @@ class Post(BasePost):
         msg.extend(MessageSegment.image(img) for img in imgs)
         msg.extend(MessageSegment.video(vid) for vid in vids)
         return msg
+
 
 class PlayAddr(BaseModel):
     url_list: List[str]
@@ -150,7 +151,9 @@ class SlidesData(BaseModel):
 
     @property
     def dynamic_urls(self) -> List[str]:
-        return [image.video.play_addr.url_list[0] for image in self.images if image.video]
+        return [
+            image.video.play_addr.url_list[0] for image in self.images if image.video
+        ]
 
 
 class SlidesInfo(BaseModel):
@@ -169,7 +172,11 @@ class VideoData(BaseModel):
 
     @property
     def video_url(self) -> Optional[str]:
-        return self.video.play_addr.url_list[0].replace("playwm", "play") if self.video else None
+        return (
+            self.video.play_addr.url_list[0].replace("playwm", "play")
+            if self.video
+            else None
+        )
 
     @property
     def cover_url(self) -> Optional[str]:
@@ -211,7 +218,10 @@ class RouterData(BaseModel):
 class DouyinParser:
     def __init__(self):
         self.ios_headers = IOS_HEADER.copy()
-        self.android_headers = {"Accept": "application/json, text/plain, */*", **ANDROID_HEADER}
+        self.android_headers = {
+            "Accept": "application/json, text/plain, */*",
+            **ANDROID_HEADER,
+        }
 
     def _build_iesdouyin_url(self, _type: str, video_id: str) -> str:
         return f"https://www.iesdouyin.com/share/{_type}/{video_id}"
@@ -230,7 +240,9 @@ class DouyinParser:
             # https://www.iesdouyin.com/share/video/7468908569061100857/?region=CN&mid=0&u_
             matched = re.search(r"(slides|video|note)/(\d+)", iesdouyin_url)
             if not matched:
-                sv.logger.error(f"douyin URL does not match expected pattern,url: {share_url}")
+                sv.logger.error(
+                    f"douyin URL does not match expected pattern,url: {share_url}"
+                )
                 return None
             _type, video_id = matched.group(1), matched.group(2)
             if _type == "slides":
@@ -243,7 +255,9 @@ class DouyinParser:
             return await self.parse_video(url, video_id)
 
     async def parse_video(self, url: str, vid: str = "") -> Post | None:
-        response = await aiohttpx.get(url, headers=self.ios_headers, verify=False, follow_redirects=False)
+        response = await aiohttpx.get(
+            url, headers=self.ios_headers, verify=False, follow_redirects=False
+        )
         if response.status_code != 200:
             sv.logger.error(f"douyin 请求失败，状态码 {response.status_code}")
         text = response.text
@@ -259,7 +273,7 @@ class DouyinParser:
             videos=videos,
             id=vid,
             url=url,
-            uid=video_data.author.nickname
+            uid=video_data.author.nickname,
         )
 
     def _extract_data(self, text: str) -> "VideoData":
@@ -281,8 +295,8 @@ class DouyinParser:
         matched = pattern.search(text)
         c = matched.group(1).strip()
         if not matched or not matched.group(1):
-           sv.logger.error("douyin: 无法从网页中提取数据")
-           return None
+            sv.logger.error("douyin: 无法从网页中提取数据")
+            return None
         return RouterData.parse_raw(c).video_data
 
     async def parse_slides(self, video_id: str) -> Post | None:
@@ -291,7 +305,9 @@ class DouyinParser:
             "aweme_ids": f"[{video_id}]",
             "request_source": "200",
         }
-        response = await aiohttpx.get(url, params=params, headers=self.android_headers,verify=False)
+        response = await aiohttpx.get(
+            url, params=params, headers=self.android_headers, verify=False
+        )
         if response.status_code != 200:
             sv.logger.error(f"douyin 请求失败，状态码 {response.status_code}")
             return None
@@ -305,5 +321,5 @@ class DouyinParser:
             videos=slides_data.dynamic_urls,
             url=f"https://www.iesdouyin.com/share/slides/{video_id}",
             id=video_id,
-            uid=slides_data.author.nickname
+            uid=slides_data.author.nickname,
         )
