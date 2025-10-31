@@ -290,77 +290,13 @@ async def refresh_bili_cookies(cookies: dict) -> dict:
         return {}
 
 
-# 添加一个全局变量来跟踪刷新状态
-_refreshing = False
-_last_refresh_time = 0
-
-
 async def get_bilicookies() -> dict:
     """
     获取B站cookies，尝试刷新过期的cookies
     :return: B站cookies字典
     """
-    global _refreshing, _last_refresh_time
-
-    async with _cookies_lock:
-        cookies, ts = await get_cookies_with_ts("bilibili")
-        if not cookies:
-            return {}
-
-        current_time = time.time()
-
-        # 如果正在刷新中，直接返回现有cookies
-        if _refreshing:
-            sv.logger.info("正在刷新cookies中，返回现有cookies")
-            return cookies
-
-        # 检查是否需要刷新（超过1天且距离上次刷新超过5分钟）
-        if (
-            current_time - ts > 86400 * 1 and current_time - _last_refresh_time > 300
-        ):  # 5分钟防重复刷新
-            _refreshing = True
-            _last_refresh_time = current_time
-
-            try:
-                sv.logger.info("B站cookies过期，尝试刷新...")
-                res_cookies = await refresh_bili_cookies(cookies)
-                if not res_cookies:
-                    sv.logger.error("刷新B站cookies失败")
-                    return cookies
-                return res_cookies
-            finally:
-                _refreshing = False
-
-        return cookies
-
-
-@sv.on_command(
-    "refreshbili",
-    aliases={"refbili", "刷新bcookie", "刷新b站cookies"},
-    only_group=False,
-    only_to_me=True,
-    permission=SUPERUSER,
-)
-async def refb():
-    global _refreshing, _last_refresh_time
-
-    async with _cookies_lock:
-        if _refreshing:
-            await send("正在刷新中，请稍后再试")
-            return
-
-        _refreshing = True
-        _last_refresh_time = time.time()
-
-        try:
-            cks = await get_cookies("bilibili")
-            res = await refresh_bili_cookies(cks)
-            if res:
-                await send("B站cookies刷新成功！")
-            else:
-                await send("B站cookies刷新失败，请检查日志。")
-        finally:
-            _refreshing = False
+    cookies, ts = await get_cookies_with_ts("bilibili")
+    return cookies
 
 
 def parse_bilibili_dynamic(dynamic: dict) -> dict:
@@ -523,17 +459,7 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
         )
         rj = res.json
         data = rj.get("data", {})
-    if not data:
-        sv.logger.error(
-            f"获取Bili动态失败 UID {uid}: 无数据返回, code: {rj.get('code', '未知')}, params: {params}"
-        )
-        return []
     cards = data.get("items", [])
-    if not cards:
-        sv.logger.error(
-            f"获取Bili动态失败 UID {uid}: 无动态数据, code: {rj.get('code', '未知')}, params: {params}"
-        )
-        return []
     dyn = cards[4::-1]
     dyns = [BiliBiliDynamic.from_dict(d) for d in dyn]
     dyns = [d for d in dyns if d.timestamp > ts]

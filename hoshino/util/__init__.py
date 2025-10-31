@@ -3,6 +3,7 @@ from pathlib import Path
 import random
 import pytz
 import nonebot
+from nonebot.log import logger
 import unicodedata
 import asyncio
 import os
@@ -184,27 +185,15 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
         if s.type == "forward":
             id_ = s.data["id"]
         else:
-            continue       
-        dic = await bot.get_forward_msg(id=id_)
+            continue
+        dic: dict = await bot.get_forward_msg(id=id_)
         if dic:
-                msgs = dic.get("message")
-                if msgs:
-                    for msg in msgs:
-                        data = msg.get("data")
-                        if data:
-                            content = data.get("content")
-                            if content:
-                                content = type_validate_python(Message, content)
-                                p = [
-                                    s
-                                    for s in content
-                                    if s.type == "image" or s.type == "mface"
-                                ]
-                                res.extend(p)
-                if not msgs:
-                    msgs = dic.get("messages")
-                    for m in msgs:
-                        content = type_validate_python(Message, m)
+            msgs = dic.get("message", dic.get("messages"))
+            if msgs:
+                for msg in msgs:
+                    content = msg.get("content", msg.get("data", {}).get("content"))
+                    if content:
+                        content = type_validate_python(Message, content)
                         p = [
                             s for s in content if s.type == "image" or s.type == "mface"
                         ]
@@ -302,7 +291,7 @@ async def save_video(url: str, name: str, verify: bool = False) -> bool:
 async def save_img_by_path(
     url: str, path: str | Path, verify: bool = False, headers={}
 ) -> Path | None:
-    r = await aiohttpx.get(url, verify=verify, headers=headers)
+    r = await aiohttpx.get(url, verify=verify, headers=headers,follow_redirects=True)
     try:
         im = Image.open(bio := BytesIO(r.content))
         # 根据图片格式更改文件后缀
@@ -323,7 +312,7 @@ async def save_img_by_path(
 async def save_video_by_path(
     url: str, path: str | Path, verify: bool = False, headers={}
 ) -> Path | None:
-    r = await aiohttpx.get(url, verify=verify, headers=headers)
+    r = await aiohttpx.get(url, verify=verify, headers=headers,follow_redirects=True)
     video_signatures = [
         b"\x00\x00\x00\x18ftypmp4",
         b"\x1aE\xdf\xa3",
@@ -431,7 +420,7 @@ def get_event_imageurl(event: MessageEvent) -> List[str]:
 
 
 async def send_to_superuser(msg=""):
-    bot:Bot = nonebot.get_bot()
+    bot: Bot = nonebot.get_bot()
     sus = bot.config.superusers
     for su in sus:
         await asyncio.sleep(0.5)
@@ -565,7 +554,7 @@ def check_cookies(name: str) -> bool:
             if not row.created_at:
                 return False
             # 检查创建时间是否超过三天
-            if time() - row.created_at > 86400 * 3:
+            if time() - row.created_at > 86400 * 4:
                 return False
             cookiejar[name] = row.cookie
             return True
@@ -578,7 +567,7 @@ def check_all_cookies() -> dict[str, bool]:
         stmt = select(Cookies)
         rows = session.execute(stmt).scalars().all()
         for row in rows:
-            if not row.created_at or time() - row.created_at > 86400 * 3:
+            if not row.created_at or time() - row.created_at > 86400 * 4:
                 session.delete(row)
                 res[row.name] = False
                 cookiejar.pop(row.name, None)
@@ -624,7 +613,7 @@ async def get_cookies(name: str) -> dict:
                     return {}
                 cookies = row.cookie
                 ts = row.created_at
-                if time() - ts > 86400 * 3:
+                if time() - ts > 86400 * 4:
                     session.delete(row)
                     session.commit()
                     cookiejar.pop(name, None)
@@ -657,7 +646,8 @@ async def init_cookies():
     await get_cookies("weibo")
     await get_cookies("bilibili")
     dic = check_all_cookies()
-    await send_to_superuser(
-        "加载 cookies 完成, 当前可用 cookies: "
-        + ", ".join(k for k, v in dic.items() if v)
+    msg = "加载 cookies 完成, 当前可用 cookies: " + ", ".join(
+        k for k, v in dic.items() if v
     )
+    logger.info(msg)
+    await send_to_superuser(msg)
