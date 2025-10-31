@@ -495,12 +495,14 @@ def parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
 def _parse_weibo_with_bid_dict(rj: dict) -> WeiboPost | None:
     user = rj.get("user")
     if not user:
-        sv.logger.error(f"获取微博失败: User is None, json: {rj}")
+        sv.logger.error(f"获取微博失败: User is None, json: {rj}", color=False)
         return None
     visible = rj.get("visible", {})
     type_ = visible.get("type", 0)
     if type_ not in [0, 6, 7, 8, 9]:
-        sv.logger.error(f"获取微博失败: visible type {type_} not supported, json: {rj}")
+        sv.logger.error(
+            f"获取微博失败: visible type {type_} not supported, json: {rj}", color=False
+        )
         return None
     description = "" if type_ == 0 else "desktop"
     bid = rj.get("mblogid")
