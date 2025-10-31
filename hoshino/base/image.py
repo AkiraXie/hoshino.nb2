@@ -191,7 +191,9 @@ svvideo_notice = on_notice(
     & KeywordsRule("sim", "存图", "saveimg", "ctu", "fav", "fim"),
 ).handle()
 @svimg_notice.handle()
-async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State):
+async def save_img_cmd(
+    event: MessageEvent | GroupReactionEvent | GroupMsgEmojiLikeEvent, state: T_State
+):
     segs: list[MessageSegment] = state.get(__SU_IMGLIST, [])
     cnt = 0
     tasks = []
@@ -202,7 +204,7 @@ async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State)
     )
     for i, seg in enumerate(segs):
         name = f"{event.message_id}_{event.get_session_id()}_{i}.jpg"
-        url = seg.data.get("file", seg.data.get("url"))
+        url = seg.data.get("url", seg.data.get("file"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
         tasks.append(save_img(url, fname, is_fav, False))
@@ -219,7 +221,9 @@ async def save_img_cmd(event: MessageEvent | GroupReactionEvent, state: T_State)
 
 
 @svvideo_notice.handle()
-async def save_vi_cmd(event: GroupReactionEvent, state: T_State):
+async def save_vi_cmd(
+    event: GroupReactionEvent | GroupMsgEmojiLikeEvent, state: T_State
+):
     segs: list[MessageSegment] = state.get(__SU_VIDEOLIST, [])
     cnt = 0
     tasks = []

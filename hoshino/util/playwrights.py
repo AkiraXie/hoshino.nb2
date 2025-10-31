@@ -109,7 +109,7 @@ async def get_weibo_screenshot_desktop(
     try:
         page: Page = await c.new_page()
         await page.goto(url, wait_until="networkidle")
-        selector = "article"
+        selector = "div.Feed_body_3R0rO"
         element = None
         try:
             element = await page.wait_for_selector(selector, timeout=8000)
@@ -161,7 +161,7 @@ async def get_weibo_screenshot_mobile(
             pass
         await page.add_script_tag(content=weibo_script)
         await page.wait_for_load_state("networkidle")
-        selector = "div.f-weibo"
+        selector = "div.m-panel"
         element = None
         try:
             element = await page.wait_for_selector(selector, timeout=8000)

@@ -228,7 +228,7 @@ class Service:
         aliases: Optional[set | list | tuple | str] = None,
         only_group: bool = True,
         permission: Permission = NORMAL,
-        force_whitespace: bool = False,
+        force_whitespace: bool | None = None,
         **kwargs,
     ) -> "MatcherWrapper":
         kwargs["permission"] = permission
@@ -239,7 +239,9 @@ class Service:
         handlers.insert(0, _strip_cmd)
         kwargs["handlers"] = handlers
         commands = set([name]) | (_iter_to_set(aliases) or set())
-        kwargs["rule"] = kwargs["rule"] & command(*commands,force_whitespace=force_whitespace)
+        kwargs["rule"] = kwargs["rule"] & command(
+            *commands, force_whitespace=force_whitespace
+        )
         mw = MatcherWrapper(
             self,
             "Message.command",

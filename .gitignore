@@ -15,6 +15,7 @@ static
 hoshino/service_config
 .DS_Store
 poetry.lock
+uv.lock
 
 # C extensions
 *.so
