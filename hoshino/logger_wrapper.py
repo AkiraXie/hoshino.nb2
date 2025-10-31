@@ -5,13 +5,13 @@ class LoggerWrapper:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def exception(self, message: str, exception=True):
-        return logger.opt(colors=True, exception=exception).exception(
+    def exception(self, message: str, exception=True, color=True):
+        return logger.opt(colors=color, exception=exception).exception(
             f"<r><ly>{self.name}</> | {message}</>"
         )
 
-    def error(self, message: str, exception=True):
-        return logger.opt(colors=True, exception=exception).error(
+    def error(self, message: str, exception=True, color=True):
+        return logger.opt(colors=color, exception=exception).error(
             f"<r><ly>{self.name}</> | {message}</>"
         )
 
