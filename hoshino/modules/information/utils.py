@@ -13,6 +13,7 @@ except ImportError:
 
 T = TypeVar("T", bound="Post")
 
+
 def clean_filename(text: str) -> str:
     """清理文件名，替换空格、换行符和其他问题字符为短横线"""
     if not text:
@@ -33,7 +34,6 @@ def clean_filename(text: str) -> str:
 
     # 如果清理后为空，返回默认名称
     return cleaned if cleaned else "unnamed"
-
 
 
 @dataclass

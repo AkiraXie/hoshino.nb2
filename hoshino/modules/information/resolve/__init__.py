@@ -1,16 +1,16 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
 import asyncio
 from pathlib import Path
-from hoshino import Event, MessageSegment, Bot
+from hoshino import Event, Bot
 from nonebot.typing import T_State
 from hoshino.util import send_segments, get_redirect, send
-from .data import (
-    sv,
+from .bilidata import (
     get_bili_video_resp,
-    parse_xhs,
     get_bvid,
     get_dynamic_from_url,
 )
+from .sv import sv
+from .xiaohongshu import parse_xhs
 from json import loads
 import re
 from ..weibo.utils import (
@@ -43,7 +43,9 @@ regexs = {
         r"(http:|https:)\/\/(t|www|m)?\.?bilibili\.com\/(opus\/|dynamic\/)?(\d+)"
     ),
     "vdouyin": re.compile(r"https://v\.douyin\.com/[a-zA-Z0-9_\-]+"),
-    "douyin": re.compile(r"https://www\.(?:douyin|iesdouyin)\.com/(?:video|note|share/(?:video|note|slides))/[0-9]+"),
+    "douyin": re.compile(
+        r"https://www\.(?:douyin|iesdouyin)\.com/(?:video|note|share/(?:video|note|slides))/[0-9]+"
+    ),
 }
 
 
@@ -156,7 +158,7 @@ async def _(bot: Bot, state: T_State, ev: Event):
             return
         await asyncio.sleep(0.3)
         await send_segments(msgs)
-        await m.finish()    
+        await m.finish()
     if not bvid and not xhs_url and not burl and not avid:
         return
     if bvid:
