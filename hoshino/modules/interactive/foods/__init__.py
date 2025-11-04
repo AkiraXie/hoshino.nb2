@@ -13,9 +13,10 @@ foods = [
 
 @sv.on_regex(r"(.{1,9})吃(什么|啥)", priority=3)
 async def _(m: Matcher, s: T_State):
+    rng = random.SystemRandom()
     if not foods:
         return
-    res = random.choice(foods)
+    res = rng.choice(foods)
     name = s["_matched_groups"][0]
     with open(res, "rb") as f:
         img = MessageSegment.image(f.read())
