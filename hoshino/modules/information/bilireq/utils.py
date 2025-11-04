@@ -439,14 +439,11 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     url = dynamic_url
     h = headers.copy()
     params = {
-        "x-bili-device-req-json": '{"platform":"web","device":"pc"}',
-        "x-bili-web-req-json": '{"spm_id":"333.1387"}',
         "host_mid": int(uid),
         "timezone_offset": -480,
         "offset": "",
-        "features": "itemOpusStyle,opusBigCover,onlyfansVote,endFooterHidden,decorationCard,onlyfansAssetsV2,ugcDelete,onlyfansQaCard,commentsNewVersion",
+        "features": "itemOpusStyle",
     }
-    params = await _enc_wbi(params)
     res = await aiohttpx.get(
         url, params=params, headers=h, cookies=await get_bilicookies()
     )
