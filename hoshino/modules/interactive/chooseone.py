@@ -18,9 +18,9 @@ async def _(bot: Bot, event: Event):
     msgs = ["您的选项是:"]
     idchoices = list(f"{i + 1}. {choice}" for i, choice in enumerate(choices))
     msgs.extend(idchoices)
-    if rng.randint(0, 1000) <= 76:
+    if rng.randint(0, 1000) <= 66:
         msgs.append("建议您选择: “我全都要”")
     else:
-        final = rng.choice(choices)
-        msgs.append(f"建议您选择: {final}")
+        final = rng.randint(0, len(choices)-1)
+        msgs.append(f"建议您选择: {choices[final]}")
     await co.finish(Message("\n".join(msgs)), call_header=True)
