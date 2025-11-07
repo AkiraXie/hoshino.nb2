@@ -250,11 +250,10 @@ async def get_weibos_by_mymblog(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
     header = {
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-        'cache-control': 'max-age=0',
+        'accept': 'application/json, text/plain, */*',
+        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7,ko;q=0.6,zh-TW;q=0.5',
         'priority': 'u=0, i',
-        'sec-ch-ua': '"Chromium";v="136", "Microsoft Edge";v="136", "Not.A/Brand";v="99"',
+        'sec-ch-ua': '"Chromium";v="141", "Google Chrome";v="141", "Not?A_Brand";v="8"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
         'sec-fetch-dest': 'empty',
@@ -262,7 +261,7 @@ async def get_weibos_by_mymblog(
         'sec-fetch-site': 'same-origin',
         'upgrade-insecure-requests': '1',
         "Referer": f"https://weibo.com/u/{target}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
     }
     params = {
         "uid": target,
@@ -273,8 +272,8 @@ async def get_weibos_by_mymblog(
     if not ck:
         sv.logger.error("error get_weibos_by_mymblog : 获取微博cookies失败")
         return []
-    # token = ck.get("XSRF-TOKEN", "")
-    # header["X-Xsrf-Token"] = token
+    token = ck.get("XSRF-TOKEN", "")
+    header["X-Xsrf-Token"] = token
     res = await aiohttpx.get(
         "https://weibo.com/ajax/statuses/mymblog",
         headers=header,
