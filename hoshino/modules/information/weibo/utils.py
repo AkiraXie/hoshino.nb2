@@ -250,6 +250,17 @@ async def get_weibos_by_mymblog(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
     header = {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+        'cache-control': 'max-age=0',
+        'priority': 'u=0, i',
+        'sec-ch-ua': '"Chromium";v="136", "Microsoft Edge";v="136", "Not.A/Brand";v="99"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'same-origin',
+        'upgrade-insecure-requests': '1',
         "Referer": f"https://weibo.com/u/{target}",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
     }
@@ -272,7 +283,7 @@ async def get_weibos_by_mymblog(
         timeout=6.0,
     )
     if not res.ok:
-        sv.logger.error(f"获取微博失败: {res.status_code} {res.headers}")
+        sv.logger.error(f"获取微博失败: {res.status_code} {res.headers} \n {res.text}")
         return []
     res_data = res.json
     if not res_data["ok"]:
