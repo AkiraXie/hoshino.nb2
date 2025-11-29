@@ -553,8 +553,8 @@ def check_cookies(name: str) -> bool:
         if row:
             if not row.created_at:
                 return False
-            # 检查创建时间是否超过三天
-            if time() - row.created_at > 86400 * 4:
+
+            if time() - row.created_at > 86400 * 7:
                 return False
             cookiejar[name] = row.cookie
             return True
