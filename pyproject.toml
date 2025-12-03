@@ -25,6 +25,9 @@ dependencies = [
     "pycryptodomex>=3.23.0,<4",
 ]
 
+[project.scripts]
+hoshino = "run:main"
+
 [dependency-groups]
 dev = ["ruff>=0.11.12,<0.12"]
 
