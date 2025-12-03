@@ -7,15 +7,14 @@ __pycache__/
 .idea
 .vscode
 *.bak
-.env.*
+.env*
 !.env.prod.example
 data
 logs
 static
 hoshino/service_config
 .DS_Store
-poetry.lock
-uv.lock
+
 
 # C extensions
 *.so

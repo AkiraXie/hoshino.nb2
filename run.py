@@ -20,5 +20,9 @@ if modules := config.modules:
         nonebot.load_plugins(config.modules_dir / module)
 
 
-if __name__ == "__main__":
+def main():
     nonebot.run()
+
+
+if __name__ == "__main__":
+    main()

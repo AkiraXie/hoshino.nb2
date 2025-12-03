@@ -1,0 +1,22 @@
+{
+  "_comment": "qBittorrent 插件配置示例",
+  "_description": "将此文件复制到 data/service/ 目录下，并根据实际情况修改配置",
+  
+  "server_url": "http://192.168.1.100:8080",
+  "_server_url_comment": "qBittorrent Web UI 地址，支持 http/https",
+  
+  "username": "admin",
+  "_username_comment": "qBittorrent Web UI 用户名",
+  
+  "password": "adminpass",
+  "_password_comment": "qBittorrent Web UI 密码",
+  
+  "default_category": "hoshino",
+  "_category_comment": "默认下载分类，用于组织下载任务",
+  
+  "auto_start": true,
+  "_auto_start_comment": "是否自动开始下载任务",
+  
+  "save_path": "/downloads/hoshino/",
+  "_save_path_comment": "可选：指定下载保存路径（留空使用 qBittorrent 默认设置）"
+}
