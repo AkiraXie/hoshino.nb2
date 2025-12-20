@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from hoshino import MessageSegment, Message, data_dir
 from hoshino.util import aiohttpx, get_cookies, save_video_by_path
 import re
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from functools import partial
 from hoshino.util import get_redirect
 from .sv import sv
@@ -49,11 +49,11 @@ async def parse_xhs(
     xhs_id = matched.group(1)
     parsed_url = urlparse(url)
     urlpath = parsed_url.path
+    xhs_id = urlpath.split("/")[-1]
     if urlpath.startswith("/explore/"):
-        xhs_id = urlpath.split("/")[-1]
         return await parse_xhs_explore(url, xhs_id)
     elif urlpath.startswith("/discovery/item/"):
-        return await parse_xhs_discovery(url)
+        return await parse_xhs_discovery(url, xhs_id)
 
 
 def xhs_extract_initial_state_json(html: str):
@@ -184,7 +184,16 @@ async def parse_xhs_explore(url: str, xhs_id: str):
     return msg, None
 
 
-async def parse_xhs_discovery(url: str):
+async def parse_xhs_discovery(url: str, xhs_id: str):
+    # 疑似可以转成 explore 解析
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    xsec_source = params.get("xsec_source", [None])[0] or "pc_feed"
+    xsec_token = params.get("xsec_token", [None])[0]
+    explore_url = f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_token={xsec_token}&xsec_source={xsec_source}"
+    cookies = await get_xhscookies()
+    if cookies:
+        return await parse_xhs_explore(explore_url, xhs_id)
     try:
         resp = await aiohttpx.get(
             url,
@@ -232,7 +241,7 @@ async def parse_xhs_discovery(url: str):
 
         @property
         def image_urls(self) -> list[str]:
-            return [item.url for item in self.imageList]
+            return [item.urlSizeLarge or item.url for item in self.imageList]
 
         @property
         def video_url(self) -> str | None:
@@ -256,14 +265,13 @@ async def parse_xhs_discovery(url: str):
     )
     msg = [title_desc, f"笔记链接: {url}"]
     video_url = notedetail.video_url
+    if preload_data:
+        preloaddata = NormalNotePreloadData.parse_obj(preload_data)
+        for i in preloaddata.image_urls:
+            msg.append(MessageSegment.image(i))
+    for img_url in notedetail.image_urls:
+        msg.append(MessageSegment.image(img_url))
     if video_url:
-        if preload_data:
-            preloaddata = NormalNotePreloadData.parse_obj(preload_data)
-            for i in preloaddata.image_urls:
-                msg.append(MessageSegment.image(i))
-        else:
-            for img_url in notedetail.image_urls:
-                msg.append(MessageSegment.image(img_url))
         header = {
             "Referer": "https://www.xiaohongshu.com/",
         }
@@ -279,7 +287,4 @@ async def parse_xhs_discovery(url: str):
             else:
                 msg.append(MessageSegment.video(path))
         return msg, res
-    else:
-        for img_url in notedetail.image_urls:
-            msg.append(MessageSegment.image(img_url))
     return msg, None

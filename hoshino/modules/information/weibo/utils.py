@@ -250,16 +250,16 @@ async def get_weibos_by_mymblog(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
     header = {
-        'accept': 'application/json, text/plain, */*',
-        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7,ko;q=0.6,zh-TW;q=0.5',
-        'priority': 'u=0, i',
-        'sec-ch-ua': '"Chromium";v="141", "Google Chrome";v="141", "Not?A_Brand";v="8"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-origin',
-        'upgrade-insecure-requests': '1',
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7,ko;q=0.6,zh-TW;q=0.5",
+        "priority": "u=0, i",
+        "sec-ch-ua": '"Chromium";v="141", "Google Chrome";v="141", "Not?A_Brand";v="8"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "same-origin",
+        "upgrade-insecure-requests": "1",
         "Referer": f"https://weibo.com/u/{target}",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
     }
@@ -311,6 +311,7 @@ async def get_weibos_by_mymblog(
 
     datalist = res_data.get("data", {}).get("list", [])
     if not datalist:
+        print(res_data)
         sv.logger.error(f"获取微博失败: 没有数据, target: {target}")
         return []
     filterlist = list(filter(custom_filter, datalist))
