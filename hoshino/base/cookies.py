@@ -5,6 +5,7 @@ from hoshino.util import (
     send,
     check_all_cookies,
     check_cookies,
+    delete_cookies,
 )
 from hoshino.event import MessageEvent
 from simplejson import loads
@@ -48,3 +49,32 @@ async def check_cookies_cmd(
         await send("没有可用的cookies")
     else:
         await send(f"可用的cookies: {', '.join(cookies)}")
+
+@sucmd(
+    "del_cookies", aliases={"删除cookies", "delck", "删除ck"}, only_to_me=True
+).handle()
+async def del_ck_cmd(event: MessageEvent):
+    name = event.get_plaintext().strip()
+    if not name:
+        await finish("请提供cookie名称")
+        
+    if name == "all":
+        cookies = check_all_cookies()
+        if not cookies:
+            await send("没有可删除的cookies")
+            return
+        for k in list(cookies):
+            try:
+                delete_cookies(k)
+            except Exception:
+                pass
+        await send("删除所有cookies 成功")
+        return
+
+    if not check_cookies(name):
+        await finish("没有可删除的cookies")
+    try:
+        delete_cookies(name)
+        await send(f"删除 {name} cookies 成功")
+    except Exception as e:
+        await send(f"删除失败: {e}")

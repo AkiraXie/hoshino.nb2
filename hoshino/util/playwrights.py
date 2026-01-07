@@ -95,15 +95,15 @@ async def get_weibo_screenshot_desktop(
     c = await b.new_context(
         **context_params,
     )
-    if not cookies:
-        cookies = await get_cookies("weibo")
-    if cookies:
-        cks = []
-        for k, v in cookies.items():
-            if not v:
-                continue
-            cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
-        await c.add_cookies(cks)
+    # if not cookies:
+    #     cookies = await get_cookies("weibo")
+    # if cookies:
+    #     cks = []
+    #     for k, v in cookies.items():
+    #         if not v:
+    #             continue
+    #         cks.append({"name": k, "value": v, "domain": ".weibo.com", "path": "/"})
+    #     await c.add_cookies(cks)
     c.set_default_timeout(6000)
     page = None
     try:
@@ -112,12 +112,12 @@ async def get_weibo_screenshot_desktop(
         selector = "div.Feed_body_3R0rO"
         element = None
         try:
-            element = await page.wait_for_selector(selector, timeout=8000)
+            element = await page.wait_for_selector(selector, timeout=4000)
         except (TimeoutError, Exception):
-            logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
+            logger.error(f"get_weibo_screenshot timeout: no element found, url: {page.url}  ")
             return None
         if not element:
-            logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
+            logger.error(f"get_weibo_screenshot error: no element found, url: {page.url}  ")
             return None
         image = await element.screenshot()
         return MessageSegment.image(image)

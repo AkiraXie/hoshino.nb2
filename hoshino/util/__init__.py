@@ -545,6 +545,14 @@ def save_cookies(name: str, cookies: Union[str, dict]):
             session.add(obj)
         session.commit()
 
+def delete_cookies(name: str):
+    res = cookiejar.pop(name, None)
+    with Session() as session:
+        obj: Cookies | None = session.get(Cookies, name)
+        if obj:
+            session.delete(obj)
+            session.commit()
+    return res
 
 def check_cookies(name: str) -> bool:
     with Session() as session:
