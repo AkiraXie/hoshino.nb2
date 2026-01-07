@@ -282,11 +282,11 @@ async def get_weibos_by_mymblog(
         timeout=6.0,
     )
     if not res.ok:
-        sv.logger.error(f"获取微博失败: {res.status_code} {res.headers} \n {res.text}")
+        sv.logger.error(f"获取微博失败: {res.status_code} {res.headers} \n {res.text}, target: {target}")
         return []
     res_data = res.json
     if not res_data["ok"]:
-        sv.logger.error(f"获取微博失败: {res_data['ok']} {res_data['msg']}")
+        sv.logger.error(f"获取微博失败: {res_data['ok']} {res_data['msg']}, target: {target}")
         return []
 
     def custom_filter(d) -> bool:

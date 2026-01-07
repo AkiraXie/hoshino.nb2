@@ -185,106 +185,118 @@ async def parse_xhs_explore(url: str, xhs_id: str):
 
 
 async def parse_xhs_discovery(url: str, xhs_id: str):
+
     # 疑似可以转成 explore 解析
     parsed = urlparse(url)
     params = parse_qs(parsed.query)
     xsec_source = params.get("xsec_source", [None])[0] or "pc_feed"
     xsec_token = params.get("xsec_token", [None])[0]
     explore_url = f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_token={xsec_token}&xsec_source={xsec_source}"
-    cookies = await get_xhscookies()
-    if cookies:
-        return await parse_xhs_explore(explore_url, xhs_id)
-    try:
-        resp = await aiohttpx.get(
-            url,
-            headers=xhs_discovery_headers,
-            cookies=await get_xhscookies(),
-        )
-    except Exception as e:
-        sv.logger.error(f"Error fetching Xiaohongshu data: {e}")
-        return None, None
-    if not resp.ok:
-        sv.logger.error("Error fetching Xiaohongshu data")
-        return None, None
-    html = resp.text
-    initial_state = xhs_extract_initial_state_json(html)
-    if not initial_state:
-        sv.logger.error("Xiaohongshu cookies may be invalid")
-        return None, None
-    note_data = initial_state.get("noteData")
-    if not note_data:
-        sv.logger.error("note data not found in Xiaohongshu response")
-        return None, None
-    preload_data = note_data.get("normalNotePreloadData", {})
-    note_data = note_data.get("data", {}).get("noteData", {})
-    if not note_data:
-        sv.logger.error("note data not found in Xiaohongshu response")
-        return None, None
+    return await parse_xhs_explore(explore_url, xhs_id)
 
-    class Image(BaseModel):
-        url: str
-        urlSizeLarge: str | None = None
 
-    class User(BaseModel):
-        nickName: str
-        avatar: str
+    # class Image(BaseModel):
+    #     url: str
+    #     urlSizeLarge: str | None = None
 
-    class NoteData(BaseModel):
-        type: str
-        title: str
-        desc: str
-        user: User
-        time: int
-        lastUpdateTime: int
-        imageList: list[Image] = []  # 有水印
-        video: Video | None = None
+    # class User(BaseModel):
+    #     nickName: str
+    #     avatar: str
 
-        @property
-        def image_urls(self) -> list[str]:
-            return [item.urlSizeLarge or item.url for item in self.imageList]
+    # class NoteData(BaseModel):
+    #     type: str
+    #     title: str
+    #     desc: str
+    #     user: User
+    #     time: int
+    #     lastUpdateTime: int
+    #     imageList: list[Image] = []  # 有水印
+    #     video: Video | None = None
 
-        @property
-        def video_url(self) -> str | None:
-            if self.type != "video" or not self.video:
-                return None
-            return self.video.video_url
+    #     @property
+    #     def image_urls(self) -> list[str]:
+    #         return [item.urlSizeLarge or item.url for item in self.imageList]
 
-    class NormalNotePreloadData(BaseModel):
-        title: str
-        desc: str
-        imagesList: list[Image] = []  # 无水印, 但只有一只，用于视频封面
+    #     @property
+    #     def video_url(self) -> str | None:
+    #         if self.type != "video" or not self.video:
+    #             return None
+    #         return self.video.video_url
 
-        @property
-        def image_urls(self) -> list[str]:
-            return [item.urlSizeLarge or item.url for item in self.imagesList]
+    # class NormalNotePreloadData(BaseModel):
+    #     title: str
+    #     desc: str
+    #     imagesList: list[Image] = []  # 无水印, 但只有一只，用于视频封面
 
-    notedetail = NoteData.parse_obj(note_data)
-    username = notedetail.user.nickName
-    title_desc = (
-        f"{username} 小红书笔记~\n{notedetail.title}\n--------\n{notedetail.desc}\n"
-    )
-    msg = [title_desc, f"笔记链接: {url}"]
-    video_url = notedetail.video_url
-    if preload_data:
-        preloaddata = NormalNotePreloadData.parse_obj(preload_data)
-        for i in preloaddata.image_urls:
-            msg.append(MessageSegment.image(i))
-    for img_url in notedetail.image_urls:
-        msg.append(MessageSegment.image(img_url))
-    if video_url:
-        header = {
-            "Referer": "https://www.xiaohongshu.com/",
-        }
-        path = xhs_video_dir / f"{notedetail.title}_{notedetail.time}.mp4"
-        path = await save_video_by_path(video_url, path, headers=header)
-        res = None
-        if not path:
-            sv.logger.error("Failed to save video")
-            return None, None
-        else:
-            if path.stat().st_size >= 100 * 1000 * 1000:  # 100MB limit
-                res = path
-            else:
-                msg.append(MessageSegment.video(path))
-        return msg, res
-    return msg, None
+    #     @property
+    #     def image_urls(self) -> list[str]:
+    #         return [item.urlSizeLarge or item.url for item in self.imagesList]
+
+
+    # class NoteDataWrapper(BaseModel):
+    #     noteData: NoteData
+
+
+    # class NoteDataContainer(BaseModel):
+    #     data: NoteDataWrapper
+    #     normalNotePreloadData: NormalNotePreloadData | None = None
+
+
+    # class InitialState(BaseModel):
+    #     noteData: NoteDataContainer
+    # try:
+    #     resp = await aiohttpx.get(
+    #         url,
+    #         headers=xhs_discovery_headers,
+    #         follow_redirects=True,
+    #       cookies = await get_xhscookies()
+    #     )
+    # except Exception as e:
+    #     sv.logger.error(f"Error fetching Xiaohongshu data: {e}")
+    #     return None, None
+    # if not resp.ok:
+    #     sv.logger.error("Error fetching Xiaohongshu data")
+    #     return None, None
+    # html = resp.text
+    # initial_state = xhs_extract_initial_state_json(html)
+    # if not initial_state:
+    #     return None, None
+    # initial_state = InitialState.parse_obj(initial_state)
+    # notedata = initial_state.noteData
+    # if not notedata:
+    #     sv.logger.error("note data not found in Xiaohongshu response")
+    #     return None, None
+    # preload_data = notedata.normalNotePreloadData
+    # note_data = notedata.data.noteData
+    # if not note_data:
+    #     sv.logger.error("note data not found in Xiaohongshu response")
+    #     return None, None
+    # username = note_data.user.nickName
+    # title_desc = (
+    #     f"{username} 小红书笔记~\n{note_data.title}\n--------\n{note_data.desc}\n"
+    # )
+    # msg = [title_desc, f"笔记链接: {url}"]
+    # if video_url := note_data.video_url:
+    #     if preload_data:
+    #         preloaddata = NormalNotePreloadData.parse_obj(preload_data)
+    #     for i in preloaddata.image_urls:
+    #         msg.append(MessageSegment.image(i))
+    #     header = {
+    #         "Referer": "https://www.xiaohongshu.com/",
+    #     }
+    #     path = xhs_video_dir / f"{note_data.title}_{note_data.time}.mp4"
+    #     path = await save_video_by_path(video_url, path, headers=header)
+    #     res = None
+    #     if not path:
+    #         sv.logger.error("Failed to save video")
+    #         return None, None
+    #     else:
+    #         if path.stat().st_size >= 100 * 1000 * 1000:  # 100MB limit
+    #             res = path
+    #         else:
+    #             msg.append(MessageSegment.video(path))
+    #     return msg, res
+    # elif img_urls := note_data.image_urls:
+    #     for img_url in img_urls:
+    #         msg.append(MessageSegment.image(img_url))
+    # return msg, None
