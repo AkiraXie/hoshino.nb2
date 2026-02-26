@@ -5,6 +5,7 @@ import functools
 import os
 from pathlib import Path
 import re
+from typing import override
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
@@ -19,14 +20,15 @@ from hoshino.util import (
     save_video_by_path,
     save_img_by_path,
 )
-from hoshino.util.playwrights import (
+from .pw import (
     get_mapp_weibo_screenshot,
     get_weibo_screenshot_mobile,
     get_weibo_screenshot_desktop,
+    get_weibo_visitor_cookies,
 )
 
 from ..utils import Post, clean_filename
-from nonebot.typing import override
+from hoshino.util import save_cookies
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
@@ -43,6 +45,8 @@ Session = sessionmaker(bind=engine, expire_on_commit=False)
 @dataclass
 class WeiboPost(Post):
     """微博POST数据类"""
+
+    group_id: str = ""
 
     @override
     def get_referer(self) -> str:
@@ -68,7 +72,13 @@ class WeiboPost(Post):
                     filename = (
                         f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.jpg"
                     )
-                filepath = weibo_img_dir / filename
+                dirname = self.group_id
+                if not dirname:
+                    filepath = weibo_img_dir / filename
+                else:
+                    dirpath = weibo_img_dir / dirname
+                    dirpath.mkdir(parents=True, exist_ok=True)
+                    filepath = dirpath / filename
                 result_path = await save_img_by_path(
                     img_url, filepath, True, headers=headers
                 )
@@ -226,16 +236,36 @@ class WeiboPost(Post):
 
         return res
 
+_cookies_lock = asyncio.Lock()
+_cookies_cache = None
 
-get_weibocookies = functools.partial(get_cookies, "weibo")
-
+async def get_weibocookies():
+    global _cookies_cache
+    ck = await get_cookies("weibo")
+    if ck:
+        return ck
+    elif _cookies_cache:
+        return _cookies_cache
+    async with _cookies_lock:
+        if _cookies_cache:
+            return _cookies_cache
+        ck = await get_cookies("weibo")
+        if not ck:
+            ck = await get_weibo_visitor_cookies()
+            if ck:
+                ck['__IS_VISITOR_LOGIN'] = '1'
+                await save_cookies("weibo", ck)
+        _cookies_cache = ck
+        return ck
 
 async def get_sub_list(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
     ck = await get_weibocookies()
     if not ck:
-        return list()
+        return []
+    if ck.get("__IS_VISITOR_LOGIN") == "1":
+        return await get_weibos_by_containerid(target, ts, keywords)
     return await get_weibos_by_mymblog(target, ts, keywords)
 
 
@@ -282,11 +312,15 @@ async def get_weibos_by_mymblog(
         timeout=6.0,
     )
     if not res.ok:
-        sv.logger.error(f"获取微博失败: {res.status_code} {res.headers} \n {res.text}, target: {target}")
+        sv.logger.error(
+            f"获取微博失败: {res.status_code} {res.headers} \n {res.text}, target: {target}"
+        )
         return []
     res_data = res.json
     if not res_data["ok"]:
-        sv.logger.error(f"获取微博失败: {res_data['ok']} {res_data['msg']}, target: {target}")
+        sv.logger.error(
+            f"获取微博失败: {res_data['ok']} {res_data['msg']}, target: {target}"
+        )
         return []
 
     def custom_filter(d) -> bool:
@@ -331,19 +365,29 @@ async def get_weibos_by_containerid(
     target: str, ts: float = 0.0, keywords: list[str] = list()
 ) -> list[WeiboPost]:
     header = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "MWeibo-Pwa": "1",
+        "X-Requested-With": "XMLHttpRequest",
         "Referer": f"https://m.weibo.cn/u/{target}",
+        "sec-fetch-mode": "cors",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A372 Safari/604.1",
     }
-    params = {"containerid": "107603" + target}
+    container = {"containerid": "107603" + target}
+    params = { "type": "uid","value": target}
+    params.update(container)
     ck = await get_weibocookies()
     res = await aiohttpx.get(
         "https://m.weibo.cn/api/container/getIndex?",
         headers=header,
         params=params,
         cookies=ck if ck else None,
+        follow_redirects=False,
         timeout=6.0,
     )
-    res_data = res.json
+    try:
+        res_data = res.json
+    except Exception as e:
+        sv.logger.error(f"获取微博失败: 解析JSON失败 {e}, target: {target}, url: {res.url}, text: {res.text}")
+        return []
     if not res_data["ok"] and res_data["msg"] != "这里还没有内容":
         return []
 
@@ -624,26 +668,33 @@ def parse_weibo_card(info: dict) -> WeiboPost | None:
 async def parse_weibo_with_id(id: str) -> WeiboPost | None:
     ck = await get_weibocookies()
     if ck:
-        return await parse_weibo_with_bid(id)
-    url = "https://m.weibo.cn/statuses/show?id={}".format(id)
-    ck = "_T_WM=40835919903; WEIBOCN_FROM=1110006030; MLOGIN=0; XSRF-TOKEN=4399c8"
+        if not ck.get("__IS_VISITOR_LOGIN"):
+            return await parse_weibo_with_bid(id)
+    ts = int(time() * 1000)
+    url = "https://m.weibo.cn/statuses/show?id={}&_={}".format(id, ts)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/ 91.0.4472.124 Safari/537.36",
-        "Cookie": ck,
+        "Origin": "https://m.weibo.cn",
         "Referer": "https://m.weibo.cn/detail/{}".format(id),
-        "accept": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "x-requested-with": "XMLHttpRequest",
+        "mweibo-pwa": "1",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
     }
     res = await aiohttpx.get(
         url,
+        follow_redirects=False,
         headers=headers,
         timeout=8.0,
     )
     if not res.ok:
-        sv.logger.error(f"获取微博失败: {res.status_code} {res.text}")
+        sv.logger.error(f"{res.url} 获取微博失败: {res.status_code} {res.text}")
         return None
-    rj = res.json
+    rj: dict = res.json
     if not rj.get("ok", False):
-        sv.logger.error(f"获取微博失败: {res.status_code} {res.text}")
+        sv.logger.error(f"{res.url} 获取微博失败: {res.status_code} {res.text}")
         return None
     rjdata = rj.get("data", {})
     return parse_weibo_card(rjdata)

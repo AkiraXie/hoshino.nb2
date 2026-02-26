@@ -35,6 +35,12 @@ import random
 weibo_queue = PostQueue[WeiboPost]()
 uid_manager = UIDManager()
 
+WEIBO_FETCH_BATCH_SIZE = 12
+WEIBO_FETCH_CONCURRENCY = 4
+weibo_fetch_lock = asyncio.Lock()
+
+
+
 
 weibo_regexs = {
     "weibo": re.compile(r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)"),
@@ -239,36 +245,21 @@ async def add_subscription(bot: Bot, event: Event):
 )
 async def remove_subscription(bot: Bot, event: Event):
     gid = event.group_id
-    uid = event.get_plaintext().strip()
-    with Session() as session:
-        if uid.isdecimal():
-            stmt = select(db).where(db.group == gid, db.uid == uid)
-            rows = session.execute(stmt).scalars().all()
-            for row in rows:
-                session.delete(row)
-            num = len(rows)
-            session.commit()
-            if num:
-                await uid_manager.remove_uid(
-                    uid,
-                    lambda u: bool(
-                        session.execute(
-                            select(db).where(db.uid == u)
-                        ).scalar_one_or_none()
-                    ),
-                )
-        else:
-            stmt = select(db).where(db.group == gid, db.name == uid)
-            rows = session.execute(stmt).scalars().all()
-            if rows:
-                target_uid = rows[0].uid
+    uids = event.get_plaintext().strip()
+    uids = uids.split()
+    for uid in uids:
+        with Session() as session:
+            await asyncio.sleep(0.3)
+            if uid.isdecimal():
+                stmt = select(db).where(db.group == gid, db.uid == uid)
+                rows = session.execute(stmt).scalars().all()
                 for row in rows:
                     session.delete(row)
                 num = len(rows)
                 session.commit()
                 if num:
                     await uid_manager.remove_uid(
-                        target_uid,
+                        uid,
                         lambda u: bool(
                             session.execute(
                                 select(db).where(db.uid == u)
@@ -276,11 +267,29 @@ async def remove_subscription(bot: Bot, event: Event):
                         ),
                     )
             else:
-                num = 0
-    if num:
-        await bot.send(event, f"{uid} 删除微博订阅成功")
-    else:
-        await bot.send(event, f"{uid} 删除微博订阅失败")
+                stmt = select(db).where(db.group == gid, db.name == uid)
+                rows = session.execute(stmt).scalars().all()
+                if rows:
+                    target_uid = rows[0].uid
+                    for row in rows:
+                        session.delete(row)
+                    num = len(rows)
+                    session.commit()
+                    if num:
+                        await uid_manager.remove_uid(
+                            target_uid,
+                            lambda u: bool(
+                                session.execute(
+                                    select(db).where(db.uid == u)
+                                ).scalar_one_or_none()
+                            ),
+                        )
+                else:
+                    num = 0
+            if num:
+                await bot.send(event, f"{uid} 删除微博订阅成功")
+            else:
+                await bot.send(event, f"{uid} 删除微博订阅失败")
 
 
 @sv.on_command("微博订阅", aliases=("微博订阅列表", "lookweibo", "lswb", "listweibo"))
@@ -329,17 +338,38 @@ async def see_weibo(bot: Bot, event: Event):
         await send_segments(msgs)
 
 
-@scheduled_job("interval", seconds=1, jitter=0.2, id="获取微博更新")
+@scheduled_job("interval", seconds=2, jitter=1, id="获取微博更新")
 async def fetch_weibo_updates():
+    if weibo_fetch_lock.locked():
+        return
+
     uid_count = uid_manager.get_count()
     if uid_count == 0:
         return
 
-    uid_str = await uid_manager.get_next_uid()
-    if not uid_str:
+    batch_size = min(uid_count, WEIBO_FETCH_BATCH_SIZE)
+    uids: list[str] = []
+    for _ in range(batch_size):
+        uid_str = await uid_manager.get_next_uid()
+        if not uid_str:
+            break
+        uids.append(uid_str)
+
+    if not uids:
         return
 
-    success = False
+    sem = asyncio.Semaphore(WEIBO_FETCH_CONCURRENCY)
+
+    async def _worker(uid_str: str):
+        async with sem:
+            success = await _fetch_weibo_updates_for_uid(uid_str)
+        await uid_manager.finish_processing(uid_str, success)
+
+    async with weibo_fetch_lock:
+        await asyncio.gather(*(_worker(uid_str) for uid_str in uids))
+
+
+async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
     try:
         with Session() as session:
             stmt = select(db).where(db.uid == uid_str)
@@ -353,10 +383,12 @@ async def fetch_weibo_updates():
                     .scalar_one_or_none()
                 ),
             )
-            return
+            return True
 
         time_rows = sorted(rows, key=lambda x: x.time, reverse=True)
         min_ts = time_rows[0].time
+        now_ts = time.time()
+        min_ts = max(min_ts, now_ts - 86400)
         kw = time_rows[0].keyword
         if kw:
             kw = kw.split("-_-")
@@ -365,8 +397,7 @@ async def fetch_weibo_updates():
 
         posts = await get_sub_list(uid_str, min_ts, kw)
         if not posts:
-            success = True
-            return
+            return True
 
         max_timestamp = max(post.timestamp for post in posts)
         for post in posts:
@@ -376,13 +407,11 @@ async def fetch_weibo_updates():
                 sv.logger.info(
                     f"获取到微博更新: {post.uid} {post.nickname} {post.timestamp} {post.url}"
                 )
-        success = True
+        return True
 
     except Exception as e:
         sv.logger.error(f"获取微博更新失败 UID {uid_str}: {e}")
-        success = False
-    finally:
-        await uid_manager.finish_processing(uid_str, success)
+        return False
 
 
 async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
@@ -395,7 +424,7 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             stmt = select(db).where(db.uid == uid)
             rows = session.execute(stmt).scalars().all()
         _gids = [row.group for row in rows]
-        await asyncio.sleep(random.uniform(0, 2))
+        await asyncio.sleep(random.uniform(0, 1))
         groups = await sv.get_enable_groups()
         gids = list(filter(lambda x: x in groups, _gids))
         if not gids:
@@ -413,7 +442,6 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
 
         msgs = await dyn.get_message(True)
         for gid in gids:
-            await asyncio.sleep(random.uniform(0, 1))
             bot = groups[gid][0]
             with Session() as session:
                 stmt = select(db).where(db.uid == uid, db.group == gid)
@@ -431,6 +459,7 @@ async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
             except Exception as e:
                 sv.logger.error(f"发送 weibo post 失败: {e}")
         weibo_queue.remove_id(dyn.id)
+        await asyncio.sleep(1)
 
 
 async def weibo_dispatcher():
@@ -449,5 +478,6 @@ async def start_weibo_dispatcher():
     with Session() as session:
         stmt = select(db.uid).distinct()
         uids = session.scalars(stmt).all()
+    random.shuffle(uids)
     await uid_manager.init(uids)
     asyncio.create_task(weibo_dispatcher())

@@ -270,7 +270,7 @@ def get_event_image(event: MessageEvent) -> list[str]:
 
 
 async def save_img(
-    url: str, name: str, fav: bool = False, verify: bool = False
+    url: str, name: str | Path, fav: bool = False, verify: bool = False
 ) -> bool:
     if fav:
         idir = fav_dir
@@ -291,6 +291,8 @@ async def save_video(url: str, name: str, verify: bool = False) -> bool:
 async def save_img_by_path(
     url: str, path: str | Path, verify: bool = False, headers={}
 ) -> Path | None:
+    if path.parent and not path.parent.exists():
+        os.makedirs(path.parent, exist_ok=True)
     r = await aiohttpx.get(url, verify=verify, headers=headers, follow_redirects=True)
     try:
         im = Image.open(bio := BytesIO(r.content))
@@ -530,29 +532,34 @@ if not db_path.exists():
 
 cookiejar: dict[str, str] = {}
 
+_cookies_lock = asyncio.Lock()
 
-def save_cookies(name: str, cookies: Union[str, dict]):
+async def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):
         cookies = "; ".join(f"{k}={v}" for k, v in cookies.items())
     cookiejar[name] = cookies
-    with Session() as session:
-        obj: Cookies | None = session.get(Cookies, name)
-        if obj:
-            obj.cookie = cookies
-            obj.created_at = time()
-        else:
-            obj = Cookies(name=name, cookie=cookies, created_at=time())
-            session.add(obj)
-        session.commit()
-
-def delete_cookies(name: str):
-    res = cookiejar.pop(name, None)
-    with Session() as session:
-        obj: Cookies | None = session.get(Cookies, name)
-        if obj:
-            session.delete(obj)
+    async with _cookies_lock:
+        with Session() as session:
+            obj: Cookies | None = session.get(Cookies, name)
+            if obj:
+                obj.cookie = cookies
+                obj.created_at = time()
+            else:
+                obj = Cookies(name=name, cookie=cookies, created_at=time())
+                session.add(obj)
             session.commit()
+
+
+async def delete_cookies(name: str):
+    res = cookiejar.pop(name, None)
+    async with _cookies_lock:
+        with Session() as session:
+            obj: Cookies | None = session.get(Cookies, name)
+            if obj:
+                session.delete(obj)
+                session.commit()
     return res
+
 
 def check_cookies(name: str) -> bool:
     with Session() as session:
