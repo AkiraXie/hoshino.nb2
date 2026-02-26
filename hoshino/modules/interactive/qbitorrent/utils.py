@@ -14,7 +14,6 @@ sv = Service(
     "qbitorrent",
     enable_on_default=False,
     visible=False,
-    help_="qBittorrent 种子下载管理\n配置: qbt配置 <服务器地址> <用户名> <密码>\n下载: 添加种子 <磁力链接或种子URL>",
 )
 
 

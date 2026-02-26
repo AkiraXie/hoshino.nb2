@@ -185,7 +185,6 @@ async def parse_xhs_explore(url: str, xhs_id: str):
 
 
 async def parse_xhs_discovery(url: str, xhs_id: str):
-
     # 疑似可以转成 explore 解析
     parsed = urlparse(url)
     params = parse_qs(parsed.query)
@@ -193,7 +192,6 @@ async def parse_xhs_discovery(url: str, xhs_id: str):
     xsec_token = params.get("xsec_token", [None])[0]
     explore_url = f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_token={xsec_token}&xsec_source={xsec_source}"
     return await parse_xhs_explore(explore_url, xhs_id)
-
 
     # class Image(BaseModel):
     #     url: str
@@ -232,15 +230,12 @@ async def parse_xhs_discovery(url: str, xhs_id: str):
     #     def image_urls(self) -> list[str]:
     #         return [item.urlSizeLarge or item.url for item in self.imagesList]
 
-
     # class NoteDataWrapper(BaseModel):
     #     noteData: NoteData
-
 
     # class NoteDataContainer(BaseModel):
     #     data: NoteDataWrapper
     #     normalNotePreloadData: NormalNotePreloadData | None = None
-
 
     # class InitialState(BaseModel):
     #     noteData: NoteDataContainer

@@ -1,7 +1,8 @@
 import asyncio
+import base64
+import json
+import math
 import random
-import re
-import uuid
 from nonebot.typing import override
 from sqlalchemy import (
     Float,
@@ -14,43 +15,25 @@ from hoshino import (
     db_dir,
     Message,
     MessageSegment,
-    SUPERUSER,
-    scheduled_job,
-    on_startup,
 )
 from hoshino.service import Service
 from hoshino.util import (
     aiohttpx,
-    get_cookies,
     get_cookies_with_ts,
-    save_cookies,
-    send,
-    send_to_superuser,
 )
-from hoshino.util.playwrights import get_bili_dynamic_screenshot
-from urllib.parse import urlencode
-from hashlib import md5
-from functools import reduce
+from .pw import get_bili_dynamic_screenshot
+
 from ..utils import Post
 from typing import Sequence
 from dataclasses import dataclass
 
-from Cryptodome.Cipher import PKCS1_OAEP
-from Cryptodome.Hash import SHA256
-from Cryptodome.PublicKey import RSA
-import time
-import binascii
 
 sv = Service("bilireq", enable_on_default=False)
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
 dynamic_url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 live_url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
-refresh_csrf_url = "https://www.bilibili.com/correspond/1/{}"
-refresh_cookie_url = "https://passport.bilibili.com/x/passport-login/web/cookie/refresh"
 nav_url = "https://api.bilibili.com/x/web-interface/nav"
 
-# 异步锁，防止并发调用get_bilicookies时的竞态条件
-_cookies_lock = asyncio.Lock()
 
 headers = {
     "User-Agent": (
@@ -58,243 +41,43 @@ headers = {
     ),
     "Referer": "https://www.bilibili.com",
 }
-mixinKeyEncTab = [
-    46,
-    47,
-    18,
-    2,
-    53,
-    8,
-    23,
-    32,
-    15,
-    50,
-    10,
-    31,
-    58,
-    3,
-    45,
-    35,
-    27,
-    43,
-    5,
-    49,
-    33,
-    9,
-    42,
-    19,
-    29,
-    28,
-    14,
-    39,
-    12,
-    38,
-    41,
-    13,
-    37,
-    48,
-    7,
-    16,
-    24,
-    55,
-    40,
-    61,
-    26,
-    17,
-    0,
-    1,
-    60,
-    51,
-    30,
-    4,
-    22,
-    25,
-    54,
-    21,
-    56,
-    59,
-    6,
-    63,
-    57,
-    62,
-    11,
-    36,
-    20,
-    34,
-    44,
-    52,
-]
-imgsubkey = ""
+
+def random_hex_str(length: int) -> str:
+    result = ""
+    for _ in range(length):
+        result += dec2hex_upper(16 * random.random())
+    return pad_string_with_zeros(result, length)
+
+def dec2hex_upper(e: float) -> str:
+    return format(math.ceil(e), 'X')
 
 
-@on_startup
-@scheduled_job("cron", hour="0", minute="5")
-async def _refresh_wbi_key():
-    url = nav_url
-    resp = await aiohttpx.get(
-        url,
-        headers=headers,
-    )
-    rj = resp.json
-    img_url: str = rj["data"]["wbi_img"]["img_url"]
-    sub_url: str = rj["data"]["wbi_img"]["sub_url"]
-    img_key = img_url.rsplit("/", 1)[1].split(".")[0]
-    sub_key = sub_url.rsplit("/", 1)[1].split(".")[0]
-    global imgsubkey
-    imgsubkey = img_key + sub_key
-    sv.logger.info(f"wbi key refreshed: {imgsubkey}")
+def pad_string_with_zeros(s: str, length: int) -> str:
+    return s.zfill(length)
 
+def generate_gaussian_integer(mean: float, std: float) -> int:
+    TWO_PI = math.pi * 2
+    u1 = random.random()
+    u2 = random.random()
+    z0 = math.sqrt(-2 * math.log(u1)) * math.cos(TWO_PI * u2)
+    return round(z0 * std + mean)
 
-async def _enc_wbi(params: dict) -> dict:
-    dm_rand = "ABCDEFGHIJK"
-    p = params.copy()
-    p.update(
+def get_dm_img_list() -> str:
+    x = max(generate_gaussian_integer(1245, 5), 0)
+    y = max(generate_gaussian_integer(1285, 5), 0)
+    path = [
         {
-            "dm_img_list": "[]",  # 鼠标/键盘操作记录
-            "dm_img_str": "".join(random.sample(dm_rand, 2)),
-            "dm_cover_img_str": "".join(random.sample(dm_rand, 2)),
-            "dm_img_inter": '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}',
+            "x": 3 * x + 2 * y,
+            "y": 4 * x - 5 * y,
+            "z": 0,
+            "timestamp": max(generate_gaussian_integer(30, 5), 0),
+            "type": 0,
         }
-    )
-    params = p
-
-    def getMixinKey(orig: str):
-        return reduce(lambda s, i: s + orig[i], mixinKeyEncTab, "")[:32]
-
-    mixin_key = getMixinKey(imgsubkey)
-    params["wts"] = round(time.time())
-    if not params.get("web_location"):
-        params["web_location"] = 1550101
-    params = dict(sorted(params.items()))
-    params = {
-        k: "".join(filter(lambda chr: chr not in "!'()*", str(v)))
-        for k, v in params.items()
-    }
-    query = urlencode(params)  # 序列化参数
-    wbi_sign = md5((query + mixin_key).encode()).hexdigest()  # 计算 w_rid
-    params["w_rid"] = wbi_sign
-    return params
-
-
-def _getCorrespondPath() -> str:
-    key = RSA.importKey(
-        """\
------BEGIN PUBLIC KEY-----
-MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDLgd2OAkcGVtoE3ThUREbio0Eg
-Uc/prcajMKXvkCKFCWhJYJcLkcM2DKKcSeFpD/j6Boy538YXnR6VhcuUJOhH2x71
-nzPjfdTcqMz7djHum0qSZA0AyCBDABUqCrfNgCiJ00Ra7GmRj+YCK1NJEuewlb40
-JNrRuoEUXpabUzGB8QIDAQAB
------END PUBLIC KEY-----"""
-    )
-    ts = round(time.time() * 1000)
-    cipher = PKCS1_OAEP.new(key, SHA256)
-    encrypted = cipher.encrypt(f"refresh_{ts}".encode())
-    return binascii.b2a_hex(encrypted).decode()
-
-
-async def _get_refresh_csrf(cookies: dict) -> str | None:
-    correspond_path = _getCorrespondPath()
-    url = refresh_csrf_url.format(correspond_path)
-    cookies["buvid3"] = str(uuid.uuid1())
-    resp = await aiohttpx.get(
-        url,
-        headers=headers,
-        cookies=cookies,
-    )
-    if resp.status_code == 404:
-        sv.logger.error("refresh csrf error: correspondPath 过期或错误。")
-        return None
-    elif resp.ok:
-        text = resp.text
-        refresh_csrf = re.findall('<div id="1-name">(.+?)</div>', text)[0]
-        return refresh_csrf
-    else:
-        sv.logger.error(f"refresh csrf error: {resp.status_code} {resp.text}")
-        return None
-
-
-async def _refresh_cookies(cookies: dict) -> dict:
-    url = refresh_cookie_url
-    refresh_csrf = await _get_refresh_csrf(cookies)
-    data = {
-        "csrf": cookies["bili_jct"],
-        "refresh_csrf": refresh_csrf,
-        "refresh_token": cookies["ac_time_value"],
-        "source": "main_web",
-    }
-    resp = await aiohttpx.post(
-        url,
-        cookies=cookies,
-        data=data,
-        headers=headers,
-    )
-    if not resp.ok:
-        sv.logger.error(f"refresh cookies error: {resp.status_code} {resp.text}")
-        return {}
-    rj = resp.json
-    res = cookies.copy()
-    res.update(resp.cookies)
-    res["ac_time_value"] = rj.get("data", {}).get("refresh_token", "")
-    return res
-
-
-async def _confirm_refresh(cookies: dict) -> bool:
-    """
-    确认刷新B站cookies是否成功
-    :param cookies: B站cookies字典
-    :return: 是否刷新成功
-    """
-    try:
-        data = {
-            "csrf": cookies.get("bili_jct", ""),
-            "refresh_token": cookies.get("ac_time_value", ""),
-        }
-        url = "https://passport.bilibili.com/x/passport-login/web/confirm/refresh"
-        resp = await aiohttpx.post(url, data=data, cookies=cookies, headers=headers)
-        if not resp.ok:
-            sv.logger.error("B站cookies已失效，无法确认刷新。")
-            return False
-        rj = resp.json
-        if rj.get("code") != 0:
-            sv.logger.error(f"确认刷新B站cookies失败, json:{rj}")
-            return False
-        return True
-    except Exception as e:
-        sv.logger.error(f"确认刷新B站cookies时发生错误: {e}")
-        return False
-
-
-async def refresh_bili_cookies(cookies: dict) -> dict:
-    """
-    刷新B站cookies
-    :param cookies: 原始cookies字典
-    :return: 刷新后的cookies字典
-    """
-    try:
-        new_cookies = await _refresh_cookies(cookies)
-        if not new_cookies:
-            sv.logger.error("刷新B站cookies失败，返回空字典。")
-            return {}
-
-        if not await _confirm_refresh(new_cookies):
-            sv.logger.error("确认刷新B站cookies失败，返回原始cookies。")
-            return cookies
-
-        # 确保原子性地保存cookies
-        save_cookies("bilibili", new_cookies)
-        sv.logger.info("B站cookies刷新成功")
-        return new_cookies
-
-    except Exception as e:
-        sv.logger.error(f"刷新B站cookies时发生错误: {e}")
-        return {}
+    ]
+    return json.dumps(path)
 
 
 async def get_bilicookies() -> dict:
-    """
-    获取B站cookies，尝试刷新过期的cookies
-    :return: B站cookies字典
-    """
     cookies, ts = await get_cookies_with_ts("bilibili")
     return cookies
 
@@ -438,11 +221,17 @@ async def get_new_dynamic(uid: str) -> BiliBiliDynamic | None:
 async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     url = dynamic_url
     h = headers.copy()
+    dm_img_str     = base64.b64encode(b"no webgl").decode()[:-2]
+    dm_cover_img_str = base64.b64encode(b"no webgl").decode()[:-2]
     params = {
         "host_mid": int(uid),
         "timezone_offset": -480,
+        "platform": "web",
         "offset": "",
-        "features": "itemOpusStyle",
+        "features": "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote",
+        "dm_img_list": get_dm_img_list(),
+        "dm_cover_img_str": dm_cover_img_str,
+        "dm_img_str": dm_img_str,
     }
     res = await aiohttpx.get(
         url, params=params, headers=h, cookies=await get_bilicookies()

@@ -34,6 +34,7 @@ from hoshino.event import (
     MessageEvent,
     GroupMsgEmojiLikeEvent,
     NoticeEvent,
+    GroupMessageEvent,
 )
 from nonebot.plugin import on_notice, on_keyword
 from nonebot.rule import Rule, KeywordsRule
@@ -192,7 +193,8 @@ svvideo_notice = on_notice(
 ).handle()
 @svimg_notice.handle()
 async def save_img_cmd(
-    event: MessageEvent | GroupReactionEvent | GroupMsgEmojiLikeEvent, state: T_State
+    event: GroupMessageEvent | GroupReactionEvent | GroupMsgEmojiLikeEvent,
+    state: T_State,
 ):
     segs: list[MessageSegment] = state.get(__SU_IMGLIST, [])
     cnt = 0
@@ -207,6 +209,8 @@ async def save_img_cmd(
         url = seg.data.get("url", seg.data.get("file"))
         fname = seg.data.get("filename", name)
         url = url.replace("https://", "http://")
+        dirname = str(event.group_id)
+        fname = Path(dirname, fname)
         tasks.append(save_img(url, fname, is_fav, False))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     for result in results:
@@ -216,8 +220,6 @@ async def save_img_cmd(
             cnt += 1
     if cnt != 0:
         await send_to_superuser(f"成功保存{cnt}张图片")
-    else:
-        await send_to_superuser("保存图片失败")
 
 
 @svvideo_notice.handle()

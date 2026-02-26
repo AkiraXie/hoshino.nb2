@@ -29,7 +29,7 @@ async def save_cookies_cmd(
     if not cookies:
         await finish("请提供cookie")
 
-    save_cookies(name, cookies)
+    await save_cookies(name, cookies)
     await send(f"保存 {name} cookies 成功")
 
 
@@ -50,6 +50,7 @@ async def check_cookies_cmd(
     else:
         await send(f"可用的cookies: {', '.join(cookies)}")
 
+
 @sucmd(
     "del_cookies", aliases={"删除cookies", "delck", "删除ck"}, only_to_me=True
 ).handle()
@@ -57,7 +58,7 @@ async def del_ck_cmd(event: MessageEvent):
     name = event.get_plaintext().strip()
     if not name:
         await finish("请提供cookie名称")
-        
+
     if name == "all":
         cookies = check_all_cookies()
         if not cookies:
@@ -65,7 +66,7 @@ async def del_ck_cmd(event: MessageEvent):
             return
         for k in list(cookies):
             try:
-                delete_cookies(k)
+                await delete_cookies(k)
             except Exception:
                 pass
         await send("删除所有cookies 成功")
@@ -74,7 +75,7 @@ async def del_ck_cmd(event: MessageEvent):
     if not check_cookies(name):
         await finish("没有可删除的cookies")
     try:
-        delete_cookies(name)
+        await delete_cookies(name)
         await send(f"删除 {name} cookies 成功")
     except Exception as e:
         await send(f"删除失败: {e}")
