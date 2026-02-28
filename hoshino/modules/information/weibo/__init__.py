@@ -12,11 +12,11 @@ from hoshino.util import (
     random_image_or_video_by_path,
 )
 from .utils import (
-    get_sub_list,
+    get_weibo_list,
     sv,
     WeiboDB as db,
     WeiboPost,
-    get_sub_new,
+    get_weibo_new,
     Session,
     parse_mapp_weibo,
     parse_weibo_with_id,
@@ -35,7 +35,7 @@ import random
 weibo_queue = PostQueue[WeiboPost]()
 uid_manager = UIDManager()
 
-WEIBO_FETCH_BATCH_SIZE = 12
+WEIBO_FETCH_BATCH_SIZE = 8
 WEIBO_FETCH_CONCURRENCY = 4
 weibo_fetch_lock = asyncio.Lock()
 
@@ -208,9 +208,9 @@ async def add_subscription(bot: Bot, event: Event):
                     event, "无效的UID格式，请输入数字ID或完整的微博个人主页链接"
                 )
                 return
-        post = await get_sub_new(uid, ts=0, keywords=keywords)
+        post = await get_weibo_new(uid, ts=0, keywords=keywords)
         if not post:
-            post = await get_sub_new(uid, ts=0)
+            post = await get_weibo_new(uid, ts=0)
         if not post:
             await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
             return
@@ -330,7 +330,7 @@ async def see_weibo(bot: Bot, event: Event):
             keywords = keywords.split("-_-")
         else:
             keywords = []
-        post = await get_sub_new(uid, 0, keywords=keywords)
+        post = await get_weibo_new(uid, 0, keywords=keywords)
         if not post:
             await bot.send(event, f"没有获取到{arg}微博")
             return
@@ -338,7 +338,7 @@ async def see_weibo(bot: Bot, event: Event):
         await send_segments(msgs)
 
 
-@scheduled_job("interval", seconds=2, jitter=1, id="获取微博更新")
+@scheduled_job("interval", seconds=15, jitter=3, id="获取微博更新")
 async def fetch_weibo_updates():
     if weibo_fetch_lock.locked():
         return
@@ -363,7 +363,7 @@ async def fetch_weibo_updates():
     async def _worker(uid_str: str):
         async with sem:
             success = await _fetch_weibo_updates_for_uid(uid_str)
-        await uid_manager.finish_processing(uid_str, success)
+            await uid_manager.finish_processing(uid_str, success)
 
     async with weibo_fetch_lock:
         await asyncio.gather(*(_worker(uid_str) for uid_str in uids))
@@ -395,7 +395,7 @@ async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
         else:
             kw = []
 
-        posts = await get_sub_list(uid_str, min_ts, kw)
+        posts = await get_weibo_list(uid_str, min_ts, kw)
         if not posts:
             return True
 

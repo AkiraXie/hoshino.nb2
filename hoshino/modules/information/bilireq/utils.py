@@ -233,19 +233,24 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
         "dm_cover_img_str": dm_cover_img_str,
         "dm_img_str": dm_img_str,
     }
-    res = await aiohttpx.get(
+    try:
+        code = 000
+        res = await aiohttpx.get(
         url, params=params, headers=h, cookies=await get_bilicookies()
     )
-    rj = res.json
-    data = rj.get("data", {})
-    code = int(rj.get("code", 0))
-    if code == -352:
-        res = await aiohttpx.get(
-            url, params=params, headers=h, cookies=await get_bilicookies()
-        )
         rj = res.json
         data = rj.get("data", {})
-    cards = data.get("items", [])
+        code = int(rj.get("code", 0))
+        if code == -352:
+            res = await aiohttpx.get(
+                url, params=params, headers=h, cookies=await get_bilicookies()
+            )
+            rj = res.json
+            data = rj.get("data", {})
+        cards = data.get("items", [])
+    except Exception as e:
+        sv.logger.error(f"获取动态数据解析失败: {e}, uid: {uid}, response: {res.text},code: {code},status: {res.status_code}")
+        return []
     dyn = cards[4::-1]
     dyns = [BiliBiliDynamic.from_dict(d) for d in dyn]
     dyns = [d for d in dyns if d.timestamp > ts]

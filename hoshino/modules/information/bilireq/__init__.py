@@ -23,7 +23,7 @@ uid_manager = UIDManager()
 tz = timezone("Asia/Shanghai")
 
 
-@sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅"))
+@sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅","adddyn"))
 async def _(bot: Bot, event: Event):
     gid = event.group_id
     uid = event.get_plaintext()
@@ -34,7 +34,7 @@ async def _(bot: Bot, event: Event):
             return
     except Exception as e:
         sv.logger.exception(e)
-        await bot.send(event, f"UID {uid} 不合法")
+        await bot.send(event, f"UID {uid} 信息获取失败")
         return
     uid_int = dyn.uid
     ts = time.time()
@@ -55,7 +55,7 @@ async def _(bot: Bot, event: Event):
 
 @sv.on_command(
     "删除订阅动态",
-    aliases=("取消订阅动态", "关闭订阅动态", "删除动态", "取消动态", "adddyn"),
+    aliases=("取消订阅动态", "关闭订阅动态", "删除动态", "取消动态", "deldyn"),
 )
 async def _(bot: Bot, event: Event):
     gid = event.group_id

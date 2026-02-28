@@ -17,6 +17,7 @@ class HoshinoConfig(BaseConfig):
     data: str = "data"
     static: str = "static"
     zai: str = "はい！私はいつも貴方の側にいますよ！"
+    chrome_path: str = "./chrome-files"
     debug: bool = False
 
     @property

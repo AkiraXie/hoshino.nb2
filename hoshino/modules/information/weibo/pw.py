@@ -1,8 +1,10 @@
-from playwright.async_api import Route
+from pathlib import Path
 
-from hoshino.util.playwrights import get_b, Page, Browser, MessageSegment, mobile_context_params,context_params
+from playwright.async_api import  Route
+from hoshino.util.playwrights import get_ap, get_b, Page, Browser, MessageSegment, mobile_context_params,context_params
 from hoshino.util import get_cookies
 from nonebot.log import logger
+from hoshino import config
 
 weibo_script = """
 document.querySelector('div.wrap')?.remove();
@@ -171,7 +173,7 @@ async def get_weibo_visitor_cookies() -> dict:
         await route.continue_()
 
     await c.route("**/*", route_handler)
-    c.set_default_timeout(10000)
+    c.set_default_timeout(1000)
     page = None
     try:
         page: Page = await c.new_page()
@@ -194,3 +196,32 @@ async def get_weibo_visitor_cookies() -> dict:
             await page.close()
         if c:
             await c.close()
+
+
+async def get_weibo_cookies_from_local() -> dict:
+    ap = await get_ap()
+    context = await ap.chromium.launch_persistent_context(
+    config.chrome_path,
+    headless=True,
+    channel="chrome",
+    )
+    page = None
+    try:
+        page: Page = await context.new_page()
+        await page.goto("https://weibo.com")
+        await page.wait_for_load_state("networkidle")
+        cookies = await context.cookies()
+        ck_dict = {}
+        for ck in cookies:
+            ck_dict[ck["name"]] = ck["value"]
+        if ck_dict:
+            logger.info(f"get_weibo_cookies_from_local success: got {len(ck_dict)} cookies")
+        return ck_dict
+    except Exception as e:
+        logger.error(f"get_weibo_cookies_from_local error: {e}")
+        return {}
+    finally:
+        if page:
+            await page.close()
+        if context:
+            await context.close()
