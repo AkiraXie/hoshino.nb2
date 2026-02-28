@@ -33,6 +33,11 @@ async def get_b() -> Browser:
         _b = await ap.chromium.launch(timeout=10000, headless=True)
     return _b
 
+async def get_ap() -> Playwright:
+    global ap
+    if not ap:
+        ap = await async_playwright().start()
+    return ap
 
 @scheduled_job("cron", hour="*/2", jitter=60, id="refresh_playwright")
 async def refresh_playwright():
