@@ -109,7 +109,8 @@ def sucmd(
     handlers.insert(0, _strip_cmd)
     kwargs["handlers"] = handlers
     kwargs.setdefault("block", True)
-    return on_command(name, **kwargs)
+    kwargs["cmd"]= name
+    return on_command( **kwargs)
 
 
 def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
@@ -569,7 +570,7 @@ def check_cookies(name: str) -> bool:
             if not row.created_at:
                 return False
 
-            if time() - row.created_at > 86400 * 10:
+            if time() - row.created_at > 86400 * 7:
                 return False
             cookiejar[name] = row.cookie
             return True
@@ -582,7 +583,7 @@ def check_all_cookies() -> dict[str, bool]:
         stmt = select(Cookies)
         rows = session.execute(stmt).scalars().all()
         for row in rows:
-            if not row.created_at or time() - row.created_at > 86400 * 4:
+            if not row.created_at or time() - row.created_at > 86400 * 7:
                 session.delete(row)
                 res[row.name] = False
                 cookiejar.pop(row.name, None)
@@ -628,7 +629,7 @@ async def get_cookies(name: str) -> dict:
                     return {}
                 cookies = row.cookie
                 ts = row.created_at
-                if time() - ts > 86400 * 4:
+                if time() - ts > 86400 * 7:
                     session.delete(row)
                     session.commit()
                     cookiejar.pop(name, None)
@@ -657,9 +658,6 @@ async def get_redirect(url: str, headers={}) -> str | None:
 
 @on_bot_connect
 async def init_cookies():
-    await get_cookies("xhs")
-    await get_cookies("weibo")
-    await get_cookies("bilibili")
     dic = check_all_cookies()
     msg = "加载 cookies 完成, 当前可用 cookies: " + ", ".join(
         k for k, v in dic.items() if v

@@ -38,12 +38,12 @@ def clean_filename(text: str) -> str:
 
 @dataclass
 class Post:
-    """统一的动态/微博数据基类"""
+    """统一的动态数据基类"""
 
     uid: str
     """用户ID"""
     id: str
-    """动态/微博ID"""
+    """动态ID"""
     content: str
     """文本内容"""
     title: str = ""
@@ -66,7 +66,8 @@ class Post:
         self, with_screenshot: bool = False
     ) -> list[Message | MessageSegment]: ...
     def get_referer(self) -> str: ...
-
+    def get_id(self) -> str:
+        return self.id
 
 class PostQueue(Queue, Generic[T]):
     """统一的队列管理器，支持泛型"""
@@ -77,7 +78,7 @@ class PostQueue(Queue, Generic[T]):
 
     def put(self, item: T) -> bool:
         """放入队列，如果ID已存在则跳过"""
-        item_id = item.id
+        item_id = item.get_id()
         if item_id not in self._set:
             self._set.add(item_id)
             super().put_nowait(item)
@@ -97,22 +98,33 @@ class PostQueue(Queue, Generic[T]):
         """从集合中移除ID"""
         self._set.discard(item_id)
 
+    def remove(self, item: T) -> None:
+        """从集合中移除项目"""
+        self._set.discard(item.get_id())
+
 
 class UIDManager:
     """统一的UID管理器"""
 
     def __init__(self):
         self._uids: set[str] = set()
+        self._cold_uids: set[str] = set()
         self._uid_queue = asyncio.Queue()
         self._lock = asyncio.Lock()
         self._processing_uids: set[str] = set()
         self._last_fetch_times: dict[str, float] = {}
         self._min_interval = 180
+        self._cold_min_interval = 1800
 
     async def init(self, uids: list[str]):
         """从UID列表初始化管理器"""
         async with self._lock:
             self._uids = set(uids)
+            self._cold_uids.intersection_update(self._uids)
+            self._processing_uids.intersection_update(self._uids)
+            self._last_fetch_times = {
+                uid: ts for uid, ts in self._last_fetch_times.items() if uid in self._uids
+            }
             # 清空队列并重新填充
             while not self._uid_queue.empty():
                 try:
@@ -128,6 +140,7 @@ class UIDManager:
         async with self._lock:
             if uid_str not in self._uids:
                 self._uids.add(uid_str)
+                self._cold_uids.discard(uid_str)
                 await self._uid_queue.put(uid_str)
 
     async def remove_uid(self, uid: str, check_db_func):
@@ -140,12 +153,27 @@ class UIDManager:
                 if uid_str in self._uids:
                     self._uids.remove(uid_str)
                     self._processing_uids.discard(uid_str)
+                    self._cold_uids.discard(uid_str)
+
+    async def mark_cold(self, uid: str):
+        """标记 UID 为冷却状态"""
+        uid_str = str(uid)
+        async with self._lock:
+            if uid_str in self._uids:
+                self._cold_uids.add(uid_str)
+    
+    async def unmark_cold(self, uid: str):
+        """取消 UID 的冷却状态"""
+        uid_str = str(uid)
+        async with self._lock:
+            self._cold_uids.discard(uid_str)
 
     def _should_fetch_uid(self, uid: str) -> bool:
         """检查UID是否需要抓取"""
         current_time = time.time()
         last_time = self._last_fetch_times.get(uid, 0)
-        return current_time - last_time >= self._min_interval
+        min_interval = self._cold_min_interval if uid in self._cold_uids else self._min_interval
+        return current_time - last_time >= min_interval
 
     def _update_fetch_time(self, uid: str):
         """更新UID的抓取时间"""
