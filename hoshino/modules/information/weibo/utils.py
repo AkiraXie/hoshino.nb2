@@ -8,7 +8,7 @@ import re
 from typing import override
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Float, Integer, Text
 from time import time
@@ -19,6 +19,8 @@ from hoshino.util import (
     get_redirect,
     save_video_by_path,
     save_img_by_path,
+    sucmd,
+    send_to_superuser
 )
 from .pw import (
     get_mapp_weibo_screenshot,
@@ -51,6 +53,10 @@ class WeiboPost(Post):
     group_id: str = ""
 
     @override
+    def get_id(self):
+        return f"{self.group_id}_{self.id}"
+
+    @override
     def get_referer(self) -> str:
         """获取微博的referer"""
         return "https://weibo.com"
@@ -61,36 +67,32 @@ class WeiboPost(Post):
 
         async def download_single_image(i: int, img_url: str) -> Path | None:
             """下载单个图片"""
-            try:
-                if not self.description or self.description == "desktop":
-                    content_part = clean_filename(self.content[:20])
-                    nickname_part = clean_filename(self.nickname)
-                    filename = f"{content_part}_{nickname_part}_{self.id}_{i}.jpg"
-                elif self.description == "mapp":
-                    ts = int(time())
-                    content_part = clean_filename(self.content[:20])
-                    desc_part = clean_filename(self.description)
-                    nickname_part = clean_filename(self.nickname)
-                    filename = (
-                        f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.jpg"
-                    )
-                dirname = self.group_id
-                if not dirname:
-                    filepath = weibo_img_dir / filename
-                else:
-                    dirpath = weibo_img_dir / dirname
-                    dirpath.mkdir(parents=True, exist_ok=True)
-                    filepath = dirpath / filename
-                result_path = await save_img_by_path(
-                    img_url, filepath, True, headers=headers
+            if not self.description or self.description == "desktop":
+                content_part = clean_filename(self.content[:20])
+                nickname_part = clean_filename(self.nickname)
+                filename = f"{content_part}_{nickname_part}_{self.id}_{i}.jpg"
+            elif self.description == "mapp":
+                ts = int(time())
+                content_part = clean_filename(self.content[:20])
+                desc_part = clean_filename(self.description)
+                nickname_part = clean_filename(self.nickname)
+                filename = (
+                    f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.jpg"
                 )
-                if result_path:
-                    return result_path
-                else:
-                    sv.logger.error(f"Failed to save image {img_url}")
-                    return None
-            except Exception as e:
-                sv.logger.error(f"Error downloading image {img_url}: {e}")
+            dirname = self.group_id
+            if not dirname:
+                filepath = weibo_img_dir / filename
+            else:
+                dirpath = weibo_img_dir / dirname
+                dirpath.mkdir(parents=True, exist_ok=True)
+                filepath = dirpath / filename
+            result_path = await save_img_by_path(
+                img_url, filepath, True, headers=headers
+            )
+            if result_path:
+                return result_path
+            else:
+                sv.logger.error(f"Failed to save image {img_url}")
                 return None
 
         # 并发下载所有图片
@@ -238,19 +240,17 @@ class WeiboPost(Post):
 
         return res
 
-# _cookies_lock = asyncio.Lock()
-# _cookies_cache = None
+wbck = sucmd("weibocookies", aliases={"wbck","rfwb"})
+@wbck.handle()
+async def get_weibocookies_cmd():
+    try:
+        await initialize_weibo_cookies()
+        ck = await get_weibocookies()
+        if ck:
+            await send_to_superuser("Weibo cookies refreshed successfully")
+    except:
+        sv.logger.error("Failed to initialize or get Weibo cookies")
 
-
-# def _cookie_signature(ck: dict | None) -> str:
-#     if not ck:
-#         return ""
-#     if sub := ck.get("SUB"):
-#         return f"SUB:{sub}"
-#     if subp := ck.get("SUBP"):
-#         return f"SUBP:{subp}"
-#     return "|".join(f"{k}={v}" for k, v in sorted(ck.items()))
-_cookies_lock = asyncio.Lock()
 @on_startup
 async def initialize_weibo_cookies():
     ck = await get_weibo_cookies_from_local()
@@ -261,32 +261,173 @@ async def get_weibocookies():
     ck = await get_cookies("weibo")
     return ck
 
-# async def refresh_weibo_visitor_cookies(stale_ck: dict | None = None) -> dict | None:
-#     global _cookies_cache
-#     stale_sig = _cookie_signature(stale_ck)
 
-#     current = await get_cookies("weibo")
-#     if current:
-#         current_sig = _cookie_signature(current)
-#         if stale_sig and current_sig and current_sig != stale_sig:
-#             _cookies_cache = current
-#             return current
+class WeiboRequestError(Exception):
+    def __init__(self, message: str, *, reason: str = "", target: str = ""):
+        super().__init__(message)
+        self.reason = reason
+        self.target = target
 
-#     async with _cookies_lock:
-#         current = await get_cookies("weibo")
-#         if current:
-#             current_sig = _cookie_signature(current)
-#             if stale_sig and current_sig and current_sig != stale_sig:
-#                 _cookies_cache = current
-#                 return current
 
-#         ck = await get_weibo_visitor_cookies()
-#         if not ck:
-#             return None
-#         await save_cookies("weibo", ck)
-#         _cookies_cache = ck
-#         return ck
+_missing_weibo_target_queue: asyncio.Queue[str] = asyncio.Queue()
+_missing_weibo_target_set: set[str] = set()
 
+
+def _extract_weibo_target(url: str, params: dict | None = None) -> str:
+    if params:
+        for key in ("uid", "value", "id"):
+            value = params.get(key)
+            if value:
+                return str(value)
+
+    patterns = [
+        r"/u/(\d+)",
+        r"[?&]uid=(\d+)",
+        r"[?&]value=(\d+)",
+        r"[?&]id=([\w-]+)",
+        r"/(detail|status)/([\w-]+)",
+    ]
+    for pattern in patterns:
+        matched = re.search(pattern, url)
+        if matched:
+            return matched.group(matched.lastindex or 1)
+    return ""
+
+
+def _raise_weibo_request_error(
+    message: str, *, reason: str = "", target: str = ""
+) -> None:
+    sv.logger.error(message)
+    raise WeiboRequestError(message, reason=reason, target=target)
+
+
+async def enqueue_missing_weibo_target(target: str) -> bool:
+    if not target:
+        return False
+    if target in _missing_weibo_target_set:
+        return False
+    _missing_weibo_target_set.add(target)
+    await _missing_weibo_target_queue.put(target)
+    return True
+
+
+async def _confirm_missing_weibo_target(target: str) -> bool:
+    ck = await get_weibocookies()
+    if not ck:
+        return False
+
+    try:
+        if ck.get("MLOGIN"):
+            await _visitor_weibo_module.get_weibo_list(target, 0.0)
+        else:
+            await _login_weibo_module.get_weibo_list(target, 0.0)
+    except WeiboRequestError as e:
+        return e.reason == "user_not_found"
+    return False
+
+
+async def process_missing_weibo_target(target: str) -> None:
+    confirmed = await _confirm_missing_weibo_target(target)
+    if not confirmed:
+        sv.logger.info(f"微博账号不存在待删除任务跳过: target={target}, 二次确认未命中")
+        return
+
+    with Session() as session:
+        stmt = select(WeiboDB).where(WeiboDB.uid == target)
+        rows = session.execute(stmt).scalars().all()
+        if not rows:
+            sv.logger.info(f"微博账号不存在待删除任务跳过: target={target}, 数据库中无订阅")
+            return
+
+        for row in rows:
+            session.delete(row)
+        session.commit()
+
+    msg = f"微博账号不存在，已自动删除订阅: UID {target}, 共 {len(rows)} 条"
+    sv.logger.warning(msg)
+    await send_to_superuser(msg)
+
+
+async def missing_weibo_target_worker() -> None:
+    while True:
+        target = await _missing_weibo_target_queue.get()
+        try:
+            await process_missing_weibo_target(target)
+        except Exception as e:
+            sv.logger.error(f"处理微博不存在账号队列失败: target={target}, error: {e}")
+        finally:
+            _missing_weibo_target_set.discard(target)
+            _missing_weibo_target_queue.task_done()
+
+
+@on_startup
+async def start_missing_weibo_target_worker() -> None:
+    asyncio.create_task(missing_weibo_target_worker())
+
+
+def _check_weibo_request_error(
+    res: aiohttpx.Response,
+    params: dict | None = None,
+    *,
+    retry_on_ok_minus100: bool = True,
+) -> None:
+    url = str(res.url)
+    target = _extract_weibo_target(url, params)
+    target_info = f", target: {target}" if target else ""
+
+    if not res.ok:
+        _raise_weibo_request_error(
+            f"微博请求失败: status={res.status_code}, url: {url}{target_info}, text: {res.text}",
+            reason="http_error",
+            target=target,
+        )
+
+    try:
+        res_data = res.json
+    except Exception:
+        return
+
+    if not isinstance(res_data, dict):
+        return
+
+    ok = res_data.get("ok")
+    msg = str(res_data.get("msg", ""))
+    data = res_data.get("data", {})
+
+    if ok == -100 and retry_on_ok_minus100:
+        _raise_weibo_request_error(
+            f"微博请求失败: cookies 可能失效(ok=-100), url: {url}{target_info}, msg: {msg}",
+            reason="cookie_invalid",
+            target=target,
+        )
+
+    if "用户不存在" in msg:
+        _raise_weibo_request_error(
+            f"微博请求失败: 用户不存在, url: {url}{target_info}, msg: {msg}",
+            reason="user_not_found",
+            target=target,
+        )
+
+    if isinstance(data, dict):
+        if "ajax/statuses/mymblog" in url and not data.get("list", []):
+            _raise_weibo_request_error(
+                f"微博请求失败: 账号暂无数据, url: {url}{target_info}",
+                reason="no_data",
+                target=target,
+            )
+        if "api/container/getIndex" in url and not data.get("cards", []):
+            _raise_weibo_request_error(
+                f"微博请求失败: 账号暂无数据, url: {url}{target_info}",
+                reason="no_data",
+                target=target,
+            )
+
+    if ok in (0, False) and msg:
+        _raise_weibo_request_error(
+            f"微博请求失败: ok={ok}, url: {url}{target_info}, msg: {msg}",
+            reason="api_error",
+            target=target,
+        )
 
 async def weibo_get(
     url: str,
@@ -298,11 +439,8 @@ async def weibo_get(
     timeout: float = 6.0,
     retry_on_ok_minus100: bool = True,
 ):
-    # ck = cookies
-    # attempts = 1
-    # last_res = None
-    # for attempt in range(attempts):
-    res = await aiohttpx.get(
+    try:
+        res = await aiohttpx.get(
             url,
             headers=headers,
             params=params,
@@ -310,19 +448,18 @@ async def weibo_get(
             follow_redirects=follow_redirects,
             timeout=timeout,
         )
+    except Exception as e:
+        sv.logger.error(f"微博请求异常: url: {url}, params: {params}, error: {e}")
+        raise
+
+    _check_weibo_request_error(
+        res, params, retry_on_ok_minus100=retry_on_ok_minus100
+    )
     return res
-    #     last_res = res
-    #     if not retry_on_ok_minus100 or not res.ok:
-    #         return res
-    #     try:
-    #         ok = res.json.get("ok", 0)
-    #     except Exception:
-    #         return res
-    # return last_res
 
 class _LoginWeiboModule:
     async def get_weibo_list(
-        self, target: str, ts: float = 0.0, keywords: list[str] = list()
+        self, target: str, ts: float = 0.0
     ) -> list[WeiboPost]:
         header = {
             "accept": "application/json, text/plain, */*",
@@ -344,9 +481,6 @@ class _LoginWeiboModule:
             "feature": 0,
         }
         ck = await get_weibocookies()
-        if not ck:
-            sv.logger.error("error get_weibos_by_mymblog : 获取微博cookies失败")
-            return []
         token = ck.get("XSRF-TOKEN", "")
         header["X-Xsrf-Token"] = token
         res = await weibo_get(
@@ -358,15 +492,9 @@ class _LoginWeiboModule:
             retry_on_ok_minus100=True,
         )
         if not res.ok:
-            sv.logger.error(
-                f"获取微博失败: {res.status_code} {res.headers} \n {res.text}, target: {target}"
-            )
             return []
         res_data = res.json
         if not res_data["ok"]:
-            sv.logger.error(
-                f"获取微博失败: {res_data['ok']} {res_data['msg']}, target: {target}"
-            )
             return []
 
         def custom_filter(d) -> bool:
@@ -376,22 +504,14 @@ class _LoginWeiboModule:
             user = d.get("user", {})
             if not user or user.get("idstr") != target:
                 return False
-            text = d["text"]
-            parsed_text = _get_text(text)
-            kb = False if keywords else True
-            if keywords:
-                for keyword in keywords:
-                    if keyword in parsed_text:
-                        kb = True
             created = d["created_at"]
             if created:
                 t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
                 b = t > ts
-            return b and kb
+            return b
 
         datalist = res_data.get("data", {}).get("list", [])
         if not datalist:
-            sv.logger.error(f"获取微博失败: 没有数据, target: {target}")
             return []
         filterlist = list(filter(custom_filter, datalist))
         if not filterlist:
@@ -409,21 +529,17 @@ class _LoginWeiboModule:
         url = (
             f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
         )
-        try:
-            res = await weibo_get(
-                url,
-                cookies=await get_weibocookies(),
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-                    "Referer": "https://weibo.com/",
-                },
-                timeout=5.0,
-                retry_on_ok_minus100=True,
-            )
-            rj = res.json
-        except Exception as e:
-            sv.logger.error(f"获取微博失败: {e}")
-            return None
+        res = await weibo_get(
+            url,
+            cookies=await get_weibocookies(),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+                "Referer": "https://weibo.com/",
+            },
+            timeout=5.0,
+            retry_on_ok_minus100=True,
+        )
+        rj = res.json
         return self.parse_weibo_dict(rj)
 
     def parse_weibo_dict(self, rj: dict) -> WeiboPost | None:
@@ -492,7 +608,7 @@ class _LoginWeiboModule:
 
 class _VisitorWeiboModule:
     async def get_weibo_list(
-        self, target: str, ts: float = 0.0, keywords: list[str] = list()
+        self, target: str, ts: float = 0.0
     ) -> list[WeiboPost]:
         header = {
             "MWeibo-Pwa": "1",
@@ -516,15 +632,8 @@ class _VisitorWeiboModule:
             timeout=6.0,
             retry_on_ok_minus100=True,
         )
-        try:
-            res_data = res.json
-            ok = res_data.get("ok", 0)
-        except Exception as e:
-            sv.logger.error(
-                f"获取微博失败: 解析JSON失败 {e}, ok:{ok}, code:{res.status_code} target: {target}, url: {res.url}, text: {res.text}"
-            )
-            return []
-
+        res_data = res.json
+        ok = res_data.get("ok", 0)
         if not res_data:
             return []
 
@@ -534,17 +643,11 @@ class _VisitorWeiboModule:
         def custom_filter(d) -> bool:
             if d.get("mblog") is None:
                 return False
-            text = d["mblog"]["text"]
-            kb = False if keywords else True
-            if keywords:
-                for keyword in keywords:
-                    if keyword in text:
-                        kb = True
             created = d["mblog"]["created_at"]
             if created:
                 t = datetime.strptime(created, "%a %b %d %H:%M:%S %z %Y").timestamp()
                 b = t > ts
-            return d["card_type"] in [9, 6, 7] and b and kb
+            return d["card_type"] in [9, 6, 7] and b
 
         def cmp(d1, d2):
             created1 = d1["mblog"]["created_at"]
@@ -590,11 +693,9 @@ class _VisitorWeiboModule:
             retry_on_ok_minus100=True,
         )
         if not res.ok:
-            sv.logger.error(f"{res.url} 获取微博失败: {res.status_code} {res.text}")
             return None
         rj: dict = res.json
         if not rj.get("ok", False):
-            sv.logger.error(f"{res.url} 获取微博失败: {res.status_code} {res.text}")
             return None
         rjdata = rj.get("data", {})
         return self.parse_weibo_dict({"mblog": rjdata})
@@ -665,30 +766,38 @@ class _VisitorWeiboModule:
 _login_weibo_module = _LoginWeiboModule()
 _visitor_weibo_module = _VisitorWeiboModule()
 
-
 async def get_weibo_list(
-    target: str, ts: float = 0.0, keywords: list[str] = list()
+    target: str,
+    ts: float = 0.0,
 ) -> list[WeiboPost]:
     ck = await get_weibocookies()
     if not ck:
         return []
-    if ck.get("MLOGIN"):
-        return await _visitor_weibo_module.get_weibo_list(target, ts, keywords)
-    return await _login_weibo_module.get_weibo_list(target, ts, keywords)
+    try:
+        if ck.get("MLOGIN"):
+            return await _visitor_weibo_module.get_weibo_list(target, ts)
+        return await _login_weibo_module.get_weibo_list(target, ts)
+    except WeiboRequestError as e:
+        if e.reason == "user_not_found":
+            await enqueue_missing_weibo_target(target)
+        return []
 
 
 async def get_weibo_new(
-    target: str, ts: float = 0.0, keywords: list[str] = list()
+    target: str, ts: float = 0.0
 ) -> WeiboPost | None:
-    ls = await get_weibo_list(target, ts, keywords)
+    ls = await get_weibo_list(target, ts)
     return ls[0] if ls else None
 
 async def parse_weibo_with_id(id: str) -> WeiboPost | None:
     ck = await get_weibocookies()
-    if ck:
-        if not ck.get("MLOGIN"):
-            return await _login_weibo_module.parse_weibo(id)
-    return await _visitor_weibo_module.parse_weibo(id)
+    try:
+        if ck:
+            if not ck.get("MLOGIN"):
+                return await _login_weibo_module.parse_weibo(id)
+        return await _visitor_weibo_module.parse_weibo(id)
+    except WeiboRequestError:
+        return None
 
 
 async def parse_mapp_weibo(url: str) -> WeiboPost | None:

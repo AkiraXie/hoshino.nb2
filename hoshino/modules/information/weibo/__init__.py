@@ -1,6 +1,7 @@
 # Thanks to https://github.com/MountainDash/nonebot-bison
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime
 import time
 from hoshino import Bot, Event, on_startup, Message, SUPERUSER
@@ -37,6 +38,7 @@ uid_manager = UIDManager()
 
 WEIBO_FETCH_BATCH_SIZE = 8
 WEIBO_FETCH_CONCURRENCY = 4
+WEIBO_COLD_UID_THRESHOLD = 24 * 60 * 60
 weibo_fetch_lock = asyncio.Lock()
 
 
@@ -208,9 +210,7 @@ async def add_subscription(bot: Bot, event: Event):
                     event, "无效的UID格式，请输入数字ID或完整的微博个人主页链接"
                 )
                 return
-        post = await get_weibo_new(uid, ts=0, keywords=keywords)
-        if not post:
-            post = await get_weibo_new(uid, ts=0)
+        post = await get_weibo_new(uid, ts=0)
         if not post:
             await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
             return
@@ -330,13 +330,34 @@ async def see_weibo(bot: Bot, event: Event):
             keywords = keywords.split("-_-")
         else:
             keywords = []
-        post = await get_weibo_new(uid, 0, keywords=keywords)
+        post = await get_weibo_new(uid, 0)
         if not post:
             await bot.send(event, f"没有获取到{arg}微博")
             return
         msgs = await post.get_message()
         await send_segments(msgs)
 
+@sv.on_command("查库微博", aliases=("wbquery", "微博查库"), permission=SUPERUSER,only_group=False,only_to_me=True)
+async def query_weibo_user(bot: Bot, event: Event):
+    arg = event.get_plaintext().strip()
+    with Session() as session:
+        if arg.isdecimal():
+            stmt = select(db).where(db.uid == arg)
+            rows = session.execute(stmt).scalars().all()
+        else:
+            stmt = select(db).where(db.name == arg)
+            rows = session.execute(stmt).scalars().all()
+    if not rows:
+        await bot.send(event, f"没有查到微博用户 {arg}")
+        return
+    msg = "微博用户信息:\n"
+    for row in rows:
+        msg += (
+            f"UID: {row.uid}, 昵称: {row.name}, 关键词: {row.keyword or '无'}, "
+            f"上次更新时间: {datetime.fromtimestamp(row.time).strftime('%Y-%m-%d %H:%M:%S')}\n"
+        )
+        break
+    await bot.send(event, msg)
 
 @scheduled_job("interval", seconds=15, jitter=3, id="获取微博更新")
 async def fetch_weibo_updates():
@@ -369,7 +390,25 @@ async def fetch_weibo_updates():
         await asyncio.gather(*(_worker(uid_str) for uid_str in uids))
 
 
+
+def match_keywords(post: WeiboPost, keywords: list[str]) -> bool:
+    if not keywords:
+        return True
+
+    if any(keyword in post.content for keyword in keywords):
+            return True
+    if post.repost and any(keyword in post.repost.content for keyword in keywords):
+            return True
+    return False
+
+def clone_post_for_group(post: WeiboPost, group_id: int | str) -> WeiboPost:
+    repost = None
+    if post.repost:
+        repost = clone_post_for_group(post.repost, group_id)
+    return replace(post, repost=repost, group_id=str(group_id))
+
 async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
+
     try:
         with Session() as session:
             stmt = select(db).where(db.uid == uid_str)
@@ -385,28 +424,51 @@ async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
             )
             return True
 
-        time_rows = sorted(rows, key=lambda x: x.time, reverse=True)
-        min_ts = time_rows[0].time
+        latest_known_ts = max(row.time for row in rows)
         now_ts = time.time()
-        min_ts = max(min_ts, now_ts - 86400)
-        kw = time_rows[0].keyword
-        if kw:
-            kw = kw.split("-_-")
-        else:
-            kw = []
 
-        posts = await get_weibo_list(uid_str, min_ts, kw)
+        if latest_known_ts > 0 and now_ts - latest_known_ts > WEIBO_COLD_UID_THRESHOLD:
+            await uid_manager.mark_cold(uid_str)
+        
+        min_ts = max(now_ts - WEIBO_COLD_UID_THRESHOLD, latest_known_ts)
+        posts = await get_weibo_list(uid_str, min_ts)
         if not posts:
             return True
 
-        max_timestamp = max(post.timestamp for post in posts)
-        for post in posts:
-            post.timestamp = max_timestamp
+        await uid_manager.unmark_cold(uid_str)
+
+        matched_posts: list[WeiboPost] = []
+        for row in rows:
+            if row.keyword:
+                row_keywords = [kw for kw in row.keyword.split("-_-") if kw]
+            else:
+                row_keywords = []
+
+            for post in posts:
+                if post.timestamp <= row.time:
+                    continue
+                if not match_keywords(post, row_keywords):
+                    continue
+                matched_posts.append(clone_post_for_group(post, row.group))
+
+        if not matched_posts:
+            return True
+
+        for post in matched_posts:
             b = weibo_queue.put(post)
             if b:
                 sv.logger.info(
-                    f"获取到微博更新: {post.uid} {post.nickname} {post.timestamp} {post.url}"
+                    f"获取到微博更新: {post.uid} {post.nickname} {post.group_id} {post.timestamp} {post.url}"
                 )
+
+        latest_ts = max(post.timestamp for post in posts)
+        with Session() as session:
+            stmt = select(db).where(db.uid == uid_str)
+            db_rows = session.execute(stmt).scalars().all()
+            for row in db_rows:
+                row.time = latest_ts
+                row.name = posts[0].nickname
+            session.commit()
         return True
 
     except Exception as e:
@@ -417,48 +479,32 @@ async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
 async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
     async with sem:
         sv.logger.info(
-            f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.timestamp} {dyn.url}"
+            f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.group_id} {dyn.timestamp} {dyn.url}"
         )
-        uid = dyn.uid
-        with Session() as session:
-            stmt = select(db).where(db.uid == uid)
-            rows = session.execute(stmt).scalars().all()
-        _gids = [row.group for row in rows]
+        if not dyn.group_id:
+            weibo_queue.remove(dyn)
+            await asyncio.sleep(0.5)
+            return
+
+        gid = int(dyn.group_id)
         await asyncio.sleep(random.uniform(0, 1))
         groups = await sv.get_enable_groups()
-        gids = list(filter(lambda x: x in groups, _gids))
-        if not gids:
-            for gid in _gids:
-                with Session() as session:
-                    stmt = select(db).where(db.uid == uid, db.group == gid)
-                    obj = session.execute(stmt).scalar_one_or_none()
-                    if obj:
-                        obj.time = dyn.timestamp
-                        obj.name = dyn.nickname
-                        session.commit()
-            weibo_queue.remove_id(dyn.id)
+        if gid not in groups:
+            weibo_queue.remove(dyn)
             await asyncio.sleep(0.5)
             return
 
         msgs = await dyn.get_message(True)
-        for gid in gids:
-            bot = groups[gid][0]
-            with Session() as session:
-                stmt = select(db).where(db.uid == uid, db.group == gid)
-                obj = session.scalar(statement=stmt)
-                if obj:
-                    obj.time = dyn.timestamp
-                    obj.name = dyn.nickname
-                    session.commit()
-            try:
-                if msgs:
-                    m = msgs[0]
-                    await bot.send_group_msg(group_id=gid, message=m)
-                    await asyncio.sleep(random.uniform(0, 0.5))
-                    await send_group_segments(bot, gid, msgs[1:])
-            except Exception as e:
-                sv.logger.error(f"发送 weibo post 失败: {e}")
-        weibo_queue.remove_id(dyn.id)
+        bot = groups[gid][0]
+        try:
+            if msgs:
+                m = msgs[0]
+                await bot.send_group_msg(group_id=gid, message=m)
+                await asyncio.sleep(random.uniform(0, 0.5))
+                await send_group_segments(bot, gid, msgs[1:])
+        except Exception as e:
+            sv.logger.error(f"发送 weibo post 失败: {e}")
+        weibo_queue.remove(dyn)
         await asyncio.sleep(1)
 
 
@@ -476,8 +522,20 @@ async def weibo_dispatcher():
 async def start_weibo_dispatcher():
     # 初始化 UID 管理器
     with Session() as session:
-        stmt = select(db.uid).distinct()
-        uids = session.scalars(stmt).all()
+        rows = session.execute(select(db.uid, db.time)).all()
+
+    uid_latest_time: dict[str, float] = {}
+    for uid, ts in rows:
+        uid_str = str(uid)
+        uid_latest_time[uid_str] = max(uid_latest_time.get(uid_str, 0.0), float(ts or 0.0))
+
+    uids = list(uid_latest_time)
     random.shuffle(uids)
     await uid_manager.init(uids)
+
+    now_ts = time.time()
+    for uid, latest_ts in uid_latest_time.items():
+        if latest_ts > 0 and now_ts - latest_ts > WEIBO_COLD_UID_THRESHOLD:
+            await uid_manager.mark_cold(uid)
+
     asyncio.create_task(weibo_dispatcher())
