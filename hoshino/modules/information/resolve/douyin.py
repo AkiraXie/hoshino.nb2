@@ -5,7 +5,7 @@ from typing import Any, List, Optional
 import re
 from hoshino.util import aiohttpx, get_redirect, save_img_by_path, save_video_by_path
 from hoshino import data_dir
-from ..utils import Post as BasePost, clean_filename
+from ..utils import Post as BasePost, PostMessage, clean_filename
 from .sv import sv
 from hoshino import Message, MessageSegment
 
@@ -101,17 +101,30 @@ class Post(BasePost):
     async def get_referer(self) -> str:
         return "https://douyin.com/"
 
-    async def get_message(
-        self, with_screenshot: bool = False
-    ) -> list[Message | MessageSegment]:
+    async def get_message(self, full: bool = False) -> PostMessage:
         imgs = await self.download_images()
-        vids = await self.download_videos()
+        vids: list[Path] = []
+        if full:
+            vids = await self.download_videos()
+        return PostMessage(
+            text=self._build_text(),
+            images=imgs,
+            videos=vids,
+        )
+
+    def render_message(
+        self, post_message: PostMessage
+    ) -> list[Message | MessageSegment]:
+        messages: list[Message | MessageSegment] = []
+        if post_message.text:
+            messages.append(Message(post_message.text))
+        messages.extend(MessageSegment.image(img) for img in post_message.images)
+        messages.extend(MessageSegment.video(vid) for vid in post_message.videos)
+        return messages
+
+    def _build_text(self) -> str:
         cnt = self.content or ""
-        msg = [f"{self.nickname} 抖音~\n---------\n{cnt}"]
-        msg.append(f"抖音链接: {self.url}")
-        msg.extend(MessageSegment.image(img) for img in imgs)
-        msg.extend(MessageSegment.video(vid) for vid in vids)
-        return msg
+        return f"{self.nickname} 抖音~\n---------\n{cnt}\n抖音链接: {self.url}"
 
 
 class PlayAddr(BaseModel):

@@ -1,47 +1,96 @@
 # Thanks to https://github.com/MountainDash/nonebot-bison
 
 import asyncio
-from dataclasses import replace
 from datetime import datetime
+import json
+import random
 import time
-from hoshino import Bot, Event, on_startup, Message, SUPERUSER
-from hoshino.schedule import scheduled_job
+from hoshino import Bot, Event, Message, SUPERUSER,data_dir
+from hoshino.permission import ADMIN
+from nonebot.typing import T_State
 from hoshino.util import (
-    send_group_segments,
     send_segments,
     send_to_superuser,
     random_image_or_video_by_path,
 )
+from .db import (
+    add_or_update_subscription,
+    get_group_config,
+    list_group_subscriptions,
+    list_group_subscriptions_by_name,
+    list_group_subscriptions_by_uid,
+    list_subscriptions_by_name,
+    list_subscriptions_by_uid,
+    remove_group_subscriptions_by_name,
+    remove_group_subscriptions_by_uid,
+    update_group_config,
+)
+from .sub import uid_manager
 from .utils import (
-    get_weibo_list,
     sv,
-    WeiboDB as db,
-    WeiboPost,
     get_weibo_new,
-    Session,
+    post_msg_from_uid_id,
     parse_mapp_weibo,
     parse_weibo_with_id,
+    render_post_message,
+    get_cached_weibo_uid_id,
     weibo_img_dir,
     weibo_video_dir,
 )
-from hoshino.event import GroupReactionEvent
+import re
+from hoshino.event import GroupMsgEmojiLikeEvent
 from nonebot.typing import T_State
 from nonebot.compat import type_validate_python
-from ..utils import PostQueue, UIDManager
-from sqlalchemy import select
 
-import re
-import random
-
-weibo_queue = PostQueue[WeiboPost]()
-uid_manager = UIDManager()
-
-WEIBO_FETCH_BATCH_SIZE = 8
-WEIBO_FETCH_CONCURRENCY = 4
-WEIBO_COLD_UID_THRESHOLD = 24 * 60 * 60
-weibo_fetch_lock = asyncio.Lock()
+weibo_fav_json = data_dir / "weibofavorite.json"
 
 
+def _load_weibo_favs() -> dict[str, list[str]]:
+    if not weibo_fav_json.exists():
+        return {}
+    try:
+        data = json.loads(weibo_fav_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+
+    favorites: dict[str, list[str]] = {}
+    for uid, ids in data.items():
+        if not isinstance(uid, str) or not isinstance(ids, list):
+            continue
+        favorites[uid] = [str(post_id) for post_id in ids if post_id]
+    return favorites
+
+
+def _save_weibo_favs(favorites: dict[str, list[str]]) -> None:
+    weibo_fav_json.write_text(
+        json.dumps(favorites, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def append_fav(uid: str, id: str) -> bool:
+    uid = str(uid)
+    id = str(id)
+    favorites = _load_weibo_favs()
+    ids = favorites.get(uid, [])
+    if id in ids:
+        return False
+    ids.append(id)
+    favorites[uid] = ids
+    _save_weibo_favs(favorites)
+    return True
+
+
+def _list_favorite_uid_ids(target_uid: str | None = None) -> list[str]:
+    favorites = _load_weibo_favs()
+    uid_ids: list[str] = []
+    for uid, ids in favorites.items():
+        if target_uid and uid != target_uid:
+            continue
+        uid_ids.extend(f"{uid}_{post_id}" for post_id in ids)
+    return uid_ids
 
 
 weibo_regexs = {
@@ -51,12 +100,12 @@ weibo_regexs = {
 }
 
 
-async def reaction_weibo_img_rule(
+async def reaction_weibo_rule(
     bot: Bot,
-    event: GroupReactionEvent,
+    event: GroupMsgEmojiLikeEvent,
     state: T_State,
 ) -> bool:
-    if event.code != "282" and event.code != "319":
+    if event.get_emoji() != "319":
         return False
     msg_id = event.message_id
     msg = await bot.get_msg(message_id=msg_id)
@@ -68,60 +117,136 @@ async def reaction_weibo_img_rule(
     if msg:
         msg = type_validate_python(Message, msg)
         text = msg.extract_plain_text()
-        url = text.strip()
+        text = text.strip()
         for name, regex in weibo_regexs.items():
-            matched = regex.search(url)
+            matched = regex.search(text)
             if matched:
                 state["__weibo_name"] = name
                 state["__weibo_url"] = matched.group(0)
                 state["__weibo_matched"] = matched
-                state["__weibo_included_video"] = event.code == "319"
+                state["__weibo_msg_id"] = msg_id
+                sv.logger.info(f"Matched weibo URL in reaction: {state['__weibo_url']}")
                 return True
     return False
 
 
-svimg_notice = sv.on_notice(
-    rule=reaction_weibo_img_rule,
+svpost_notice = sv.on_notice(
+    rule=reaction_weibo_rule,
     permission=SUPERUSER,
     priority=5,
     block=True,
 )
 
 
-@svimg_notice.handle()
-async def handle_weibo_img_reaction(state: T_State):
+@svpost_notice.handle()
+async def handle_weibo_reaction(state: T_State):
     if not (name := state.get("__weibo_name")):
         return
     if not (matched := state.get("__weibo_matched")):
         return
     if not (url := state.get("__weibo_url")):
         return
-    included_video = state.get("__weibo_included_video", False)
-    name = name.lower()
-    post = None
-    match name:
-        case "weibo":
-            _, _, bid = matched.groups()
-            post = await parse_weibo_with_id(bid)
-        case "mweibo":
-            _, _, bid = matched.groups()
-            post = await parse_weibo_with_id(bid)
-        case "mappweibo":
-            post = await parse_mapp_weibo(url)
-    if not post:
-        await send_to_superuser(f"无法解析微博链接: {url}")
+    if not (msg_id := state.get("__weibo_msg_id")):
         return
-    res = await post.download_images()
-    if included_video:
-        video_res = await post.download_videos()
-        if video_res:
-            res.extend(video_res)
-    if not res:
-        await send_to_superuser("获取微博图片失败")
-        return
-    res = [i.name for i in res]
-    await send_to_superuser(f"获取微博图片成功:\n {'\n'.join(res)}")
-    return
+    if cached := get_cached_weibo_uid_id(msg_id):
+        uid, id = cached.split("_", 1)
+        appended = append_fav(uid, id)
+        if appended:
+            sv.logger.info(f"Added weibo to fav by cache: {uid} {id}")
+            await send_to_superuser(f"微博收藏新增: UID {uid} ID {id} URL {url} (from cache)")
+
+    else:
+        try:
+            if name == "weibo":
+                _, _, post_id = matched.groups()
+                post = await parse_weibo_with_id(post_id)
+            elif name == "mweibo":
+                _, _, post_id = matched.groups()
+                post = await parse_weibo_with_id(post_id)
+            elif name == "mappweibo":
+                post = await parse_mapp_weibo(url)
+            else:
+                sv.logger.error(f"Unknown weibo type: {name}")
+                return
+            if post:
+                await post.save()
+                appended = append_fav(post.uid, post.id)
+                if appended:
+                    sv.logger.info(f"Added weibo to fav: {post.uid} {post.id}")
+                    await send_to_superuser(f"微博收藏新增: UID {post.uid} ID {post.id} URL {post.url}")
+            else:
+                sv.logger.error(f"Failed to parse weibo URL: {url}")
+        except Exception as e:
+            sv.logger.error(f"Error handling weibo reaction: {e} url: {url}")
+
+
+def format_weibo_config_bits(group_id: int) -> str:
+    config = get_group_config(group_id)
+    return f"{config.only_pic}{config.send_screenshot}{config.send_segments}"
+
+
+def format_weibo_config_message(group_id: int, *, editable: bool) -> str:
+    bits = format_weibo_config_bits(group_id)
+    message = (
+        "当前微博推送配置: "
+        f"{bits}\n"
+        "位序: only_pic send_screenshot send_segments\n"
+        "含义: 1=开 0=关"
+    )
+    if editable:
+        message += "\n请发送 3 位二进制配置，例如 011"
+    return message
+
+
+configwb = sv.on_command(
+    "configwb",
+    aliases=("wbconfig"),
+    permission=ADMIN,
+)
+
+showconfigwb = sv.on_command(
+    "showconfigwb",
+    aliases=("wbshowconfig"),
+    permission=ADMIN,
+)
+
+
+@configwb.handle()
+async def show_weibo_config(bot: Bot, event: Event):
+    gid = event.group_id
+    await bot.send(event, format_weibo_config_message(gid, editable=True))
+
+
+@showconfigwb.handle()
+async def show_weibo_config_readonly(bot: Bot, event: Event):
+    gid = event.group_id
+    await showconfigwb.finish(format_weibo_config_message(gid, editable=False))
+
+
+@configwb.got("config_bits")
+async def set_weibo_config(state: T_State, event: Event):
+    gid = event.group_id
+    config_bits = str(state["config_bits"]).strip()
+    if not re.fullmatch(r"[01]{3}", config_bits):
+        current_bits = format_weibo_config_bits(gid)
+        await configwb.reject(
+            "输入格式错误，请发送 3 位二进制，例如 011\n"
+            f"当前配置仍为: {current_bits}\n"
+            "位序: only_pic send_screenshot send_segments"
+        )
+
+    only_pic, send_screenshot, send_segments = (int(bit) for bit in config_bits)
+    update_group_config(
+        gid,
+        only_pic=only_pic,
+        send_screenshot=send_screenshot,
+        send_segments=send_segments,
+    )
+    await configwb.finish(
+        "微博推送配置已更新: "
+        f"{config_bits}\n"
+        f"only_pic={only_pic}, send_screenshot={send_screenshot}, send_segments={send_segments}"
+    )
 
 
 @sv.on_command(
@@ -187,6 +312,36 @@ async def weibo_random_video(event: Event):
 
 
 @sv.on_command(
+    "随机微博收藏",
+    aliases=("微博随机收藏", "收藏微博", "randwbfav", "rwbfav"),
+    only_group=False,
+    only_to_me=True,
+    permission=SUPERUSER,
+    priority=5,
+)
+async def random_weibo_favorite(bot: Bot, event: Event):
+    target_uid = event.get_plaintext().strip() or None
+    uid_ids = _list_favorite_uid_ids(target_uid)
+    if not uid_ids:
+        if target_uid:
+            await bot.send(event, f"没有找到 UID {target_uid} 的微博收藏")
+        else:
+            await bot.send(event, "当前没有微博收藏")
+        return
+    uid_id = random.choice(uid_ids)
+    uid,id = uid_id.split("_", 1)
+    post_message = await post_msg_from_uid_id(uid,id)
+    if not post_message:
+        await bot.send(event, f"无法还原微博收藏: {uid_id}")
+        return
+    msgs = render_post_message(post_message)
+    if not msgs:
+        await bot.send(event, f"微博收藏为空: {uid_id}")
+        return
+    await send_segments(msgs)
+
+
+@sv.on_command(
     "添加微博订阅",
     aliases=("订阅微博", "新增微博", "添加微博", "添加weibo", "addweibo", "addwb"),
 )
@@ -220,17 +375,7 @@ async def add_subscription(bot: Bot, event: Event):
         return
     kw = "-_-".join(keywords) if keywords else ""
     ts = time.time()
-    with Session() as session:
-        stmt = select(db).where(db.group == gid, db.uid == uid)
-        obj = session.execute(stmt).scalar_one_or_none()
-        if obj:
-            obj.name = post.nickname
-            obj.time = ts
-            obj.keyword = kw
-        else:
-            obj = db(group=gid, uid=uid, name=post.nickname, time=ts, keyword=kw)
-            session.add(obj)
-        session.commit()
+    add_or_update_subscription(gid, uid, post.nickname, ts, kw)
     await uid_manager.add_uid(uid)
     if keywords:
         await bot.send(
@@ -248,56 +393,30 @@ async def remove_subscription(bot: Bot, event: Event):
     uids = event.get_plaintext().strip()
     uids = uids.split()
     for uid in uids:
-        with Session() as session:
-            await asyncio.sleep(0.3)
-            if uid.isdecimal():
-                stmt = select(db).where(db.group == gid, db.uid == uid)
-                rows = session.execute(stmt).scalars().all()
-                for row in rows:
-                    session.delete(row)
-                num = len(rows)
-                session.commit()
-                if num:
-                    await uid_manager.remove_uid(
-                        uid,
-                        lambda u: bool(
-                            session.execute(
-                                select(db).where(db.uid == u)
-                            ).scalar_one_or_none()
-                        ),
-                    )
-            else:
-                stmt = select(db).where(db.group == gid, db.name == uid)
-                rows = session.execute(stmt).scalars().all()
-                if rows:
-                    target_uid = rows[0].uid
-                    for row in rows:
-                        session.delete(row)
-                    num = len(rows)
-                    session.commit()
-                    if num:
-                        await uid_manager.remove_uid(
-                            target_uid,
-                            lambda u: bool(
-                                session.execute(
-                                    select(db).where(db.uid == u)
-                                ).scalar_one_or_none()
-                            ),
-                        )
-                else:
-                    num = 0
+        await asyncio.sleep(0.3)
+        if uid.isdecimal():
+            num = remove_group_subscriptions_by_uid(gid, uid)
             if num:
-                await bot.send(event, f"{uid} 删除微博订阅成功")
-            else:
-                await bot.send(event, f"{uid} 删除微博订阅失败")
+                await uid_manager.remove_uid(
+                    uid, lambda u: bool(list_subscriptions_by_uid(u))
+                )
+        else:
+            num, target_uid = remove_group_subscriptions_by_name(gid, uid)
+            if num and target_uid:
+                await uid_manager.remove_uid(
+                    target_uid,
+                    lambda u: bool(list_subscriptions_by_uid(u)),
+                )
+        if num:
+            await bot.send(event, f"{uid} 删除微博订阅成功")
+        else:
+            await bot.send(event, f"{uid} 删除微博订阅失败")
 
 
 @sv.on_command("微博订阅", aliases=("微博订阅列表", "lookweibo", "lswb", "listweibo"))
 async def list_subscriptions(bot: Bot, event: Event):
     gid = event.group_id
-    with Session() as session:
-        stmt = select(db).where(db.group == gid)
-        rows = session.execute(stmt).scalars().all()
+    rows = list_group_subscriptions(gid)
     if not rows:
         await bot.send(event, "本群没有订阅微博用户")
         return
@@ -310,17 +429,14 @@ async def list_subscriptions(bot: Bot, event: Event):
     await bot.send(event, msg)
 
 
-@sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb"))
+@sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb", "seewb"))
 async def see_weibo(bot: Bot, event: Event):
     gid = event.group_id
     arg = event.get_plaintext().strip()
-    with Session() as session:
-        if arg.isdecimal():
-            stmt = select(db).where(db.group == gid, db.uid == arg)
-            rows = session.execute(stmt).scalars().all()
-        else:
-            stmt = select(db).where(db.group == gid, db.name == arg)
-            rows = session.execute(stmt).scalars().all()
+    if arg.isdecimal():
+        rows = list_group_subscriptions_by_uid(gid, arg)
+    else:
+        rows = list_group_subscriptions_by_name(gid, arg)
     if not rows:
         await bot.send(event, f"没有订阅{arg}微博")
     else:
@@ -334,19 +450,24 @@ async def see_weibo(bot: Bot, event: Event):
         if not post:
             await bot.send(event, f"没有获取到{arg}微博")
             return
-        msgs = await post.get_message()
+        post_message = await post.get_message(full=True)
+        msgs = post.render_message(post_message)
         await send_segments(msgs)
 
-@sv.on_command("查库微博", aliases=("wbquery", "微博查库"), permission=SUPERUSER,only_group=False,only_to_me=True)
+
+@sv.on_command(
+    "查库微博",
+    aliases=("wbquery", "微博查库"),
+    permission=SUPERUSER,
+    only_group=False,
+    only_to_me=True,
+)
 async def query_weibo_user(bot: Bot, event: Event):
     arg = event.get_plaintext().strip()
-    with Session() as session:
-        if arg.isdecimal():
-            stmt = select(db).where(db.uid == arg)
-            rows = session.execute(stmt).scalars().all()
-        else:
-            stmt = select(db).where(db.name == arg)
-            rows = session.execute(stmt).scalars().all()
+    if arg.isdecimal():
+        rows = list_subscriptions_by_uid(arg)
+    else:
+        rows = list_subscriptions_by_name(arg)
     if not rows:
         await bot.send(event, f"没有查到微博用户 {arg}")
         return
@@ -358,184 +479,3 @@ async def query_weibo_user(bot: Bot, event: Event):
         )
         break
     await bot.send(event, msg)
-
-@scheduled_job("interval", seconds=15, jitter=3, id="获取微博更新")
-async def fetch_weibo_updates():
-    if weibo_fetch_lock.locked():
-        return
-
-    uid_count = uid_manager.get_count()
-    if uid_count == 0:
-        return
-
-    batch_size = min(uid_count, WEIBO_FETCH_BATCH_SIZE)
-    uids: list[str] = []
-    for _ in range(batch_size):
-        uid_str = await uid_manager.get_next_uid()
-        if not uid_str:
-            break
-        uids.append(uid_str)
-
-    if not uids:
-        return
-
-    sem = asyncio.Semaphore(WEIBO_FETCH_CONCURRENCY)
-
-    async def _worker(uid_str: str):
-        async with sem:
-            success = await _fetch_weibo_updates_for_uid(uid_str)
-            await uid_manager.finish_processing(uid_str, success)
-
-    async with weibo_fetch_lock:
-        await asyncio.gather(*(_worker(uid_str) for uid_str in uids))
-
-
-
-def match_keywords(post: WeiboPost, keywords: list[str]) -> bool:
-    if not keywords:
-        return True
-
-    if any(keyword in post.content for keyword in keywords):
-            return True
-    if post.repost and any(keyword in post.repost.content for keyword in keywords):
-            return True
-    return False
-
-def clone_post_for_group(post: WeiboPost, group_id: int | str) -> WeiboPost:
-    repost = None
-    if post.repost:
-        repost = clone_post_for_group(post.repost, group_id)
-    return replace(post, repost=repost, group_id=str(group_id))
-
-async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
-
-    try:
-        with Session() as session:
-            stmt = select(db).where(db.uid == uid_str)
-            rows = session.execute(stmt).scalars().all()
-        if not rows:
-            await uid_manager.remove_uid(
-                uid_str,
-                lambda u: bool(
-                    Session()
-                    .execute(select(db).where(db.uid == u))
-                    .scalar_one_or_none()
-                ),
-            )
-            return True
-
-        latest_known_ts = max(row.time for row in rows)
-        now_ts = time.time()
-
-        if latest_known_ts > 0 and now_ts - latest_known_ts > WEIBO_COLD_UID_THRESHOLD:
-            await uid_manager.mark_cold(uid_str)
-        
-        min_ts = max(now_ts - WEIBO_COLD_UID_THRESHOLD, latest_known_ts)
-        posts = await get_weibo_list(uid_str, min_ts)
-        if not posts:
-            return True
-
-        await uid_manager.unmark_cold(uid_str)
-
-        matched_posts: list[WeiboPost] = []
-        for row in rows:
-            if row.keyword:
-                row_keywords = [kw for kw in row.keyword.split("-_-") if kw]
-            else:
-                row_keywords = []
-
-            for post in posts:
-                if post.timestamp <= row.time:
-                    continue
-                if not match_keywords(post, row_keywords):
-                    continue
-                matched_posts.append(clone_post_for_group(post, row.group))
-
-        if not matched_posts:
-            return True
-
-        for post in matched_posts:
-            b = weibo_queue.put(post)
-            if b:
-                sv.logger.info(
-                    f"获取到微博更新: {post.uid} {post.nickname} {post.group_id} {post.timestamp} {post.url}"
-                )
-
-        latest_ts = max(post.timestamp for post in posts)
-        with Session() as session:
-            stmt = select(db).where(db.uid == uid_str)
-            db_rows = session.execute(stmt).scalars().all()
-            for row in db_rows:
-                row.time = latest_ts
-                row.name = posts[0].nickname
-            session.commit()
-        return True
-
-    except Exception as e:
-        sv.logger.error(f"获取微博更新失败 UID {uid_str}: {e}")
-        return False
-
-
-async def handle_weibo_dyn(dyn: WeiboPost, sem: asyncio.Semaphore):
-    async with sem:
-        sv.logger.info(
-            f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.group_id} {dyn.timestamp} {dyn.url}"
-        )
-        if not dyn.group_id:
-            weibo_queue.remove(dyn)
-            await asyncio.sleep(0.5)
-            return
-
-        gid = int(dyn.group_id)
-        await asyncio.sleep(random.uniform(0, 1))
-        groups = await sv.get_enable_groups()
-        if gid not in groups:
-            weibo_queue.remove(dyn)
-            await asyncio.sleep(0.5)
-            return
-
-        msgs = await dyn.get_message(True)
-        bot = groups[gid][0]
-        try:
-            if msgs:
-                m = msgs[0]
-                await bot.send_group_msg(group_id=gid, message=m)
-                await asyncio.sleep(random.uniform(0, 0.5))
-                await send_group_segments(bot, gid, msgs[1:])
-        except Exception as e:
-            sv.logger.error(f"发送 weibo post 失败: {e}")
-        weibo_queue.remove(dyn)
-        await asyncio.sleep(1)
-
-
-async def weibo_dispatcher():
-    sem = asyncio.Semaphore(5)
-    while True:
-        dyn = weibo_queue.get()
-        if not dyn:
-            await asyncio.sleep(0.5)
-            continue
-        asyncio.create_task(handle_weibo_dyn(dyn, sem))
-
-
-@on_startup
-async def start_weibo_dispatcher():
-    # 初始化 UID 管理器
-    with Session() as session:
-        rows = session.execute(select(db.uid, db.time)).all()
-
-    uid_latest_time: dict[str, float] = {}
-    for uid, ts in rows:
-        uid_str = str(uid)
-        uid_latest_time[uid_str] = max(uid_latest_time.get(uid_str, 0.0), float(ts or 0.0))
-
-    uids = list(uid_latest_time)
-    random.shuffle(uids)
-    await uid_manager.init(uids)
-
-    now_ts = time.time()
-    for uid, latest_ts in uid_latest_time.items():
-        if latest_ts > 0 and now_ts - latest_ts > WEIBO_COLD_UID_THRESHOLD:
-            await uid_manager.mark_cold(uid)
-
-    asyncio.create_task(weibo_dispatcher())

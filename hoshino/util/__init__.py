@@ -109,8 +109,8 @@ def sucmd(
     handlers.insert(0, _strip_cmd)
     kwargs["handlers"] = handlers
     kwargs.setdefault("block", True)
-    kwargs["cmd"]= name
-    return on_command( **kwargs)
+    kwargs["cmd"] = name
+    return on_command(**kwargs)
 
 
 def sucmds(name: str, only_to_me: bool = False, **kwargs) -> CommandGroup:
@@ -534,6 +534,7 @@ if not db_path.exists():
 cookiejar: dict[str, str] = {}
 
 _cookies_lock = asyncio.Lock()
+
 
 async def save_cookies(name: str, cookies: Union[str, dict]):
     if isinstance(cookies, dict):

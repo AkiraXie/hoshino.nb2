@@ -2,17 +2,16 @@ from dataclasses import dataclass
 from datetime import datetime
 import asyncio
 import functools
-import os
+import json
+import nonebot
 from pathlib import Path
 import re
+import shutil
 from typing import override
 from urllib.parse import unquote
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from sqlalchemy.types import Float, Integer, Text
 from time import time
-from hoshino import db_dir, Message, Service, MessageSegment, config
+from hoshino import Bot, Message, Service, MessageSegment, config
 from hoshino.util import (
     aiohttpx,
     get_cookies,
@@ -20,30 +19,86 @@ from hoshino.util import (
     save_video_by_path,
     save_img_by_path,
     sucmd,
-    send_to_superuser
+    send_group_segments,
+    send_to_superuser,
 )
 from .pw import (
     get_mapp_weibo_screenshot,
     get_weibo_cookies_from_local,
     get_weibo_screenshot_mobile,
     get_weibo_screenshot_desktop,
-    get_weibo_visitor_cookies,
 )
 from hoshino import on_startup
 
-from ..utils import Post, clean_filename
+from ..utils import Post, PostMessage, clean_filename
 from hoshino.util import save_cookies
+from .db import WeiboConfig, get_group_config, remove_subscriptions_by_uid
 
 sv = Service("weibo", enable_on_default=False, visible=False)
 
-db_path = os.path.join(db_dir, "weibodata.db")
 weibo_img_dir = config.data_dir / "weiboimages"
 weibo_img_dir.mkdir(parents=True, exist_ok=True)
 weibo_video_dir = config.data_dir / "weibovideos"
 weibo_video_dir.mkdir(parents=True, exist_ok=True)
+weibo_msg_dir = config.data_dir / "weibomsgs"
+weibo_msg_dir.mkdir(parents=True, exist_ok=True)
 
-engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
-Session = sessionmaker(bind=engine, expire_on_commit=False)
+WEIBO_MSG_CACHE_TTL = 6 * 60 * 60
+weibo_msg_cache: dict[str, str] = {}
+_weibo_msg_cache_handles: dict[str, asyncio.Handle] = {}
+
+
+def _delete_weibo_msg_cache(msg_id: str) -> None:
+    weibo_msg_cache.pop(msg_id, None)
+    handle = _weibo_msg_cache_handles.pop(msg_id, None)
+    if handle and not handle.cancelled():
+        handle.cancel()
+
+
+def cache_weibo_msg_id(msg_id: int | str, uid: str, post_id: str) -> None:
+    msg_id_key = str(msg_id)
+    old_handle = _weibo_msg_cache_handles.pop(msg_id_key, None)
+    if old_handle and not old_handle.cancelled():
+        old_handle.cancel()
+
+    weibo_msg_cache[msg_id_key] = f"{uid}_{post_id}"
+    loop = asyncio.get_running_loop()
+    _weibo_msg_cache_handles[msg_id_key] = loop.call_later(
+        WEIBO_MSG_CACHE_TTL,
+        _delete_weibo_msg_cache,
+        msg_id_key,
+    )
+
+
+def get_cached_weibo_uid_id(msg_id: int | str) -> str:
+    return weibo_msg_cache.get(str(msg_id), "")
+
+
+def render_post_message(post_message: PostMessage) -> list[Message | MessageSegment]:
+    messages: list[Message | MessageSegment] = []
+    text = ""
+    if post_message.text:
+        text += post_message.text
+    if post_message.screenshot:
+        text += "\n" + str(MessageSegment.image(post_message.screenshot))
+    messages.append(Message(text))
+
+    image_segments = [
+        MessageSegment.image(image_path) for image_path in post_message.images
+    ]
+    if image_segments:
+        chunk_size = 4
+        for divisor in (7, 6, 5, 4, 3):
+            if len(image_segments) % divisor == 0:
+                chunk_size = divisor
+                break
+        for index in range(0, len(image_segments), chunk_size):
+            messages.append(Message(image_segments[index : index + chunk_size]))
+
+    messages.extend(
+        MessageSegment.video(video_path) for video_path in post_message.videos
+    )
+    return messages
 
 
 @dataclass
@@ -51,6 +106,22 @@ class WeiboPost(Post):
     """微博POST数据类"""
 
     group_id: str = ""
+
+    @property
+    def gid(self) -> int | None:
+        if not self.group_id:
+            return None
+        try:
+            return int(self.group_id)
+        except (TypeError, ValueError):
+            sv.logger.error(
+                f"微博 gid 无法解析: uid={self.uid} post={self.id} group_id={self.group_id}"
+            )
+            return None
+
+    @gid.setter
+    def gid(self, value: int | str | None) -> None:
+        self.group_id = "" if value in (None, "") else str(value)
 
     @override
     def get_id(self):
@@ -61,31 +132,120 @@ class WeiboPost(Post):
         """获取微博的referer"""
         return "https://weibo.com"
 
+    def _get_download_dir(self, base_dir: Path) -> Path:
+        uid_part = clean_filename(self.uid)
+        dirpath = base_dir / uid_part
+        dirpath.mkdir(parents=True, exist_ok=True)
+        return dirpath
+
+    def _build_download_filename(self, i: int, suffix: str) -> str:
+        content_source = self.content or self.title or self.id
+        content_part = clean_filename(content_source[:20])
+        id_part = clean_filename(self.id)
+        return f"{content_part}_{id_part}_{i}{suffix}"
+
+    def _has_any_images(self) -> bool:
+        if self.images:
+            return True
+        return bool(self.repost and self.repost._has_any_images())
+
+    async def build_and_send_message(
+        self, group_config: WeiboConfig, busy: bool, bot: Bot, gid: int
+    ):
+        use_segments = bool(group_config.send_segments) and not busy
+        send_method = self.send_segments if use_segments else self.send_message
+        messages = await self.build_send_messages(group_config, full=not busy)
+        res = await send_method(bot=bot, gid=gid, msgs=messages)
+        msg_id = res.get("message_id") if isinstance(res, dict) else None
+        if msg_id:
+            sv.logger.info(
+                f"微博推送成功: group={gid} uid={self.uid} post={self.id} message_id={msg_id}"
+            )
+            try:
+                await self.save()
+                cache_weibo_msg_id(msg_id, self.uid, self.id)
+            except Exception as e:
+                sv.logger.error(
+                    f"微博推送归档失败: group={gid} uid={self.uid} post={self.id} message_id={msg_id} error={e}"
+                )
+        return res
+
+    async def build_send_messages(
+        self, group_config: WeiboConfig, full: bool
+    ) -> list[Message | MessageSegment]:
+        if group_config.only_pic and not self._has_any_images():
+            sv.logger.info(
+                f"跳过无图微博推送: group={group_config.group} uid={self.uid} post={self.id}"
+            )
+            return []
+
+        post_message = await self.get_message(
+            full=full,
+            with_screenshot=bool(group_config.send_screenshot) and full,
+            screenshot_timeout=3.0,
+        )
+        msgs = self.render_message(post_message)
+        return msgs
+
+    async def _send_rendered_segments(
+        self,
+        msgs: list[Message | MessageSegment],
+        bot: Bot,
+        gid: int,
+    ) -> dict:
+        if not msgs:
+            return {}
+        head = msgs[0]
+        res = await bot.send_group_msg(group_id=gid, message=head)
+        if len(msgs) > 1:
+            await asyncio.sleep(0.3)
+            await send_group_segments(bot, gid, msgs[1:])
+        return res
+
+    async def send_message(
+        self,
+        bot: Bot | None = None,
+        gid: int | None = None,
+        msgs: list[Message | MessageSegment] | None = None,
+    ) -> dict:
+        if not msgs:
+            return {}
+        sv.logger.info(
+            "微博发送普通消息: "
+            f"group={gid} uid={self.uid} post={self.id} msg_count={len(msgs)}"
+        )
+        head = msgs[0]
+        res = await bot.send_group_msg(group_id=gid, message=head)
+        for message in msgs[1:]:
+            await bot.send_group_msg(group_id=gid, message=message)
+            await asyncio.sleep(0.3)
+        return res
+
+    async def send_segments(
+        self,
+        bot: Bot | None = None,
+        gid: int | None = None,
+        msgs: list[Message | MessageSegment] | None = None,
+    ) -> dict:
+        if not msgs:
+            return {}
+        sv.logger.info(
+            "微博发送分段消息: "
+            f"group={gid} uid={self.uid} post={self.id} msg_count={len(msgs)}"
+        )
+        return await self._send_rendered_segments(msgs, bot, gid)
+
     async def download_images(self) -> list[Path]:
         """下载微博图片，返回文件路径列表"""
         headers = {"referer": self.get_referer()}
+        dirpath = self._get_download_dir(weibo_img_dir)
 
         async def download_single_image(i: int, img_url: str) -> Path | None:
             """下载单个图片"""
-            if not self.description or self.description == "desktop":
-                content_part = clean_filename(self.content[:20])
-                nickname_part = clean_filename(self.nickname)
-                filename = f"{content_part}_{nickname_part}_{self.id}_{i}.jpg"
-            elif self.description == "mapp":
-                ts = int(time())
-                content_part = clean_filename(self.content[:20])
-                desc_part = clean_filename(self.description)
-                nickname_part = clean_filename(self.nickname)
-                filename = (
-                    f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.jpg"
-                )
-            dirname = self.group_id
-            if not dirname:
-                filepath = weibo_img_dir / filename
-            else:
-                dirpath = weibo_img_dir / dirname
-                dirpath.mkdir(parents=True, exist_ok=True)
-                filepath = dirpath / filename
+            filename = self._build_download_filename(i, ".jpg")
+            filepath = dirpath / filename
+            if filepath.exists():
+                return filepath
             result_path = await save_img_by_path(
                 img_url, filepath, True, headers=headers
             )
@@ -118,23 +278,15 @@ class WeiboPost(Post):
     async def download_videos(self) -> list[Path]:
         """下载微博视频，返回文件路径列表"""
         headers = {"referer": self.get_referer()}
+        dirpath = self._get_download_dir(weibo_video_dir)
 
         async def download_single_video(i: int, video_url: str) -> Path | None:
             """下载单个视频"""
             try:
-                if not self.description or self.description == "desktop":
-                    content_part = clean_filename(self.content[:12])
-                    nickname_part = clean_filename(self.nickname)
-                    filename = f"{content_part}_{nickname_part}_{self.id}_{i}.mp4"
-                elif self.description == "mapp":
-                    ts = int(time())
-                    content_part = clean_filename(self.content[:12])
-                    desc_part = clean_filename(self.description)
-                    nickname_part = clean_filename(self.nickname)
-                    filename = (
-                        f"{content_part}_{desc_part}_{nickname_part}_{ts}_{i}.mp4"
-                    )
-                filepath = weibo_video_dir / filename
+                filename = self._build_download_filename(i, ".mp4")
+                filepath = dirpath / filename
+                if filepath.exists():
+                    return filepath
                 result_path = await save_video_by_path(
                     video_url, filepath, True, headers=headers
                 )
@@ -170,77 +322,246 @@ class WeiboPost(Post):
 
     @override
     async def get_message(
-        self, with_screenshot: bool = True
-    ) -> list[Message | MessageSegment]:
-        """获取消息列表, 包含截图, 第一个是总览，剩下的是图片或者视频"""
-        msg = []
-        immsg = []
-        ms = None
-        cts = []
-        if self.nickname:
-            msg.append(self.nickname + " 微博~")
-        if self.content:
-            cts.append(self.content)
-
-        # 下载图片和视频，获取本地路径
+        self,
+        full: bool = False,
+        with_screenshot: bool = True,
+        screenshot_timeout: float = 6.0,
+        screenshot_path: Path | None = None,
+    ) -> PostMessage:
         image_paths = await self.download_images()
+        content = self._build_content_lines()
+        if not full:
+            return PostMessage(
+                text=self._build_text(include_content=True),
+                images=image_paths,
+                content="\n".join(content),
+            )
+
+        ms = None
         video_paths = await self.download_videos()
-
-        # 处理转推
-        if self.repost:
-            cts.append("------------")
-            cts.append("转发自 " + self.repost.nickname)
-            cts.append(self.repost.content)
-            cts.append("------------")
-
-        # 添加本地图片路径到消息
-        for image_path in image_paths:
-            immsg.append(MessageSegment.image(image_path))
-
-        # 准备截图任务
         screenshot_task = None
-        if with_screenshot:
-            if not self.description:
-                screenshot_task = get_weibo_screenshot_mobile(self.url)
-            elif self.description == "mapp":
-                screenshot_task = get_mapp_weibo_screenshot(self.url)
-            elif self.description == "desktop":
-                screenshot_task = get_weibo_screenshot_desktop(self.url)
+        if with_screenshot and not self.description:
+            screenshot_task = get_weibo_screenshot_mobile(
+                self.url,
+                timeout=screenshot_timeout,
+                path=screenshot_path,
+            )
+        elif with_screenshot and self.description == "mapp":
+            screenshot_task = get_mapp_weibo_screenshot(
+                self.url,
+                timeout=screenshot_timeout,
+                path=screenshot_path,
+            )
+        elif with_screenshot and self.description == "desktop":
+            screenshot_task = get_weibo_screenshot_desktop(
+                self.url,
+                timeout=screenshot_timeout,
+                path=screenshot_path,
+            )
 
         if screenshot_task:
             try:
                 ms = await screenshot_task
-                if ms:
-                    msg.append(str(ms))
+                if ms and screenshot_path and screenshot_path.exists():
+                    ms = screenshot_path
             except Exception as e:
                 sv.logger.error(f"Error fetching screenshot: {e}")
+        return PostMessage(
+            text=self._build_text(include_content=ms is None),
+            screenshot=ms,
+            images=image_paths,
+            videos=video_paths,
+            content="\n".join(content),
+        )
 
-        if not ms:
-            msg.append("\n".join(cts))
+    @override
+    def render_message(
+        self, post_message: PostMessage
+    ) -> list[Message | MessageSegment]:
+        head = post_message.text
+        tail = self._build_text_tail()
+        messages: list[Message | MessageSegment] = []
+        if post_message.screenshot:
+            head += "\n" + str(MessageSegment.image(post_message.screenshot))
+        if tail:
+            head += "\n" + tail
+        if head:
+            messages.append(Message(head))
+        messages.extend(self._build_image_messages(post_message.images))
+        messages.extend(
+            MessageSegment.video(video_path) for video_path in post_message.videos
+        )
+        return messages
 
+    def _build_content_lines(self) -> list[str]:
+        lines = []
+        if self.content:
+            lines.append(self.content)
+        if self.repost:
+            lines.append("------------")
+            lines.append("转发自 " + self.repost.nickname)
+            lines.append(self.repost.content)
+            lines.append("------------")
+        return lines
+
+    def _build_text(self, include_content: bool = False) -> str:
+        msg = []
+        if self.nickname:
+            msg.append(self.nickname + " 微博~")
+        if include_content:
+            content_lines = self._build_content_lines()
+            if content_lines:
+                msg.append("\n".join(content_lines))
+        return "\n".join(msg)
+
+    def _build_text_tail(self) -> str:
+        msg = []
         if self.repost and self.repost.url:
             msg.append("源微博详情: " + self.repost.url)
         if self.url:
             msg.append("微博详情: " + self.url)
+        return "\n".join(msg)
 
-        res = [Message("\n".join(msg))]
-        if immsg:
-            num = 4
-            for i in (7, 6, 5, 4, 3):
-                if len(immsg) % i == 0:
-                    num = i
-                    break
-            for i in range(0, len(immsg), num):
-                group = immsg[i : i + num]
-                res.append(Message(group))
+    def _build_image_messages(
+        self,
+        image_paths: list[Path],
+    ) -> list[Message | MessageSegment]:
+        if not image_paths:
+            return []
 
-        # 添加本地视频路径到消息
-        for video_path in video_paths:
-            res.append(MessageSegment.video(video_path))
+        image_segments = [
+            MessageSegment.image(image_path) for image_path in image_paths
+        ]
+        messages: list[Message | MessageSegment] = []
+        num = 4
+        for i in (7, 6, 5, 4, 3):
+            if len(image_segments) % i == 0:
+                num = i
+                break
+        for i in range(0, len(image_segments), num):
+            group = image_segments[i : i + num]
+            messages.append(Message(group))
+        return messages
 
-        return res
+    async def save(
+        self,
+        screenshot_timeout: float = 6.0,
+    ) -> Path:
+        save_dir = self._get_download_dir(weibo_msg_dir) / self.id
+        save_dir.mkdir(parents=True, exist_ok=True)
 
-wbck = sucmd("weibocookies", aliases={"wbck","rfwb"})
+        post_message = await self.get_message(
+            full=True,
+            with_screenshot=False,
+            screenshot_timeout=screenshot_timeout,
+            screenshot_path=save_dir / "screenshot.jpg",
+        )
+
+        metadata = {
+            "uid": self.uid,
+            "id": self.id,
+            "text": post_message.text,
+            "content": post_message.content,
+        }
+        (save_dir / "message.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        if post_message.screenshot:
+            await self._save_resource(
+                post_message.screenshot, save_dir / "screenshot.jpg"
+            )
+
+        for index, image in enumerate(post_message.images, start=1):
+            await self._save_resource(image, save_dir / "images" / f"{index}.jpg")
+
+        for index, video in enumerate(post_message.videos, start=1):
+            await self._save_resource(video, save_dir / "videos" / f"{index}.mp4")
+
+        return save_dir
+
+    async def _save_resource(self, resource: bytes | str | Path, target: Path) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        if isinstance(resource, bytes):
+            target.write_bytes(resource)
+            return
+
+        source_path = Path(resource)
+        if source_path.exists():
+            if source_path.resolve() != target.resolve():
+                shutil.copy2(source_path, target)
+            return
+
+        if target.suffix == ".mp4":
+            saved = await save_video_by_path(
+                resource, target, True, headers={"referer": self.get_referer()}
+            )
+        else:
+            saved = await save_img_by_path(
+                resource, target, True, headers={"referer": self.get_referer()}
+            )
+
+        if not saved:
+            raise FileNotFoundError(f"failed to save resource: {resource}")
+
+
+async def post_msg_from_uid_id(
+    uid: str, post_id: str
+) -> PostMessage | None:
+    msg_dir = weibo_msg_dir / uid / post_id
+    if not msg_dir.exists():
+        sv.logger.warning(
+            f"weibo post not found in cache, refetching: uid={uid} post_id={post_id}"
+        )
+        post = await parse_weibo_with_id(post_id)
+        if not post:
+            return None
+        return await post.get_message(full=True)
+
+    metadata_path = msg_dir / "message.json"
+    metadata: dict = {}
+    if metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            sv.logger.warning(
+                f"failed to load cached weibo metadata: uid={uid} post_id={post_id} error={e}"
+            )
+
+    text = str(metadata.get("text", "") or "")
+    content = str(metadata.get("content", "") or "")
+    detail_url = f"https://weibo.com/{uid}/{post_id}"
+    if detail_url not in text:
+        text = "\n".join(part for part in (text, f"微博详情: {detail_url}") if part)
+
+    screenshot_path = msg_dir / "screenshot.jpg"
+    screenshot = screenshot_path if screenshot_path.exists() else None
+    images_dir = msg_dir / "images"
+    image_paths = (
+        sorted(images_dir.glob("*.jpg"), key=lambda p: p.name)
+        if images_dir.exists()
+        else []
+    )
+    videos_dir = msg_dir / "videos"
+    video_paths = (
+        sorted(videos_dir.glob("*.mp4"), key=lambda p: p.name)
+        if videos_dir.exists()
+        else []
+    )
+    return PostMessage(
+        text=text,
+        screenshot=screenshot,
+        images=image_paths,
+        videos=video_paths,
+        content=content,
+    )
+
+
+wbck = sucmd("weibocookies", aliases={"wbck", "rfwb"})
+
+
 @wbck.handle()
 async def get_weibocookies_cmd():
     try:
@@ -250,6 +571,7 @@ async def get_weibocookies_cmd():
             await send_to_superuser("Weibo cookies refreshed successfully")
     except:
         sv.logger.error("Failed to initialize or get Weibo cookies")
+
 
 @on_startup
 async def initialize_weibo_cookies():
@@ -322,35 +644,37 @@ async def _confirm_missing_weibo_target(target: str) -> bool:
         else:
             await _login_weibo_module.get_weibo_list(target, 0.0)
     except WeiboRequestError as e:
-        return e.reason == "user_not_found"
+        return e.reason == "user_not_found" or e.reason == "account_banned"
     return False
 
 
 async def process_missing_weibo_target(target: str) -> None:
+    from .sub import uid_manager
+
     confirmed = await _confirm_missing_weibo_target(target)
     if not confirmed:
         sv.logger.info(f"微博账号不存在待删除任务跳过: target={target}, 二次确认未命中")
         return
 
-    with Session() as session:
-        stmt = select(WeiboDB).where(WeiboDB.uid == target)
-        rows = session.execute(stmt).scalars().all()
-        if not rows:
-            sv.logger.info(f"微博账号不存在待删除任务跳过: target={target}, 数据库中无订阅")
-            return
+    deleted_count = remove_subscriptions_by_uid(target)
+    if not deleted_count:
+        sv.logger.info(f"微博账号不存在待删除任务跳过: target={target}, 数据库中无订阅")
+        return
 
-        for row in rows:
-            session.delete(row)
-        session.commit()
+    await uid_manager.remove_uid(target)
 
-    msg = f"微博账号不存在，已自动删除订阅: UID {target}, 共 {len(rows)} 条"
+    msg = f"微博账号不存在，已自动删除订阅: UID {target}, 共 {deleted_count} 条"
     sv.logger.warning(msg)
     await send_to_superuser(msg)
 
 
 async def missing_weibo_target_worker() -> None:
     while True:
-        target = await _missing_weibo_target_queue.get()
+        try:
+            target = _missing_weibo_target_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            await asyncio.sleep(3)
+            continue
         try:
             await process_missing_weibo_target(target)
         except Exception as e:
@@ -394,6 +718,13 @@ def _check_weibo_request_error(
     msg = str(res_data.get("msg", ""))
     data = res_data.get("data", {})
 
+    if ok is None:
+        _raise_weibo_request_error(
+            f"微博请求失败: 该账号已被封禁或风控, url: {url}{target_info}, text: {res.text}",
+            reason="account_banned",
+            target=target,
+        )
+
     if ok == -100 and retry_on_ok_minus100:
         _raise_weibo_request_error(
             f"微博请求失败: cookies 可能失效(ok=-100), url: {url}{target_info}, msg: {msg}",
@@ -429,6 +760,7 @@ def _check_weibo_request_error(
             target=target,
         )
 
+
 async def weibo_get(
     url: str,
     *,
@@ -452,15 +784,12 @@ async def weibo_get(
         sv.logger.error(f"微博请求异常: url: {url}, params: {params}, error: {e}")
         raise
 
-    _check_weibo_request_error(
-        res, params, retry_on_ok_minus100=retry_on_ok_minus100
-    )
+    _check_weibo_request_error(res, params, retry_on_ok_minus100=retry_on_ok_minus100)
     return res
 
+
 class _LoginWeiboModule:
-    async def get_weibo_list(
-        self, target: str, ts: float = 0.0
-    ) -> list[WeiboPost]:
+    async def get_weibo_list(self, target: str, ts: float = 0.0) -> list[WeiboPost]:
         header = {
             "accept": "application/json, text/plain, */*",
             "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7,ko;q=0.6,zh-TW;q=0.5",
@@ -526,9 +855,7 @@ class _LoginWeiboModule:
         return postlist
 
     async def parse_weibo(self, bid: str) -> WeiboPost | None:
-        url = (
-            f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
-        )
+        url = f"https://weibo.com/ajax/statuses/show?id={bid}&locale=zh-CN&isGetLongText=true"
         res = await weibo_get(
             url,
             cookies=await get_weibocookies(),
@@ -563,7 +890,8 @@ class _LoginWeiboModule:
         type_ = visible.get("type", 0)
         if type_ not in [0, 6, 7, 8, 9]:
             sv.logger.error(
-                f"获取微博失败: visible type {type_} not supported, json: {rj}", color=False
+                f"获取微博失败: visible type {type_} not supported, json: {rj}",
+                color=False,
             )
             return None
         description = "" if type_ == 0 else "desktop"
@@ -607,9 +935,7 @@ class _LoginWeiboModule:
 
 
 class _VisitorWeiboModule:
-    async def get_weibo_list(
-        self, target: str, ts: float = 0.0
-    ) -> list[WeiboPost]:
+    async def get_weibo_list(self, target: str, ts: float = 0.0) -> list[WeiboPost]:
         header = {
             "MWeibo-Pwa": "1",
             "X-Requested-With": "XMLHttpRequest",
@@ -726,7 +1052,9 @@ class _VisitorWeiboModule:
                     video_urls.append(img["videoSrc"])
         elif isinstance(raw_pics_list, list):
             pic_urls = [img["large"]["url"] for img in raw_pics_list]
-            video_urls = [img["videoSrc"] for img in raw_pics_list if img.get("videoSrc")]
+            video_urls = [
+                img["videoSrc"] for img in raw_pics_list if img.get("videoSrc")
+            ]
         else:
             pic_urls = []
         if "page_info" in info and info["page_info"].get("type") == "video":
@@ -766,6 +1094,7 @@ class _VisitorWeiboModule:
 _login_weibo_module = _LoginWeiboModule()
 _visitor_weibo_module = _VisitorWeiboModule()
 
+
 async def get_weibo_list(
     target: str,
     ts: float = 0.0,
@@ -778,16 +1107,15 @@ async def get_weibo_list(
             return await _visitor_weibo_module.get_weibo_list(target, ts)
         return await _login_weibo_module.get_weibo_list(target, ts)
     except WeiboRequestError as e:
-        if e.reason == "user_not_found":
+        if e.reason == "user_not_found" or e.reason == "account_banned":
             await enqueue_missing_weibo_target(target)
         return []
 
 
-async def get_weibo_new(
-    target: str, ts: float = 0.0
-) -> WeiboPost | None:
+async def get_weibo_new(target: str, ts: float = 0.0) -> WeiboPost | None:
     ls = await get_weibo_list(target, ts)
     return ls[0] if ls else None
+
 
 async def parse_weibo_with_id(id: str) -> WeiboPost | None:
     ck = await get_weibocookies()
@@ -796,7 +1124,9 @@ async def parse_weibo_with_id(id: str) -> WeiboPost | None:
             if not ck.get("MLOGIN"):
                 return await _login_weibo_module.parse_weibo(id)
         return await _visitor_weibo_module.parse_weibo(id)
-    except WeiboRequestError:
+    except WeiboRequestError as e:
+        if e.reason == "user_not_found" or e.reason == "account_banned":
+            await enqueue_missing_weibo_target(e.target)
         return None
 
 
@@ -864,24 +1194,6 @@ async def parse_mapp_weibo(url: str) -> WeiboPost | None:
     )
 
 
-class Base(DeclarativeBase):
-    pass
-
-
-class WeiboDB(Base):
-    __tablename__ = "weibodb"
-    uid: Mapped[str] = mapped_column(Text, primary_key=True)
-    group: Mapped[int] = mapped_column(Integer, primary_key=True)
-    time: Mapped[float] = mapped_column(Float, nullable=False)
-    name: Mapped[str] = mapped_column(Text, nullable=False)
-    keyword: Mapped[str] = mapped_column(Text, default="", nullable=False)
-
-
-# 初始化数据库
-if not os.path.exists(db_path):
-    Base.metadata.create_all(engine)
-
-
 # 解析微博文本，处理HTML标签
 def _get_text(raw_text: str) -> str:
     text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
@@ -911,7 +1223,9 @@ def _get_text(raw_text: str) -> str:
 
     return soup.get_text()
 
+
 # 解析图片/视频媒体相关函数
+
 
 def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
     pic_urls = []

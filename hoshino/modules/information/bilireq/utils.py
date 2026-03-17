@@ -23,8 +23,7 @@ from hoshino.util import (
 )
 from .pw import get_bili_dynamic_screenshot
 
-from ..utils import Post
-from typing import Sequence
+from ..utils import Post, PostMessage
 from dataclasses import dataclass
 
 
@@ -42,18 +41,21 @@ headers = {
     "Referer": "https://www.bilibili.com",
 }
 
+
 def random_hex_str(length: int) -> str:
     result = ""
     for _ in range(length):
         result += dec2hex_upper(16 * random.random())
     return pad_string_with_zeros(result, length)
 
+
 def dec2hex_upper(e: float) -> str:
-    return format(math.ceil(e), 'X')
+    return format(math.ceil(e), "X")
 
 
 def pad_string_with_zeros(s: str, length: int) -> str:
     return s.zfill(length)
+
 
 def generate_gaussian_integer(mean: float, std: float) -> int:
     TWO_PI = math.pi * 2
@@ -61,6 +63,7 @@ def generate_gaussian_integer(mean: float, std: float) -> int:
     u2 = random.random()
     z0 = math.sqrt(-2 * math.log(u1)) * math.cos(TWO_PI * u2)
     return round(z0 * std + mean)
+
 
 def get_dm_img_list() -> str:
     x = max(generate_gaussian_integer(1245, 5), 0)
@@ -185,29 +188,44 @@ class BiliBiliDynamic(Post):
         return "https://t.bilibili.com"
 
     @override
-    async def get_message(
-        self, with_screenshot: bool = True
-    ) -> Sequence[Message | MessageSegment]:
-        msg = [self.nickname + self.type]
-        imgmsg = []
-        img = None
-        if with_screenshot:
-            img = await get_bili_dynamic_screenshot(
-                self.url, cookies=await get_bilicookies()
+    async def get_message(self, full: bool = False) -> PostMessage:
+        screenshot = None
+        if full:
+            screenshot = await get_bili_dynamic_screenshot(
+                self.url,
+                cookies=await get_bilicookies(),
             )
-            if img:
-                msg.append(str(img))
-        if not img:
+            await asyncio.sleep(0.5)
+        return PostMessage(
+            text=self._build_text(include_content=not full or screenshot is None),
+            screenshot=screenshot,
+            images=list(self.images),
+        )
+
+    @override
+    def render_message(
+        self, post_message: PostMessage
+    ) -> list[Message | MessageSegment]:
+        head = post_message.text
+        if post_message.screenshot:
+            head = "\n".join(
+                part for part in (head, str(post_message.screenshot)) if part
+            )
+        messages: list[Message | MessageSegment] = []
+        if head:
+            messages.append(Message(head))
+        if post_message.images:
+            messages.append(
+                Message([MessageSegment.image(pic) for pic in post_message.images])
+            )
+        return messages
+
+    def _build_text(self, include_content: bool) -> str:
+        msg = [self.nickname + self.type]
+        if include_content:
             msg.append(self.content)
-        await asyncio.sleep(0.5)
         msg.append(self.url)
-        res = [Message("\n".join(msg))]
-        if self.images:
-            for pic in self.images:
-                imgmsg.append(MessageSegment.image(pic))
-        if imgmsg:
-            res.append(Message(imgmsg))
-        return res
+        return "\n".join(msg)
 
 
 async def get_new_dynamic(uid: str) -> BiliBiliDynamic | None:
@@ -221,7 +239,7 @@ async def get_new_dynamic(uid: str) -> BiliBiliDynamic | None:
 async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     url = dynamic_url
     h = headers.copy()
-    dm_img_str     = base64.b64encode(b"no webgl").decode()[:-2]
+    dm_img_str = base64.b64encode(b"no webgl").decode()[:-2]
     dm_cover_img_str = base64.b64encode(b"no webgl").decode()[:-2]
     params = {
         "host_mid": int(uid),
@@ -236,8 +254,8 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
     try:
         code = 000
         res = await aiohttpx.get(
-        url, params=params, headers=h, cookies=await get_bilicookies()
-    )
+            url, params=params, headers=h, cookies=await get_bilicookies()
+        )
         rj = res.json
         data = rj.get("data", {})
         code = int(rj.get("code", 0))
@@ -249,7 +267,9 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
             data = rj.get("data", {})
         cards = data.get("items", [])
     except Exception as e:
-        sv.logger.error(f"获取动态数据解析失败: {e}, uid: {uid}, response: {res.text},code: {code},status: {res.status_code}")
+        sv.logger.error(
+            f"获取动态数据解析失败: {e}, uid: {uid}, response: {res.text},code: {code},status: {res.status_code}"
+        )
         return []
     dyn = cards[4::-1]
     dyns = [BiliBiliDynamic.from_dict(d) for d in dyn]

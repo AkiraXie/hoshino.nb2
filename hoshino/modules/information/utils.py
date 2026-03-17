@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from asyncio import Queue
+from pathlib import Path
 import re
 from hoshino import Message, MessageSegment
 from typing import Union, TypeVar, Generic
@@ -12,6 +13,8 @@ except ImportError:
     from typing_extensions import Self
 
 T = TypeVar("T", bound="Post")
+RenderableMessage = Message | MessageSegment
+PostResource = str | Path
 
 
 def clean_filename(text: str) -> str:
@@ -34,6 +37,15 @@ def clean_filename(text: str) -> str:
 
     # 如果清理后为空，返回默认名称
     return cleaned if cleaned else "unnamed"
+
+
+@dataclass
+class PostMessage:
+    text: str = ""
+    content: str = ""
+    screenshot: bytes | Path | None = None
+    images: list[PostResource] = field(default_factory=list)
+    videos: list[PostResource] = field(default_factory=list)
 
 
 @dataclass
@@ -62,12 +74,13 @@ class Post:
     repost: Union[Self, None] = None
     """转发的Post"""
 
-    async def get_message(
-        self, with_screenshot: bool = False
-    ) -> list[Message | MessageSegment]: ...
+    async def get_message(self, full: bool = False, **kwargs) -> PostMessage: ...
+    def render_message(self, post_message: PostMessage) -> list[RenderableMessage]: ...
+
     def get_referer(self) -> str: ...
     def get_id(self) -> str:
         return self.id
+
 
 class PostQueue(Queue, Generic[T]):
     """统一的队列管理器，支持泛型"""
@@ -123,7 +136,9 @@ class UIDManager:
             self._cold_uids.intersection_update(self._uids)
             self._processing_uids.intersection_update(self._uids)
             self._last_fetch_times = {
-                uid: ts for uid, ts in self._last_fetch_times.items() if uid in self._uids
+                uid: ts
+                for uid, ts in self._last_fetch_times.items()
+                if uid in self._uids
             }
             # 清空队列并重新填充
             while not self._uid_queue.empty():
@@ -161,7 +176,7 @@ class UIDManager:
         async with self._lock:
             if uid_str in self._uids:
                 self._cold_uids.add(uid_str)
-    
+
     async def unmark_cold(self, uid: str):
         """取消 UID 的冷却状态"""
         uid_str = str(uid)
@@ -172,7 +187,9 @@ class UIDManager:
         """检查UID是否需要抓取"""
         current_time = time.time()
         last_time = self._last_fetch_times.get(uid, 0)
-        min_interval = self._cold_min_interval if uid in self._cold_uids else self._min_interval
+        min_interval = (
+            self._cold_min_interval if uid in self._cold_uids else self._min_interval
+        )
         return current_time - last_time >= min_interval
 
     def _update_fetch_time(self, uid: str):

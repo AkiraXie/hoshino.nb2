@@ -1,6 +1,13 @@
 from playwright.async_api import Route
 
-from hoshino.util.playwrights import get_b, Page, Browser, MessageSegment, mobile_context_params,bili_mobilejs
+from hoshino.util.playwrights import (
+    get_b,
+    Page,
+    Browser,
+    MessageSegment,
+    mobile_context_params,
+    bili_mobilejs,
+)
 from hoshino.util import get_cookies
 from nonebot.log import logger
 
