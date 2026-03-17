@@ -66,6 +66,11 @@ class GroupMsgEmojiLikeEvent(NoticeEvent):
     @override
     def is_tome(self):
         return super().is_tome()
+    
+    def get_emoji(self) -> str:
+        if self.likes:
+            return self.likes[0].emoji_id
+        return ""
 
 
 Adapter.add_custom_model(GroupReactionEvent)

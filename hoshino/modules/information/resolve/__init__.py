@@ -114,7 +114,8 @@ async def _(bot: Bot, state: T_State, ev: Event):
             sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
-        ms = await post.get_message()
+        post_message = await post.get_message(full=True)
+        ms = post.render_message(post_message)
         if not ms:
             return
         await send(ms[0])
@@ -128,7 +129,8 @@ async def _(bot: Bot, state: T_State, ev: Event):
             sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
-        ms = await post.get_message()
+        post_message = await post.get_message(full=True)
+        ms = post.render_message(post_message)
         if not ms:
             return
         await send(ms[0])
@@ -141,7 +143,8 @@ async def _(bot: Bot, state: T_State, ev: Event):
             sv.logger.error(f"{name} parse error")
             return
         await asyncio.sleep(0.3)
-        ms = await post.get_message()
+        post_message = await post.get_message(full=True)
+        ms = post.render_message(post_message)
         if not ms:
             return
         await send(ms[0])
@@ -153,7 +156,8 @@ async def _(bot: Bot, state: T_State, ev: Event):
         if not post:
             sv.logger.error(f"{name} parse error")
             return
-        msgs = await post.get_message()
+        post_message = await post.get_message(full=True)
+        msgs = post.render_message(post_message)
         if not msgs:
             return
         await asyncio.sleep(0.3)
@@ -194,7 +198,8 @@ async def _(bot: Bot, state: T_State, ev: Event):
         dyn = await get_dynamic_from_url(burl)
         if not dyn:
             return
-        msgs = await dyn.get_message()
+        post_message = await dyn.get_message(full=True)
+        msgs = dyn.render_message(post_message)
         if not msgs:
             return
         await send_segments(msgs)

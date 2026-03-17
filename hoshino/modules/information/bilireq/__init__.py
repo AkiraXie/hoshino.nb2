@@ -23,7 +23,7 @@ uid_manager = UIDManager()
 tz = timezone("Asia/Shanghai")
 
 
-@sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅","adddyn"))
+@sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅", "adddyn"))
 async def _(bot: Bot, event: Event):
     gid = event.group_id
     uid = event.get_plaintext()
@@ -147,7 +147,8 @@ async def _(bot: Bot, event: Event):
         if not dyn:
             await bot.send(event, f"没有获取到{arg}动态")
             return
-        msgs = await dyn.get_message()
+        post_message = await dyn.get_message(full=True)
+        msgs = dyn.render_message(post_message)
         await send_segments(msgs)
 
 
@@ -231,7 +232,8 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
             dyn_queue.remove_id(dyn.id)
             await asyncio.sleep(0.5)
             return
-        msgs = await dyn.get_message()
+        post_message = await dyn.get_message(full=True)
+        msgs = dyn.render_message(post_message)
         for gid in gids:
             await asyncio.sleep(random.uniform(2, 5))
             bot = groups[gid][0]

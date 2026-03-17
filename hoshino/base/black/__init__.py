@@ -86,8 +86,9 @@ async def _(state: T_State):
     if not state.get("ids"):
         raise FinishedException
     for uid in state["ids"]:
-        block_uid(uid, timedelta(hours=int(state["hours"])))
-    await lahei.finish(f"已拉黑{len(state['ids'])}人{state['hours']}小时~，嘿嘿嘿~")
+        hours = int(str(state["hours"]))
+        block_uid(uid, timedelta(hours=hours))
+    await lahei.finish(f"已拉黑{len(state['ids'])}人{state['hours']}小时~嘿嘿嘿~")
 
 
 @jiefeng.got(
@@ -100,4 +101,4 @@ async def _(state: T_State):
         raise FinishedException
     for uid in state["ids"]:
         unblock_uid(uid)
-    await jiefeng.finish(f"已为{len(state['ids'])}人解封~，嘿嘿嘿~")
+    await jiefeng.finish(f"已为{len(state['ids'])}人解封~嘿嘿嘿~")
