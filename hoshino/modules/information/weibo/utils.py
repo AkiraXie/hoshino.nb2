@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import shutil
 from typing import override
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 from bs4 import BeautifulSoup
 from time import time
 from hoshino import Bot, Message, Service, MessageSegment, config
@@ -43,9 +43,51 @@ weibo_video_dir.mkdir(parents=True, exist_ok=True)
 weibo_msg_dir = config.data_dir / "weibomsgs"
 weibo_msg_dir.mkdir(parents=True, exist_ok=True)
 
-WEIBO_MSG_CACHE_TTL = 6 * 60 * 60
+WEIBO_MSG_CACHE_TTL = 3 * 60 * 60
 weibo_msg_cache: dict[str, str] = {}
 _weibo_msg_cache_handles: dict[str, asyncio.Handle] = {}
+
+CACHE_FILE_CLEANUP_DELAY = 3 * 60 * 60
+_file_cleanup_handles: dict[str, asyncio.Handle] = {}
+
+_IMAGE_URL_PATTERN = re.compile(
+    r"\.(?:jpe?g|png|gif|webp|bmp|heic|heif|avif)(?:$|[?#&])",
+    re.IGNORECASE,
+)
+_VIDEO_URL_PATTERN = re.compile(
+    r"\.(?:mp4|m4v|mov|webm|m3u8)(?:$|[?#&])",
+    re.IGNORECASE,
+)
+
+
+def _normalize_media_url(url: str) -> str:
+    normalized = unquote(url.strip())
+    if normalized.startswith("//"):
+        normalized = "https:" + normalized
+    sinaurl_prefix = "https://weibo.cn/sinaurl?u="
+    if normalized.startswith(sinaurl_prefix):
+        normalized = unquote(normalized.removeprefix(sinaurl_prefix))
+    return normalized
+
+
+def _classify_media_url(url: str) -> tuple[str, str]:
+    normalized = _normalize_media_url(url)
+    if not normalized:
+        return "", ""
+
+    lowered = normalized.lower()
+    parsed = urlparse(normalized)
+    host = parsed.netloc.lower()
+
+    if _IMAGE_URL_PATTERN.search(lowered) or "sinaimg.cn" in host:
+        return normalized, ""
+    if (
+        _VIDEO_URL_PATTERN.search(lowered)
+        or "video.weibo.com" in host
+        or "weibocdn.com" in host
+    ):
+        return "", normalized
+    return "", ""
 
 
 def _delete_weibo_msg_cache(msg_id: str) -> None:
@@ -53,6 +95,31 @@ def _delete_weibo_msg_cache(msg_id: str) -> None:
     handle = _weibo_msg_cache_handles.pop(msg_id, None)
     if handle and not handle.cancelled():
         handle.cancel()
+
+
+def _delete_cached_file(filepath_str: str) -> None:
+    _file_cleanup_handles.pop(filepath_str, None)
+    try:
+        p = Path(filepath_str)
+        if p.exists():
+            p.unlink()
+            sv.logger.debug(f"已清理缓存文件: {filepath_str}")
+    except Exception as e:
+        sv.logger.error(f"清理缓存文件失败: {filepath_str} error={e}")
+
+
+def schedule_file_cleanup(paths: list[Path]) -> None:
+    loop = asyncio.get_running_loop()
+    for p in paths:
+        key = str(p)
+        old_handle = _file_cleanup_handles.pop(key, None)
+        if old_handle and not old_handle.cancelled():
+            old_handle.cancel()
+        _file_cleanup_handles[key] = loop.call_later(
+            CACHE_FILE_CLEANUP_DELAY,
+            _delete_cached_file,
+            key,
+        )
 
 
 def cache_weibo_msg_id(msg_id: int | str, uid: str, post_id: str) -> None:
@@ -81,6 +148,8 @@ def render_post_message(post_message: PostMessage) -> list[Message | MessageSegm
         text += post_message.text
     if post_message.screenshot:
         text += "\n" + str(MessageSegment.image(post_message.screenshot))
+    elif post_message.content:
+        text += "\n" + post_message.content
     messages.append(Message(text))
 
     image_segments = [
@@ -105,27 +174,7 @@ def render_post_message(post_message: PostMessage) -> list[Message | MessageSegm
 class WeiboPost(Post):
     """微博POST数据类"""
 
-    group_id: str = ""
-
-    @property
-    def gid(self) -> int | None:
-        if not self.group_id:
-            return None
-        try:
-            return int(self.group_id)
-        except (TypeError, ValueError):
-            sv.logger.error(
-                f"微博 gid 无法解析: uid={self.uid} post={self.id} group_id={self.group_id}"
-            )
-            return None
-
-    @gid.setter
-    def gid(self, value: int | str | None) -> None:
-        self.group_id = "" if value in (None, "") else str(value)
-
-    @override
-    def get_id(self):
-        return f"{self.group_id}_{self.id}"
+    user_avatar_image: str = ""
 
     @override
     def get_referer(self) -> str:
@@ -149,43 +198,71 @@ class WeiboPost(Post):
             return True
         return bool(self.repost and self.repost._has_any_images())
 
-    async def build_and_send_message(
-        self, group_config: WeiboConfig, busy: bool, bot: Bot, gid: int
-    ):
-        use_segments = bool(group_config.send_segments) and not busy
-        send_method = self.send_segments if use_segments else self.send_message
-        messages = await self.build_send_messages(group_config, full=not busy)
-        res = await send_method(bot=bot, gid=gid, msgs=messages)
-        msg_id = res.get("message_id") if isinstance(res, dict) else None
-        if msg_id:
-            sv.logger.info(
-                f"微博推送成功: group={gid} uid={self.uid} post={self.id} message_id={msg_id}"
-            )
-            try:
-                await self.save()
-                cache_weibo_msg_id(msg_id, self.uid, self.id)
-            except Exception as e:
-                sv.logger.error(
-                    f"微博推送归档失败: group={gid} uid={self.uid} post={self.id} message_id={msg_id} error={e}"
-                )
-        return res
+    def _append_image(self, image_url: str) -> None:
+        if image_url and image_url not in self.images:
+            self.images.append(image_url)
 
-    async def build_send_messages(
-        self, group_config: WeiboConfig, full: bool
-    ) -> list[Message | MessageSegment]:
-        if group_config.only_pic and not self._has_any_images():
-            sv.logger.info(
-                f"跳过无图微博推送: group={group_config.group} uid={self.uid} post={self.id}"
-            )
-            return []
+    def _append_video(self, video_url: str) -> None:
+        if video_url and video_url not in self.videos:
+            self.videos.append(video_url)
 
-        post_message = await self.get_message(
-            full=full,
-            with_screenshot=bool(group_config.send_screenshot) and full,
-            screenshot_timeout=3.0,
-        )
-        msgs = self.render_message(post_message)
-        return msgs
+    def _append_media_from_url(self, url: str) -> None:
+        image_url, video_url = _classify_media_url(url)
+        self._append_image(image_url)
+        self._append_video(video_url)
+
+    def _get_text(self, raw_text: str) -> str:
+        text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
+        soup = BeautifulSoup(text, "lxml")
+
+        if not soup:
+            self.content = text
+            return text
+
+        for br in soup.find_all("br"):
+            br.replace_with("\n")
+
+        for a in soup.find_all("a", href=True):
+            href = _normalize_media_url(a["href"])
+            image_url, video_url = _classify_media_url(href)
+
+            # 媒体链接：提取资源并移除标签（避免 "查看图片" 等残留文本）
+            if image_url or video_url:
+                self._append_image(image_url)
+                self._append_video(video_url)
+                a.decompose()
+                continue
+
+            # 非媒体链接：展开 surl-text 中的短链
+            span = a.find("span", class_="surl-text")
+            if not span:
+                continue
+
+            link_text = span.get_text()
+            if (
+                not link_text.startswith("#")
+                and not link_text.endswith("#")
+                and a["href"].startswith("https://weibo.cn/sinaurl?u=")
+            ):
+                span.string = f"{link_text}( {href} )"
+
+        # for img in soup.find_all("img"):
+        #     if img.find_parent("a", href=True):
+        #         continue
+        #     for attr in ("src", "data-src", "bak_src"):
+        #         img_url = img.get(attr)
+        #         if img_url:
+        #             self._append_media_from_url(img_url)
+        #             break
+
+        # for media_tag in soup.find_all(["video", "source"]):
+        #     media_url = media_tag.get("src")
+        #     if media_url:
+        #         self._append_media_from_url(media_url)
+
+        parsed_text = soup.get_text()
+        self.content = parsed_text
+        return parsed_text
 
     async def _send_rendered_segments(
         self,
@@ -329,12 +406,14 @@ class WeiboPost(Post):
         screenshot_path: Path | None = None,
     ) -> PostMessage:
         image_paths = await self.download_images()
-        content = self._build_content_lines()
+        content = "\n".join(self._build_content_lines())
+        header = self._build_text_header()
         if not full:
+            schedule_file_cleanup(image_paths)
             return PostMessage(
-                text=self._build_text(include_content=True),
+                text=header,
                 images=image_paths,
-                content="\n".join(content),
+                content=content,
             )
 
         ms = None
@@ -366,12 +445,13 @@ class WeiboPost(Post):
                     ms = screenshot_path
             except Exception as e:
                 sv.logger.error(f"Error fetching screenshot: {e}")
+        schedule_file_cleanup(image_paths + video_paths)
         return PostMessage(
-            text=self._build_text(include_content=ms is None),
+            text=header,
             screenshot=ms,
             images=image_paths,
             videos=video_paths,
-            content="\n".join(content),
+            content=content,
         )
 
     @override
@@ -379,12 +459,15 @@ class WeiboPost(Post):
         self, post_message: PostMessage
     ) -> list[Message | MessageSegment]:
         head = post_message.text
-        tail = self._build_text_tail()
-        messages: list[Message | MessageSegment] = []
+        # 有截图时展示截图，无截图时内联正文
         if post_message.screenshot:
             head += "\n" + str(MessageSegment.image(post_message.screenshot))
+        elif post_message.content:
+            head += "\n" + post_message.content
+        tail = self._build_text_tail()
         if tail:
             head += "\n" + tail
+        messages: list[Message | MessageSegment] = []
         if head:
             messages.append(Message(head))
         messages.extend(self._build_image_messages(post_message.images))
@@ -403,6 +486,11 @@ class WeiboPost(Post):
             lines.append(self.repost.content)
             lines.append("------------")
         return lines
+
+    def _build_text_header(self) -> str:
+        if self.nickname:
+            return self.nickname + " 微博~"
+        return ""
 
     def _build_text(self, include_content: bool = False) -> str:
         msg = []
@@ -443,25 +531,38 @@ class WeiboPost(Post):
             messages.append(Message(group))
         return messages
 
+    async def _save_avatar_if_needed(self, uid_dir: Path) -> None:
+        """每天最多保存一次用户头像"""
+        if not self.user_avatar_image:
+            return
+        avatar_path = uid_dir / "user_avatar.jpg"
+        if avatar_path.exists():
+            mtime = avatar_path.stat().st_mtime
+            if datetime.fromtimestamp(mtime).date() == datetime.now().date():
+                return
+        try:
+            await self._save_resource(self.user_avatar_image, avatar_path)
+        except Exception as e:
+            sv.logger.warning(f"Failed to save avatar for {self.uid}: {e}")
+
     async def save(
         self,
-        screenshot_timeout: float = 6.0,
-    ) -> Path:
-        save_dir = self._get_download_dir(weibo_msg_dir) / self.id
+        post_message: PostMessage,
+    ) -> PostMessage:
+        uid_dir = self._get_download_dir(weibo_msg_dir)
+        save_dir = uid_dir / self.id
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        post_message = await self.get_message(
-            full=True,
-            with_screenshot=False,
-            screenshot_timeout=screenshot_timeout,
-            screenshot_path=save_dir / "screenshot.jpg",
-        )
+        await self._save_avatar_if_needed(uid_dir)
 
         metadata = {
             "uid": self.uid,
             "id": self.id,
             "text": post_message.text,
             "content": post_message.content,
+            "url": self.url,
+            "nickname": self.nickname,
+            "timestamp": self.timestamp,
         }
         (save_dir / "message.json").write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2),
@@ -479,7 +580,11 @@ class WeiboPost(Post):
         for index, video in enumerate(post_message.videos, start=1):
             await self._save_resource(video, save_dir / "videos" / f"{index}.mp4")
 
-        return save_dir
+        post_message.images = [save_dir / "images" / f"{i+1}.jpg" for i in range(len(post_message.images))]
+        post_message.videos = [save_dir / "videos" / f"{i+1}.mp4" for i in range(len(post_message.videos))]
+        if post_message.screenshot:
+            post_message.screenshot = save_dir / "screenshot.jpg"
+        return post_message
 
     async def _save_resource(self, resource: bytes | str | Path, target: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -505,6 +610,39 @@ class WeiboPost(Post):
 
         if not saved:
             raise FileNotFoundError(f"failed to save resource: {resource}")
+
+
+@dataclass
+class WeiboDispatchTask:
+    """一条微博推送到一个群的任务，共享 post 和 message 引用"""
+
+    post: WeiboPost
+    message: PostMessage
+    group_id: int
+
+    def get_id(self) -> str:
+        return f"{self.group_id}_{self.post.id}"
+
+
+def adapt_message(
+    message: PostMessage,
+    group_config: WeiboConfig,
+    busy: bool,
+) -> PostMessage | None:
+    """根据群配置和繁忙状态，从共享 PostMessage 创建适配副本"""
+    if group_config.only_pic and not message.images:
+        return None
+
+    with_screenshot = bool(group_config.send_screenshot) and not busy
+    with_videos = not busy
+
+    return PostMessage(
+        text=message.text,
+        content=message.content,
+        screenshot=message.screenshot if with_screenshot else None,
+        images=list(message.images),
+        videos=list(message.videos) if with_videos else [],
+    )
 
 
 async def post_msg_from_uid_id(
@@ -535,6 +673,9 @@ async def post_msg_from_uid_id(
     detail_url = f"https://weibo.com/{uid}/{post_id}"
     if detail_url not in text:
         text = "\n".join(part for part in (text, f"微博详情: {detail_url}") if part)
+    # 兼容旧存档：旧格式 text 已包含 content，避免重复
+    if content and content in text:
+        content = ""
 
     screenshot_path = msg_dir / "screenshot.jpg"
     screenshot = screenshot_path if screenshot_path.exists() else None
@@ -898,10 +1039,10 @@ class _LoginWeiboModule:
         bid = rj.get("mblogid")
         uid = user.get("idstr")
         nickname = user.get("screen_name")
+        avatar_url = user.get("avatar_hd")
         ts = rj["created_at"]
         created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
         detail_url = f"https://weibo.com/{uid}/{bid}"
-        parsed_text = _get_text(rj["text"])
         pic_urls = []
         video_urls = []
         if "mix_media_info" in rj:
@@ -921,17 +1062,20 @@ class _LoginWeiboModule:
                     video_urls.append(video_url)
                 if pic_url:
                     pic_urls.append(pic_url)
-        return WeiboPost(
+        post = WeiboPost(
             uid=uid,
             id=bid,
             timestamp=created_at.timestamp(),
-            content=parsed_text,
+            content="",
             url=detail_url,
             images=pic_urls,
             nickname=nickname,
             videos=video_urls,
             description=description,
+            user_avatar_image=avatar_url,
         )
+        post._get_text(rj["text"])
+        return post
 
 
 class _VisitorWeiboModule:
@@ -1040,7 +1184,6 @@ class _VisitorWeiboModule:
     def _parse_weibo_dict(self, info: dict) -> WeiboPost | None:
         if not info or "user" not in info or "bid" not in info:
             return None
-        parsed_text = _get_text(info["text"])
         raw_pics_list = info.get("pics", [])
         video_urls = []
         pic_urls = []
@@ -1079,16 +1222,18 @@ class _VisitorWeiboModule:
         detail_url = f"https://weibo.com/{info['user']['id']}/{info['bid']}"
         ts = info["created_at"]
         created_at = datetime.strptime(ts, "%a %b %d %H:%M:%S %z %Y")
-        return WeiboPost(
+        post = WeiboPost(
             uid=info["user"]["id"],
             id=info["bid"],
             timestamp=created_at.timestamp(),
-            content=parsed_text,
+            content="",
             url=detail_url,
             images=pic_urls,
             nickname=info["user"]["screen_name"],
             videos=video_urls,
         )
+        post._get_text(info["text"])
+        return post
 
 
 _login_weibo_module = _LoginWeiboModule()
@@ -1194,36 +1339,6 @@ async def parse_mapp_weibo(url: str) -> WeiboPost | None:
     )
 
 
-# 解析微博文本，处理HTML标签
-def _get_text(raw_text: str) -> str:
-    text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
-    soup = BeautifulSoup(text, "lxml")
-
-    if not soup:
-        return text
-
-    for br in soup.find_all("br"):
-        br.replace_with("\n")
-
-    for a in soup.find_all("a", href=True):
-        span = a.find("span", class_="surl-text")
-        if span:
-            text = span.get_text()
-            url = a["href"]
-            if (
-                not text.startswith("#")
-                and not text.endswith("#")
-                and (
-                    url.startswith("https://weibo.cn/sinaurl?u=")
-                    or url.startswith("https://video.weibo.com")
-                )
-            ):
-                url = unquote(url.replace("https://weibo.cn/sinaurl?u=", ""))
-                span.string = f"{text}( {url} )"
-
-    return soup.get_text()
-
-
 # 解析图片/视频媒体相关函数
 
 
@@ -1251,7 +1366,8 @@ def parse_mix_media_info(dic: dict) -> tuple[list[str], list[str]]:
 def parse_pic_info(pic: dict) -> tuple[str, str]:
     pic_url = ""
     video_url = ""
-    if vd := pic.get("video"):
+    typ = pic.get("type")
+    if vd := pic.get("video") and typ == "livephoto":
         video_url = vd
     for scale in ["largest", "original", "large"]:
         if scale in pic:

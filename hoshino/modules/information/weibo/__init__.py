@@ -272,7 +272,6 @@ async def handle_weibo_reaction(state: T_State):
                 sv.logger.error(f"Unknown weibo type: {name}")
                 return
             if post:
-                await post.save()
                 appended = append_fav(post.uid, post.id)
                 if appended:
                     sv.logger.info(f"Added weibo to fav: {post.uid} {post.id}")

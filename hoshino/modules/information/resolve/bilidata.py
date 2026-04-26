@@ -1,9 +1,11 @@
+import asyncio
 from hoshino import MessageSegment, Message
-from hoshino.util import aiohttpx, get_cookies
+from hoshino.util import aiohttpx, get_cookies, send_segments, send
 from time import strftime, localtime
 import re
 from ..bilireq.utils import BiliBiliDynamic
 from hoshino.util import get_redirect
+from .sv import sv
 
 bili_headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
@@ -84,3 +86,41 @@ async def get_bili_video_resp(bvid: str = "", avid: str = "") -> Message | None:
     )
     msg.append(f"链接: https://www.bilibili.com/video/av{res['aid']}")
     return Message("\n".join(msg))
+
+
+async def _send_bili_video(*, bvid: str = "", avid: str = "") -> bool:
+    msg = await get_bili_video_resp(bvid=bvid, avid=avid)
+    if not msg:
+        return False
+    await asyncio.sleep(0.3)
+    await send(msg)
+    return True
+
+
+async def _send_bili_dynamic(url: str) -> bool:
+    dyn = await get_dynamic_from_url(url)
+    if not dyn:
+        return False
+    post_message = await dyn.get_message(full=True)
+    msgs = dyn.render_message(post_message)
+    if not msgs:
+        return False
+    await send_segments(msgs)
+    return True
+
+
+async def resolve_bilibili(name: str, url: str, matched: re.Match[str]) -> bool:
+    match name:
+        case "b23" | "bilibilicn":
+            if bvid := await get_bvid(url):
+                return await _send_bili_video(bvid=bvid)
+            if burl := await get_redirect(url):
+                return await _send_bili_dynamic(burl)
+        case "bv":
+            return await _send_bili_video(bvid=matched.group(0))
+        case "av":
+            return await _send_bili_video(avid=matched.group(1))
+        case "bilibilidyn":
+            return await _send_bili_dynamic(url)
+    sv.logger.error(f"{name} {url} resolve error")
+    return False

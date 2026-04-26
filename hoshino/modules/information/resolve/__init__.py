@@ -1,25 +1,15 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
-import asyncio
-from pathlib import Path
 from hoshino import Event, Bot
 from nonebot.typing import T_State
-from hoshino.util import send_segments, get_redirect, send
 from .bilidata import (
-    get_bili_video_resp,
-    get_bvid,
-    get_dynamic_from_url,
+    resolve_bilibili,
 )
 from .sv import sv
-from .xiaohongshu import parse_xhs
+from .xiaohongshu import resolve_xiaohongshu
 from json import loads
 import re
-from ..weibo.utils import (
-    parse_mapp_weibo,
-    parse_weibo_with_id,
-)
-from .douyin import DouyinParser
-
-dparser = DouyinParser()
+from .weibo import resolve_weibo
+from .douyin import resolve_douyin
 
 urlmaps = {
     "detail_1": "qqdocurl",
@@ -83,7 +73,7 @@ m = sv.on_message(rule=check_json_or_text, log=True, priority=3, block=False)
 
 
 @m
-async def _(bot: Bot, state: T_State, ev: Event):
+async def parse_handler(bot: Bot, state: T_State, ev: Event):
     if not (name := state.get("__url_name")):
         return
     if not (matched := state.get("__url_matched")):
@@ -91,115 +81,27 @@ async def _(bot: Bot, state: T_State, ev: Event):
     if not (url := state.get("__url")):
         return
     name = name.lower()
-    bvid = None
-    burl = None
-    xhs_url = None
-    avid = None
-    if name == "b23" or name == "bilibilicn":
-        bvid = await get_bvid(url)
-        if not bvid:
-            burl = await get_redirect(url)
-    elif name == "bv":
-        bvid = matched.group(0)
-    elif name == "av":
-        avid = matched.group(1)
-    elif name == "bilibilidyn":
-        burl = url
-    elif name == "xhs":
-        xhs_url = url
-    elif name == "weibo":
-        _, _, bid = matched.groups()
-        post = await parse_weibo_with_id(bid)
-        if not post:
-            sv.logger.error(f"{name} parse error")
+    match name:
+        case "b23" | "bilibilicn" | "bv" | "av" | "bilibilidyn":
+            if await resolve_bilibili(name, url, matched):
+                await m.finish()
             return
-        await asyncio.sleep(0.3)
-        post_message = await post.get_message(full=True)
-        ms = post.render_message(post_message)
-        if not ms:
+        case "xhs":
+            if await resolve_xiaohongshu(bot, ev, url):
+                await m.finish()
             return
-        await send(ms[0])
-        await asyncio.sleep(1)
-        await send_segments(ms[1:])
-        await m.finish()
-    elif name == "mweibo":
-        _, _, bid = matched.groups()
-        post = await parse_weibo_with_id(bid)
-        if not post:
-            sv.logger.error(f"{name} parse error")
+        case "weibo" | "mweibo":
+            _, _, bid = matched.groups()
+            if await resolve_weibo(name, url, bid=bid):
+                await m.finish()
             return
-        await asyncio.sleep(0.3)
-        post_message = await post.get_message(full=True)
-        ms = post.render_message(post_message)
-        if not ms:
+        case "mappweibo":
+            if await resolve_weibo(name, url):
+                await m.finish()
             return
-        await send(ms[0])
-        await asyncio.sleep(0.2)
-        await send_segments(ms[1:])
-        await m.finish()
-    elif name == "mappweibo":
-        post = await parse_mapp_weibo(url)
-        if not post:
-            sv.logger.error(f"{name} parse error")
+        case "vdouyin" | "douyin":
+            if await resolve_douyin(name, url):
+                await m.finish()
             return
-        await asyncio.sleep(0.3)
-        post_message = await post.get_message(full=True)
-        ms = post.render_message(post_message)
-        if not ms:
+        case _:
             return
-        await send(ms[0])
-        await asyncio.sleep(0.2)
-        await send_segments(ms[1:])
-        await m.finish()
-    elif name == "vdouyin" or name == "douyin":
-        post = await dparser.parse_share_url(url)
-        if not post:
-            sv.logger.error(f"{name} parse error")
-            return
-        post_message = await post.get_message(full=True)
-        msgs = post.render_message(post_message)
-        if not msgs:
-            return
-        await asyncio.sleep(0.3)
-        await send_segments(msgs)
-        await m.finish()
-    if not bvid and not xhs_url and not burl and not avid:
-        return
-    if bvid:
-        msg = await get_bili_video_resp(bvid=bvid)
-        if not msg:
-            return
-        await asyncio.sleep(0.3)
-        await m.finish(msg)
-    if avid:
-        msg = await get_bili_video_resp(avid=avid)
-        if not msg:
-            return
-        await asyncio.sleep(0.3)
-        await m.finish(msg)
-    if xhs_url:
-        msgs, res = await parse_xhs(xhs_url)
-        if not msgs:
-            return
-        if res:
-            name = res.name
-            await asyncio.sleep(0.3)
-            await send_segments(msgs)
-            await bot.upload_group_file(
-                group_id=ev.group_id,
-                name=name,
-                file=res.resolve().as_posix(),
-            )
-            return
-        await asyncio.sleep(0.3)
-        await send_segments(msgs)
-        await m.finish()
-    if burl:
-        dyn = await get_dynamic_from_url(burl)
-        if not dyn:
-            return
-        post_message = await dyn.get_message(full=True)
-        msgs = dyn.render_message(post_message)
-        if not msgs:
-            return
-        await send_segments(msgs)

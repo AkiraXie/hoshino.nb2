@@ -303,9 +303,16 @@ async def save_img_by_path(
             if format_ext == "jpeg":
                 format_ext = "jpg"
             path = Path(path).with_suffix(f".{format_ext}")
-        im.save(path)
-        im.close()
-        bio.close()
+        # GIF/WEBP 动图直接写入原始字节，避免丢失动画帧
+        if im.format and im.format.upper() in ("GIF", "WEBP") and getattr(im, "is_animated", False):
+            im.close()
+            bio.close()
+            with open(path, "wb") as f:
+                f.write(r.content)
+        else:
+            im.save(path)
+            im.close()
+            bio.close()
         return path
     except Exception as e:
         nonebot.logger.error(f"保存图片失败: {e}")

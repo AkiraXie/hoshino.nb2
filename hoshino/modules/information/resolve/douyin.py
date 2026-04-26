@@ -3,7 +3,13 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Any, List, Optional
 import re
-from hoshino.util import aiohttpx, get_redirect, save_img_by_path, save_video_by_path
+from hoshino.util import (
+    aiohttpx,
+    get_redirect,
+    save_img_by_path,
+    save_video_by_path,
+    send_segments,
+)
 from hoshino import data_dir
 from ..utils import Post as BasePost, PostMessage, clean_filename
 from .sv import sv
@@ -336,3 +342,20 @@ class DouyinParser:
             id=video_id,
             uid=slides_data.author.nickname,
         )
+
+
+dparser = DouyinParser()
+
+
+async def resolve_douyin(name: str, url: str) -> bool:
+    post = await dparser.parse_share_url(url)
+    if not post:
+        sv.logger.error(f"{name} parse error")
+        return False
+    post_message = await post.get_message(full=True)
+    msgs = post.render_message(post_message)
+    if not msgs:
+        return False
+    await asyncio.sleep(0.3)
+    await send_segments(msgs)
+    return True

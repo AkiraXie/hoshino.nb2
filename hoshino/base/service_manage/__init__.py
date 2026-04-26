@@ -151,7 +151,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     if isinstance(event, GroupMessageEvent):
         reply.append(f"已{action}服务: {', '.join(succ)}")
     else:
-        reply.append(f"已在群 {', '.join(succ_group)}{action}服务: {', '.join(succ)}")
+        reply.append(f"已在群 {', '.join(succ_group)} {action}服务: {', '.join(succ)}")
     if notfound:
         reply.append(f"未找到服务: {', '.join(notfound)}")
     await enable.finish("\n".join(reply))

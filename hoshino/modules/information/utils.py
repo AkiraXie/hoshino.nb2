@@ -4,7 +4,7 @@ from asyncio import Queue
 from pathlib import Path
 import re
 from hoshino import Message, MessageSegment
-from typing import Union, TypeVar, Generic
+from typing import Protocol, Union, TypeVar, Generic
 import time
 
 try:
@@ -12,7 +12,11 @@ try:
 except ImportError:
     from typing_extensions import Self
 
-T = TypeVar("T", bound="Post")
+class Queueable(Protocol):
+    def get_id(self) -> str: ...
+
+
+T = TypeVar("T", bound=Queueable)
 RenderableMessage = Message | MessageSegment
 PostResource = str | Path
 
@@ -129,12 +133,14 @@ class UIDManager:
         self._min_interval = 180
         self._cold_min_interval = 1800
 
-    async def init(self, uids: list[str]):
+    async def init(self, uids: list[str],min_interval: int = 180, cold_min_interval: int = 1800):
         """从UID列表初始化管理器"""
         async with self._lock:
             self._uids = set(uids)
             self._cold_uids.intersection_update(self._uids)
             self._processing_uids.intersection_update(self._uids)
+            self._min_interval = min_interval
+            self._cold_min_interval = cold_min_interval
             self._last_fetch_times = {
                 uid: ts
                 for uid, ts in self._last_fetch_times.items()
