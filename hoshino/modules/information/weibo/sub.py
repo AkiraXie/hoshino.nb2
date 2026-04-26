@@ -1,5 +1,4 @@
 import asyncio
-from dataclasses import replace
 import random
 import time
 
@@ -13,11 +12,18 @@ from .db import (
     uid_has_any_subscription,
     update_subscriptions_for_uid,
 )
-from .utils import WeiboPost, get_weibo_list, sv
+from .utils import (
+    WeiboPost,
+    WeiboDispatchTask,
+    adapt_message,
+    cache_weibo_msg_id,
+    get_weibo_list,
+    sv,
+)
 from ..utils import PostQueue, UIDManager
 
 
-weibo_queue = PostQueue[WeiboPost]()
+weibo_queue = PostQueue[WeiboDispatchTask]()
 uid_manager = UIDManager()
 
 WEIBO_FETCH_BATCH_SIZE = 4
@@ -71,13 +77,6 @@ def match_keywords(post: WeiboPost, keywords: list[str]) -> bool:
     return False
 
 
-def clone_post_for_group(post: WeiboPost, group_id: int | str) -> WeiboPost:
-    repost = None
-    if post.repost:
-        repost = clone_post_for_group(post.repost, group_id)
-    return replace(post, repost=repost, group_id=str(group_id))
-
-
 async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
     try:
         rows = list_subscriptions_by_uid(uid_str)
@@ -104,29 +103,55 @@ async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
 
         await uid_manager.unmark_cold(uid_str)
 
-        matched_posts: list[WeiboPost] = []
-        for row in rows:
-            if row.keyword:
-                row_keywords = [kw for kw in row.keyword.split("-_-") if kw]
-            else:
-                row_keywords = []
-
-            for post in posts:
+        for post in posts:
+            # 匹配关键词，收集命中群
+            matched_groups: list[int] = []
+            for row in rows:
                 if post.timestamp <= row.time:
                     continue
+                row_keywords = (
+                    [kw for kw in row.keyword.split("-_-") if kw]
+                    if row.keyword
+                    else []
+                )
                 if not match_keywords(post, row_keywords):
                     continue
-                matched_posts.append(clone_post_for_group(post, row.group))
+                matched_groups.append(row.group)
 
-        if not matched_posts:
-            return True
+            if not matched_groups:
+                continue
 
-        for post in matched_posts:
-            queued = weibo_queue.put(post)
-            if queued:
-                sv.logger.info(
-                    f"获取到微博更新: {post.uid} {post.nickname} {post.group_id} {post.timestamp} {post.url}"
+            # 只准备一次：检查是否有任一群需要截图
+            any_screenshot = any(
+                get_group_config(g).send_screenshot for g in matched_groups
+            )
+            try:
+                message = await post.get_message(
+                    full=True,
+                    with_screenshot=bool(any_screenshot),
+                    screenshot_timeout=3.0,
                 )
+            except Exception as e:
+                sv.logger.error(
+                    f"微博获取消息失败: uid={uid_str} post={post.id} error={e}"
+                )
+                continue
+
+            try:
+                message = await post.save(message)
+            except Exception as e:
+                sv.logger.error(
+                    f"微博推送归档失败: uid={uid_str} post={post.id} error={e}"
+                )
+
+            # 每个群一个 dispatch task
+            for group_id in matched_groups:
+                task = WeiboDispatchTask(post, message, group_id)
+                queued = weibo_queue.put(task)
+                if queued:
+                    sv.logger.info(
+                        f"获取到微博更新: {post.uid} {post.nickname} {group_id} {post.timestamp} {post.url}"
+                    )
 
         latest_ts = max(post.timestamp for post in posts)
         update_subscriptions_for_uid(uid_str, latest_ts, posts[0].nickname)
@@ -137,7 +162,7 @@ async def _fetch_weibo_updates_for_uid(uid_str: str) -> bool:
         return False
 
 
-async def handle_weibo_dyn(dyn: WeiboPost):
+async def handle_weibo_dyn(task: WeiboDispatchTask):
     global active_weibo_dispatches
     async with weibo_dispatch_state_lock:
         active_weibo_dispatches += 1
@@ -145,21 +170,17 @@ async def handle_weibo_dyn(dyn: WeiboPost):
 
     removed = False
     sleep_delay = 1.0
+    gid = task.group_id
+    post = task.post
     try:
         sv.logger.info(
-            f"推送微博更新: {dyn.uid} {dyn.nickname} {dyn.group_id} {dyn.timestamp} {dyn.url}, active={current_dispatches}"
+            f"推送微博更新: {post.uid} {post.nickname} {gid} {post.timestamp} {post.url}, active={current_dispatches}"
         )
-        gid = dyn.gid
-        if gid is None:
-            weibo_queue.remove(dyn)
-            removed = True
-            sleep_delay = 0.5
-            return
 
         await asyncio.sleep(random.uniform(0.1, 1))
         groups = await sv.get_enable_groups()
         if gid not in groups:
-            weibo_queue.remove(dyn)
+            weibo_queue.remove(task)
             removed = True
             sleep_delay = 0.5
             return
@@ -167,36 +188,53 @@ async def handle_weibo_dyn(dyn: WeiboPost):
         busy = current_dispatches > WEIBO_DISPATCH_WORKER_COUNT / 2
         sv.logger.info(
             "微博推送准备发送: "
-            f"group={gid} uid={dyn.uid} post={dyn.id} active={current_dispatches} busy={busy} "
+            f"group={gid} uid={post.uid} post={post.id} active={current_dispatches} busy={busy} "
         )
         group_config = get_group_config(gid)
         bot = groups[gid][0]
-        await dyn.build_and_send_message(group_config, busy, bot, gid)
+
+        adapted = adapt_message(task.message, group_config, busy)
+        if not adapted:
+            sv.logger.info(
+                f"跳过微博推送: group={gid} uid={post.uid} post={post.id} (only_pic且无图)"
+            )
+            return
+
+        messages = post.render_message(adapted)
+        use_segments = bool(group_config.send_segments) and not busy
+        send_method = post.send_segments if use_segments else post.send_message
+        res = await send_method(bot=bot, gid=gid, msgs=messages)
+        msg_id = res.get("message_id") if isinstance(res, dict) else None
+        if msg_id:
+            sv.logger.info(
+                f"微博推送成功: group={gid} uid={post.uid} post={post.id} message_id={msg_id}"
+            )
+            cache_weibo_msg_id(msg_id, post.uid, post.id)
 
     except Exception as e:
         sv.logger.error(f"发送 weibo post 失败: {e}")
     finally:
         if not removed:
-            weibo_queue.remove(dyn)
+            weibo_queue.remove(task)
         await asyncio.sleep(sleep_delay)
         async with weibo_dispatch_state_lock:
             active_weibo_dispatches = max(0, active_weibo_dispatches - 1)
             sv.logger.info(
-                f"微博推送完成: uid={dyn.uid} post={dyn.id} active={active_weibo_dispatches}"
+                f"微博推送完成: uid={post.uid} post={post.id} active={active_weibo_dispatches}"
             )
 
 
 async def weibo_dispatch_worker(worker_id: int):
     while True:
-        dyn = weibo_queue.get()
-        if not dyn:
+        task = weibo_queue.get()
+        if not task:
             await asyncio.sleep(0.5)
             continue
         try:
-            await handle_weibo_dyn(dyn)
+            await handle_weibo_dyn(task)
         except Exception as e:
             sv.logger.error(f"微博推送 worker {worker_id} 处理失败: {e}")
-            weibo_queue.remove(dyn)
+            weibo_queue.remove(task)
             await asyncio.sleep(1)
 
 

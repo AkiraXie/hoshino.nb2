@@ -1,8 +1,9 @@
 import json
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel
-from hoshino import MessageSegment, Message, data_dir
-from hoshino.util import aiohttpx, get_cookies, save_video_by_path
+from hoshino import Bot, Event, MessageSegment, Message, data_dir
+from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
 import re
 from urllib.parse import parse_qs, urlparse
 from functools import partial
@@ -50,10 +51,28 @@ async def parse_xhs(
     parsed_url = urlparse(url)
     urlpath = parsed_url.path
     xhs_id = urlpath.split("/")[-1]
-    if urlpath.startswith("/explore/"):
-        return await parse_xhs_explore(url, xhs_id)
-    elif urlpath.startswith("/discovery/item/"):
-        return await parse_xhs_discovery(url, xhs_id)
+    params = parse_qs(parsed_url.query)
+    xsec_source = params.get("xsec_source", [None])[0] or "pc_feed"
+    xsec_token = params.get("xsec_token", [None])[0]
+    explore_url = f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_token={xsec_token}&xsec_source={xsec_source}"
+    return await parse_xhs_explore(explore_url, xhs_id)
+
+
+async def resolve_xiaohongshu(bot: Bot, ev: Event, url: str) -> bool:
+    msgs, res = await parse_xhs(url)
+    if not msgs:
+        sv.logger.error(f"xhs {url} resolve error")
+        return False
+    await asyncio.sleep(0.3)
+    await send_segments(msgs)
+    if not res:
+        return True
+    await bot.upload_group_file(
+        group_id=ev.group_id,
+        name=res.name,
+        file=res.resolve().as_posix(),
+    )
+    return True
 
 
 def xhs_extract_initial_state_json(html: str):
@@ -184,14 +203,14 @@ async def parse_xhs_explore(url: str, xhs_id: str):
     return msg, None
 
 
-async def parse_xhs_discovery(url: str, xhs_id: str):
-    # 疑似可以转成 explore 解析
-    parsed = urlparse(url)
-    params = parse_qs(parsed.query)
-    xsec_source = params.get("xsec_source", [None])[0] or "pc_feed"
-    xsec_token = params.get("xsec_token", [None])[0]
-    explore_url = f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_token={xsec_token}&xsec_source={xsec_source}"
-    return await parse_xhs_explore(explore_url, xhs_id)
+# async def parse_xhs_discovery(url: str, xhs_id: str):
+#     # 疑似可以转成 explore 解析
+#     parsed = urlparse(url)
+#     params = parse_qs(parsed.query)
+#     xsec_source = params.get("xsec_source", [None])[0] or "pc_feed"
+#     xsec_token = params.get("xsec_token", [None])[0]
+#     explore_url = f"https://www.xiaohongshu.com/explore/{xhs_id}?xsec_token={xsec_token}&xsec_source={xsec_source}"
+#     return await parse_xhs_explore(explore_url, xhs_id)
 
     # class Image(BaseModel):
     #     url: str
