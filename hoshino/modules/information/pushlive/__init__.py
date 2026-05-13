@@ -1,7 +1,8 @@
 import asyncio
+from collections import defaultdict
 from datetime import datetime
 
-from hoshino import Bot, Event, Service, on_startup
+from hoshino import Bot, Event, Message, MessageSegment, Service, on_startup
 from hoshino.schedule import scheduled_job
 
 from .db import (
@@ -36,6 +37,13 @@ def _parse_room_key(key: str) -> tuple[str, str]:
     """从 key 解码回 (room_id, platform)"""
     room_id, platform = key.rsplit(":", 1)
     return room_id, platform
+
+
+def _build_room_url(room_id: str, platform: str) -> str:
+    """根据平台和房间号构造直播间链接"""
+    if platform == "douyu":
+        return f"https://www.douyu.com/{room_id}"
+    return f"https://live.bilibili.com/{room_id}"
 
 # 平台别名映射
 PLATFORM_ALIASES: dict[str, str] = {
@@ -161,8 +169,6 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
 
     if info.show_status == 1:
         text = f"🔴 [{plat_name}] {info.anchor} 开播了！\n标题: {info.title}\n{info.url}"
-        from hoshino import MessageSegment, Message
-
         msg_parts = [Message(text)]
         if info.cover:
             msg_parts.append(MessageSegment.image(info.cover))
@@ -170,7 +176,6 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
         duration = _format_live_duration(old_time) if old_time else ""
         duration_text = f"  本次直播: {duration}" if duration else ""
         text = f"⚪ [{plat_name}] {info.anchor} 下播了{duration_text}\n{info.url}"
-        from hoshino import Message
 
         msg_parts = [Message(text)]
 
@@ -293,16 +298,15 @@ async def cmd_list_live(bot: Bot, event: Event):
             await bot.send(event, "本群没有订阅直播间")
         return
 
-    # 按平台分组
-    from collections import defaultdict
     grouped: dict[str, list[LiveSub]] = defaultdict(list)
     for row in rows:
         grouped[row.platform].append(row)
 
-    lines = ["当前订阅的直播间:"]
-    # 按 PLATFORM_DISPLAY 顺序排列，未知平台排最后
     platform_order = list(PLATFORM_DISPLAY.keys())
     sorted_platforms = sorted(grouped.keys(), key=lambda p: (platform_order.index(p) if p in platform_order else len(platform_order)))
+
+    living_lines: list[str] = []
+    offline_lines: list[str] = []
 
     for plat in sorted_platforms:
         plat_name = PLATFORM_DISPLAY.get(plat, plat)
@@ -311,9 +315,23 @@ async def cmd_list_live(bot: Bot, event: Event):
             if start_time is not None:
                 duration = _format_live_duration(start_time)
                 status_text = f"🔴直播中({duration})" if duration else "🔴直播中"
+                living_lines.append(f"[{plat_name}] {row.name} (房间号: {row.room_id}) {status_text}")
+                living_lines.append(_build_room_url(row.room_id, row.platform))
             else:
-                status_text = "⚪未开播"
-            lines.append(f"[{plat_name}] {row.name} (房间号: {row.room_id}) {status_text}")
+                offline_lines.append(f"[{plat_name}] {row.name} (房间号: {row.room_id}) ⚪未开播")
+
+    lines = ["当前订阅的直播间:", "", "正在直播:"]
+    if living_lines:
+        lines.extend(living_lines)
+    else:
+        lines.append("无")
+
+    lines.extend(["", "未开播:"])
+    if offline_lines:
+        lines.extend(offline_lines)
+    else:
+        lines.append("无")
+
     await bot.send(event, "\n".join(lines))
 
 

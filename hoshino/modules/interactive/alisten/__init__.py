@@ -1,7 +1,7 @@
 from sqlalchemy import select
-from .util import AlistenConfig, get_config, house_houseuser, sv, Session, pick_music
+from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Session, update_client
 from hoshino.permission import ADMIN
-from hoshino import Bot, Event, hsn_nickname
+from hoshino import Bot,  hsn_nickname
 from hoshino.event import GroupMessageEvent
 from nonebot.params import Depends
 
@@ -32,15 +32,16 @@ async def _(bot: Bot, event: GroupMessageEvent):
             config.house_password = house_password
             config.gemail = email
         else:
-            newconfig = AlistenConfig(
+            config = AlistenConfig(
                 gid=event.group_id,
                 gemail=email,
                 server_url=server_url,
                 house_id=house_id,
                 house_password=house_password,
             )
-            session.add(newconfig)
+            session.add(config)
         session.commit()
+        update_client(config)
     await configset.finish(
         "听歌房配置已更新\n"
         f"服务器地址: {server_url}\n"
@@ -72,6 +73,9 @@ pickmusicid = sv.on_command(
 houseuser = sv.on_command(
     "听歌房用户", aliases={"alistenusers", "听歌房成员", "谁在听歌"}
 )
+playlistcmd = sv.on_command(
+    "播放列表", aliases={"alistenplaylist", "听歌房歌曲",}
+)
 
 
 async def get_user_name(bot: Bot, event: GroupMessageEvent) -> str:
@@ -90,27 +94,25 @@ async def get_user_name(bot: Bot, event: GroupMessageEvent) -> str:
 async def _(
     event: GroupMessageEvent,
     user_name: str = Depends(get_user_name),
-    config: AlistenConfig | None = Depends(get_config),
+    client: AlistenClient | None = Depends(get_client),
 ):
-    if not config:
+    if not client:
         await pickmusic.finish("当前没有配置听歌房")
     source = "wy"
     name = event.get_plaintext().strip()
     if ":" in name:
-        # 格式如 "wy:song_name" 或 "qq:song_name"
         parts = name.split(":", 1)
         if len(parts) == 2 and parts[0] in ["wy", "qq", "db"]:
             source = parts[0]
             name = parts[1]
     elif name.startswith("BV"):
-        # Bilibili BV号
         source = "db"
-    resp = await pick_music(
-        name=name, source=source, user_name=user_name, config=config
-    )
+    resp = await client.pick_music(name=name, source=source, user_name=user_name)
     if resp:
+        print(resp)
         msg = "点歌成功！歌曲已加入播放列表"
         msg += f"\n歌曲：{resp.name}"
+        msg += f"\n歌手：{resp.artist}" if resp.artist!='unknown' else ""
         source_name = {
             "wy": "网易云音乐",
             "qq": "QQ音乐",
@@ -126,40 +128,40 @@ async def _(
 async def _(
     event: GroupMessageEvent,
     user_name: str = Depends(get_user_name),
-    config: AlistenConfig | None = Depends(get_config),
+    client: AlistenClient | None = Depends(get_client),
 ):
-    if not config:
-        await pickmusic.finish("当前没有配置听歌房")
+    if not client:
+        await pickmusicid.finish("当前没有配置听歌房")
     source = "wy"
     name = event.get_plaintext().strip()
     if ":" in name:
-        # 格式如 "wy:song_name" 或 "qq:song_name"
         parts = name.split(":", 1)
         if len(parts) == 2 and parts[0] in ["wy", "qq", "db"]:
             source = parts[0]
             name = parts[1]
     if not name.isdigit():
-        await pickmusic.finish("请用数字 ID 点歌")
-    resp = await pick_music(id_=name, source=source, user_name=user_name, config=config)
+        await pickmusicid.finish("请用数字 ID 点歌")
+    resp = await client.pick_music(id_=name, source=source, user_name=user_name)
     if resp:
         msg = "点歌成功！歌曲已加入播放列表"
-        msg += f"\n歌曲：{resp.data.name}"
+        msg += f"\n歌曲：{resp.name}"
+        msg += f"\n歌手：{resp.artist}"
         source_name = {
             "wy": "网易云音乐",
             "qq": "QQ音乐",
             "db": "Bilibili",
-        }.get(resp.data.source, resp.data.source)
+        }.get(resp.source, resp.source)
         msg += f"\n来源：{source_name}"
-        await pickmusic.finish(msg, call_header=True)
+        await pickmusicid.finish(msg, call_header=True)
     else:
-        await pickmusic.finish("点歌失败!", call_header=True)
+        await pickmusicid.finish("点歌失败!", call_header=True)
 
 
 @houseuser
-async def _(config: AlistenConfig | None = Depends(get_config)):
-    if not config:
+async def _(client: AlistenClient | None = Depends(get_client)):
+    if not client:
         await houseuser.finish("当前没有配置听歌房")
-    resp = await house_houseuser(config=config)
+    resp = await client.house_houseuser()
     if resp is None:
         await houseuser.finish("获取房间用户请求失败")
     if not resp:
@@ -167,3 +169,22 @@ async def _(config: AlistenConfig | None = Depends(get_config)):
     msg = "当前听歌房用户列表：\n"
     msg += "\n".join(f"{user.name} <{user.email}>" for user in resp)
     await houseuser.finish(msg, call_header=True)
+
+
+@playlistcmd
+async def _(client: AlistenClient | None = Depends(get_client)):
+    if not client:
+        await playlistcmd.finish("当前没有配置听歌房")
+
+    resp = await client.playlist()
+
+    if resp is None:
+        await playlistcmd.finish("获取播放列表失败")
+    msg = "听歌房播放列表：\n"
+    for i, item in enumerate(resp.playlist, 1):
+        msg += f"{i}. {item.name}-{item.artist} \n"
+    current = await client.current_music()
+    if current and current.name:
+        m =  f"\n正在播放：{current.name}-{current.artist} \n"
+        msg = m + msg
+    await playlistcmd.finish(msg.strip(), call_header=True)

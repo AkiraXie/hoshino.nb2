@@ -147,7 +147,7 @@ async def _(bot: Bot, event: Event):
         if not dyn:
             await bot.send(event, f"没有获取到{arg}动态")
             return
-        post_message = await dyn.get_message(full=True)
+        post_message = await dyn.get_message()
         msgs = dyn.render_message(post_message)
         await send_segments(msgs)
 
@@ -232,7 +232,7 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
             dyn_queue.remove_id(dyn.id)
             await asyncio.sleep(0.5)
             return
-        post_message = await dyn.get_message(full=True)
+        post_message = await dyn.get_message()
         msgs = dyn.render_message(post_message)
         for gid in gids:
             await asyncio.sleep(random.uniform(2, 5))

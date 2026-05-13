@@ -101,7 +101,7 @@ async def _send_bili_dynamic(url: str) -> bool:
     dyn = await get_dynamic_from_url(url)
     if not dyn:
         return False
-    post_message = await dyn.get_message(full=True)
+    post_message = await dyn.get_message()
     msgs = dyn.render_message(post_message)
     if not msgs:
         return False

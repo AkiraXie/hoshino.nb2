@@ -188,16 +188,13 @@ class BiliBiliDynamic(Post):
         return "https://t.bilibili.com"
 
     @override
-    async def get_message(self, full: bool = False) -> PostMessage:
-        screenshot = None
-        if full:
-            screenshot = await get_bili_dynamic_screenshot(
-                self.url,
-                cookies=await get_bilicookies(),
-            )
-            await asyncio.sleep(0.5)
+    async def get_message(self) -> PostMessage:
+        screenshot = await get_bili_dynamic_screenshot(
+            self.url,
+            cookies=await get_bilicookies(),
+        )
         return PostMessage(
-            text=self._build_text(include_content=not full or screenshot is None),
+            text=self._build_text(include_content=screenshot is None),
             screenshot=screenshot,
             images=list(self.images),
         )

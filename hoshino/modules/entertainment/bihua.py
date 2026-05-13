@@ -2,12 +2,12 @@ from hoshino import Service, Event, MessageSegment, scheduled_job, on_startup
 from hoshino.util import aiohttpx
 from urllib.parse import quote
 import random
-
+from json import loads
 sv = Service("bihua", visible=False, enable_on_default=False)
 
 bihuas = dict()
-configurl = "https://bihua.bhu.social/static/scripts/config.js"
-prefix = "https://bihua.bhu.social/meme/"
+configurl = "https://bihua.bleatingsheep.org/meme-data.json"
+prefix = "https://bihua.bleatingsheep.org/meme/"
 m = sv.on_command("bihua", aliases=("b话", "壁画"), block=True)
 r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=True)
 s = sv.on_command("搜索壁画", aliases=("searchbihua", "搜索b话"), block=True)
@@ -22,10 +22,11 @@ async def fetch_bihua_config():
         if resp.ok:
             bi_copy.clear()
             content = resp.text
-            lines = content.splitlines()
-            content_lines = lines[2:-3]
-            for line in content_lines:
-                line = line.strip().removeprefix('"meme/').removesuffix('",')
+            dic = loads(content)
+            images = dic.get("images", [])
+            for image in images:
+                line:str = image.get("path", "")
+                line = line.removeprefix("meme/")
                 for ext in [".jpg", ".png", ".jpeg"]:
                     if line.endswith(ext):
                         line = line[: -len(ext)]

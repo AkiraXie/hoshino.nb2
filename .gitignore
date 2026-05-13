@@ -143,3 +143,8 @@ dmypy.json
 
 weibo_image_web/
 tests/
+.github/
+.kilo/
+.claude/
+.worktrees/
+CLAUDE.md
