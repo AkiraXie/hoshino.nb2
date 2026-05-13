@@ -323,6 +323,7 @@ async def save_video_by_path(
     url: str, path: str | Path, verify: bool = False, headers={}
 ) -> Path | None:
     r = await aiohttpx.get(url, verify=verify, headers=headers, follow_redirects=True)
+    r.raise_for_status()
     video_signatures = [
         b"\x00\x00\x00\x18ftypmp4",
         b"\x1aE\xdf\xa3",

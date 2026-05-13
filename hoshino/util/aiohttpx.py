@@ -4,6 +4,7 @@ from httpx import AsyncClient
 import httpx
 from httpx import URL
 from loguru import logger
+import os
 import simplejson
 from hoshino import on_startup, on_shutdown
 import ssl
@@ -12,11 +13,13 @@ _timeout = 5.0
 _client = None
 _client_unverified = None
 _client_lock = asyncio.Lock()
+_pool_size = max(1, (os.cpu_count() or 4) // 2)
+_req_semaphore: asyncio.Semaphore | None = None
 
 
 @on_startup
 async def init_httpx_client():
-    global _client, _client_unverified
+    global _client, _client_unverified, _req_semaphore
     _client = AsyncClient(
         timeout=httpx.Timeout(_timeout, read=_timeout * 3),
         limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
@@ -32,23 +35,25 @@ async def init_httpx_client():
         limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         verify=unverified_context,
     )
+    _req_semaphore = asyncio.Semaphore(_pool_size)
     logger.info("HTTPX clients initialized successfully.")
 
 
 @on_shutdown
 async def close_httpx_client():
-    global _client, _client_unverified
+    global _client, _client_unverified, _req_semaphore
     if _client:
         await _client.aclose()
         _client = None
     if _client_unverified:
         await _client_unverified.aclose()
         _client_unverified = None
+    _req_semaphore = None
     logger.info("HTTPX clients closed successfully.")
 
 
 async def get_client(verify_ssl: bool = True):
-    global _client, _client_unverified
+    global _client, _client_unverified, _req_semaphore
     target_client = _client if verify_ssl else _client_unverified
 
     if target_client is None:
@@ -57,6 +62,9 @@ async def get_client(verify_ssl: bool = True):
                 not verify_ssl and _client_unverified is None
             ):
                 await init_httpx_client()
+
+    if _req_semaphore is None:
+        _req_semaphore = asyncio.Semaphore(_pool_size)
 
     return _client if verify_ssl else _client_unverified
 
@@ -111,7 +119,8 @@ async def get(
             raise RuntimeError("HTTPX client is not initialized.")
         if timeout is not None:
             kwargs["timeout"] = timeout
-        resp = await client.get(url, cookies=cookies, **kwargs)
+        async with _req_semaphore:
+            resp = await client.get(url, cookies=cookies, **kwargs)
         res = Response(
             resp.url,
             resp.content,
@@ -138,7 +147,8 @@ async def post(
             raise RuntimeError("HTTPX client is not initialized.")
         if timeout is not None:
             kwargs["timeout"] = timeout
-        resp = await client.post(url, cookies=cookies, **kwargs)
+        async with _req_semaphore:
+            resp = await client.post(url, cookies=cookies, **kwargs)
         res = Response(
             resp.url,
             resp.content,
@@ -165,7 +175,8 @@ async def head(
             raise RuntimeError("HTTPX client is not initialized.")
         if timeout is not None:
             kwargs["timeout"] = timeout
-        resp = await client.head(url, **kwargs)
+        async with _req_semaphore:
+            resp = await client.head(url, **kwargs)
         res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
         return res
     except BaseException as e:
