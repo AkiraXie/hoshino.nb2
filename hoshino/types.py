@@ -12,9 +12,11 @@ from .event import Event
 
 if TYPE_CHECKING:
     from typing import Any, Callable, Optional, Type as _Type, Union as _Union
+    from nonebot.matcher import Matcher as _OrigMatcher
+    from nonebot.adapters.onebot.v11 import Bot as _OrigBot
 
     # 告诉 IDE：Matcher.got 在 bootstrap 时被 patch，多出 args_parser 等参数
-    class Matcher(Matcher):
+    class Matcher(_OrigMatcher):
         @classmethod
         def got(
             cls: _Type[Matcher],
@@ -25,7 +27,7 @@ if TYPE_CHECKING:
         ) -> Callable[[T_Handler], T_Handler]: ...
 
     # 告诉 IDE：Bot.send 在 bootstrap 时被 patch，支持 at_sender/call_header
-    class Bot(Bot):
+    class Bot(_OrigBot):
         async def send(
             self,
             event: Event,
