@@ -2,7 +2,7 @@ import asyncio
 import time
 from hoshino.schedule import scheduled_job
 from hoshino.types import Bot, Event
-from hoshino.hooks import on_startup
+from hoshino.hooks import on_post_startup
 import random
 from hoshino.util import send_group_segments, send_segments
 from .utils import (
@@ -266,7 +266,7 @@ async def bili_dyn_dispatcher():
         asyncio.create_task(handle_bili_dyn(dyn, sem))
 
 
-@on_startup
+@on_post_startup
 async def start_bili_dyn_dispatcher():
     with Session() as session:
         stmt = select(db.uid).distinct()

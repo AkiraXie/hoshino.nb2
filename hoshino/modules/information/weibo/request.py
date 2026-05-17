@@ -1,6 +1,6 @@
 import asyncio
 
-from hoshino.hooks import on_startup
+from hoshino.hooks import on_post_startup
 from hoshino.util import save_cookies, send_to_superuser, sucmd
 
 from .pw import get_weibo_cookies_from_local
@@ -30,11 +30,11 @@ async def get_weibocookies_cmd():
         sv.logger.error("Failed to initialize or get Weibo cookies")
 
 
-@on_startup
+@on_post_startup
 async def initialize_weibo_cookies():
     ck = await get_weibo_cookies_from_local()
     await save_cookies("weibo", ck)
-@on_startup
+@on_post_startup
 async def start_missing_weibo_target_worker() -> None:
     asyncio.create_task(missing_weibo_target_worker())
 

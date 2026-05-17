@@ -4,7 +4,7 @@ from datetime import datetime
 
 from hoshino.types import Bot, Event, Message, MessageSegment
 from hoshino.service import Service
-from hoshino.hooks import on_startup
+from hoshino.hooks import on_post_startup
 from hoshino.schedule import scheduled_job
 
 from .db import (
@@ -111,7 +111,7 @@ def _format_live_duration(show_time: datetime | None) -> str:
 # ==================== 推送循环 ====================
 
 
-@on_startup
+@on_post_startup
 async def _init_live_status():
     """启动时初始化所有已订阅直播间的状态，并填充 room_manager"""
     room_ids = list_all_room_ids()
