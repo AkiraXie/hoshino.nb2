@@ -1,7 +1,8 @@
 import asyncio
 import time
 from hoshino.schedule import scheduled_job
-from hoshino import Bot, Event, on_startup
+from hoshino.types import Bot, Event
+from hoshino.hooks import on_startup
 import random
 from hoshino.util import send_group_segments, send_segments
 from .utils import (

@@ -1,6 +1,9 @@
 ## Thanks to github.com/FloatTech/ZeroBot-Plugin/plugin/emojimix
 
-from hoshino import Service, T_State, aiohttpx, Matcher, MessageSegment, SUPERUSER
+from hoshino.service import Service
+from hoshino.types import T_State, Matcher, MessageSegment
+from hoshino.util import aiohttpx
+from hoshino.permission import SUPERUSER
 from hoshino.event import MessageEvent
 from .data import emojis, qqface
 

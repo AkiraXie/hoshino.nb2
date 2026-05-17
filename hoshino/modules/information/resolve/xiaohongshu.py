@@ -2,7 +2,8 @@ import json
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel
-from hoshino import Bot, Event, MessageSegment, Message, data_dir
+from hoshino.types import Bot, Event, MessageSegment, Message
+from hoshino import data_dir
 from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
 import re
 from urllib.parse import parse_qs, urlparse

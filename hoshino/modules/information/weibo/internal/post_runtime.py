@@ -6,7 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
-from hoshino import Bot, Message, MessageSegment, config
+from hoshino.types import Bot, Message, MessageSegment
+from hoshino import config
 from hoshino.modules.information.utils import PostMessage
 from hoshino.util import (
     save_img_by_path,

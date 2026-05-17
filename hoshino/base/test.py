@@ -1,7 +1,8 @@
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent
 from hoshino.event import Event, get_event
-from hoshino import Bot, get_bot_list, sucmd
+from hoshino.types import Bot
+from hoshino.util import get_bot_list, sucmd
 from nonebot.matcher import matchers
 
 test1 = sucmd("testgetbot", True)

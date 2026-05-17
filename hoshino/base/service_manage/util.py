@@ -1,4 +1,4 @@
-from . import Bot, Event, T_State
+from hoshino.types import Bot, Event, T_State
 
 
 async def parse_service(event: Event, state: T_State):

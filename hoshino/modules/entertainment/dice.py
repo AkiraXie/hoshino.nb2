@@ -1,4 +1,5 @@
-from hoshino import Matcher, Service, T_State
+from hoshino.types import Matcher, T_State
+from hoshino.service import Service
 import random
 
 sv = Service("dice", visible=False)
