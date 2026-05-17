@@ -1,4 +1,5 @@
-from hoshino import Service, Event, MessageSegment
+from hoshino.service import Service
+from hoshino.types import Event, MessageSegment
 from hoshino.util import Cooldown, aiohttpx
 
 sv = Service("coser", visible=False, enable_on_default=False)

@@ -1,10 +1,9 @@
 from typing import Literal
-from nonebot.adapters.onebot.v11 import Event, Adapter
+from nonebot.adapters.onebot.v11 import Event
 from nonebot.adapters.onebot.v11.event import (
     MessageEvent,
     GroupMessageEvent,
     PrivateMessageEvent,
-    LifecycleMetaEvent,
     NoticeEvent,
 )
 from pydantic import BaseModel
@@ -12,9 +11,7 @@ from typing_extensions import override
 
 
 class GroupReactionEvent(NoticeEvent):
-    """
-    Lagrange GroupReactionEvent
-    """
+    """Lagrange GroupReactionEvent"""
 
     group_id: int
     notice_type: Literal["reaction"]
@@ -41,9 +38,7 @@ class GroupReactionEvent(NoticeEvent):
 
 
 class GroupMsgEmojiLikeEvent(NoticeEvent):
-    """
-    LLOneBot GroupMsgEmojiLike
-    """
+    """LLOneBot GroupMsgEmojiLike"""
 
     class Like(BaseModel):
         emoji_id: str
@@ -66,15 +61,11 @@ class GroupMsgEmojiLikeEvent(NoticeEvent):
     @override
     def is_tome(self):
         return super().is_tome()
-    
+
     def get_emoji(self) -> str:
         if self.likes:
             return self.likes[0].emoji_id
         return ""
-
-
-Adapter.add_custom_model(GroupReactionEvent)
-Adapter.add_custom_model(GroupMsgEmojiLikeEvent)
 
 
 def get_event(event: Event) -> str:

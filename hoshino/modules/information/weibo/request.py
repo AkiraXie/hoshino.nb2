@@ -1,6 +1,6 @@
 import asyncio
 
-from hoshino import on_startup
+from hoshino.hooks import on_startup
 from hoshino.util import save_cookies, send_to_superuser, sucmd
 
 from .pw import get_weibo_cookies_from_local

@@ -1,5 +1,5 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
-from hoshino import Event, Bot
+from hoshino.types import Event, Bot
 from nonebot.typing import T_State
 from .bilidata import (
     resolve_bilibili,

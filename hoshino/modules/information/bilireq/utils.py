@@ -11,11 +11,8 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from hoshino import (
-    db_dir,
-    Message,
-    MessageSegment,
-)
+from hoshino import db_dir
+from hoshino.types import Message, MessageSegment
 from hoshino.service import Service
 from hoshino.util import (
     aiohttpx,

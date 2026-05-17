@@ -1,11 +1,12 @@
 import re
 
-from hoshino import Bot, SUPERUSER
+from hoshino.types import Bot
+from hoshino.permission import SUPERUSER
 from hoshino.event import GroupMsgEmojiLikeEvent
 from hoshino.util import send_to_superuser
 from nonebot.typing import T_State
 from nonebot.compat import type_validate_python
-from hoshino import Message
+from hoshino.types import Message
 
 from .sv import sv
 from .internal.post_runtime import get_cached_weibo_uid_id

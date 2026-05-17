@@ -1,8 +1,13 @@
 from functools import wraps
-from nonebot_plugin_apscheduler import scheduler
 from loguru import logger
 from apscheduler import job
 from typing import Callable, Any, Awaitable, List, Dict, Optional
+
+
+def _get_scheduler():
+    """惰性 import APScheduler，避免模块级 import 时要求 nonebot.init()。"""
+    from nonebot_plugin_apscheduler import scheduler
+    return scheduler
 
 
 def wrapper(
@@ -49,7 +54,8 @@ def scheduled_job(
         triger_kwargs.setdefault("coalesce", True)
         id = triger_kwargs.get("id", func.__name__)
         triger_kwargs["id"] = id
-        return scheduler.scheduled_job(trigger, **triger_kwargs)(
+        sched = _get_scheduler()
+        return sched.scheduled_job(trigger, **triger_kwargs)(
             wrapper(func, id, args, kwargs)
         )
 
@@ -68,4 +74,5 @@ def add_job(
     triger_kwargs.setdefault("coalesce", True)
     id = triger_kwargs.get("id", func.__name__)
     triger_kwargs["id"] = id
-    return scheduler.add_job(wrapper(func, id, args, kwargs), trigger, **triger_kwargs)
+    sched = _get_scheduler()
+    return sched.add_job(wrapper(func, id, args, kwargs), trigger, **triger_kwargs)

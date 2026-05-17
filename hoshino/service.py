@@ -3,24 +3,16 @@ import re
 import os
 import json
 from collections import defaultdict
-from typing import Iterable, Optional, Union, Sized
+from typing import Iterable, Optional, Union
 import nonebot
 from nonebot.params import Depends
-from nonebot.message import run_preprocessor
-from nonebot.typing import T_State
+from hoshino.hooks import run_preprocessor
 from nonebot.exception import RejectedException, PausedException, FinishedException
 from nonebot.rule import ArgumentParser, to_me, command, shell_command
-from hoshino import (
-    Bot,
-    service_dir as _service_dir,
-    Message,
-    MessageSegment,
-    Matcher,
-    current_bot,
-    current_event,
-)
+from hoshino.types import Bot, Message, MessageSegment, Matcher, current_bot, current_event
+from hoshino import service_dir as _service_dir
 from hoshino.message import MessageTemplate
-from hoshino.event import Event, GroupMessageEvent, PrivateMessageEvent
+from hoshino.event import Event
 from nonebot.plugin import (
     on_message,
     on_startswith,
