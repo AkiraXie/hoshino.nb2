@@ -4,7 +4,8 @@ from sqlalchemy import select, create_engine, Integer, Text
 import asyncio
 import re
 
-from hoshino import db_dir, on_startup
+from hoshino import db_dir
+from hoshino.hooks import on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post, get
 from hoshino.event import GroupMessageEvent

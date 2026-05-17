@@ -1,5 +1,5 @@
 from hoshino.util import sucmds
-from hoshino import Bot, Event
+from hoshino.types import Bot, Event
 from hoshino.service import Service, MatcherWrapper
 
 

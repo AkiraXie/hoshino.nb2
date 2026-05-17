@@ -1,5 +1,6 @@
 from nonebot.typing import T_State
-from hoshino import Service, aiohttpx
+from hoshino.service import Service
+from hoshino.util import aiohttpx
 
 sv = Service("nbnhhsh")
 nbn = sv.on_regex(r"^[\?\？]{1,2} ?([a-z0-9]+)$", only_group=False)

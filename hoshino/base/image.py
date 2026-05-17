@@ -2,16 +2,9 @@ import asyncio
 from io import BytesIO
 from PIL import Image
 from pathlib import Path
-from hoshino import (
-    Message,
-    Bot,
-    T_State,
-    SUPERUSER,
-    MessageSegment,
-    img_dir,
-    fav_dir,
-    video_dir,
-)
+from hoshino.types import Bot, Message, MessageSegment, T_State
+from hoshino.permission import SUPERUSER
+from hoshino import img_dir, fav_dir, video_dir
 from hoshino.util import (
     __SU_IMGLIST,
     __SU_VIDEOLIST,

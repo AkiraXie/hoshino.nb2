@@ -1,7 +1,8 @@
 import asyncio
 import time
-from hoshino import sucmd, Bot, driver
-from hoshino.util import send_to_superuser
+from hoshino.util import sucmd, send_to_superuser
+from hoshino.types import Bot
+from hoshino.hooks import on_bot_connect
 from asyncio import all_tasks
 from datetime import datetime, UTC
 import psutil
@@ -76,6 +77,6 @@ async def _():
     await showcmd.finish(await get_stat())
 
 
-@driver.on_bot_connect
+@on_bot_connect
 async def _(bot: Bot):
     await send_to_superuser(await get_stat())

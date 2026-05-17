@@ -1,4 +1,5 @@
-from hoshino import Service, Matcher, MessageSegment, T_State
+from hoshino.service import Service
+from hoshino.types import Matcher, MessageSegment, T_State
 from hoshino.permission import SUPERUSER
 import os
 import random

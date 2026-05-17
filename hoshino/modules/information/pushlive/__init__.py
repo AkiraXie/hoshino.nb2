@@ -2,7 +2,9 @@ import asyncio
 from collections import defaultdict
 from datetime import datetime
 
-from hoshino import Bot, Event, Message, MessageSegment, Service, on_startup
+from hoshino.types import Bot, Event, Message, MessageSegment
+from hoshino.service import Service
+from hoshino.hooks import on_startup
 from hoshino.schedule import scheduled_job
 
 from .db import (

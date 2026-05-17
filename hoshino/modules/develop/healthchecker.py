@@ -3,7 +3,7 @@ from loguru import logger
 import nonebot
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from hoshino import Bot
+from hoshino.types import Bot
 
 app: FastAPI = nonebot.get_app()
 

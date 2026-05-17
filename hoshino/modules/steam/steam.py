@@ -2,7 +2,10 @@ from typing import Iterable
 from loguru import logger
 from lxml import etree
 import json
-from hoshino import scheduled_job, Bot, Event, Service, db_dir
+from hoshino.schedule import scheduled_job
+from hoshino.types import Bot, Event
+from hoshino.service import Service
+from hoshino import db_dir
 from hoshino.permission import ADMIN
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx

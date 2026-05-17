@@ -3,7 +3,8 @@ from nonebot.typing import T_State
 from nonebot.params import Depends
 from .data import Question, Session
 from hoshino.permission import ADMIN
-from hoshino import Service, Bot, Event, Message, MessageSegment, Matcher
+from hoshino.service import Service
+from hoshino.types import Bot, Event, Message, MessageSegment, Matcher
 from hoshino.event import MessageEvent
 from hoshino.config import config
 from hoshino.util.aiohttpx import get

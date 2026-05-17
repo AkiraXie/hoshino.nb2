@@ -13,7 +13,7 @@ from hoshino.util import (
 from hoshino import data_dir
 from ..utils import Post as BasePost, PostMessage, clean_filename
 from .sv import sv
-from hoshino import Message, MessageSegment
+from hoshino.types import Message, MessageSegment
 
 COMMON_HEADER = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) "
