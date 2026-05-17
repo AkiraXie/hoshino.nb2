@@ -2,11 +2,16 @@ from sqlalchemy import select
 from .utils import (
     QbtConfig,
     get_config,
+    get_client,
+    update_client,
     sv,
     Session,
     add_torrent_download,
-    get_torrent_list,
+    get_active_torrents,
+    get_completed_torrents,
     validate_download_url,
+    format_size,
+    QbtClient,
 )
 from hoshino.permission import ADMIN
 from hoshino import Bot
@@ -25,7 +30,8 @@ configshow = sv.on_command(
 add_torrent = sv.on_command(
     "添加种子", aliases={"下载种子", "qbt下载", "addtorrent"}, force_whitespace=True
 )
-torrent_list = sv.on_command("种子列表", aliases={"下载列表", "qbt列表", "torrents"})
+active_list = sv.on_command("下载列表", aliases={"活跃列表", "qbt列表", "torrents"})
+completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归档", "completed"})
 
 
 @configset
@@ -56,16 +62,18 @@ async def _(bot: Bot, event: GroupMessageEvent):
             config.username = username
             config.password = password
             config.category = category
+            target = config
         else:
-            newconfig = QbtConfig(
+            target = QbtConfig(
                 gid=event.group_id,
                 server_url=server_url,
                 username=username,
                 password=password,
                 category=category,
             )
-            session.add(newconfig)
+            session.add(target)
         session.commit()
+        update_client(target)
 
     await configset.finish(
         "qBittorrent配置已更新\n"
@@ -96,10 +104,10 @@ async def _(
 @add_torrent
 async def _(
     event: GroupMessageEvent,
-    config: QbtConfig | None = Depends(get_config),
+    client: QbtClient | None = Depends(get_client),
 ):
     """添加种子下载"""
-    if not config:
+    if not client:
         await add_torrent.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
     msg_text = event.get_plaintext().strip()
@@ -131,78 +139,87 @@ async def _(
         )
 
     # 添加下载任务
-    result = await add_torrent_download(config, url, category)
-
+    result = await add_torrent_download(client, url, category)
+    sv.logger.info(f'添加种子结果: {result}')
     if result["success"]:
         msg = "✅ 种子添加成功！\n"
         msg += f"链接类型: {result.get('url_type', '未知')}\n"
-        msg += f"分类: {category or config.category or 'hoshino'}"
+        if result.get("name"):
+            msg += f"名称: {result['name']}\n"
+            msg += f"大小: {result['size']}\n"
+        msg += f"分类: {category or client.config.category or 'hoshino'}"
         await add_torrent.finish(msg, call_header=True)
     else:
         await add_torrent.finish(f"❌ 添加失败: {result['message']}", call_header=True)
 
 
-@torrent_list
-async def _(
-    event: GroupMessageEvent,
-    config: QbtConfig | None = Depends(get_config),
-):
-    """显示种子下载列表"""
-    if not config:
-        await torrent_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
+STATE_MAP = {
+    "downloading": "下载中", "uploading": "上传中",
+    "pausedDL": "暂停下载", "pausedUP": "暂停上传",
+    "queuedDL": "排队下载", "queuedUP": "排队上传",
+    "stalledDL": "停滞下载", "stalledUP": "停滞上传",
+    "checkingDL": "检查中", "checkingUP": "检查中",
+    "queuedForChecking": "等待检查", "checkingResumeData": "检查数据",
+    "moving": "移动中", "unknown": "未知",
+    "error": "错误", "missingFiles": "文件缺失",
+    "allocating": "分配空间",
+}
 
-    # 获取种子列表
-    torrents = await get_torrent_list(config, config.category)
 
+def _render_torrent_list(torrents: list[dict], max_show: int, title: str, category: str) -> str:
     if not torrents:
-        await torrent_list.finish("当前没有下载任务或获取列表失败")
-
-    # 构建消息
-    msg = f"📋 种子下载列表 (分类: {config.category or '全部'})\n"
+        return ""
+    msg = f"📋 {title} (分类: {category or '全部'})\n"
     msg += "=" * 30 + "\n"
-
-    # 限制显示数量，避免消息过长
-    max_show = 10
-    for i, torrent in enumerate(torrents[:max_show]):
-        name = torrent.get("name", "未知")[:30]  # 限制名称长度
-        progress = torrent.get("progress", 0) * 100
-        state = torrent.get("state", "未知")
-        size = torrent.get("size", 0)
-
-        # 状态转换为中文
-        state_map = {
-            "downloading": "下载中",
-            "uploading": "上传中",
-            "pausedDL": "暂停下载",
-            "pausedUP": "暂停上传",
-            "queuedDL": "排队下载",
-            "queuedUP": "排队上传",
-            "stalledDL": "停滞下载",
-            "stalledUP": "停滞上传",
-            "checkingDL": "检查中",
-            "checkingUP": "检查中",
-            "queuedForChecking": "等待检查",
-            "checkingResumeData": "检查数据",
-            "moving": "移动中",
-            "unknown": "未知",
-            "error": "错误",
-            "missingFiles": "文件缺失",
-            "allocating": "分配空间",
-        }
-        state_cn = state_map.get(state, state)
-
-        # 格式化文件大小
-        if size > 1024**3:  # GB
-            size_str = f"{size / (1024**3):.1f} GB"
-        elif size > 1024**2:  # MB
-            size_str = f"{size / (1024**2):.1f} MB"
-        else:
-            size_str = f"{size / 1024:.1f} KB"
-
+    for i, t in enumerate(torrents[:max_show]):
+        name = t.get("name", "未知")[:30]
+        progress = t.get("progress", 0) * 100
+        state_cn = STATE_MAP.get(t.get("state", "未知"), t.get("state", "未知"))
+        size_str = format_size(t.get("size", 0))
         msg += f"{i + 1}. {name}\n"
         msg += f"   进度: {progress:.1f}% | 状态: {state_cn} | 大小: {size_str}\n"
-
     if len(torrents) > max_show:
         msg += f"\n... 还有 {len(torrents) - max_show} 个任务未显示"
+    return msg
 
-    await torrent_list.finish(msg, call_header=True)
+
+@active_list
+async def _(
+    event: GroupMessageEvent,
+    client: QbtClient | None = Depends(get_client),
+):
+    if not client:
+        await active_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
+
+    msg_text = event.get_plaintext().strip()
+    max_show = 20
+    if msg_text.isdigit():
+        max_show = int(msg_text)
+
+    torrents = await get_active_torrents(client, client.config.category)
+    if not torrents:
+        await active_list.finish("当前没有活跃下载任务")
+
+    msg = _render_torrent_list(torrents, max_show, "活跃下载列表", client.config.category)
+    await active_list.finish(msg, call_header=True)
+
+
+@completed_list
+async def _(
+    event: GroupMessageEvent,
+    client: QbtClient | None = Depends(get_client),
+):
+    if not client:
+        await completed_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
+
+    msg_text = event.get_plaintext().strip()
+    max_show = 20
+    if msg_text.isdigit():
+        max_show = int(msg_text)
+
+    torrents = await get_completed_torrents(client, client.config.category)
+    if not torrents:
+        await completed_list.finish("当前没有已完成的种子")
+
+    msg = _render_torrent_list(torrents, max_show, "已完成种子列表", client.config.category)
+    await completed_list.finish(msg, call_header=True)
