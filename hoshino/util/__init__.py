@@ -29,9 +29,10 @@ from nonebot.plugin import CommandGroup, on_command, on_message
 from nonebot.rule import Rule, to_me
 from nonebot.compat import type_validate_python
 from . import aiohttpx
-from sqlalchemy import Column, Text, Float, create_engine, PrimaryKeyConstraint, select
+from sqlalchemy import Text, Float, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from hoshino import db_dir, on_bot_connect
+from hoshino import db_dir
+from hoshino.hooks import on_bot_connect
 from time import time
 
 __SU_IMGLIST = "__superuser__imglist"
@@ -531,6 +532,7 @@ class Cookies(Base):
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+db_dir.mkdir(parents=True, exist_ok=True)
 db_path = db_dir / "cookies.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
 Session = sessionmaker(bind=engine, expire_on_commit=False)

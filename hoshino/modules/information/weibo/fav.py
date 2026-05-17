@@ -3,7 +3,9 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-from hoshino import Bot, Event, Message, SUPERUSER, data_dir
+from hoshino.types import Bot, Event, Message
+from hoshino.permission import SUPERUSER
+from hoshino import data_dir
 from hoshino.util import send_segments
 
 from .sv import sv

@@ -1,6 +1,6 @@
 from loguru import logger
 from hoshino.util import sucmd
-from hoshino import Bot, Event
+from hoshino.types import Bot, Event
 from asyncio import sleep
 
 bc = sucmd("bc", aliases={"广播", "broadcast"})

@@ -6,7 +6,7 @@ from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
 
-from hoshino import Bot, Message, MessageSegment
+from hoshino.types import Bot, Message, MessageSegment
 from hoshino.modules.information.utils import PostMessage
 
 from ..utils import Post, clean_filename

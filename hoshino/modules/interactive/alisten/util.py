@@ -1,7 +1,8 @@
 from pydantic import BaseModel, RootModel
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, sessionmaker
 from sqlalchemy import select, create_engine, Integer, Float, Text
-from hoshino import db_dir,on_startup
+from hoshino import db_dir
+from hoshino.hooks import on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
 from hoshino.event import GroupMessageEvent

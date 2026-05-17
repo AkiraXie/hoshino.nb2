@@ -3,7 +3,8 @@
 import asyncio
 from datetime import datetime
 import time
-from hoshino import Bot, Event, Message, SUPERUSER
+from hoshino.types import Bot, Event, Message
+from hoshino.permission import SUPERUSER
 from hoshino.permission import ADMIN
 from hoshino.util import (
     send_segments,

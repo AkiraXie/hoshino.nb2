@@ -11,9 +11,13 @@ driver = nonebot.get_driver()
 driver.register_adapter(Adapter)
 
 nonebot.load_plugin("nonebot_plugin_apscheduler")
-nonebot.load_plugins(base)
 
 from hoshino import config
+from hoshino.bootstrap import bootstrap
+
+bootstrap()
+
+nonebot.load_plugins(base)
 
 if modules := config.modules:
     for module in modules:

@@ -1,5 +1,6 @@
 import base64
-from hoshino import Service, Bot, Event
+from hoshino.service import Service
+from hoshino.types import Bot, Event
 
 sv = Service("b64", enable_on_default=False)
 

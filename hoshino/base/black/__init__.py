@@ -1,9 +1,9 @@
 import asyncio
 from nonebot.adapters.onebot.v11.event import MessageEvent
-from nonebot.message import event_preprocessor
 from nonebot.exception import FinishedException, IgnoredException
-from hoshino import Bot, Event, driver
 from nonebot.typing import T_State
+from hoshino.hooks import event_preprocessor, on_startup
+from hoshino.types import Bot, Event
 from hoshino.util import sucmd, parse_qq
 from hoshino.log import logger
 from datetime import datetime, timedelta
@@ -16,7 +16,7 @@ from sqlalchemy import select
 _block_users = set()
 
 
-@driver.on_startup
+@on_startup
 async def _():
     date = datetime.now(timezone("Asia/Shanghai"))
     with Session() as session:

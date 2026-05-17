@@ -1,7 +1,8 @@
 from pathlib import Path
 from playwright.async_api import async_playwright, Browser, Playwright, Page
-from hoshino import MessageSegment
-from hoshino import scheduled_job, on_startup
+from hoshino.types import MessageSegment
+from hoshino.schedule import scheduled_job
+from hoshino.hooks import on_startup
 from nonebot.log import logger
 import ssl
 

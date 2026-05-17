@@ -1,5 +1,5 @@
 import asyncio
-from hoshino import MessageSegment, Message
+from hoshino.types import MessageSegment, Message
 from hoshino.util import aiohttpx, get_cookies, send_segments, send
 from time import strftime, localtime
 import re

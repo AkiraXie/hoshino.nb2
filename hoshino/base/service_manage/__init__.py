@@ -1,12 +1,12 @@
 import re
 from functools import cmp_to_key
 from hoshino.event import GroupMessageEvent, PrivateMessageEvent
-from hoshino import Service, Bot, Event
+from hoshino.types import Bot, Event, T_State
+from hoshino.service import Service
 from nonebot.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
 from nonebot.plugin import on_shell_command
 from hoshino.util import _strip_cmd
-from hoshino import T_State
 from .util import parse_gid, parse_service
 
 parser = ArgumentParser()

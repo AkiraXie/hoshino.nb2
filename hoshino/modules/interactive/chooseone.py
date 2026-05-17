@@ -1,4 +1,5 @@
-from hoshino import Service, Event, Bot, Message
+from hoshino.service import Service
+from hoshino.types import Event, Bot, Message
 import random
 
 sv = Service("chooseone")
