@@ -32,7 +32,7 @@ from . import aiohttpx
 from sqlalchemy import Text, Float, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
-from hoshino.hooks import on_bot_connect
+from hoshino.hooks import on_post_startup
 from time import time
 
 __SU_IMGLIST = "__superuser__imglist"
@@ -667,7 +667,7 @@ async def get_redirect(url: str, headers={}) -> str | None:
     return loc
 
 
-@on_bot_connect
+@on_post_startup
 async def init_cookies():
     dic = check_all_cookies()
     msg = "加载 cookies 完成, 当前可用 cookies: " + ", ".join(

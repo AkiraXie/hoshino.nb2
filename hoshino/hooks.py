@@ -74,6 +74,14 @@ class _Registry:
         self._preprocessors.append(func)
         return func
 
+    def event_preprocessor(self, func: Callable) -> Callable:
+        if self._replayed:
+            from nonebot.message import event_preprocessor as _rp
+            return _rp(func)
+        self._preprocessors.append(func)
+        return func
+
+
     async def _run_serial_and_post(self) -> None:
         for fn in self._serial_startup:
             await fn()
@@ -118,7 +126,7 @@ on_shutdown = _reg.on_shutdown
 on_bot_connect = _reg.on_bot_connect
 on_bot_disconnect = _reg.on_bot_disconnect
 run_preprocessor = _reg.run_preprocessor
-event_preprocessor = _reg.run_preprocessor  # 兼容别名，同 run_preprocessor
+event_preprocessor = _reg.event_preprocessor  # 兼容别名，同 run_preprocessor
 
 
 def replay(driver) -> None:
