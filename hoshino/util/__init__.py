@@ -13,8 +13,6 @@ from io import BytesIO
 from collections import defaultdict
 from PIL import Image
 from datetime import datetime, timedelta
-from nonebot.adapters.onebot.v11 import MessageSegment, Message, Bot
-from nonebot.params import Depends
 from nonebot.adapters.onebot.v11.event import (
     Event,
     GroupMessageEvent,
@@ -22,8 +20,10 @@ from nonebot.adapters.onebot.v11.event import (
     MessageEvent,
 )
 from nonebot.typing import T_State
+from nonebot.params import Depends
 from hoshino import fav_dir, img_dir, hsn_nickname, video_dir
-from nonebot.matcher import Matcher, current_matcher, current_bot, current_event
+from hoshino.types import Matcher, current_bot, current_event, MessageSegment, Message, Bot
+from nonebot.matcher import current_matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command, on_message
 from nonebot.rule import Rule, to_me

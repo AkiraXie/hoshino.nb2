@@ -1,7 +1,7 @@
 import re
 from nonebot.rule import Rule
 from nonebot.typing import T_State
-from nonebot.adapters.onebot.v11 import Bot, Event
+from hoshino.types import Bot, Event
 from hoshino.util import normalize_str
 
 
