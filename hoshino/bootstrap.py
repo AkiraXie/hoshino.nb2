@@ -18,7 +18,7 @@ from . import config as _config
 from . import hooks
 
 
-# ── Bot.send patch（原 hoshino/__init__.py L40-124）──
+# ── Bot.send patch ──
 
 async def send(
     self: Bot,
@@ -28,7 +28,7 @@ async def send(
     call_header: bool = False,
     **kwargs,
 ) -> Any:
-    """改自 ``onebot.v11.bot.send``，根据 ``event`` 向触发事件的主体发送消息。"""
+    """根据 ``event`` 向触发事件的主体发送消息。"""
     message = (
         escape(message, escape_comma=False) if isinstance(message, str) else message
     )
@@ -83,7 +83,7 @@ async def send(
     )
 
 
-# ── Matcher.got patch（原 hoshino/__init__.py L131-191）──
+# ── Matcher.got patch ──
 
 @classmethod
 def got(
@@ -93,9 +93,7 @@ def got(
     parameterless: Optional[list] = None,
     args_parser: Optional[T_Handler] = None,
 ):
-    """改自 ``nonebot.Matcher.got``。
-
-    装饰一个函数来指示 NoneBot 获取一个参数 ``key``。
+    """装饰一个函数来指示 NoneBot 获取一个参数 ``key``。
     当要获取的 ``key`` 不存在时接收用户新的一条消息再运行该函数，
     如果 ``key`` 已存在则直接继续运行。
     """
