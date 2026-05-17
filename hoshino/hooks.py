@@ -17,6 +17,7 @@ class _Registry:
         self._bot_connect: list[Callable] = []
         self._bot_disconnect: list[Callable] = []
         self._preprocessors: list[Callable] = []
+        self._event_preprocessors: list[Callable] = []
         self._replayed = False
 
     def on_startup(self, func: Callable) -> Callable:
@@ -78,7 +79,7 @@ class _Registry:
         if self._replayed:
             from nonebot.message import event_preprocessor as _rp
             return _rp(func)
-        self._preprocessors.append(func)
+        self._event_preprocessors.append(func)
         return func
 
 
@@ -93,7 +94,7 @@ class _Registry:
 
     def replay(self, driver) -> None:
         from nonebot.message import run_preprocessor as _rp
-
+        from nonebot.message import event_preprocessor as _ep
         if self._serial_startup or self._post_startup:
             driver.on_startup(self._run_serial_and_post)
         for fn in self._startup:
@@ -106,6 +107,8 @@ class _Registry:
             driver.on_bot_disconnect(fn)
         for fn in self._preprocessors:
             _rp(fn)
+        for fn in self._event_preprocessors:
+            _ep(fn)
 
         self._replayed = True
         self._startup.clear()
@@ -115,6 +118,7 @@ class _Registry:
         self._bot_connect.clear()
         self._bot_disconnect.clear()
         self._preprocessors.clear()
+        self._event_preprocessors.clear()
 
 
 _reg = _Registry()
