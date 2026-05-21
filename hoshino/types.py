@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from nonebot.matcher import Matcher as _OrigMatcher
     from nonebot.adapters.onebot.v11 import Bot as _OrigBot
 
-    # 告诉 IDE：Matcher.got 在 bootstrap 时被 patch，多出 args_parser 等参数
     class Matcher(_OrigMatcher):
         @classmethod
         def got(
@@ -26,7 +25,6 @@ if TYPE_CHECKING:
             args_parser: Optional[T_Handler] = None,
         ) -> Callable[[T_Handler], T_Handler]: ...
 
-    # 告诉 IDE：Bot.send 在 bootstrap 时被 patch，支持 at_sender/call_header
     class Bot(_OrigBot):
         async def send(
             self,

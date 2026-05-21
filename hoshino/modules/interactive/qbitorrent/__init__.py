@@ -28,7 +28,7 @@ configshow = sv.on_command(
 
 # 下载命令
 add_torrent = sv.on_command(
-    "添加种子", aliases={"下载种子", "qbt下载", "addtorrent"}, force_whitespace=True
+    "添加种子", aliases={"下载种子", "qbt下载", "addtorrent","addto","tjzj"}
 )
 active_list = sv.on_command("下载列表", aliases={"活跃列表", "qbt列表", "torrents"})
 completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归档", "completed"})

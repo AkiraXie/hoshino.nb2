@@ -141,10 +141,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-weibo_image_web/
 tests/
-.github/
-.kilo/
-.claude/
-.worktrees/
-CLAUDE.md
+*node_modules/
+*.png
+*.jpg
+*pid
+.*
+./package-lock.json
+./package.json

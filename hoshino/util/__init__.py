@@ -674,4 +674,3 @@ async def init_cookies():
         k for k, v in dic.items() if v
     )
     logger.info(msg)
-    await send_to_superuser(msg)
