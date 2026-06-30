@@ -585,6 +585,19 @@ class MatcherWrapper:
             event, message, at_sender=at_sender, call_header=call_header, **kwargs
         )
 
+    async def send_uni(
+        self,
+        message,
+        *,
+        at_sender: bool = False,
+        **kwargs,
+    ):
+        from hoshino.platform import send_to_event
+
+        bot = current_bot.get()
+        event = current_event.get()
+        return await send_to_event(bot, event, message, at_sender=at_sender, **kwargs)
+
     async def finish(
         self,
         message: Optional[Union[str, "Message", "MessageSegment"]] = None,

@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from typing import Any, Union
+
+from nonebot.adapters import Bot, Event, Message as AdapterMessage
+from nonebot_plugin_alconna.uniseg import Target, UniMessage
+from nonebot_plugin_alconna.uniseg.constraint import SerializeFailed
+from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
+
+from hoshino.message import Message, MessageSegment
+
+MessageLike = Union[str, Message, MessageSegment, UniMessage]
+
+
+async def to_unimessage(
+    message: MessageLike,
+    *,
+    bot: Bot | None = None,
+    event: Event | None = None,
+) -> UniMessage:
+    if isinstance(message, UniMessage):
+        return message
+    if isinstance(message, str):
+        return UniMessage.text(message)
+    if isinstance(message, AdapterMessage):
+        return await UniMessage.generate(message=message, bot=bot, event=event)
+    return await UniMessage.generate(message=Message(message), bot=bot, event=event)
+
+
+async def send_to_event(
+    bot: Bot,
+    event: Event,
+    message: MessageLike,
+    *,
+    at_sender: bool = False,
+    fallback: bool | FallbackStrategy = FallbackStrategy.rollback,
+    **kwargs: Any,
+):
+    msg = await to_unimessage(message, bot=bot, event=event)
+    if at_sender and hasattr(event, "user_id"):
+        msg = UniMessage.at(str(event.user_id)) + UniMessage.text(" ") + msg
+    return await msg.send(event, bot=bot, fallback=fallback, **kwargs)
+
+
+async def send_to_target(
+    bot: Bot,
+    target: Target,
+    message: MessageLike,
+    *,
+    fallback: bool | FallbackStrategy = FallbackStrategy.rollback,
+    **kwargs: Any,
+):
+    msg = await to_unimessage(message, bot=bot)
+    return await msg.send(target, bot=bot, fallback=fallback, **kwargs)
+
+
+async def send_to_event_or_fallback(
+    bot: Bot,
+    event: Event,
+    message: MessageLike,
+    *,
+    fallback: bool | FallbackStrategy = FallbackStrategy.rollback,
+    **kwargs: Any,
+):
+    try:
+        return await send_to_event(bot, event, message, fallback=fallback, **kwargs)
+    except SerializeFailed:
+        return await bot.send(event, message, **kwargs)

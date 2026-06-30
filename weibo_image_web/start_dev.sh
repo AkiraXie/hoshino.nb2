@@ -47,18 +47,18 @@ echo "building frontend..."
 echo "frontend built"
 
 # ── 启动 Vite dev server (HMR) ─────────────────────────
-echo "starting vite dev server (port 3001)..."
-nohup sh -c "cd '$FRONTEND_DIR' && npm run dev" \
+echo "starting vite dev server (port 3002)..."
+nohup sh -c "cd '$FRONTEND_DIR' && npm run dev -- --host 0.0.0.0 --port 3002" \
   > "$LOG_DIR/vite.log" 2>&1 &
 echo $! > "$VITE_PID_FILE"
-echo "vite dev server started: pid=$(cat "$VITE_PID_FILE") port=3001"
+echo "vite dev server started: pid=$(cat "$VITE_PID_FILE") port=3002"
 
 # ── 启动后端 ─────────────────────────────────────────
 nohup sh -c "cd '$ROOT_DIR' && uv run python weibo_image_web/server.py" \
   > "$LOG_DIR/server.log" 2>&1 &
 echo $! > "$PID_FILE"
-echo "server started: pid=$(cat "$PID_FILE") port=9998"
+echo "server started: pid=$(cat "$PID_FILE") port=9999"
 echo "log: $LOG_DIR/server.log"
 echo ""
-echo "  Frontend dev (HMR):  http://<server-ip>:3001"
-echo "  Production:          http://<server-ip>:9998"
+echo "  Frontend dev (HMR):  http://<server-ip>:3002"
+echo "  Production:          http://<server-ip>:9999"

@@ -23,6 +23,7 @@ dependencies = [
     "aiosqlite>=0.21.0,<0.22",
     "urllib3>=2.4.0,<3",
     "pycryptodomex>=3.23.0,<4",
+    "nonebot-plugin-alconna>=0.50.0",
 ]
 
 [project.scripts]
