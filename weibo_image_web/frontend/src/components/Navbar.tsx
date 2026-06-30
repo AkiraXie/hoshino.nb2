@@ -101,6 +101,17 @@ export default function Navbar() {
               </button>
             )}
           </div>
+
+          {/* Mobile refresh */}
+          <button
+            className="flex items-center justify-center w-9 h-9 rounded-full border border-border bg-surface text-text hover:bg-primary-light hover:border-primary hover:text-primary transition-all"
+            onClick={handleRefresh}
+            aria-label="刷新索引"
+          >
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+          </button>
         </div>
 
         {/* Desktop: search + refresh */}

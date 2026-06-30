@@ -4,7 +4,6 @@ import re
 from datetime import datetime
 from time import time
 
-from bs4 import BeautifulSoup
 
 from hoshino.util import (
     aiohttpx,
@@ -595,68 +594,12 @@ class _VisitorSource(_BaseWeiboSource):
         return self.parser.parse_visitor(raw)
 
 
-class _MappWeiboParser:
-    def __init__(self, session: _WeiboHttpSession) -> None:
-        self.session = session
-
-    async def parse(self, url: str, detail_loader) -> WeiboPost | None:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 NetType/WIFI MicroMessenger/7.0.20.1781(0x6700143B) WindowsWechat(0x63090a13) UnifiedPCWindowsWechat(0xf254032b) XWEB/13655 Flue",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Authority": "mapp.api.weibo.cn",
-        }
-        if redirect_url := await get_redirect(url, headers=headers):
-            matched = re.search(r"m.weibo.cn\/(detail|status)\/(\w+)", redirect_url)
-            if matched:
-                return await detail_loader(matched.group(2))
-
-        response = await self.session.get(url, headers=headers, timeout=8.0)
-        if not response.text:
-            return None
-
-        soup = BeautifulSoup(response.text, "lxml")
-        img_urls = []
-        for image in soup.find_all("img", class_="f-bg-imgs"):
-            if image.get("bak_src"):
-                img_urls.append(image["data-src"])
-            elif image.get("src"):
-                img_urls.append(image["src"])
-
-        parsed_text = ""
-        for div in soup.find_all("div", class_="weibo-text"):
-            parsed_text += div.get_text(strip=True).replace("&ZeroWidthSpace;", "") + "\n"
-
-        video_urls = []
-        for video in soup.find_all("video", id="video"):
-            if video.get("src"):
-                video_urls.append(video["src"])
-            if video.get("poster"):
-                img_urls.append(video["poster"])
-
-        nickname = ""
-        m_text_box = soup.find("div", class_="m-text-box")
-        if m_text_box and (nickname_span := m_text_box.find("span")):
-            nickname = nickname_span.get_text(strip=True)
-
-        return WeiboPost(
-            uid="",
-            id="",
-            content=parsed_text,
-            images=img_urls,
-            videos=video_urls,
-            url=url,
-            nickname=nickname,
-            description="mapp",
-        )
-
-
 class WeiboRequestRuntime:
     def __init__(self) -> None:
         self.session = _WeiboHttpSession()
         self.parser = WeiboPostParser()
         self.login_source = _LoginSource(self.session, self.parser)
         self.visitor_source = _VisitorSource(self.session, self.parser)
-        self.mapp_parser = _MappWeiboParser(self.session)
         self._missing_target_queue: asyncio.Queue[str] = asyncio.Queue()
         self._missing_target_set: set[str] = set()
 
@@ -690,7 +633,15 @@ class WeiboRequestRuntime:
             return None
 
     async def parse_mapp_weibo(self, url: str) -> WeiboPost | None:
-        return await self.mapp_parser.parse(url, self.parse_weibo_with_id)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        }
+        if redirect_url := await get_redirect(url, headers=headers):
+            matched = re.search(r"m.weibo.cn/(detail|status)/(\w+)", redirect_url)
+            if matched:
+                return await self.parse_weibo_with_id(matched.group(2))
+        return None
 
     async def enqueue_missing_target(self, target: str) -> bool:
         if not target or target in self._missing_target_set:

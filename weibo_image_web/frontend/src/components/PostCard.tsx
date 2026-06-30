@@ -2,8 +2,8 @@ import { memo, useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { PostSummary } from "../types";
 import PostModal from "./PostModal";
-import UserAvatar from "./UserAvatar";
 import StaticImage from "./StaticImage";
+import { deletePost } from "../api";
 
 const postArCache = new Map<string, string>();
 
@@ -53,10 +53,21 @@ function PostCard({ post, isFav, onToggleFav, onDeleted, onBlocked, hideAuthor }
     setLoaded(true);
   };
 
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm("确定删除这条微博？")) return;
+    try {
+      await deletePost(post.uid, post.id);
+      onDeleted?.(post.uid, post.id);
+    } catch {
+      alert("删除失败");
+    }
+  };
+
   return (
     <>
       <div
-        className={`relative bg-transparent rounded-card border-none overflow-hidden mb-6 cursor-pointer
+        className={`group relative bg-transparent rounded-card border-none overflow-hidden mb-6 cursor-pointer
                     transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
                     hover:-translate-y-1.5 hover:scale-[1.015] hover:shadow-card-hover`}
         data-post-key={`${post.uid}_${post.id}`}
@@ -88,29 +99,43 @@ function PostCard({ post, isFav, onToggleFav, onDeleted, onBlocked, hideAuthor }
                      flex flex-col justify-between p-4 z-[5]"
           style={{ pointerEvents: showModal ? "none" : "auto" }}
         >
-          {/* Fav button — top right */}
-          <button
-            className={`self-end bg-white/90 backdrop-blur-[8px] border border-border text-text cursor-pointer
-                       w-9 h-9 flex items-center justify-center rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.12)]
-                       transition-all duration-200 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]
-                       hover:scale-[1.15] hover:rotate-[5deg] hover:bg-white
-                       ${isFav ? "!bg-primary !border-primary text-white hover:!bg-primary-dark hover:!border-primary-dark" : ""}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFav(post.uid, post.id);
-            }}
-            title={isFav ? "取消收藏" : "加入收藏"}
-          >
-            {isFav ? (
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-              </svg>
-            ) : (
+          {/* Top-right: fav + delete */}
+          <div className="self-end flex gap-2">
+            <button
+              className={`bg-white/90 backdrop-blur-[8px] border border-border cursor-pointer
+                         w-9 h-9 flex items-center justify-center rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.12)]
+                         transition-all duration-200 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]
+                         hover:scale-[1.15] hover:bg-white
+                         ${isFav ? "!bg-primary !border-primary text-white hover:!bg-primary-dark hover:!border-primary-dark" : "text-text-secondary hover:text-red-500 hover:border-red-400"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFav(post.uid, post.id);
+              }}
+              title={isFav ? "取消收藏" : "加入收藏"}
+            >
+              {isFav ? (
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                </svg>
+              )}
+            </button>
+            <button
+              className="bg-white/90 backdrop-blur-[8px] border border-border text-text-secondary cursor-pointer
+                         w-9 h-9 flex items-center justify-center rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.12)]
+                         transition-all duration-200 hover:scale-[1.15] hover:bg-gray-100 hover:border-gray-400 hover:text-gray-500"
+              onClick={handleDelete}
+              title="删除"
+            >
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
-            )}
-          </button>
+            </button>
+          </div>
 
           {/* Bottom row: author & meta */}
           <div className="flex items-center justify-between w-full">

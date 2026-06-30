@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -51,6 +52,7 @@ uid_nickname_map: dict[str, str] = {}
 _post_mtimes: dict[str, float] = {}
 # uid_dir mtime snapshot, detect which uid dirs changed
 _uid_dir_mtimes: dict[str, float] = {}
+_build_lock = threading.RLock()
 _fav_lock: asyncio.Lock | None = None
 _tags_lock: asyncio.Lock | None = None
 _blacklist_lock: asyncio.Lock | None = None
@@ -93,7 +95,7 @@ def _extract_nickname(text: str) -> str:
 
 
 def _generate_thumbnails(uid: str, post_id: str, source_path: Path) -> bool:
-    """Generate cover thumbnails (JPEG + WebP) at 400px wide."""
+    """Generate cover thumbnails (JPEG + WebP) at 600px wide."""
     thumb_dir = THUMB_DIR / uid / post_id
     thumb_dir.mkdir(parents=True, exist_ok=True)
     jpg_dest = thumb_dir / "cover.jpg"
@@ -104,7 +106,7 @@ def _generate_thumbnails(uid: str, post_id: str, source_path: Path) -> bool:
         from PIL import Image
 
         img = Image.open(source_path)
-        img.thumbnail((400, 600))
+        img.thumbnail((600, 800))
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         img.save(jpg_dest, "JPEG", quality=82, optimize=True)
@@ -255,43 +257,45 @@ def _save_index_cache() -> None:
 def _build_index_full() -> None:
     """Full rebuild — scan everything from scratch."""
     global posts_index, uid_nickname_map, _post_mtimes, _uid_dir_mtimes
-    index: list[dict] = []
-    umap: dict[str, str] = {}
-    p_mtimes: dict[str, float] = {}
-    u_mtimes: dict[str, float] = {}
 
-    if not WEIBO_MSG_DIR.is_dir():
-        posts_index, uid_nickname_map = [], {}
-        _post_mtimes, _uid_dir_mtimes = {}, {}
-        return
+    with _build_lock:
+        index: list[dict] = []
+        umap: dict[str, str] = {}
+        p_mtimes: dict[str, float] = {}
+        u_mtimes: dict[str, float] = {}
 
-    for uid_dir in WEIBO_MSG_DIR.iterdir():
-        if not uid_dir.is_dir():
-            continue
-        uid = uid_dir.name
-        try:
-            u_mtimes[uid] = uid_dir.stat().st_mtime
-        except OSError:
-            continue
-        for post_dir in uid_dir.iterdir():
-            if not post_dir.is_dir():
+        if not WEIBO_MSG_DIR.is_dir():
+            posts_index, uid_nickname_map = [], {}
+            _post_mtimes, _uid_dir_mtimes = {}, {}
+            return
+
+        for uid_dir in WEIBO_MSG_DIR.iterdir():
+            if not uid_dir.is_dir():
                 continue
-            post_id = post_dir.name
+            uid = uid_dir.name
             try:
-                p_mtimes[f"{uid}_{post_id}"] = post_dir.stat().st_mtime
+                u_mtimes[uid] = uid_dir.stat().st_mtime
             except OSError:
                 continue
-            entry = _scan_post(uid, post_dir)
-            if entry["nickname"]:
-                umap.setdefault(uid, entry["nickname"])
-            index.append(entry)
+            for post_dir in uid_dir.iterdir():
+                if not post_dir.is_dir():
+                    continue
+                post_id = post_dir.name
+                try:
+                    p_mtimes[f"{uid}_{post_id}"] = post_dir.stat().st_mtime
+                except OSError:
+                    continue
+                entry = _scan_post(uid, post_dir)
+                if entry["nickname"]:
+                    umap.setdefault(uid, entry["nickname"])
+                index.append(entry)
 
-    index.sort(key=lambda e: e.get("timestamp") or 0, reverse=True)
-    posts_index = index
-    uid_nickname_map = umap
-    _post_mtimes = p_mtimes
-    _uid_dir_mtimes = u_mtimes
-    _save_index_cache()
+        index.sort(key=lambda e: e.get("timestamp") or 0, reverse=True)
+        posts_index = index
+        uid_nickname_map = umap
+        _post_mtimes = p_mtimes
+        _uid_dir_mtimes = u_mtimes
+        _save_index_cache()
 
 
 def _build_index_incremental() -> int:
@@ -411,28 +415,24 @@ def _build_index() -> None:
     """Smart index build: load cache on first call, then incremental."""
     global posts_index, uid_nickname_map, _post_mtimes, _uid_dir_mtimes
 
-    if not posts_index:
-        # Try loading from cache for fast startup
-        cached = _load_index_cache()
-        if cached is not None:
-            entries, p_mtimes, u_mtimes = cached
-            posts_index = entries
-            _post_mtimes = p_mtimes
-            _uid_dir_mtimes = u_mtimes
-            # Rebuild nickname map from entries
-            umap: dict[str, str] = {}
-            for e in entries:
-                if e.get("nickname"):
-                    umap.setdefault(e["uid"], e["nickname"])
-            uid_nickname_map = umap
-            # Then do incremental to catch anything new since cache was saved
+    with _build_lock:
+        if not posts_index:
+            cached = _load_index_cache()
+            if cached is not None:
+                entries, p_mtimes, u_mtimes = cached
+                posts_index = entries
+                _post_mtimes = p_mtimes
+                _uid_dir_mtimes = u_mtimes
+                umap: dict[str, str] = {}
+                for e in entries:
+                    if e.get("nickname"):
+                        umap.setdefault(e["uid"], e["nickname"])
+                uid_nickname_map = umap
+                _build_index_incremental()
+                return
+            _build_index_full()
+        else:
             _build_index_incremental()
-            return
-        # No cache — full build
-        _build_index_full()
-    else:
-        # Already running — incremental
-        _build_index_incremental()
 
 
 # ── app ──────────────────────────────────────────────────
@@ -516,6 +516,7 @@ class BlacklistBody(BaseModel):
 async def api_list_posts(
     page: int = 1, size: int = 20, uid: str = "", q: str = "", date: str = ""
 ):
+    await asyncio.to_thread(_build_index)
     blacklist = set(_load_blacklist())
     results = [p for p in posts_index if p["uid"] not in blacklist]
     if uid:

@@ -122,11 +122,6 @@ class QbtClient:
         cat = category or self.config.category or "hoshino"
 
         try:
-            existing_hashes = set()
-            _, prev = await self._fetch_torrents_raw(cat)
-            for t in prev:
-                existing_hashes.add(t.get("hash", ""))
-
             headers = {"Cookie": f"SID={self.session_cookie}"}
             response = await post(
                 f"{self.base_url}/api/v2/torrents/add",
@@ -142,19 +137,6 @@ class QbtClient:
             if response.status_code != 200:
                 return {"success": False, "message": f"请求失败: {response.status_code}"}
 
-            if response.text != "Ok.":
-                return {"success": False, "message": f"添加失败: {response.text}"}
-
-            await asyncio.sleep(0.5)
-            _, current = await self._fetch_torrents_raw(cat)
-            for t in current:
-                if t.get("hash", "") not in existing_hashes:
-                    return {
-                        "success": True,
-                        "message": "种子添加成功",
-                        "name": t.get("name", "未知"),
-                        "size": format_size(t.get("size", 0)),
-                    }
 
             return {"success": True, "message": "种子添加成功"}
 
