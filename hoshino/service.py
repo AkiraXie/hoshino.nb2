@@ -28,6 +28,7 @@ from hoshino.rule import (
     regex,
     keyword,
 )
+from hoshino.platform import event_scope_key, group_scope_key, platform_key
 from nonebot.typing import (
     T_Handler,
 )
@@ -64,6 +65,8 @@ def _save_service_data(service: "Service"):
                 "name": service.name,
                 "enable_group": list(service.enable_group),
                 "disable_group": list(service.disable_group),
+                "enable_scope": list(service.enable_scope),
+                "disable_scope": list(service.disable_scope),
             },
             f,
             ensure_ascii=False,
@@ -120,6 +123,9 @@ class Service:
         data = _load_service_data(self.name)
         self.enable_group = set(data.get("enable_group", []))
         self.disable_group = set(data.get("disable_group", []))
+        self.enable_scope = set(data.get("enable_scope", []))
+        self.disable_scope = set(data.get("disable_scope", []))
+        self._migrate_legacy_scopes()
         self.logger = LoggerWrapper(self.name)
         self.matchers = []
 
@@ -127,24 +133,53 @@ class Service:
     def get_loaded_services() -> dict[str, "Service"]:
         return _loaded_services
 
+    def _migrate_legacy_scopes(self):
+        self.enable_scope.update(group_scope_key(gid) for gid in self.enable_group)
+        self.disable_scope.update(group_scope_key(gid) for gid in self.disable_group)
+
     def set_enable(self, group_id):
         self.enable_group.add(group_id)
         self.disable_group.discard(group_id)
+        self.set_scope_enable(group_scope_key(group_id), save=False)
         _save_service_data(self)
 
     def set_disable(self, group_id):
         self.enable_group.discard(group_id)
         self.disable_group.add(group_id)
+        self.set_scope_disable(group_scope_key(group_id), save=False)
         _save_service_data(self)
+
+    def set_scope_enable(self, scope_key: str, *, save: bool = True):
+        self.enable_scope.add(scope_key)
+        self.disable_scope.discard(scope_key)
+        if save:
+            _save_service_data(self)
+
+    def set_scope_disable(self, scope_key: str, *, save: bool = True):
+        self.enable_scope.discard(scope_key)
+        self.disable_scope.add(scope_key)
+        if save:
+            _save_service_data(self)
 
     async def get_enable_groups(self) -> dict[int, list[Bot]]:
         gl = defaultdict(list)
         for bot in nonebot.get_bots().values():
+            platform = platform_key(bot)
             sgl = set(g["group_id"] for g in await bot.get_group_list())
             if self.enable_on_default:
-                sgl = sgl - self.disable_group
+                sgl = {
+                    gid
+                    for gid in sgl
+                    if gid not in self.disable_group
+                    and group_scope_key(gid, platform=platform) not in self.disable_scope
+                }
             else:
-                sgl = sgl & self.enable_group
+                sgl = {
+                    gid
+                    for gid in sgl
+                    if gid in self.enable_group
+                    or group_scope_key(gid, platform=platform) in self.enable_scope
+                }
             for g in sgl:
                 gl[g].append(bot)
         return gl
@@ -160,17 +195,27 @@ class Service:
             return dict()
 
     def check_enabled(self, group_id: int) -> bool:
-        return bool(
-            (group_id in self.enable_group)
-            or (self.enable_on_default and group_id not in self.disable_group)
-        )
+        return self.check_scope_enabled(group_scope_key(group_id), group_id)
+
+    def check_scope_enabled(self, scope_key: str | None, group_id: int | None = None) -> bool:
+        if scope_key:
+            if scope_key in self.enable_scope:
+                return True
+            if scope_key in self.disable_scope:
+                return False
+        if group_id is not None:
+            if group_id in self.enable_group:
+                return True
+            if group_id in self.disable_group:
+                return False
+        return bool(self.enable_on_default)
 
     def check_service(self, only_to_me: bool = False, only_group: bool = True) -> Rule:
-        async def _cs(event: Event) -> bool:
+        async def _cs(bot: Bot, event: Event) -> bool:
             group_id = getattr(event, "group_id", None)
             if group_id is None:
                 return not only_group
-            return self.check_enabled(int(group_id))
+            return self.check_scope_enabled(event_scope_key(bot, event), int(group_id))
 
         rule = Rule(_cs)
         if only_to_me:

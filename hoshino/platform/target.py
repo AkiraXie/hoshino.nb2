@@ -30,6 +30,38 @@ def target_from_event(bot: Bot, event: Event) -> Target:
         raise
 
 
+def platform_key(bot: Bot | None = None, adapter_name: str | None = None) -> str:
+    name = adapter_name
+    if name is None and bot is not None:
+        name = bot.adapter.get_name()
+    normalized = (name or "").strip().lower().replace(" ", "")
+    if normalized in {"onebotv11", "onebot11", "ob11"}:
+        return "ob11"
+    return normalized or "unknown"
+
+
+def group_scope_key(group_id: int | str, *, platform: str = "ob11") -> str:
+    return f"{platform}:{group_id}"
+
+
+def target_scope_key(target: Target, *, platform: str = "ob11") -> str:
+    if target.private:
+        return f"{platform}:private:{target.id}"
+    if target.parent_id:
+        return f"{platform}:{target.parent_id}:{target.id}"
+    return group_scope_key(target.id, platform=platform)
+
+
+def event_scope_key(bot: Bot, event: Event) -> str | None:
+    group_id = getattr(event, "group_id", None)
+    if group_id is not None:
+        return group_scope_key(group_id, platform=platform_key(bot))
+    try:
+        return target_scope_key(target_from_event(bot, event), platform=platform_key(bot))
+    except SerializeFailed:
+        return None
+
+
 def dump_target(target: Target) -> str:
     return json.dumps(_jsonable(target.dump(save_self_id=False)), ensure_ascii=False)
 

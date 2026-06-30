@@ -3,6 +3,7 @@ from functools import cmp_to_key
 from hoshino.event import is_group_event, is_private_event
 from hoshino.types import Bot, Event, T_State
 from hoshino.service import Service
+from hoshino.platform import event_scope_key, group_scope_key, platform_key
 from nonebot.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
 from nonebot.plugin import on_shell_command
@@ -58,7 +59,12 @@ async def _(bot: Bot, event: Event, state: T_State):
     verbose_hide = state["_args"].invisible
     svs = Service.get_loaded_services().values()
     for gid in state["gids"]:
-        current_svs = map(lambda sv: (sv, sv.check_enabled(gid)), svs)
+        scope_key = (
+            event_scope_key(bot, event)
+            if is_group_event(event) and gid == event.group_id
+            else group_scope_key(gid, platform=platform_key(bot))
+        )
+        current_svs = map(lambda sv: (sv, sv.check_scope_enabled(scope_key, gid)), svs)
         cmpfunc = cmp_to_key(
             lambda x, y: (y[1] - x[1])
             or (-1 if x[0].name < y[0].name else 1 if x[0].name > y[0].name else 0)
@@ -143,9 +149,19 @@ async def _(bot: Bot, event: Event, state: T_State):
         await enable.finish(f"未找到服务: {', '.join(notfound)}")
     succ = succ if not exclude else allsv - exclude
     for gid in state["gids"]:
+        scope_key = (
+            event_scope_key(bot, event)
+            if is_group_event(event) and gid == event.group_id
+            else group_scope_key(gid, platform=platform_key(bot))
+        )
         for name in succ:
             sv = svs[name]
-            sv.set_enable(gid) if action == "开启" else sv.set_disable(gid)
+            if action == "开启":
+                sv.set_enable(gid)
+                sv.set_scope_enable(scope_key)
+            else:
+                sv.set_disable(gid)
+                sv.set_scope_disable(scope_key)
         succ_group.add(str(gid))
     reply = []
     if is_group_event(event):
