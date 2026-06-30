@@ -1,3 +1,5 @@
+"""消息发送 facade — to_unimessage, send_to_event, send_to_target"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,39 +9,16 @@ from nonebot_plugin_alconna.uniseg import Target, UniMessage
 from nonebot_plugin_alconna.uniseg.constraint import SerializeFailed
 from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
-from hoshino.platform.ob11.types import Message, MessageSegment
+from hoshino.platform.ob11.message import (
+    MessageLike as MessageLike,
+    custom_node_segment as custom_node_segment,
+    image_segment as image_segment,
+    message_from_parts as message_from_parts,
+    text_message as text_message,
+    video_segment as video_segment,
+)
+from hoshino.platform.ob11.types import Message
 from .event import get_user_id
-
-MessageLike = str | Message | MessageSegment | UniMessage
-
-
-def text_message(text: str) -> Message:
-    return Message(text)
-
-
-def message_from_parts(parts: Any) -> Message:
-    return Message(parts)
-
-
-def image_segment(file: Any) -> MessageSegment:
-    return MessageSegment.image(file)
-
-
-def video_segment(file: Any) -> MessageSegment:
-    return MessageSegment.video(file)
-
-
-def custom_node_segment(
-    *,
-    user_id: int,
-    nickname: str,
-    content: MessageLike,
-) -> MessageSegment:
-    return MessageSegment.node_custom(
-        user_id=user_id,
-        nickname=nickname,
-        content=content,
-    )
 
 
 async def to_unimessage(
