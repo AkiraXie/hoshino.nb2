@@ -2,16 +2,17 @@ import asyncio
 from collections import defaultdict
 from datetime import datetime
 
-from nonebot.adapters import Bot, Event
 from hoshino.service import Service
 from hoshino.hooks import on_post_startup
 from hoshino.schedule import scheduled_job
 from hoshino.platform import (
+    GroupID,
+    PlainText,
+    UniMessage,
     dump_target,
-    get_group_id,
+    group_target,
     load_target_or_group,
     send_to_target,
-    target_from_event,
     uni_image,
     uni_text,
 )
@@ -216,21 +217,26 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
 
 
 @sv.on_command("添加直播订阅", aliases=("订阅直播", "添加直播", "addbililive", "adblive", "addlive"))
-async def cmd_add_live(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    target_data = dump_target(target_from_event(bot, event))
-    msg = event.get_plaintext().strip()
+async def cmd_add_live(
+    gid: int | None = GroupID(),
+    msg: str = PlainText(),
+):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    target_data = dump_target(group_target(gid))
+    msg = msg.strip()
     if not msg:
-        await bot.send(event, "用法: 添加直播订阅 房间号[:平台]\n平台: bilibili(默认), douyu/斗鱼")
+        await UniMessage.text("用法: 添加直播订阅 房间号[:平台]\n平台: bilibili(默认), douyu/斗鱼").send()
         return
 
     room_id, platform = parse_room_input(msg.split()[0])
     if not room_id.isdecimal():
-        await bot.send(event, "请输入有效的直播间号（纯数字）")
+        await UniMessage.text("请输入有效的直播间号（纯数字）").send()
         return
 
     if platform not in PLATFORM_DISPLAY:
-        await bot.send(event, f"不支持的平台: {platform}\n支持: bilibili, douyu/斗鱼")
+        await UniMessage.text(f"不支持的平台: {platform}\n支持: bilibili, douyu/斗鱼").send()
         return
 
     plat_name = PLATFORM_DISPLAY[platform]
@@ -238,11 +244,11 @@ async def cmd_add_live(bot: Bot, event: Event):
     try:
         info = await get_room_status(room_id, platform)
         if not info.anchor:
-            await bot.send(event, f"无法获取 [{plat_name}] 直播间 {room_id} 的主播信息")
+            await UniMessage.text(f"无法获取 [{plat_name}] 直播间 {room_id} 的主播信息").send()
             return
     except Exception as e:
         sv.logger.exception(e)
-        await bot.send(event, f"获取 [{plat_name}] 直播间信息失败: {room_id}")
+        await UniMessage.text(f"获取 [{plat_name}] 直播间信息失败: {room_id}").send()
         return
     
     add_subscription(gid, room_id, info.anchor, platform, target_data)
@@ -258,15 +264,17 @@ async def cmd_add_live(bot: Bot, event: Event):
             reply += f"  标题: {info.title}"
         if duration:
             reply += f"  已播: {duration}"
-    await bot.send(event, reply)
+    await UniMessage.text(reply).send()
 
 
 @sv.on_command("删除直播订阅", aliases=("取消直播", "删除直播", "rmbililive", "rmblive", "rmlive"))
-async def cmd_remove_live(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    args = event.get_plaintext().strip().split()
+async def cmd_remove_live(gid: int | None = GroupID(), args: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    args = args.strip().split()
     if not args:
-        await bot.send(event, "用法: 删除直播订阅 房间号[:平台]/主播名[:平台]")
+        await UniMessage.text("用法: 删除直播订阅 房间号[:平台]/主播名[:平台]").send()
         return
 
     for arg in args:
@@ -292,25 +300,29 @@ async def cmd_remove_live(bot: Bot, event: Event):
                 )
 
         if num:
-            await bot.send(event, f"{arg} 删除直播订阅成功")
+            await UniMessage.text(f"{arg} 删除直播订阅成功").send()
         else:
-            await bot.send(event, f"{arg} 删除直播订阅失败（未找到）")
+            await UniMessage.text(f"{arg} 删除直播订阅失败（未找到）").send()
 
         await asyncio.sleep(0.3)
 
 
 @sv.on_command("直播订阅", aliases=("直播订阅列表", "lsbililive", "lsblive", "listbililive", "lslive"))
-async def cmd_list_live(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    filter_text = event.get_plaintext().strip()
+async def cmd_list_live(gid: int | None = GroupID(), filter_text: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    filter_text = filter_text.strip()
     plat_filter = parse_platform_filter(filter_text)
 
     rows = list_group_subscriptions(gid, plat_filter)
     if not rows:
         if plat_filter:
-            await bot.send(event, f"本群没有 [{PLATFORM_DISPLAY.get(plat_filter, plat_filter)}] 的直播订阅")
+            await UniMessage.text(
+                f"本群没有 [{PLATFORM_DISPLAY.get(plat_filter, plat_filter)}] 的直播订阅"
+            ).send()
         else:
-            await bot.send(event, "本群没有订阅直播间")
+            await UniMessage.text("本群没有订阅直播间").send()
         return
 
     grouped: dict[str, list[LiveSub]] = defaultdict(list)
@@ -347,14 +359,14 @@ async def cmd_list_live(bot: Bot, event: Event):
     else:
         lines.append("无")
 
-    await bot.send(event, "\n".join(lines))
+    await UniMessage.text("\n".join(lines)).send()
 
 
 @sv.on_command("直播状态", aliases=("查看直播", "checkbililive", "ckblive", "checklive"))
-async def cmd_check_live(bot: Bot, event: Event):
-    arg = event.get_plaintext().strip()
+async def cmd_check_live(arg: str = PlainText()):
+    arg = arg.strip()
     if not arg:
-        await bot.send(event, "用法: 直播状态 房间号[:平台]")
+        await UniMessage.text("用法: 直播状态 房间号[:平台]").send()
         return
 
     room_id, platform = parse_room_input(arg.split()[0])
@@ -364,12 +376,14 @@ async def cmd_check_live(bot: Bot, event: Event):
         info = await get_room_status(room_id, platform)
     except Exception as e:
         sv.logger.error(f"查询直播间 {room_id}({platform}) 失败: {e}")
-        await bot.send(event, f"查询 [{plat_name}] 直播间 {room_id} 失败")
+        await UniMessage.text(f"查询 [{plat_name}] 直播间 {room_id} 失败").send()
         return
 
     if info.show_status == 1:
         duration = _format_live_duration(info.show_time) if info.show_time else ""
         duration_text = f"\n已播: {duration}" if duration else ""
-        await bot.send(event, f"🔴 [{plat_name}] {info.anchor} 直播中\n标题: {info.title}{duration_text}\n{info.url}")
+        await UniMessage.text(
+            f"🔴 [{plat_name}] {info.anchor} 直播中\n标题: {info.title}{duration_text}\n{info.url}"
+        ).send()
     else:
-        await bot.send(event, f"⚪ [{plat_name}] {info.anchor} 未开播\n{info.url}")
+        await UniMessage.text(f"⚪ [{plat_name}] {info.anchor} 未开播\n{info.url}").send()

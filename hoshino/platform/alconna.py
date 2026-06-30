@@ -78,3 +78,10 @@ def ReplyMessage() -> Any:
         reply = getattr(event, "reply", None)
         return reply.message if reply else None
     return Depends(_)
+
+
+def MessageID() -> int | None:
+    """DI：当前消息 ID，无则返回 None"""
+    async def _(event: Event) -> int | None:
+        return getattr(event, "message_id", None)
+    return Depends(_)

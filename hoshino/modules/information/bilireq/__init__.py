@@ -1,13 +1,14 @@
 import asyncio
 import time
-from nonebot.adapters import Bot, Event
 from hoshino.hooks import on_post_startup
 from hoshino.platform import (
+    GroupID,
+    PlainText,
+    UniMessage,
     dump_target,
-    get_group_id,
+    group_target,
     load_target_or_group,
     send_to_target,
-    target_from_event,
 )
 import random
 from hoshino.util import send_group_segments, send_segments
@@ -31,18 +32,19 @@ tz = timezone("Asia/Shanghai")
 
 
 @sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅", "adddyn"))
-async def _(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    target_data = dump_target(target_from_event(bot, event))
-    uid = event.get_plaintext()
+async def _(gid: int | None = GroupID(), uid: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    target_data = dump_target(group_target(gid))
     try:
         dyn = await get_new_dynamic(uid)
         if not dyn:
-            await bot.send(event, f"无法添加 {uid}")
+            await UniMessage.text(f"无法添加 {uid}").send()
             return
     except Exception as e:
         sv.logger.exception(e)
-        await bot.send(event, f"UID {uid} 信息获取失败")
+        await UniMessage.text(f"UID {uid} 信息获取失败").send()
         return
     uid_int = dyn.uid
     ts = time.time()
@@ -65,16 +67,17 @@ async def _(bot: Bot, event: Event):
             session.add(obj)
         session.commit()
     await uid_manager.add_uid(dyn.uid)
-    await bot.send(event, f"{name} 订阅动态成功")
+    await UniMessage.text(f"{name} 订阅动态成功").send()
 
 
 @sv.on_command(
     "删除订阅动态",
     aliases=("取消订阅动态", "关闭订阅动态", "删除动态", "取消动态", "deldyn"),
 )
-async def _(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    uid = event.get_plaintext()
+async def _(gid: int | None = GroupID(), uid: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
     with Session() as session:
         if uid.isdecimal():
             uid_int = uid
@@ -114,38 +117,41 @@ async def _(bot: Bot, event: Event):
             else:
                 num = 0
     if num:
-        await bot.send(event, f"{uid} 删除订阅动态成功")
+        await UniMessage.text(f"{uid} 删除订阅动态成功").send()
     else:
-        await bot.send(event, f"{uid} 删除订阅动态失败")
+        await UniMessage.text(f"{uid} 删除订阅动态失败").send()
 
 
 @sv.on_command(
     "本群动态订阅",
     aliases={"订阅动态列表", "动态订阅列表", "动态列表", "listdyn", "lsdyn"},
 )
-async def _(bot: Bot, event: Event):
-    gid = get_group_id(event)
+async def _(gid: int | None = GroupID()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
     with Session() as session:
         stmt = select(db).where(db.group == gid)
         rows = session.execute(stmt).scalars().all()
     if not rows:
-        await bot.send(event, "本群没有订阅动态")
+        await UniMessage.text("本群没有订阅动态").send()
     else:
         uids = [str(row.name) for row in rows]
         num = len(uids)
         msg = []
         msg.append(f"本群订阅了{num}个bilibili动态:")
         msg.extend(uids)
-        await bot.send(event, "\n".join(msg))
+        await UniMessage.text("\n".join(msg)).send()
 
 
 @sv.on_command(
     "查看最新动态",
     aliases={"看动态", "看最新动态", "查动态", "查看动态", "seedyn", "kkdyn", "kkbl"},
 )
-async def _(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    arg = event.get_plaintext()
+async def _(gid: int | None = GroupID(), arg: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
     with Session() as session:
         if arg.isdecimal():
             uid_int = arg
@@ -155,12 +161,12 @@ async def _(bot: Bot, event: Event):
             stmt = select(db).where(db.group == gid, db.name == arg)
             rows = session.execute(stmt).scalars().all()
     if not rows:
-        await bot.send(event, f"没有订阅{arg}动态")
+        await UniMessage.text(f"没有订阅{arg}动态").send()
     else:
         uid_int = rows[0].uid
         dyn = await get_new_dynamic(uid_int)
         if not dyn:
-            await bot.send(event, f"没有获取到{arg}动态")
+            await UniMessage.text(f"没有获取到{arg}动态").send()
             return
         post_message = await dyn.get_message()
         msgs = dyn.render_message(post_message)

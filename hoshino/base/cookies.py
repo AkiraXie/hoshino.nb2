@@ -7,18 +7,18 @@ from hoshino.util import (
     check_cookies,
     delete_cookies,
 )
-from nonebot.adapters import Event
-from hoshino.platform import get_plaintext
+from hoshino.platform import PlainText
 from simplejson import loads
 
 
 @sucmd(
     "save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True
 ).handle()
-async def save_cookies_cmd(
-    event: Event,
-):
-    msgs = get_plaintext(event).split(None, 1)
+async def save_cookies_cmd(msg: str = PlainText()):
+    msgs = msg.split(None, 1)
+    if len(msgs) < 2:
+        await finish("请提供cookie名称和cookie内容")
+        return
     name = msgs[0]
     cookies = msgs[1]
     try:
@@ -35,10 +35,8 @@ async def save_cookies_cmd(
 
 
 @sucmd("check_cookies", aliases={"检查cookies", "ckck"}, only_to_me=True).handle()
-async def check_cookies_cmd(
-    event: Event,
-):
-    msgs = get_plaintext(event)
+async def check_cookies_cmd(msg: str = PlainText()):
+    msgs = msg.strip()
     if len(msgs) == 0 or msgs == "all":
         cookies = check_all_cookies()
     else:
@@ -55,8 +53,7 @@ async def check_cookies_cmd(
 @sucmd(
     "del_cookies", aliases={"删除cookies", "delck", "删除ck"}, only_to_me=True
 ).handle()
-async def del_ck_cmd(event: Event):
-    name = get_plaintext(event).strip()
+async def del_ck_cmd(name: str = PlainText()):
     if not name:
         await finish("请提供cookie名称")
 

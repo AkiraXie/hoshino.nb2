@@ -1,23 +1,23 @@
 from hoshino.util import sucmds
-from nonebot.adapters import Bot, Event
+from nonebot.adapters import Bot
 from hoshino.service import Service, MatcherWrapper
-from hoshino.platform import get_group_list, get_plaintext
+from hoshino.platform import PlainText, get_group_list
 
 
-async def ls_group(bot: Bot, event: Event):
+async def ls_group(bot: Bot):
     gl = await get_group_list(bot)
     msg = ["{group_id} {group_name}".format_map(g) for g in gl]
     msg = "\n".join(msg)
     msg = f"| 群号 | 群名 | 共{len(gl)}个群\n" + msg
-    await bot.send(event, msg)
+    await bot.send(msg)
 
 
-async def ls_friend(bot: Bot, event: Event):
+async def ls_friend(bot: Bot):
     gl = await bot.get_friend_list()
     msg = ["{user_id} {nickname}".format_map(g) for g in gl]
     msg = "\n".join(msg)
     msg = f"| QQ号 | 昵称 | 共{len(gl)}个好友\n" + msg
-    await bot.send(event, msg)
+    await bot.send(msg)
 
 
 lscmds = sucmds("ls", True)
@@ -28,15 +28,14 @@ cmd_am = lscmds.command("allmatcher", aliases={"查看所有响应器"})
 
 
 @cmd_m.handle()
-async def _(bot: Bot, event: Event):
-    svname = get_plaintext(event)
+async def _(svname: str = PlainText()):
     sv = Service.get_loaded_services()[svname]
     msg = "\n".join(sv.matchers)
     await cmd_m.finish(msg)
 
 
 @cmd_am.handle()
-async def showall(bot: Bot):
+async def showall():
     mws = MatcherWrapper.get_loaded_matchers()
     msg = ["该bot注册的matcher_wrapper如下:"]
     msg.extend(mws)
