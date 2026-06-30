@@ -15,7 +15,7 @@ from .utils import (
 )
 from hoshino.permission import ADMIN
 from hoshino.types import Bot, Event
-from hoshino.platform import get_group_id
+from hoshino.platform import get_group_id, get_plaintext
 from nonebot.params import Depends
 
 # 配置命令
@@ -37,7 +37,7 @@ completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归�
 @configset
 async def _(bot: Bot, event: Event):
     """配置qBittorrent连接信息"""
-    msgs = event.get_plaintext().strip().split()
+    msgs = get_plaintext(event).strip().split()
     if len(msgs) not in (3, 4):
         await configset.finish("用法: qbt配置 <服务器地址> <用户名> <密码> [分类]")
 
@@ -110,7 +110,7 @@ async def _(
     if not client:
         await add_torrent.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
-    msg_text = event.get_plaintext().strip()
+    msg_text = get_plaintext(event).strip()
     if not msg_text:
         await add_torrent.finish(
             "用法: 添加种子 <下载链接> [分类]\n"
@@ -191,7 +191,7 @@ async def _(
     if not client:
         await active_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
-    msg_text = event.get_plaintext().strip()
+    msg_text = get_plaintext(event).strip()
     max_show = 20
     if msg_text.isdigit():
         max_show = int(msg_text)
@@ -212,7 +212,7 @@ async def _(
     if not client:
         await completed_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
-    msg_text = event.get_plaintext().strip()
+    msg_text = get_plaintext(event).strip()
     max_show = 20
     if msg_text.isdigit():
         max_show = int(msg_text)

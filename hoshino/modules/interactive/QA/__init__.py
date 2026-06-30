@@ -4,10 +4,15 @@ from nonebot.params import Depends
 from .data import Question, Session
 from hoshino.permission import ADMIN
 from hoshino.service import Service
-from hoshino.types import Bot, Event, Message, MessageSegment, Matcher
-from hoshino.event import MessageEvent
+from hoshino.types import Bot, Event, Message, Matcher
 from hoshino.config import config
-from hoshino.platform import get_group_id, get_user_id
+from hoshino.platform import (
+    get_event_message,
+    get_group_id,
+    get_session_id,
+    get_user_id,
+    image_segment,
+)
 from hoshino.util.aiohttpx import get
 from PIL import Image
 from sqlalchemy import select
@@ -17,9 +22,9 @@ img_dir.mkdir(parents=True, exist_ok=True)
 
 
 async def event_image_in_local(
-    matcher: Matcher, event: MessageEvent
+    matcher: Matcher, event: Event
 ) -> tuple[str, str]:
-    msg = event.message.copy()
+    msg = get_event_message(event).copy()
     msgs = str(msg).split("你答", 1)
     if len(msgs) != 2:
         await matcher.finish()
@@ -30,7 +35,7 @@ async def event_image_in_local(
     answer = answer.lstrip()
     if answer == question:
         await matcher.finish()
-    sid = event.get_session_id()
+    sid = get_session_id(event, "")
     answer_msg = Message(answer)
     for i, s in enumerate(answer_msg):
         if s.type == "image":
@@ -49,7 +54,7 @@ async def event_image_in_local(
             s = "{}-{}{}".format(sid, (url.split("/")[-2]).split("-")[-1], ext)
             f = img_dir / s
             f.write_bytes(img.content)
-            answer_msg[i] = MessageSegment.image(f)
+            answer_msg[i] = image_segment(f)
     return (question, str(answer_msg))
 
 
@@ -59,7 +64,7 @@ set_qa_dep = Depends(event_image_in_local)
 async def answer_qa_rule(event: Event, state: T_State):
     gid = get_group_id(event, 0)
     uid = get_user_id(event)
-    msg = str(event.get_message())
+    msg = str(get_event_message(event))
     question = msg.lower()
     with Session() as session:
         stmt = select(Question).where(
@@ -142,7 +147,7 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
 
 @del_gqa.handle()
 async def _(bot: Bot, event: Event):
-    question = str(event.get_message())
+    question = str(get_event_message(event))
     lquestion = question.lower()
     gid = get_group_id(event)
     with Session() as session:
@@ -164,7 +169,7 @@ async def _(bot: Bot, event: Event):
 
 @del_qa.handle()
 async def _(bot: Bot, event: Event):
-    question = str(event.get_message())
+    question = str(get_event_message(event))
     lquestion = question.lower()
     gid = get_group_id(event, 0)
     uid = get_user_id(event)
@@ -186,11 +191,11 @@ async def _(bot: Bot, event: Event):
 
 
 async def parse_question(state: T_State, event: Event):
-    state["question"] = str(event.get_message())
+    state["question"] = str(get_event_message(event))
 
 
 async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
-    for m in event.get_message():
+    for m in get_event_message(event, []):
         if m.type == "at" and m.data["qq"] != "all":
             state["user_id"] = int(m.data["qq"])
             break

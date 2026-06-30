@@ -13,6 +13,27 @@ from .event import get_user_id
 MessageLike = Union[str, Message, MessageSegment, UniMessage]
 
 
+def image_segment(file: Any) -> MessageSegment:
+    return MessageSegment.image(file)
+
+
+def video_segment(file: Any) -> MessageSegment:
+    return MessageSegment.video(file)
+
+
+def custom_node_segment(
+    *,
+    user_id: int,
+    nickname: str,
+    content: MessageLike,
+) -> MessageSegment:
+    return MessageSegment.node_custom(
+        user_id=user_id,
+        nickname=nickname,
+        content=content,
+    )
+
+
 async def to_unimessage(
     message: MessageLike,
     *,

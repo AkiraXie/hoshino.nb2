@@ -1,5 +1,6 @@
 from hoshino.service import Service
 from hoshino.types import Event, Bot, Message
+from hoshino.platform import get_event_message
 import random
 
 sv = Service("chooseone")
@@ -9,7 +10,7 @@ co = sv.on_command("选择", only_group=False, priority=2)
 @co.handle()
 async def _(bot: Bot, event: Event):
     rng = random.SystemRandom()
-    msg = str(event.get_message())
+    msg = str(get_event_message(event))
     msg = msg.split("还是")
     if len(msg) == 1:
         return

@@ -1,7 +1,7 @@
 from hoshino.util import sucmds
 from hoshino.types import Bot, Event
 from hoshino.service import Service, MatcherWrapper
-from hoshino.platform import get_group_list
+from hoshino.platform import get_group_list, get_plaintext
 
 
 async def ls_group(bot: Bot, event: Event):
@@ -29,7 +29,7 @@ cmd_am = lscmds.command("allmatcher", aliases={"查看所有响应器"})
 
 @cmd_m.handle()
 async def _(bot: Bot, event: Event):
-    svname = event.get_plaintext()
+    svname = get_plaintext(event)
     sv = Service.get_loaded_services()[svname]
     msg = "\n".join(sv.matchers)
     await cmd_m.finish(msg)

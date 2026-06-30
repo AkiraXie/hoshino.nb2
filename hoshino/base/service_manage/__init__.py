@@ -6,6 +6,7 @@ from hoshino.platform import (
     event_scope_key,
     get_group_id,
     get_group_list,
+    get_plaintext,
     group_scope_key,
     is_group_event,
     is_private_event,
@@ -101,7 +102,7 @@ async def handle_msg(bot: Bot, event: Event, state: T_State):
         services = []
         glist = list(g["group_id"] for g in await get_group_list(bot))
         failure = set()
-        msgs = event.get_plaintext().split(" ")
+        msgs = get_plaintext(event).split(" ")
         gids = []
         for msg in msgs:
             if msg.isdigit():

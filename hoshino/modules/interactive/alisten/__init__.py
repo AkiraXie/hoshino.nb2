@@ -3,7 +3,7 @@ from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Sess
 from hoshino.permission import ADMIN
 from hoshino.types import Bot, Event
 from hoshino import hsn_nickname
-from hoshino.platform import get_group_id, get_group_member_info, get_user_id
+from hoshino.platform import get_group_id, get_group_member_info, get_plaintext, get_user_id
 from nonebot.params import Depends
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)
@@ -14,7 +14,7 @@ configshow = sv.on_command(
 
 @configset
 async def _(bot: Bot, event: Event):
-    msgs = event.get_plaintext().strip().split()
+    msgs = get_plaintext(event).strip().split()
     if len(msgs) not in (3, 4):
         await configset.finish("请检查参数个数")
     if len(msgs) == 3:
@@ -104,7 +104,7 @@ async def _(
     if not client:
         await pickmusic.finish("当前没有配置听歌房")
     source = "wy"
-    name = event.get_plaintext().strip()
+    name = get_plaintext(event).strip()
     if ":" in name:
         parts = name.split(":", 1)
         if len(parts) == 2 and parts[0] in ["wy", "qq", "db"]:
@@ -138,7 +138,7 @@ async def _(
     if not client:
         await pickmusicid.finish("当前没有配置听歌房")
     source = "wy"
-    name = event.get_plaintext().strip()
+    name = get_plaintext(event).strip()
     if ":" in name:
         parts = name.split(":", 1)
         if len(parts) == 2 and parts[0] in ["wy", "qq", "db"]:

@@ -1,9 +1,9 @@
 from hoshino.types import Bot, Event, T_State
-from hoshino.platform import get_group_list
+from hoshino.platform import get_group_list, get_plaintext
 
 
 async def parse_service(event: Event, state: T_State):
-    service_msgs = event.get_plaintext().split()
+    service_msgs = get_plaintext(event).split()
     services = []
     for msg in service_msgs:
         if msg != "":
@@ -13,7 +13,7 @@ async def parse_service(event: Event, state: T_State):
 
 
 async def parse_gid(bot: Bot, event: Event, state: T_State):
-    msgs = event.get_plaintext().split()
+    msgs = get_plaintext(event).split()
     glist = list(g["group_id"] for g in await get_group_list(bot))
     failure = set()
     illegal = set()

@@ -1,5 +1,6 @@
 from hoshino.service import Service
-from hoshino.types import Matcher, MessageSegment, T_State
+from hoshino.types import Matcher, T_State
+from hoshino.platform import image_segment
 from hoshino.permission import SUPERUSER
 import os
 import random
@@ -20,5 +21,5 @@ async def _(m: Matcher, s: T_State):
     res = rng.choice(foods)
     name = s["_matched_groups"][0]
     with open(res, "rb") as f:
-        img = MessageSegment.image(f.read())
+        img = image_segment(f.read())
     await m.send(f"{name}吃{res.stem}吧! \n" + img, call_header=True)

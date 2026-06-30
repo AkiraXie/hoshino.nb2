@@ -2,7 +2,7 @@ import asyncio
 from io import BytesIO
 from PIL import Image
 from pathlib import Path
-from hoshino.types import Bot, Message, MessageSegment, T_State
+from hoshino.types import Bot, Event, Message, MessageSegment, T_State
 from hoshino.permission import SUPERUSER
 from hoshino import img_dir, fav_dir, video_dir
 from hoshino.util import (
@@ -24,11 +24,11 @@ from hoshino.util import (
 )
 from hoshino.event import (
     GroupReactionEvent,
-    MessageEvent,
     GroupMsgEmojiLikeEvent,
     NoticeEvent,
     GroupMessageEvent,
 )
+from hoshino.platform import get_message_id, get_plaintext, image_segment
 from nonebot.plugin import on_notice, on_keyword
 from nonebot.rule import Rule, KeywordsRule
 from nonebot.compat import type_validate_python
@@ -246,9 +246,9 @@ async def save_vi_cmd(
     only_to_me=True,
 ).handle()
 async def delete_img_cmd(
-    event: MessageEvent,
+    event: Event,
 ):
-    names = event.get_plaintext().split(None)
+    names = get_plaintext(event).split(None)
     if not names:
         await finish()
     for name in names:
@@ -268,9 +268,9 @@ async def delete_img_cmd(
     only_to_me=True,
 ).handle()
 async def show_img_cmd(
-    event: MessageEvent,
+    event: Event,
 ):
-    names = event.get_plaintext().split(None)
+    names = get_plaintext(event).split(None)
     if not names:
         await finish()
     for name in names:
@@ -278,7 +278,7 @@ async def show_img_cmd(
         if os.path.exists(path):
             with open(path, "rb") as f:
                 img = f.read()
-                await send(MessageSegment.image(img))
+                await send(image_segment(img))
         else:
             await send(f"图片{name}不存在")
 
@@ -289,13 +289,14 @@ async def show_img_cmd(
     only_to_me=True,
 ).handle()
 async def random_img_cmd(
-    event: MessageEvent,
+    event: Event,
 ):
     path = img_dir
     num = 12
-    if event.get_plaintext().isdigit():
-        num = int(event.get_plaintext())
-    seed = time() + event.message_id
+    text = get_plaintext(event)
+    if text.isdigit():
+        num = int(text)
+    seed = time() + int(get_message_id(event, 0))
     imgs = random_image_or_video_by_path(
         path,
         num=num,
@@ -310,13 +311,14 @@ async def random_img_cmd(
     only_to_me=True,
 ).handle()
 async def random_fav_cmd(
-    event: MessageEvent,
+    event: Event,
 ):
     path = fav_dir
     num = 12
-    if event.get_plaintext().isdigit():
-        num = int(event.get_plaintext())
-    seed = time() + event.message_id
+    text = get_plaintext(event)
+    if text.isdigit():
+        num = int(text)
+    seed = time() + int(get_message_id(event, 0))
     imgs = random_image_or_video_by_path(
         path,
         num=num,
@@ -331,13 +333,14 @@ async def random_fav_cmd(
     only_to_me=True,
 ).handle()
 async def random_vi_cmd(
-    event: MessageEvent,
+    event: Event,
 ):
     path = video_dir
     num = 3
-    if event.get_plaintext().isdigit():
-        num = int(event.get_plaintext())
-    seed = time() + event.message_id
+    text = get_plaintext(event)
+    if text.isdigit():
+        num = int(text)
+    seed = time() + int(get_message_id(event, 0))
     imgs = random_image_or_video_by_path(
         path,
         num=num,
@@ -387,7 +390,7 @@ async def toimg_cmd(bot: Bot, state: T_State):
                     img = resp.content
                     im = Image.open(BytesIO(img))
                     im.close()
-                    res.append(MessageSegment.image(img))
+                    res.append(image_segment(img))
             except Exception:
                 logger.exception(f"获取图片失败: {url}")
                 continue

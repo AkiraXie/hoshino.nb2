@@ -7,7 +7,8 @@ from hoshino.util import (
     check_cookies,
     delete_cookies,
 )
-from hoshino.event import MessageEvent
+from hoshino.types import Event
+from hoshino.platform import get_plaintext
 from simplejson import loads
 
 
@@ -15,9 +16,9 @@ from simplejson import loads
     "save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True
 ).handle()
 async def save_cookies_cmd(
-    event: MessageEvent,
+    event: Event,
 ):
-    msgs = event.get_plaintext().split(None, 1)
+    msgs = get_plaintext(event).split(None, 1)
     name = msgs[0]
     cookies = msgs[1]
     try:
@@ -35,9 +36,9 @@ async def save_cookies_cmd(
 
 @sucmd("check_cookies", aliases={"检查cookies", "ckck"}, only_to_me=True).handle()
 async def check_cookies_cmd(
-    event: MessageEvent,
+    event: Event,
 ):
-    msgs = event.get_plaintext()
+    msgs = get_plaintext(event)
     if len(msgs) == 0 or msgs == "all":
         cookies = check_all_cookies()
     else:
@@ -54,8 +55,8 @@ async def check_cookies_cmd(
 @sucmd(
     "del_cookies", aliases={"删除cookies", "delck", "删除ck"}, only_to_me=True
 ).handle()
-async def del_ck_cmd(event: MessageEvent):
-    name = event.get_plaintext().strip()
+async def del_ck_cmd(event: Event):
+    name = get_plaintext(event).strip()
     if not name:
         await finish("请提供cookie名称")
 

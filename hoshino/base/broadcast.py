@@ -1,7 +1,7 @@
 from loguru import logger
 from hoshino.util import sucmd
 from hoshino.types import Bot, Event
-from hoshino.platform import get_group_list, group_target, send_to_target
+from hoshino.platform import get_event_message, get_group_list, group_target, send_to_target
 from asyncio import sleep
 
 bc = sucmd("bc", aliases={"广播", "broadcast"})
@@ -9,7 +9,7 @@ bc = sucmd("bc", aliases={"广播", "broadcast"})
 
 @bc.handle()
 async def _(bot: Bot, event: Event):
-    msg = event.get_message()
+    msg = get_event_message(event)
     gids = list(gdic["group_id"] for gdic in await get_group_list(bot))
     count = 0
     for gid in gids:

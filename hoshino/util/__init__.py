@@ -13,22 +13,26 @@ from io import BytesIO
 from collections import defaultdict
 from PIL import Image
 from datetime import datetime, timedelta
-from nonebot.adapters.onebot.v11.event import (
-    Event,
-    MessageEvent,
-)
+from nonebot.adapters import Event
 from nonebot.typing import T_State
 from nonebot.params import Depends
 from hoshino import fav_dir, img_dir, hsn_nickname, video_dir
 from hoshino.types import Matcher, current_bot, current_event, MessageSegment, Message, Bot
 from hoshino.platform import (
+    custom_node_segment,
+    get_event_message,
     get_group_id,
+    get_plaintext,
+    get_reply_message,
+    get_session_id,
+    image_segment,
     get_user_id,
     group_target,
     is_group_event,
     is_private_event,
     send_group_forward,
     send_private_forward,
+    video_segment,
 )
 from nonebot.matcher import current_matcher
 from nonebot.permission import SUPERUSER
@@ -52,11 +56,13 @@ def Cooldown(
 ) -> None:
     debounced = set()
 
-    async def dependency(matcher: Matcher, event: MessageEvent, bot: Bot):
+    async def dependency(matcher: Matcher, event: Event, bot: Bot):
         loop = get_running_loop()
         key = get_user_id(event)
         if key is None:
-            key = event.get_session_id()
+            key = get_session_id(event)
+        if key is None:
+            key = str(id(event))
         message = prompt.format(cooldown) if prompt else f"请稍等 {cooldown} 秒后再试。"
         if key in debounced:
             await matcher.finish(message=message)
@@ -99,7 +105,7 @@ def get_bot_list() -> Sequence[Bot]:
 
 
 async def _strip_cmd(bot: "Bot", event: "Event", state: T_State):
-    message = event.get_message()
+    message = get_event_message(event)
     segment = message.pop(0)
     segment_text = str(segment).lstrip()
     new_message = message.__class__(
@@ -152,7 +158,7 @@ def img_to_bytes(pic: Image.Image) -> bytes:
 
 
 def img_to_segment(pic: Image.Image) -> MessageSegment:
-    return MessageSegment.image(img_to_bytes(pic))
+    return image_segment(img_to_bytes(pic))
 
 
 def concat_pic(pics, border=5):
@@ -176,14 +182,14 @@ def normalize_str(string: str) -> str:
 async def parse_qq(bot: Bot, event: Event, state: T_State):
     ids = []
     if is_group_event(event):
-        for m in event.get_message():
+        for m in get_event_message(event, []):
             if m.type == "at" and m.data["qq"] != "all":
                 ids.append(int(m.data["qq"]))
-        for m in event.get_plaintext().split():
+        for m in get_plaintext(event).split():
             if m.isdigit():
                 ids.append(int(m))
     elif is_private_event(event):
-        for m in event.get_plaintext().split():
+        for m in get_plaintext(event).split():
             if m.isdigit():
                 ids.append(int(m))
     if ids:
@@ -242,28 +248,28 @@ async def _get_videos_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSe
 
 
 async def get_image_segments_from_forward(
-    bot: Bot, event: MessageEvent
+    bot: Bot, event: Event
 ) -> list[MessageSegment]:
     res = []
-    msg = event.get_message()
+    msg = get_event_message(event)
     if msg:
         res.extend(await _get_imgs_from_forward_msg(bot, msg))
-    reply = event.reply
-    if reply:
-        res.extend(await _get_imgs_from_forward_msg(bot, reply.message))
+    reply_message = get_reply_message(event)
+    if reply_message:
+        res.extend(await _get_imgs_from_forward_msg(bot, reply_message))
     return res
 
 
 async def get_event_image_segments(
-    bot: Bot, event: MessageEvent, state: T_State
+    bot: Bot, event: Event, state: T_State
 ) -> bool:
-    msg = event.get_message()
+    msg = get_event_message(event, [])
     imglist = [s for s in msg if s.type == "image" or s.type == "mface"]
     imglist.extend(await get_image_segments_from_forward(bot, event))
-    reply = event.reply
-    if reply:
+    reply_message = get_reply_message(event)
+    if reply_message:
         imglist.extend(
-            [s for s in reply.message if s.type == "image" or s.type == "mface"]
+            [s for s in reply_message if s.type == "image" or s.type == "mface"]
         )
     if imglist:
         state[__SU_IMGLIST] = imglist
@@ -271,12 +277,12 @@ async def get_event_image_segments(
     return False
 
 
-def get_event_image(event: MessageEvent) -> list[str]:
-    msg = event.get_message()
-    reply = event.reply
+def get_event_image(event: Event) -> list[str]:
+    msg = get_event_message(event, [])
+    reply_message = get_reply_message(event)
     imglist = [s.data["file"] for s in msg if s.type == "image" and "file" in s.data]
-    if reply:
-        imglist.extend([s.data["file"] for s in reply.message if s.type == "image"])
+    if reply_message:
+        imglist.extend([s.data["file"] for s in reply_message if s.type == "image"])
     return imglist
 
 
@@ -418,7 +424,7 @@ def random_image_or_video_by_path(
     selected_names = ra.sample(files, k=num)
     for name in selected_names:
         fpath = path / name
-        img = MessageSegment.image(fpath) if not video else MessageSegment.video(fpath)
+        img = image_segment(fpath) if not video else video_segment(fpath)
         imgs.append(img)
     if imgs:
         names = []
@@ -434,8 +440,8 @@ def random_modify_pixel(img: Image.Image):
     img.putpixel((i, j), tuple(rand_color))
 
 
-def get_event_imageurl(event: MessageEvent) -> List[str]:
-    msg = event.message
+def get_event_imageurl(event: Event) -> List[str]:
+    msg = get_event_message(event, [])
     imglist = [s.data.get("url", s.data.get("file")) for s in msg if s.type == "image"]
     return imglist
 
@@ -452,7 +458,7 @@ async def send_to_superuser(msg=""):
 
 async def get_img_from_url(url: str) -> MessageSegment:
     resp = await aiohttpx.get(url)
-    return MessageSegment.image(resp.content)
+    return image_segment(resp.content)
 
 
 async def send(
@@ -472,9 +478,7 @@ def construct_nodes(
     user_id: int, segments: Sequence[Message | MessageSegment | str]
 ) -> Message:
     def node(content):
-        return MessageSegment.node_custom(
-            user_id=user_id, nickname=hsn_nickname, content=content
-        )
+        return custom_node_segment(user_id=user_id, nickname=hsn_nickname, content=content)
 
     return Message([node(seg) for seg in segments])
 

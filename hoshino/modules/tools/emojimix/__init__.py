@@ -1,10 +1,11 @@
 ## Thanks to github.com/FloatTech/ZeroBot-Plugin/plugin/emojimix
 
 from hoshino.service import Service
-from hoshino.types import T_State, Matcher, MessageSegment
+from hoshino.types import T_State, Matcher
 from hoshino.util import aiohttpx
 from hoshino.permission import SUPERUSER
-from hoshino.event import MessageEvent
+from hoshino.types import Event
+from hoshino.platform import get_event_message, get_event_value, get_plaintext, image_segment
 from .data import emojis, qqface
 
 sv = Service("emojimix", visible=False, enable_on_default=False)
@@ -20,13 +21,13 @@ def char_ord(s: str) -> str:
     return f"{ord(s):x}"
 
 
-async def emojimatch(event: MessageEvent, state: T_State):
-    msg = event.get_message()
+async def emojimatch(event: Event, state: T_State):
+    msg = get_event_message(event, [])
     res = []
     if len(msg) > 2:
         return False
     if len(msg) == 1:
-        text = event.get_plaintext()
+        text = get_plaintext(event)
         lt = len(text)
         if lt > 4:
             return False
@@ -65,12 +66,13 @@ async def emojimatch(event: MessageEvent, state: T_State):
 
 
 @sv.on_command("testemoji", permission=SUPERUSER)
-async def _(matcher: Matcher, event: MessageEvent):
+async def _(matcher: Matcher, event: Event):
+    raw_message = get_event_value(event, "raw_message", "")
     msg = []
-    msg.append(str(event.message))
-    msg.append(event.raw_message)
-    msg.append(str([ord(i) for i in event.get_plaintext()]))
-    msg.append(str([ord(i) for i in event.raw_message]))
+    msg.append(str(get_event_message(event, "")))
+    msg.append(raw_message)
+    msg.append(str([ord(i) for i in get_plaintext(event)]))
+    msg.append(str([ord(i) for i in raw_message]))
     await matcher.send("\n".join(msg))
 
 
@@ -85,9 +87,9 @@ async def _(matcher: Matcher, state: T_State):
     url = bed % (d1, r1, r1, r2)
     resp = await aiohttpx.head(url)
     if resp.ok:
-        await matcher.finish(MessageSegment.image(url))
+        await matcher.finish(image_segment(url))
     # right
     url = bed % (d2, r2, r2, r1)
     resp = await aiohttpx.head(url)
     if resp.ok:
-        await matcher.finish(MessageSegment.image(url))
+        await matcher.finish(image_segment(url))
