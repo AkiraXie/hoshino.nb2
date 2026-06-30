@@ -1,9 +1,11 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
 from nonebot.adapters import Bot, Event
 from nonebot.typing import T_State
+from nonebot.params import Depends
 from .bilidata import (
     resolve_bilibili,
 )
+from hoshino.platform import GroupID
 from .sv import sv
 from .xiaohongshu import resolve_xiaohongshu
 from json import loads
@@ -73,7 +75,11 @@ m = sv.on_message(rule=check_json_or_text, log=True, priority=3, block=False)
 
 
 @m
-async def parse_handler(bot: Bot, state: T_State, ev: Event):
+async def parse_handler(
+    bot: Bot,
+    state: T_State,
+    group_id: int | None = Depends(GroupID()),
+):
     if not (name := state.get("__url_name")):
         return
     if not (matched := state.get("__url_matched")):
@@ -87,7 +93,7 @@ async def parse_handler(bot: Bot, state: T_State, ev: Event):
                 await m.finish()
             return
         case "xhs":
-            if await resolve_xiaohongshu(bot, ev, url):
+            if await resolve_xiaohongshu(bot, group_id, url):
                 await m.finish()
             return
         case "weibo" | "mweibo":

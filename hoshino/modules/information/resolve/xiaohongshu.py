@@ -2,11 +2,10 @@ import json
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel
-from nonebot.adapters import Bot, Event
+from nonebot.adapters import Bot
 from hoshino import data_dir
 from hoshino.platform import (
     MessageLike,
-    get_group_id,
     upload_group_file,
     uni_image,
     uni_video,
@@ -66,7 +65,7 @@ async def parse_xhs(
     return await parse_xhs_explore(explore_url, xhs_id)
 
 
-async def resolve_xiaohongshu(bot: Bot, ev: Event, url: str) -> bool:
+async def resolve_xiaohongshu(bot: Bot, group_id: int | None, url: str) -> bool:
     msgs, res = await parse_xhs(url)
     if not msgs:
         sv.logger.error(f"xhs {url} resolve error")
@@ -75,7 +74,6 @@ async def resolve_xiaohongshu(bot: Bot, ev: Event, url: str) -> bool:
     await send_segments(msgs)
     if not res:
         return True
-    group_id = get_group_id(ev)
     if group_id is None:
         return True
     await upload_group_file(
