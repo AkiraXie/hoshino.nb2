@@ -123,7 +123,7 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
             )
             session.add(obj)
         session.commit()
-    await group_ques.finish(OneBotV11Message(f"好的我记住{question}了"))
+    await group_ques.finish(f"好的我记住{question}了")
 
 
 @person_ques.handle()
@@ -144,7 +144,7 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
             obj = Question(question=question, answer=answer, group=gid, user=uid)
             session.add(obj)
         session.commit()
-    await person_ques.finish(OneBotV11Message(f"好的我记住{question}了"))
+    await person_ques.finish(f"好的我记住{question}了")
 
 
 @del_gqa.handle()
@@ -164,9 +164,9 @@ async def _(bot: Bot, event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_gqa.finish(OneBotV11Message('我不记得"{}"这个问题'.format(question)))
+        await del_gqa.finish('我不记得"{}"这个问题'.format(question))
     else:
-        await del_gqa.finish(OneBotV11Message('我不再回答"{}"了'.format(question)))
+        await del_gqa.finish('我不再回答"{}"了'.format(question))
 
 
 @del_qa.handle()
@@ -187,9 +187,9 @@ async def _(bot: Bot, event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_qa.finish(OneBotV11Message('我不记得"{}"这个问题'.format(question)))
+        await del_qa.finish('我不记得"{}"这个问题'.format(question))
     else:
-        await del_qa.finish(OneBotV11Message('我不再回答"{}"了'.format(question)))
+        await del_qa.finish('我不再回答"{}"了'.format(question))
 
 
 async def parse_question(state: T_State, event: Event):
@@ -225,10 +225,10 @@ async def _(bot: Bot, event: Event, state: T_State):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_pqa.finish(OneBotV11Message('我不记得"{}"这个问题'.format(state["question"])))
+        await del_pqa.finish('我不记得"{}"这个问题'.format(state["question"]))
     else:
         await del_pqa.finish(
-            OneBotV11Message('我不再回答"{}"这个问题了'.format(state["question"]))
+            '我不再回答"{}"这个问题了'.format(state["question"])
         )
 
 
@@ -240,7 +240,7 @@ async def _(bot: Bot, event: Event):
         stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
-    await lookqa.finish(OneBotV11Message("您设置的问题有: " + " | ".join(msg)), at_sender=True)
+    await lookqa.finish("您设置的问题有: " + " | ".join(msg), at_sender=True)
 
 
 @lookgqa.handle()
@@ -252,7 +252,7 @@ async def _(bot: Bot, event: Event):
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
     await lookgqa.finish(
-        OneBotV11Message('该群设置的"有人问"有: ' + " | ".join(msg)), at_sender=True
+        '该群设置的"有人问"有: ' + " | ".join(msg), at_sender=True
     )
 
 
@@ -274,6 +274,6 @@ async def _(event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_allqa.finish(OneBotV11Message("该群没有设置任何问答"))
+        await del_allqa.finish("该群没有设置任何问答")
     else:
-        await del_allqa.finish(OneBotV11Message("已删除该群的所有问答"))
+        await del_allqa.finish("已删除该群的所有问答")
