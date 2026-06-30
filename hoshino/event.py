@@ -1,9 +1,9 @@
 from typing import Literal
 from nonebot.adapters.onebot.v11 import Event
 from nonebot.adapters.onebot.v11.event import (
-    MessageEvent,
-    GroupMessageEvent,
-    PrivateMessageEvent,
+    MessageEvent as MessageEvent,
+    GroupMessageEvent as GroupMessageEvent,
+    PrivateMessageEvent as PrivateMessageEvent,
     NoticeEvent,
 )
 from pydantic import BaseModel
@@ -70,3 +70,14 @@ class GroupMsgEmojiLikeEvent(NoticeEvent):
 
 def get_event(event: Event) -> str:
     return str(event.__dict__)
+
+
+def is_group_event(event: Event) -> bool:
+    return getattr(event, "group_id", None) is not None
+
+
+def is_private_event(event: Event) -> bool:
+    return (
+        getattr(event, "group_id", None) is None
+        and getattr(event, "user_id", None) is not None
+    )

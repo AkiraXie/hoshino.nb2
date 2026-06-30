@@ -1,5 +1,4 @@
 import asyncio
-from nonebot.adapters.onebot.v11.event import MessageEvent
 from nonebot.exception import FinishedException, IgnoredException
 from nonebot.typing import T_State
 from hoshino.hooks import event_preprocessor, on_startup
@@ -60,7 +59,7 @@ def unblock_uid(uid: int) -> bool:
 
 @event_preprocessor
 async def _(bot: Bot, event: Event, state: T_State):
-    if not isinstance(event, MessageEvent):
+    if event.get_type() != "message":
         return
     uid = int(event.user_id)
     if uid in _block_users:

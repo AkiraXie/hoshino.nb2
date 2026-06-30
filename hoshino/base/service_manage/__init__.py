@@ -1,6 +1,6 @@
 import re
 from functools import cmp_to_key
-from hoshino.event import GroupMessageEvent, PrivateMessageEvent
+from hoshino.event import is_group_event, is_private_event
 from hoshino.types import Bot, Event, T_State
 from hoshino.service import Service
 from nonebot.rule import to_me, ArgumentParser
@@ -46,13 +46,13 @@ disable = on_shell_command(
 
 @lssv.handle()
 async def _(event: Event, state: T_State):
-    if isinstance(event, GroupMessageEvent):
+    if is_group_event(event):
         state["gids"] = [event.group_id]
 
 
 @lssv.got("gids", prompt="请输入群号，并用空格隔开。", args_parser=parse_gid)
 async def _(bot: Bot, event: Event, state: T_State):
-    if not "gids" in state:
+    if "gids" not in state:
         await enable.finish("无效输入")
     verbose_all = state["_args"].all
     verbose_hide = state["_args"].invisible
@@ -80,11 +80,11 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 
 async def handle_msg(bot: Bot, event: Event, state: T_State):
-    if isinstance(event, GroupMessageEvent):
+    if is_group_event(event):
         state["gids"] = [event.group_id]
         await parse_service(event, state)
 
-    elif isinstance(event, PrivateMessageEvent):
+    elif is_private_event(event):
         services = []
         glist = list(g["group_id"] for g in await bot.get_group_list())
         failure = set()
@@ -148,7 +148,7 @@ async def _(bot: Bot, event: Event, state: T_State):
             sv.set_enable(gid) if action == "开启" else sv.set_disable(gid)
         succ_group.add(str(gid))
     reply = []
-    if isinstance(event, GroupMessageEvent):
+    if is_group_event(event):
         reply.append(f"已{action}服务: {', '.join(succ)}")
     else:
         reply.append(f"已在群 {', '.join(succ_group)} {action}服务: {', '.join(succ)}")
