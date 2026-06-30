@@ -13,7 +13,7 @@ configshow = sv.on_command(
 
 
 @configset
-async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID())):
+async def _(text: str = PlainText(), gid: int = GroupID()):
     msgs = text.strip().split()
     if len(msgs) not in (3, 4):
         await configset.finish("请检查参数个数")
@@ -92,7 +92,7 @@ async def get_user_name(bot: Bot, event: Event) -> str:
 
 @pickmusic
 async def _(
-    text: str = Depends(PlainText()),
+    text: str = PlainText(),
     user_name: str = Depends(get_user_name),
     client: AlistenClient | None = Depends(get_client),
 ):
@@ -126,7 +126,7 @@ async def _(
 
 @pickmusicid
 async def _(
-    text: str = Depends(PlainText()),
+    text: str = PlainText(),
     user_name: str = Depends(get_user_name),
     client: AlistenClient | None = Depends(get_client),
 ):

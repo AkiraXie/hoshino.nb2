@@ -1,7 +1,6 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
 from nonebot.adapters import Bot, Event
 from nonebot.typing import T_State
-from nonebot.params import Depends
 from .bilidata import (
     resolve_bilibili,
 )
@@ -78,7 +77,7 @@ m = sv.on_message(rule=check_json_or_text, log=True, priority=3, block=False)
 async def parse_handler(
     bot: Bot,
     state: T_State,
-    group_id: int | None = Depends(GroupID()),
+    group_id: int | None = GroupID(),
 ):
     if not (name := state.get("__url_name")):
         return

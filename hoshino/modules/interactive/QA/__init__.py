@@ -48,7 +48,7 @@ def _cq_image_segment(path) -> OneBotV11MessageSegment:
 async def event_image_in_local(
     matcher: Matcher,
     event: Event,
-    gid: int = Depends(GroupID()),
+    gid: int = GroupID(),
 ) -> tuple[str, str]:
     msg = get_event_message(event).copy()
     msgs = str(msg).split("你答", 1)
@@ -88,9 +88,9 @@ set_qa_dep = Depends(event_image_in_local)
 
 
 async def answer_qa_rule(
-    gid: int = Depends(GroupID()),
-    uid: int = Depends(SenderID()),
-    text: str = Depends(PlainText()),
+    gid: int = GroupID(),
+    uid: int = SenderID(),
+    text: str = PlainText(),
     state: T_State | None = None,
 ) -> bool:
     gid = gid or 0
@@ -134,7 +134,7 @@ del_allqa = sv.on_command("删除所有问答", aliases={"delallqa"}, permission
 
 
 @group_ques.handle()
-async def _(msg: tuple[str, str] = set_qa_dep, gid: int = Depends(GroupID())):
+async def _(msg: tuple[str, str] = set_qa_dep, gid: int = GroupID()):
     question, answer = msg
     with Session() as session:
         stmt = select(Question).where(
@@ -155,7 +155,7 @@ async def _(msg: tuple[str, str] = set_qa_dep, gid: int = Depends(GroupID())):
 
 
 @person_ques.handle()
-async def _(msg: tuple[str, str] = set_qa_dep, gid: int = Depends(GroupID()), uid: int = Depends(SenderID())):
+async def _(msg: tuple[str, str] = set_qa_dep, gid: int = GroupID(), uid: int = SenderID()):
     question, answer = msg
     gid = gid or 0
     with Session() as session:
@@ -175,7 +175,7 @@ async def _(msg: tuple[str, str] = set_qa_dep, gid: int = Depends(GroupID()), ui
 
 
 @del_gqa.handle()
-async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID())):
+async def _(text: str = PlainText(), gid: int = GroupID()):
     lquestion = text.lower()
     with Session() as session:
         stmt = select(Question).where(
@@ -195,7 +195,7 @@ async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID())):
 
 
 @del_qa.handle()
-async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID()), uid: int = Depends(SenderID())):
+async def _(text: str = PlainText(), gid: int = GroupID(), uid: int = SenderID()):
     lquestion = text.lower()
     gid = gid or 0
     with Session() as session:
@@ -215,7 +215,7 @@ async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID()), uid
         await del_qa.finish('我不再回答"{}"了'.format(text))
 
 
-async def parse_question(state: T_State, text: str = Depends(PlainText())):
+async def parse_question(state: T_State, text: str = PlainText()):
     state["question"] = text
 
 
@@ -231,7 +231,7 @@ async def parse_sin_qq(event: Event, state: T_State):
 
 @del_pqa.got("question", "请输入要删除的问题", args_parser=parse_question)
 @del_pqa.got("user_id", "请输入要删除问题的id,支持at", args_parser=parse_sin_qq)
-async def _(state: T_State, gid: int = Depends(GroupID())):
+async def _(state: T_State, gid: int = GroupID()):
     if not state.get("user_id", None):
         return
     lquestion = state["question"].lower()
@@ -255,7 +255,7 @@ async def _(state: T_State, gid: int = Depends(GroupID())):
 
 
 @lookqa.handle()
-async def _(gid: int = Depends(GroupID()), uid: int = Depends(SenderID())):
+async def _(gid: int = GroupID(), uid: int = SenderID()):
     gid = gid or 0
     with Session() as session:
         stmt = select(Question).where(Question.group == gid, Question.user == uid)
@@ -265,7 +265,7 @@ async def _(gid: int = Depends(GroupID()), uid: int = Depends(SenderID())):
 
 
 @lookgqa.handle()
-async def _(gid: int = Depends(GroupID())):
+async def _(gid: int = GroupID()):
     with Session() as session:
         stmt = select(Question).where(Question.group == gid, Question.user == 0)
         result = session.execute(stmt).scalars().all()
@@ -282,7 +282,7 @@ async def _(state: T_State):
 
 
 @del_allqa.handle()
-async def _(gid: int = Depends(GroupID())):
+async def _(gid: int = GroupID()):
     with Session() as session:
         stmt = select(Question).where(Question.group == gid)
         questions = session.execute(stmt).scalars().all()
