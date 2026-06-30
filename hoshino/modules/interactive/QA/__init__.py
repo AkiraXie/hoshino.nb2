@@ -4,16 +4,17 @@ from nonebot.params import Depends
 from .data import Question, Session
 from hoshino.permission import ADMIN
 from hoshino.service import Service
-from nonebot.adapters import Bot, Event
+from nonebot.adapters import Event
 from nonebot.matcher import Matcher
-from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
+from hoshino.types import OneBotV11MessageSegment
 from hoshino.config import config
 from hoshino.platform import (
     UniMessage,
+    GroupID,
+    SenderID,
+    PlainText,
     get_event_message,
-    get_group_id,
     get_session_id,
-    get_user_id,
 )
 from hoshino.util.aiohttpx import get
 from PIL import Image
@@ -23,25 +24,31 @@ img_dir = config.static_dir / "img" / "QA"
 img_dir.mkdir(parents=True, exist_ok=True)
 
 
-def parse_legacy_answer_message(answer: str) -> OneBotV11Message:
+# ── Legacy answer compat (isolated) ──
+
+def _cq_parse(answer: str):
+    """Parse legacy CQ-format answer string to OneBot message for image extraction."""
+    from hoshino.types import OneBotV11Message
     return OneBotV11Message(answer)
 
 
-async def legacy_answer_unimessage(answer: str) -> UniMessage:
-    return await UniMessage.generate(message=parse_legacy_answer_message(answer))
+async def _cq_to_unimessage(answer: str) -> UniMessage:
+    return await UniMessage.generate(message=_cq_parse(answer))
 
 
-async def finish_legacy_answer(answer: str) -> None:
-    await (await legacy_answer_unimessage(answer)).send()
+async def _cq_finish(answer: str) -> None:
+    await (await _cq_to_unimessage(answer)).send()
     await ans.finish()
 
 
-def legacy_answer_image_segment(path) -> OneBotV11MessageSegment:
+def _cq_image_segment(path) -> OneBotV11MessageSegment:
     return OneBotV11MessageSegment.image(path)
 
 
 async def event_image_in_local(
-    matcher: Matcher, event: Event
+    matcher: Matcher,
+    event: Event,
+    gid: int = Depends(GroupID()),
 ) -> tuple[str, str]:
     msg = get_event_message(event).copy()
     msgs = str(msg).split("你答", 1)
@@ -55,7 +62,7 @@ async def event_image_in_local(
     if answer == question:
         await matcher.finish()
     sid = get_session_id(event, "")
-    answer_msg = parse_legacy_answer_message(answer)
+    answer_msg = _cq_parse(answer)
     for i, s in enumerate(answer_msg):
         if s.type == "image":
             url = s.data.get("file", s.data.get("url"))
@@ -73,18 +80,21 @@ async def event_image_in_local(
             s = "{}-{}{}".format(sid, (url.split("/")[-2]).split("-")[-1], ext)
             f = img_dir / s
             f.write_bytes(img.content)
-            answer_msg[i] = legacy_answer_image_segment(f)
+            answer_msg[i] = _cq_image_segment(f)
     return (question, str(answer_msg))
 
 
 set_qa_dep = Depends(event_image_in_local)
 
 
-async def answer_qa_rule(event: Event, state: T_State):
-    gid = get_group_id(event, 0)
-    uid = get_user_id(event)
-    msg = str(get_event_message(event))
-    question = msg.lower()
+async def answer_qa_rule(
+    gid: int = Depends(GroupID()),
+    uid: int = Depends(SenderID()),
+    text: str = Depends(PlainText()),
+    state: T_State | None = None,
+) -> bool:
+    gid = gid or 0
+    question = text.lower()
     with Session() as session:
         stmt = select(Question).where(
             Question.question.ilike(question),
@@ -101,8 +111,10 @@ async def answer_qa_rule(event: Event, state: T_State):
             )
             answer = session.execute(stmt).scalar_one_or_none()
 
-        if answer:
+        if answer and state is not None:
             state["answer"] = answer.answer
+            return True
+        elif answer:
             return True
         else:
             return False
@@ -122,9 +134,8 @@ del_allqa = sv.on_command("删除所有问答", aliases={"delallqa"}, permission
 
 
 @group_ques.handle()
-async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
+async def _(msg: tuple[str, str] = set_qa_dep, gid: int = Depends(GroupID())):
     question, answer = msg
-    gid = get_group_id(event)
     with Session() as session:
         stmt = select(Question).where(
             Question.question == question,
@@ -144,10 +155,9 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
 
 
 @person_ques.handle()
-async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
+async def _(msg: tuple[str, str] = set_qa_dep, gid: int = Depends(GroupID()), uid: int = Depends(SenderID())):
     question, answer = msg
-    gid = get_group_id(event, 0)
-    uid = get_user_id(event)
+    gid = gid or 0
     with Session() as session:
         stmt = select(Question).where(
             Question.question == question,
@@ -165,10 +175,8 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
 
 
 @del_gqa.handle()
-async def _(bot: Bot, event: Event):
-    question = str(get_event_message(event))
-    lquestion = question.lower()
-    gid = get_group_id(event)
+async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID())):
+    lquestion = text.lower()
     with Session() as session:
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
@@ -181,17 +189,15 @@ async def _(bot: Bot, event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_gqa.finish('我不记得"{}"这个问题'.format(question))
+        await del_gqa.finish('我不记得"{}"这个问题'.format(text))
     else:
-        await del_gqa.finish('我不再回答"{}"了'.format(question))
+        await del_gqa.finish('我不再回答"{}"了'.format(text))
 
 
 @del_qa.handle()
-async def _(bot: Bot, event: Event):
-    question = str(get_event_message(event))
-    lquestion = question.lower()
-    gid = get_group_id(event, 0)
-    uid = get_user_id(event)
+async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID()), uid: int = Depends(SenderID())):
+    lquestion = text.lower()
+    gid = gid or 0
     with Session() as session:
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
@@ -204,16 +210,16 @@ async def _(bot: Bot, event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_qa.finish('我不记得"{}"这个问题'.format(question))
+        await del_qa.finish('我不记得"{}"这个问题'.format(text))
     else:
-        await del_qa.finish('我不再回答"{}"了'.format(question))
+        await del_qa.finish('我不再回答"{}"了'.format(text))
 
 
-async def parse_question(state: T_State, event: Event):
-    state["question"] = str(get_event_message(event))
+async def parse_question(state: T_State, text: str = Depends(PlainText())):
+    state["question"] = text
 
 
-async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
+async def parse_sin_qq(event: Event, state: T_State):
     for m in get_event_message(event, []):
         if m.type == "at" and m.data["qq"] != "all":
             state["user_id"] = int(m.data["qq"])
@@ -225,15 +231,14 @@ async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
 
 @del_pqa.got("question", "请输入要删除的问题", args_parser=parse_question)
 @del_pqa.got("user_id", "请输入要删除问题的id,支持at", args_parser=parse_sin_qq)
-async def _(bot: Bot, event: Event, state: T_State):
+async def _(state: T_State, gid: int = Depends(GroupID())):
     if not state.get("user_id", None):
         return
-    state["gid"] = get_group_id(event)
     lquestion = state["question"].lower()
     with Session() as session:
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
-            Question.group == state["gid"],
+            Question.group == gid,
             Question.user == state["user_id"],
         )
         questions = session.execute(stmt).scalars().all()
@@ -250,9 +255,8 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 
 @lookqa.handle()
-async def _(bot: Bot, event: Event):
-    uid = get_user_id(event)
-    gid = get_group_id(event, 0)
+async def _(gid: int = Depends(GroupID()), uid: int = Depends(SenderID())):
+    gid = gid or 0
     with Session() as session:
         stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
@@ -261,11 +265,9 @@ async def _(bot: Bot, event: Event):
 
 
 @lookgqa.handle()
-async def _(bot: Bot, event: Event):
-    uid = 0
-    gid = get_group_id(event)
+async def _(gid: int = Depends(GroupID())):
     with Session() as session:
-        stmt = select(Question).where(Question.group == gid, Question.user == uid)
+        stmt = select(Question).where(Question.group == gid, Question.user == 0)
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
     await lookgqa.finish(
@@ -276,12 +278,11 @@ async def _(bot: Bot, event: Event):
 @ans.handle()
 async def _(state: T_State):
     if answer := state["answer"]:
-        await finish_legacy_answer(answer)
+        await _cq_finish(answer)
 
 
 @del_allqa.handle()
-async def _(event: Event):
-    gid = get_group_id(event)
+async def _(gid: int = Depends(GroupID())):
     with Session() as session:
         stmt = select(Question).where(Question.group == gid)
         questions = session.execute(stmt).scalars().all()
