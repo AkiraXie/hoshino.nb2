@@ -347,16 +347,17 @@ class Service:
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
         priority = kwargs.get("priority", 1)
+        matcher: Matcher = on_alconna(command, aliases=aliases, **kwargs)
         mw = MatcherWrapper(
             self,
             "Message.alconna",
             priority,
-            on_alconna(command, aliases=aliases, **kwargs),
+            matcher,
             command=str(command),
             only_group=only_group,
         )
         self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
+        _loaded_matchers[matcher.__class__] = mw
         return mw
 
     def on_startswith(
@@ -593,6 +594,12 @@ class MatcherWrapper:
         self.info = info
         self.type = type
         self.log = log
+
+    def __getattr__(self, name: str):
+        """Proxy unknown attributes to the underlying AlconnaMatcher/Matcher."""
+        if "matcher" in self.__dict__:
+            return getattr(self.__dict__["matcher"], name)
+        raise AttributeError(name)
 
     @staticmethod
     def get_loaded_matchers() -> list[str]:
