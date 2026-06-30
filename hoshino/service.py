@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import re
 import os
 import json
 from collections import defaultdict
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 import nonebot
 from nonebot.params import Depends
 from hoshino.hooks import run_preprocessor
@@ -50,20 +52,27 @@ _loaded_matchers: dict["type[Matcher]", "Service"] = {}
 _matcher_sv_map: dict[int, "Service"] = {}
 
 
-class _DecoratableMatcher:
-    """薄包装：支持 @sv.on_xxx(...) 直接装饰 + 透传所有 matcher 方法"""
+if TYPE_CHECKING:
+    class _DecoratableMatcher(Matcher):
+        """类型桩 — IDE 看到完整 Matcher 方法签名"""
 
-    def __init__(self, inner: Matcher):
-        object.__setattr__(self, "_inner", inner)
+        def __call__(self, func): ...
 
-    def __call__(self, func):
-        return self._inner.handle()(func)
+else:
+    class _DecoratableMatcher:
+        """薄包装：支持 @sv.on_xxx(...) 直接装饰 + 透传所有 matcher 方法"""
 
-    def __getattr__(self, name: str):
-        return getattr(self._inner, name)
+        def __init__(self, inner: Matcher):
+            object.__setattr__(self, "_inner", inner)
 
-    def __setattr__(self, name: str, value):
-        setattr(self._inner, name, value)
+        def __call__(self, func):
+            return self._inner.handle()(func)
+
+        def __getattr__(self, name: str):
+            return getattr(self._inner, name)
+
+        def __setattr__(self, name: str, value):
+            setattr(self._inner, name, value)
 
 
 def _iter_to_set(words: set | list | tuple | str | None) -> set:
