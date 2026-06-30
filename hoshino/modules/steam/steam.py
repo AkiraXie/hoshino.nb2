@@ -9,7 +9,7 @@ from hoshino import db_dir
 from hoshino.permission import ADMIN
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx
-from hoshino.platform import Target, send_to_target
+from hoshino.platform import get_group_id, group_target, send_to_target
 
 sv = Service("steam", enable_on_default=False, visible=False)
 sub = {"subscribes": {}}
@@ -55,6 +55,7 @@ look = sv.on_command(
 @adds.handle()
 async def _(bot: Bot, event: Event):
     account = event.get_plaintext().strip()
+    group_id = get_group_id(event)
     try:
         rsp = await get_account_status(account)
         if rsp["personaname"] == "":
@@ -65,7 +66,7 @@ async def _(bot: Bot, event: Event):
             await bot.send(
                 event, "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
             )
-        await update_steam_ids(account, event.group_id)
+        await update_steam_ids(account, group_id)
         await bot.send(event, "订阅成功")
     except Exception as e:
         logger.exception(e)
@@ -75,8 +76,9 @@ async def _(bot: Bot, event: Event):
 @dels.handle()
 async def _(bot: Bot, event: Event):
     account = event.get_plaintext().strip()
+    group_id = get_group_id(event)
     try:
-        await del_steam_ids(account, event.group_id)
+        await del_steam_ids(account, group_id)
         await bot.send(event, "删除订阅成功")
     except Exception as e:
         logger.exception(e)
@@ -85,7 +87,7 @@ async def _(bot: Bot, event: Event):
 
 @looks.handle()
 async def _(bot: Bot, event: Event):
-    group_id = event.group_id
+    group_id = get_group_id(event)
     msg = "======steam======\n"
     await update_game_status()
     for key, val in playing_state.items():
@@ -213,5 +215,5 @@ async def check_steam_status():
 async def broadcast(group_list: Iterable, msg):
     for group in group_list:
         for bot in get_bot_list():
-            await send_to_target(bot, Target(str(group)), msg)
+            await send_to_target(bot, group_target(group), msg)
             await sleep(0.5)

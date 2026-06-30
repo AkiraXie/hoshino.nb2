@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from hoshino.types import Bot, Event, MessageSegment, Message
 from hoshino import data_dir
+from hoshino.platform import get_group_id, upload_group_file
 from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
 import re
 from urllib.parse import parse_qs, urlparse
@@ -68,8 +69,12 @@ async def resolve_xiaohongshu(bot: Bot, ev: Event, url: str) -> bool:
     await send_segments(msgs)
     if not res:
         return True
-    await bot.upload_group_file(
-        group_id=ev.group_id,
+    group_id = get_group_id(ev)
+    if group_id is None:
+        return True
+    await upload_group_file(
+        bot,
+        group_id,
         name=res.name,
         file=res.resolve().as_posix(),
     )

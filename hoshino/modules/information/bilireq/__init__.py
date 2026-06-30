@@ -4,6 +4,7 @@ from hoshino.types import Bot, Event
 from hoshino.hooks import on_post_startup
 from hoshino.platform import (
     dump_target,
+    get_group_id,
     load_target_or_group,
     send_to_target,
     target_from_event,
@@ -31,7 +32,7 @@ tz = timezone("Asia/Shanghai")
 
 @sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅", "adddyn"))
 async def _(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     target_data = dump_target(target_from_event(bot, event))
     uid = event.get_plaintext()
     try:
@@ -72,7 +73,7 @@ async def _(bot: Bot, event: Event):
     aliases=("取消订阅动态", "关闭订阅动态", "删除动态", "取消动态", "deldyn"),
 )
 async def _(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     uid = event.get_plaintext()
     with Session() as session:
         if uid.isdecimal():
@@ -123,7 +124,7 @@ async def _(bot: Bot, event: Event):
     aliases={"订阅动态列表", "动态订阅列表", "动态列表", "listdyn", "lsdyn"},
 )
 async def _(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     with Session() as session:
         stmt = select(db).where(db.group == gid)
         rows = session.execute(stmt).scalars().all()
@@ -143,7 +144,7 @@ async def _(bot: Bot, event: Event):
     aliases={"看动态", "看最新动态", "查动态", "查看动态", "seedyn", "kkdyn", "kkbl"},
 )
 async def _(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     arg = event.get_plaintext()
     with Session() as session:
         if arg.isdecimal():

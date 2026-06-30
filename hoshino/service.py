@@ -28,7 +28,7 @@ from hoshino.rule import (
     regex,
     keyword,
 )
-from hoshino.platform import event_scope_key, group_scope_key, platform_key
+from hoshino.platform import event_scope_key, get_group_id, get_group_list, group_scope_key, platform_key
 from nonebot.typing import (
     T_Handler,
 )
@@ -165,7 +165,7 @@ class Service:
         gl = defaultdict(list)
         for bot in nonebot.get_bots().values():
             platform = platform_key(bot)
-            sgl = set(g["group_id"] for g in await bot.get_group_list())
+            sgl = set(g["group_id"] for g in await get_group_list(bot))
             if self.enable_on_default:
                 sgl = {
                     gid
@@ -212,7 +212,7 @@ class Service:
 
     def check_service(self, only_to_me: bool = False, only_group: bool = True) -> Rule:
         async def _cs(bot: Bot, event: Event) -> bool:
-            group_id = getattr(event, "group_id", None)
+            group_id = get_group_id(event)
             if group_id is None:
                 return not only_group
             return self.check_scope_enabled(event_scope_key(bot, event), int(group_id))

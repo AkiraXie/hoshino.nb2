@@ -5,6 +5,7 @@ from hoshino.hooks import event_preprocessor, on_startup
 from hoshino.types import Bot, Event
 from hoshino.util import sucmd, parse_qq
 from hoshino.log import logger
+from hoshino.platform import get_user_id, is_message_event
 from datetime import datetime, timedelta
 from typing import Union
 from pytz import timezone
@@ -59,9 +60,12 @@ def unblock_uid(uid: int) -> bool:
 
 @event_preprocessor
 async def _(bot: Bot, event: Event, state: T_State):
-    if event.get_type() != "message":
+    if not is_message_event(event):
         return
-    uid = int(event.user_id)
+    uid = get_user_id(event)
+    if uid is None:
+        return
+    uid = int(uid)
     if uid in _block_users:
         raise IgnoredException("This user is blocked")
 

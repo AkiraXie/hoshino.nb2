@@ -7,6 +7,7 @@ from typing import Any
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_alconna.uniseg import Target, get_target
 from nonebot_plugin_alconna.uniseg.constraint import SerializeFailed
+from .event import get_group_id, get_user_id
 
 
 def group_target(group_id: int | str) -> Target:
@@ -21,10 +22,10 @@ def target_from_event(bot: Bot, event: Event) -> Target:
     try:
         return get_target(event, bot)
     except SerializeFailed:
-        group_id = getattr(event, "group_id", None)
+        group_id = get_group_id(event)
         if group_id is not None:
             return group_target(group_id)
-        user_id = getattr(event, "user_id", None)
+        user_id = get_user_id(event)
         if user_id is not None:
             return private_target(user_id)
         raise
@@ -53,7 +54,7 @@ def target_scope_key(target: Target, *, platform: str = "ob11") -> str:
 
 
 def event_scope_key(bot: Bot, event: Event) -> str | None:
-    group_id = getattr(event, "group_id", None)
+    group_id = get_group_id(event)
     if group_id is not None:
         return group_scope_key(group_id, platform=platform_key(bot))
     try:

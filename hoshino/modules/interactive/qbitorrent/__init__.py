@@ -15,6 +15,7 @@ from .utils import (
 )
 from hoshino.permission import ADMIN
 from hoshino.types import Bot, Event
+from hoshino.platform import get_group_id
 from nonebot.params import Depends
 
 # 配置命令
@@ -51,7 +52,7 @@ async def _(bot: Bot, event: Event):
         server_url = f"http://{server_url}"
 
     with Session() as session:
-        gid = event.group_id
+        gid = get_group_id(event)
         stmt = select(QbtConfig).where(QbtConfig.gid == gid)
         result = session.execute(stmt)
         config = result.scalar_one_or_none()
@@ -64,7 +65,7 @@ async def _(bot: Bot, event: Event):
             target = config
         else:
             target = QbtConfig(
-                gid=event.group_id,
+                gid=gid,
                 server_url=server_url,
                 username=username,
                 password=password,

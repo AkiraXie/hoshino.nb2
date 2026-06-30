@@ -1,10 +1,11 @@
 from hoshino.util import sucmds
 from hoshino.types import Bot, Event
 from hoshino.service import Service, MatcherWrapper
+from hoshino.platform import get_group_list
 
 
 async def ls_group(bot: Bot, event: Event):
-    gl = await bot.get_group_list()
+    gl = await get_group_list(bot)
     msg = ["{group_id} {group_name}".format_map(g) for g in gl]
     msg = "\n".join(msg)
     msg = f"| 群号 | 群名 | 共{len(gl)}个群\n" + msg

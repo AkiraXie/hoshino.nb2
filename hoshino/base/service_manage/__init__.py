@@ -1,9 +1,16 @@
 import re
 from functools import cmp_to_key
-from hoshino.event import is_group_event, is_private_event
 from hoshino.types import Bot, Event, T_State
 from hoshino.service import Service
-from hoshino.platform import event_scope_key, group_scope_key, platform_key
+from hoshino.platform import (
+    event_scope_key,
+    get_group_id,
+    get_group_list,
+    group_scope_key,
+    is_group_event,
+    is_private_event,
+    platform_key,
+)
 from nonebot.rule import to_me, ArgumentParser
 from hoshino.permission import ADMIN
 from nonebot.plugin import on_shell_command
@@ -47,8 +54,8 @@ disable = on_shell_command(
 
 @lssv.handle()
 async def _(event: Event, state: T_State):
-    if is_group_event(event):
-        state["gids"] = [event.group_id]
+    if (group_id := get_group_id(event)) is not None:
+        state["gids"] = [group_id]
 
 
 @lssv.got("gids", prompt="请输入群号，并用空格隔开。", args_parser=parse_gid)
@@ -61,7 +68,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     for gid in state["gids"]:
         scope_key = (
             event_scope_key(bot, event)
-            if is_group_event(event) and gid == event.group_id
+            if is_group_event(event) and gid == get_group_id(event)
             else group_scope_key(gid, platform=platform_key(bot))
         )
         current_svs = map(lambda sv: (sv, sv.check_scope_enabled(scope_key, gid)), svs)
@@ -86,13 +93,13 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 
 async def handle_msg(bot: Bot, event: Event, state: T_State):
-    if is_group_event(event):
-        state["gids"] = [event.group_id]
+    if (group_id := get_group_id(event)) is not None:
+        state["gids"] = [group_id]
         await parse_service(event, state)
 
     elif is_private_event(event):
         services = []
-        glist = list(g["group_id"] for g in await bot.get_group_list())
+        glist = list(g["group_id"] for g in await get_group_list(bot))
         failure = set()
         msgs = event.get_plaintext().split(" ")
         gids = []
@@ -151,7 +158,7 @@ async def _(bot: Bot, event: Event, state: T_State):
     for gid in state["gids"]:
         scope_key = (
             event_scope_key(bot, event)
-            if is_group_event(event) and gid == event.group_id
+            if is_group_event(event) and gid == get_group_id(event)
             else group_scope_key(gid, platform=platform_key(bot))
         )
         for name in succ:

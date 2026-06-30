@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 import time
 from hoshino.types import Bot, Event
-from hoshino.platform import dump_target, target_from_event
+from hoshino.platform import dump_target, get_group_id, target_from_event
 from hoshino.permission import SUPERUSER
 from hoshino.permission import ADMIN
 from hoshino.util import (
@@ -72,19 +72,19 @@ showconfigwb = sv.on_command(
 
 @configwb.handle()
 async def show_weibo_config(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     await bot.send(event, format_weibo_config_message(gid, editable=True))
 
 
 @showconfigwb.handle()
 async def show_weibo_config_readonly(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     await showconfigwb.finish(format_weibo_config_message(gid, editable=False))
 
 
 @configwb.got("config_bits")
 async def set_weibo_config(state: T_State, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     config_bits = str(state["config_bits"]).strip()
     if not re.fullmatch(r"[01]{3}", config_bits):
         current_bits = format_weibo_config_bits(gid)
@@ -175,7 +175,7 @@ async def weibo_random_video(event: Event):
     aliases=("订阅微博", "新增微博", "添加微博", "添加weibo", "addweibo", "addwb"),
 )
 async def add_subscription(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     target_data = dump_target(target_from_event(bot, event))
     msg = event.get_plaintext().strip()
     keywords = []
@@ -219,7 +219,7 @@ async def add_subscription(bot: Bot, event: Event):
     "删除微博订阅", aliases=("取消微博", "删除微博", "rmweibo", "删除weibo", "rmwb")
 )
 async def remove_subscription(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     uids = event.get_plaintext().strip()
     uids = uids.split()
     for uid in uids:
@@ -245,7 +245,7 @@ async def remove_subscription(bot: Bot, event: Event):
 
 @sv.on_command("微博订阅", aliases=("微博订阅列表", "lookweibo", "lswb", "listweibo"))
 async def list_subscriptions(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     rows = list_group_subscriptions(gid)
     if not rows:
         await bot.send(event, "本群没有订阅微博用户")
@@ -261,7 +261,7 @@ async def list_subscriptions(bot: Bot, event: Event):
 
 @sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb", "seewb"))
 async def see_weibo(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     arg = event.get_plaintext().strip()
     if arg.isdecimal():
         rows = list_group_subscriptions_by_uid(gid, arg)

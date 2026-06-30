@@ -6,6 +6,7 @@ from hoshino.hooks import on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
 from hoshino.types import Event
+from hoshino.platform import get_group_id
 
 db_path = db_dir / "alisten.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -33,7 +34,9 @@ Base.metadata.create_all(engine)
 
 
 async def get_config(event: Event) -> AlistenConfig | None:
-    gid = event.group_id
+    gid = get_group_id(event)
+    if gid is None:
+        return None
     with Session() as session:
         stmt = select(AlistenConfig).where(AlistenConfig.gid == gid)
         result = session.execute(stmt)
@@ -208,7 +211,10 @@ async def init_alisten_clients():
 
 
 def get_client(event: Event) -> AlistenClient | None:
-    return _clients.get(event.group_id)
+    gid = get_group_id(event)
+    if gid is None:
+        return None
+    return _clients.get(gid)
 
 
 def update_client(config: AlistenConfig):

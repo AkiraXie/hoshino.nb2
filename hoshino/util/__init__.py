@@ -15,14 +15,21 @@ from PIL import Image
 from datetime import datetime, timedelta
 from nonebot.adapters.onebot.v11.event import (
     Event,
-    GroupMessageEvent,
-    PrivateMessageEvent,
     MessageEvent,
 )
 from nonebot.typing import T_State
 from nonebot.params import Depends
 from hoshino import fav_dir, img_dir, hsn_nickname, video_dir
 from hoshino.types import Matcher, current_bot, current_event, MessageSegment, Message, Bot
+from hoshino.platform import (
+    get_group_id,
+    get_user_id,
+    group_target,
+    is_group_event,
+    is_private_event,
+    send_group_forward,
+    send_private_forward,
+)
 from nonebot.matcher import current_matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import CommandGroup, on_command, on_message
@@ -47,7 +54,9 @@ def Cooldown(
 
     async def dependency(matcher: Matcher, event: MessageEvent, bot: Bot):
         loop = get_running_loop()
-        key = event.user_id
+        key = get_user_id(event)
+        if key is None:
+            key = event.get_session_id()
         message = prompt.format(cooldown) if prompt else f"请稍等 {cooldown} 秒后再试。"
         if key in debounced:
             await matcher.finish(message=message)
@@ -166,14 +175,14 @@ def normalize_str(string: str) -> str:
 
 async def parse_qq(bot: Bot, event: Event, state: T_State):
     ids = []
-    if isinstance(event, GroupMessageEvent):
+    if is_group_event(event):
         for m in event.get_message():
             if m.type == "at" and m.data["qq"] != "all":
                 ids.append(int(m.data["qq"]))
         for m in event.get_plaintext().split():
             if m.isdigit():
                 ids.append(int(m))
-    elif isinstance(event, PrivateMessageEvent):
+    elif is_private_event(event):
         for m in event.get_plaintext().split():
             if m.isdigit():
                 ids.append(int(m))
@@ -481,14 +490,10 @@ async def send_segments(
     bot = current_bot.get()
     event = current_event.get()
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
-    if isinstance(event, GroupMessageEvent):
-        await bot.call_api(
-            "send_group_forward_msg", group_id=event.group_id, messages=nodes
-        )
-    elif isinstance(event, PrivateMessageEvent):
-        await bot.call_api(
-            "send_private_forward_msg", user_id=event.user_id, messages=nodes
-        )
+    if (group_id := get_group_id(event)) is not None:
+        await send_group_forward(bot, group_id, nodes)
+    elif (user_id := get_user_id(event)) is not None:
+        await send_private_forward(bot, user_id, nodes)
     else:
         return
 
@@ -498,16 +503,15 @@ async def send_group_segments(
     group_id: int,
     message: Sequence[Message | MessageSegment | str],
 ):
-    from hoshino.platform import Target, send_to_target
+    from hoshino.platform import send_to_target
 
     if not message:
         return
     if len(message) == 1:
-        await send_to_target(bot, Target(str(group_id)), message[0])
+        await send_to_target(bot, group_target(group_id), message[0])
         return
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
-    api = "send_group_forward_msg"
-    await bot.call_api(api, messages=nodes, group_id=group_id)
+    await send_group_forward(bot, group_id, nodes)
 
 
 async def finish(

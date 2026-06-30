@@ -8,6 +8,7 @@ from hoshino.hooks import on_post_startup
 from hoshino.schedule import scheduled_job
 from hoshino.platform import (
     dump_target,
+    get_group_id,
     load_target_or_group,
     send_to_target,
     target_from_event,
@@ -214,7 +215,7 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
 
 @sv.on_command("添加直播订阅", aliases=("订阅直播", "添加直播", "addbililive", "adblive", "addlive"))
 async def cmd_add_live(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     target_data = dump_target(target_from_event(bot, event))
     msg = event.get_plaintext().strip()
     if not msg:
@@ -260,7 +261,7 @@ async def cmd_add_live(bot: Bot, event: Event):
 
 @sv.on_command("删除直播订阅", aliases=("取消直播", "删除直播", "rmbililive", "rmblive", "rmlive"))
 async def cmd_remove_live(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     args = event.get_plaintext().strip().split()
     if not args:
         await bot.send(event, "用法: 删除直播订阅 房间号[:平台]/主播名[:平台]")
@@ -298,7 +299,7 @@ async def cmd_remove_live(bot: Bot, event: Event):
 
 @sv.on_command("直播订阅", aliases=("直播订阅列表", "lsbililive", "lsblive", "listbililive", "lslive"))
 async def cmd_list_live(bot: Bot, event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     filter_text = event.get_plaintext().strip()
     plat_filter = parse_platform_filter(filter_text)
 

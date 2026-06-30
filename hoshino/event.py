@@ -8,6 +8,10 @@ from nonebot.adapters.onebot.v11.event import (
 )
 from pydantic import BaseModel
 from typing_extensions import override
+from hoshino.platform.event import (
+    is_group_event as is_group_event,
+    is_private_event as is_private_event,
+)
 
 
 class GroupReactionEvent(NoticeEvent):
@@ -71,13 +75,3 @@ class GroupMsgEmojiLikeEvent(NoticeEvent):
 def get_event(event: Event) -> str:
     return str(event.__dict__)
 
-
-def is_group_event(event: Event) -> bool:
-    return getattr(event, "group_id", None) is not None
-
-
-def is_private_event(event: Event) -> bool:
-    return (
-        getattr(event, "group_id", None) is None
-        and getattr(event, "user_id", None) is not None
-    )

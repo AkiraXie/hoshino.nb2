@@ -7,6 +7,7 @@ from hoshino.service import Service
 from hoshino.types import Bot, Event, Message, MessageSegment, Matcher
 from hoshino.event import MessageEvent
 from hoshino.config import config
+from hoshino.platform import get_group_id, get_user_id
 from hoshino.util.aiohttpx import get
 from PIL import Image
 from sqlalchemy import select
@@ -56,8 +57,8 @@ set_qa_dep = Depends(event_image_in_local)
 
 
 async def answer_qa_rule(event: Event, state: T_State):
-    gid = event.group_id if "group_id" in event.__dict__ else 0
-    uid = event.user_id
+    gid = get_group_id(event, 0)
+    uid = get_user_id(event)
     msg = str(event.get_message())
     question = msg.lower()
     with Session() as session:
@@ -99,10 +100,11 @@ del_allqa = sv.on_command("删除所有问答", aliases={"delallqa"}, permission
 @group_ques.handle()
 async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
     question, answer = msg
+    gid = get_group_id(event)
     with Session() as session:
         stmt = select(Question).where(
             Question.question == question,
-            Question.group == event.group_id,
+            Question.group == gid,
             Question.user == 0,
         )
         obj = session.execute(stmt).scalar_one_or_none()
@@ -110,7 +112,7 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
             obj.answer = answer
         else:
             obj = Question(
-                question=question, answer=answer, group=event.group_id, user=0
+                question=question, answer=answer, group=gid, user=0
             )
             session.add(obj)
         session.commit()
@@ -120,20 +122,19 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
 @person_ques.handle()
 async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
     question, answer = msg
-    gid = event.group_id if "group_id" in event.__dict__ else 0
+    gid = get_group_id(event, 0)
+    uid = get_user_id(event)
     with Session() as session:
         stmt = select(Question).where(
             Question.question == question,
             Question.group == gid,
-            Question.user == event.user_id,
+            Question.user == uid,
         )
         obj = session.execute(stmt).scalar_one_or_none()
         if obj:
             obj.answer = answer
         else:
-            obj = Question(
-                question=question, answer=answer, group=gid, user=event.user_id
-            )
+            obj = Question(question=question, answer=answer, group=gid, user=uid)
             session.add(obj)
         session.commit()
     await person_ques.finish(Message(f"好的我记住{question}了"))
@@ -143,10 +144,11 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
 async def _(bot: Bot, event: Event):
     question = str(event.get_message())
     lquestion = question.lower()
+    gid = get_group_id(event)
     with Session() as session:
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
-            Question.group == event.group_id,
+            Question.group == gid,
             Question.user == 0,
         )
         questions = session.execute(stmt).scalars().all()
@@ -164,12 +166,13 @@ async def _(bot: Bot, event: Event):
 async def _(bot: Bot, event: Event):
     question = str(event.get_message())
     lquestion = question.lower()
-    gid = event.group_id if "group_id" in event.__dict__ else 0
+    gid = get_group_id(event, 0)
+    uid = get_user_id(event)
     with Session() as session:
         stmt = select(Question).where(
             Question.question.ilike(lquestion),
             Question.group == gid,
-            Question.user == event.user_id,
+            Question.user == uid,
         )
         questions = session.execute(stmt).scalars().all()
         for q in questions:
@@ -201,7 +204,7 @@ async def parse_sin_qq(bot: Bot, event: Event, state: T_State):
 async def _(bot: Bot, event: Event, state: T_State):
     if not state.get("user_id", None):
         return
-    state["gid"] = event.group_id
+    state["gid"] = get_group_id(event)
     lquestion = state["question"].lower()
     with Session() as session:
         stmt = select(Question).where(
@@ -224,8 +227,8 @@ async def _(bot: Bot, event: Event, state: T_State):
 
 @lookqa.handle()
 async def _(bot: Bot, event: Event):
-    uid = event.user_id
-    gid = event.group_id if "group_id" in event.__dict__ else 0
+    uid = get_user_id(event)
+    gid = get_group_id(event, 0)
     with Session() as session:
         stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
@@ -236,7 +239,7 @@ async def _(bot: Bot, event: Event):
 @lookgqa.handle()
 async def _(bot: Bot, event: Event):
     uid = 0
-    gid = event.group_id
+    gid = get_group_id(event)
     with Session() as session:
         stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
@@ -255,7 +258,7 @@ async def _(state: T_State):
 
 @del_allqa.handle()
 async def _(event: Event):
-    gid = event.group_id
+    gid = get_group_id(event)
     with Session() as session:
         stmt = select(Question).where(Question.group == gid)
         questions = session.execute(stmt).scalars().all()

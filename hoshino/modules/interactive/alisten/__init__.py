@@ -3,6 +3,7 @@ from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Sess
 from hoshino.permission import ADMIN
 from hoshino.types import Bot, Event
 from hoshino import hsn_nickname
+from hoshino.platform import get_group_id, get_group_member_info, get_user_id
 from nonebot.params import Depends
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)
@@ -22,7 +23,7 @@ async def _(bot: Bot, event: Event):
     else:
         email, server_url, house_id, house_password = msgs
     with Session() as session:
-        gid = event.group_id
+        gid = get_group_id(event)
         stmt = select(AlistenConfig).where(AlistenConfig.gid == gid)
         result = session.execute(stmt)
         config = result.scalar_one_or_none()
@@ -33,7 +34,7 @@ async def _(bot: Bot, event: Event):
             config.gemail = email
         else:
             config = AlistenConfig(
-                gid=event.group_id,
+                gid=gid,
                 gemail=email,
                 server_url=server_url,
                 house_id=house_id,
@@ -79,8 +80,12 @@ playlistcmd = sv.on_command(
 
 
 async def get_user_name(bot: Bot, event: Event) -> str:
-    info = await bot.get_group_member_info(
-        group_id=event.group_id, user_id=event.user_id, no_cache=True
+    group_id = get_group_id(event)
+    user_id = get_user_id(event)
+    if group_id is None or user_id is None:
+        return hsn_nickname
+    info = await get_group_member_info(
+        bot, group_id=group_id, user_id=user_id, no_cache=True
     )
     user_name = hsn_nickname
     for i in (info["card"], info["nickname"]):

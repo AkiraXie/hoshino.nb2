@@ -1,7 +1,7 @@
 from loguru import logger
 from hoshino.util import sucmd
 from hoshino.types import Bot, Event
-from hoshino.platform import Target, send_to_target
+from hoshino.platform import get_group_list, group_target, send_to_target
 from asyncio import sleep
 
 bc = sucmd("bc", aliases={"广播", "broadcast"})
@@ -10,12 +10,12 @@ bc = sucmd("bc", aliases={"广播", "broadcast"})
 @bc.handle()
 async def _(bot: Bot, event: Event):
     msg = event.get_message()
-    gids = list(gdic["group_id"] for gdic in await bot.get_group_list())
+    gids = list(gdic["group_id"] for gdic in await get_group_list(bot))
     count = 0
     for gid in gids:
         await sleep(0.5)
         try:
-            await send_to_target(bot, Target(str(gid)), msg)
+            await send_to_target(bot, group_target(gid), msg)
             count += 1
             logger.info(f"群{gid} 投递成功！")
         except Exception as e:

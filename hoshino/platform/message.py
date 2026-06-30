@@ -8,6 +8,7 @@ from nonebot_plugin_alconna.uniseg.constraint import SerializeFailed
 from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
 from hoshino.message import Message, MessageSegment
+from .event import get_user_id
 
 MessageLike = Union[str, Message, MessageSegment, UniMessage]
 
@@ -37,8 +38,9 @@ async def send_to_event(
     **kwargs: Any,
 ):
     msg = await to_unimessage(message, bot=bot, event=event)
-    if at_sender and hasattr(event, "user_id"):
-        msg = UniMessage.at(str(event.user_id)) + UniMessage.text(" ") + msg
+    user_id = get_user_id(event)
+    if at_sender and user_id is not None:
+        msg = UniMessage.at(str(user_id)) + UniMessage.text(" ") + msg
     return await msg.send(event, bot=bot, fallback=fallback, **kwargs)
 
 
