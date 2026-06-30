@@ -14,8 +14,7 @@ from .utils import (
     QbtClient,
 )
 from hoshino.permission import ADMIN
-from nonebot.adapters import Bot, Event
-from hoshino.platform import get_group_id, get_plaintext
+from hoshino.platform import GroupID, PlainText
 from nonebot.params import Depends
 
 # 配置命令
@@ -35,9 +34,9 @@ completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归�
 
 
 @configset
-async def _(bot: Bot, event: Event):
+async def _(text: str = Depends(PlainText()), gid: int = Depends(GroupID())):
     """配置qBittorrent连接信息"""
-    msgs = get_plaintext(event).strip().split()
+    msgs = text.strip().split()
     if len(msgs) not in (3, 4):
         await configset.finish("用法: qbt配置 <服务器地址> <用户名> <密码> [分类]")
 
@@ -52,7 +51,6 @@ async def _(bot: Bot, event: Event):
         server_url = f"http://{server_url}"
 
     with Session() as session:
-        gid = get_group_id(event)
         stmt = select(QbtConfig).where(QbtConfig.gid == gid)
         result = session.execute(stmt)
         config = result.scalar_one_or_none()
@@ -84,11 +82,7 @@ async def _(bot: Bot, event: Event):
 
 
 @configshow
-async def _(
-    bot: Bot,
-    event: Event,
-    config: QbtConfig | None = Depends(get_config),
-):
+async def _(config: QbtConfig | None = Depends(get_config)):
     """显示当前qBittorrent配置"""
     if not config:
         await configshow.finish("当前没有配置qBittorrent")
@@ -103,14 +97,14 @@ async def _(
 
 @add_torrent
 async def _(
-    event: Event,
+    text: str = Depends(PlainText()),
     client: QbtClient | None = Depends(get_client),
 ):
     """添加种子下载"""
     if not client:
         await add_torrent.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
-    msg_text = get_plaintext(event).strip()
+    msg_text = text.strip()
     if not msg_text:
         await add_torrent.finish(
             "用法: 添加种子 <下载链接> [分类]\n"
@@ -185,13 +179,13 @@ def _render_torrent_list(torrents: list[dict], max_show: int, title: str, catego
 
 @active_list
 async def _(
-    event: Event,
+    text: str = Depends(PlainText()),
     client: QbtClient | None = Depends(get_client),
 ):
     if not client:
         await active_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
-    msg_text = get_plaintext(event).strip()
+    msg_text = text.strip()
     max_show = 20
     if msg_text.isdigit():
         max_show = int(msg_text)
@@ -206,13 +200,13 @@ async def _(
 
 @completed_list
 async def _(
-    event: Event,
+    text: str = Depends(PlainText()),
     client: QbtClient | None = Depends(get_client),
 ):
     if not client:
         await completed_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
-    msg_text = get_plaintext(event).strip()
+    msg_text = text.strip()
     max_show = 20
     if msg_text.isdigit():
         max_show = int(msg_text)

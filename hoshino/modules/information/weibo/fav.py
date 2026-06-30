@@ -3,11 +3,10 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-from nonebot.adapters import Bot, Event
 from hoshino.permission import SUPERUSER
 from hoshino import data_dir
 from hoshino.util import send_segments
-from hoshino.platform import MessageLike, uni_text
+from hoshino.platform import MessageLike, PlainText, UniMessage, uni_text
 
 from .sv import sv
 from .internal.post_runtime import (
@@ -180,24 +179,24 @@ def _build_favorite_search_messages(
     permission=SUPERUSER,
     priority=5,
 )
-async def random_weibo_favorite(bot: Bot, event: Event):
-    target_uid = event.get_plaintext().strip() or None
+async def random_weibo_favorite(text: str = PlainText()):
+    target_uid = text.strip() or None
     uid_ids = _list_favorite_uid_ids(target_uid)
     if not uid_ids:
         if target_uid:
-            await bot.send(event, f"没有找到 UID {target_uid} 的微博收藏")
+            await UniMessage.text(f"没有找到 UID {target_uid} 的微博收藏").send()
         else:
-            await bot.send(event, "当前没有微博收藏")
+            await UniMessage.text("当前没有微博收藏").send()
         return
     uid_id = random.choice(uid_ids)
     uid, id = uid_id.split("_", 1)
     post_message = await post_msg_from_uid_id(uid, id)
     if not post_message:
-        await bot.send(event, f"无法还原微博收藏: {uid_id}")
+        await UniMessage.text(f"无法还原微博收藏: {uid_id}").send()
         return
     msgs = render_messages(post_message)
     if not msgs:
-        await bot.send(event, f"微博收藏为空: {uid_id}")
+        await UniMessage.text(f"微博收藏为空: {uid_id}").send()
         return
     await send_segments(msgs)
 
@@ -209,10 +208,10 @@ async def random_weibo_favorite(bot: Bot, event: Event):
     permission=SUPERUSER,
     priority=5,
 )
-async def search_weibo_favorite(bot: Bot, event: Event):
-    arg = event.get_plaintext().strip()
+async def search_weibo_favorite(arg: str = PlainText()):
+    arg = arg.strip()
     if not arg:
-        await bot.send(event, "用法: 搜索微博收藏 关键词\n或: 搜索微博收藏 UID 关键词")
+        await UniMessage.text("用法: 搜索微博收藏 关键词\n或: 搜索微博收藏 UID 关键词").send()
         return
 
     target_uid = None
@@ -224,9 +223,9 @@ async def search_weibo_favorite(bot: Bot, event: Event):
     results = _search_favorite_posts(keyword, target_uid=target_uid)
     if not results:
         if target_uid:
-            await bot.send(event, f"没有找到 UID {target_uid} 中包含 {keyword} 的微博收藏")
+            await UniMessage.text(f"没有找到 UID {target_uid} 中包含 {keyword} 的微博收藏").send()
         else:
-            await bot.send(event, f"没有找到包含 {keyword} 的微博收藏")
+            await UniMessage.text(f"没有找到包含 {keyword} 的微博收藏").send()
         return
 
     messages = _build_favorite_search_messages(keyword, results, target_uid=target_uid)
@@ -240,34 +239,34 @@ async def search_weibo_favorite(bot: Bot, event: Event):
     permission=SUPERUSER,
     priority=5,
 )
-async def show_weibo_favorite(bot: Bot, event: Event):
-    post_ref = event.get_plaintext().strip()
+async def show_weibo_favorite(post_ref: str = PlainText()):
+    post_ref = post_ref.strip()
     if not post_ref:
-        await bot.send(event, "用法: 查看微博收藏 ID\n或: 查看微博收藏 UID_ID")
+        await UniMessage.text("用法: 查看微博收藏 ID\n或: 查看微博收藏 UID_ID").send()
         return
 
     matched = _resolve_favorite_uid_ids(post_ref)
     if not matched:
-        await bot.send(event, f"没有找到微博收藏: {post_ref}")
+        await UniMessage.text(f"没有找到微博收藏: {post_ref}").send()
         return
 
     if len(matched) > 1:
         lines = ["找到多个同名收藏，请改用 UID_ID:", *matched[:10]]
         if len(matched) > 10:
             lines.append(f"还有 {len(matched) - 10} 条未展示")
-        await bot.send(event, "\n".join(lines))
+        await UniMessage.text("\n".join(lines)).send()
         return
 
     uid_id = matched[0]
     uid, post_id = uid_id.split("_", 1)
     post_message = await post_msg_from_uid_id(uid, post_id)
     if not post_message:
-        await bot.send(event, f"无法还原微博收藏: {uid_id}")
+        await UniMessage.text(f"无法还原微博收藏: {uid_id}").send()
         return
 
     msgs = render_messages(post_message)
     if not msgs:
-        await bot.send(event, f"微博收藏为空: {uid_id}")
+        await UniMessage.text(f"微博收藏为空: {uid_id}").send()
         return
 
     await send_segments(msgs)
