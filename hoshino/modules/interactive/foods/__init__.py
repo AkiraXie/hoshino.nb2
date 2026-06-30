@@ -1,7 +1,7 @@
 from hoshino.service import Service
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
-from hoshino.platform import image_segment
+from hoshino.platform import UniMessage
 from hoshino.permission import SUPERUSER
 import os
 import random
@@ -22,5 +22,7 @@ async def _(m: Matcher, s: T_State):
     res = rng.choice(foods)
     name = s["_matched_groups"][0]
     with open(res, "rb") as f:
-        img = image_segment(f.read())
-    await m.send(f"{name}吃{res.stem}吧! \n" + img, call_header=True)
+        img = f.read()
+    await (UniMessage.text(f"{name}吃{res.stem}吧! \n") + UniMessage.image(raw=img)).send(
+        at_sender=True
+    )

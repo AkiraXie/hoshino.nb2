@@ -6,7 +6,7 @@ from nonebot.typing import T_State
 from hoshino.util import aiohttpx
 from hoshino.permission import SUPERUSER
 from nonebot.adapters import Event
-from hoshino.platform import get_event_message, get_event_value, get_plaintext, image_segment
+from hoshino.platform import UniMessage, get_event_message, get_event_value, get_plaintext
 from .data import emojis, qqface
 
 sv = Service("emojimix", visible=False, enable_on_default=False)
@@ -88,9 +88,11 @@ async def _(matcher: Matcher, state: T_State):
     url = bed % (d1, r1, r1, r2)
     resp = await aiohttpx.head(url)
     if resp.ok:
-        await matcher.finish(image_segment(url))
+        await UniMessage.image(url=url).send()
+        await matcher.finish()
     # right
     url = bed % (d2, r2, r2, r1)
     resp = await aiohttpx.head(url)
     if resp.ok:
-        await matcher.finish(image_segment(url))
+        await UniMessage.image(url=url).send()
+        await matcher.finish()
