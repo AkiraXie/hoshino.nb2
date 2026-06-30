@@ -8,6 +8,7 @@ import nonebot
 from nonebot.params import Depends
 from hoshino.hooks import run_preprocessor
 from nonebot.exception import RejectedException, PausedException, FinishedException
+
 from nonebot.rule import ArgumentParser, to_me, shell_command
 from nonebot.adapters import Bot
 from nonebot.adapters import Event
@@ -17,7 +18,6 @@ from hoshino import service_dir as _service_dir
 from hoshino.message import MessageTemplate
 from nonebot.plugin import (
     on_message,
-    on_startswith,
     on_endswith,
     on_notice,
     on_request,
@@ -26,9 +26,6 @@ from hoshino.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
 from hoshino.util import _strip_cmd
 from hoshino.rule import (
     Rule,
-    fullmatch,
-    regex,
-    keyword,
 )
 from hoshino.platform import (
     Target,
@@ -354,6 +351,33 @@ class Service:
         _matcher_sv_map[id(matcher)] = self
         return matcher
 
+    def _on_alconna_delegate(
+        self,
+        command: Alconna | str | re.Pattern,
+        type_label: str,
+        only_to_me: bool = False,
+        only_group: bool = True,
+        permission: Permission = NORMAL,
+        aliases: set[str] | tuple[str, ...] | None = None,
+        **kwargs,
+    ):
+        kwargs["permission"] = permission
+        rule = self.check_service(only_to_me, only_group)
+        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
+        matcher = on_alconna(command, aliases=aliases, **kwargs)
+        matcher.__hoshino_info__ = {
+            "service": self.name,
+            "type": type_label,
+            "command": str(command),
+            "only_group": only_group,
+        }
+        self.matchers.append(
+            f"<Matcher from Service {self.name}, type={type_label}, command={command}>"
+        )
+        _loaded_matchers[type(matcher)] = self
+        _matcher_sv_map[id(matcher)] = self
+        return matcher
+
     def on_startswith(
         self,
         msg: str,
@@ -361,22 +385,15 @@ class Service:
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
-    ) -> "MatcherWrapper":
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
+    ):
+        return self._on_alconna_delegate(
+            re.compile(rf"{re.escape(msg)}.*"),
             "Message.startswith",
-            priority,
-            on_startswith(msg, **kwargs),
-            startswith=msg,
+            only_to_me=only_to_me,
             only_group=only_group,
+            permission=permission,
+            **kwargs,
         )
-        self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
-        return mw
 
     def on_endswith(
         self,
@@ -386,6 +403,7 @@ class Service:
         permission: Permission = NORMAL,
         **kwargs,
     ) -> "MatcherWrapper":
+        # on_endswith 保留原生 — Alconna 按空格分词，无法匹配后缀
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
@@ -410,25 +428,20 @@ class Service:
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
-    ) -> "MatcherWrapper":
-        keywords = _iter_to_set(keywords)
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = (
-            keyword(*keywords, normal=normal) & rule & kwargs.pop("rule", Rule())
-        )
-        priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
+    ):
+        kw_set = _iter_to_set(keywords)
+        if not kw_set:
+            return self.on_message(only_to_me=only_to_me, only_group=only_group, permission=permission, **kwargs)
+        pattern = "|".join(re.escape(k) for k in sorted(kw_set))
+        pattern = pattern if normal else rf"(?:^|\W)({pattern})(?:$|\W)"
+        return self._on_alconna_delegate(
+            re.compile(pattern),
             "Message.keyword",
-            priority,
-            on_message(**kwargs),
-            keywords=str(keywords),
+            only_to_me=only_to_me,
             only_group=only_group,
+            permission=permission,
+            **kwargs,
         )
-        self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
-        return mw
 
     def on_fullmatch(
         self,
@@ -438,25 +451,19 @@ class Service:
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
-    ) -> "MatcherWrapper":
-        keywords = _iter_to_set(keywords)
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = (
-            fullmatch(*keywords, normal=normal) & rule & kwargs.pop("rule", Rule())
-        )
-        priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
+    ):
+        kw_set = _iter_to_set(keywords)
+        if not kw_set:
+            return self.on_message(only_to_me=only_to_me, only_group=only_group, permission=permission, **kwargs)
+        pattern = "|".join(re.escape(k) for k in sorted(kw_set))
+        return self._on_alconna_delegate(
+            re.compile(rf"^({pattern})$" if normal else rf"^({pattern})$"),
             "Message.fullmatch",
-            priority,
-            on_message(**kwargs),
-            keywords=str(keywords),
+            only_to_me=only_to_me,
             only_group=only_group,
+            permission=permission,
+            **kwargs,
         )
-        self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
-        return mw
 
     def on_regex(
         self,
@@ -468,31 +475,18 @@ class Service:
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
-    ) -> "MatcherWrapper":
-        """
-        根据正则表达式进行匹配。
-        可以通过 ``state["_matched"]`` 获取正则表达式匹配成功的文本。
-        可以通过 ``state["match"]`` 获取正则表达式匹配成功后的`match`
-        """
-        rule = self.check_service(only_to_me, only_group)
-        rule = (
-            regex(pattern, flags, normal, full_match)
-            & rule
-            & kwargs.pop("rule", Rule())
-        )
-        priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
+    ):
+        compiled = re.compile(pattern, flags)
+        if full_match and not compiled.pattern.startswith("^"):
+            compiled = re.compile(rf"^{pattern}", flags)
+        return self._on_alconna_delegate(
+            compiled,
             "Message.regex",
-            priority,
-            on_message(rule, permission, **kwargs),
-            pattern=str(pattern),
-            flags=str(flags),
+            only_to_me=only_to_me,
             only_group=only_group,
+            permission=permission,
+            **kwargs,
         )
-        self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
-        return mw
 
     def on_message(
         self,
@@ -501,22 +495,15 @@ class Service:
         permission: Permission = NORMAL,
         log: bool = False,
         **kwargs,
-    ) -> "MatcherWrapper":
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
+    ):
+        return self._on_alconna_delegate(
+            re.compile(r".+"),
             "Message.message",
-            priority,
-            on_message(**kwargs),
-            log,
+            only_to_me=only_to_me,
             only_group=only_group,
+            permission=permission,
+            **kwargs,
         )
-        self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
-        return mw
 
     def on_notice(
         self, rule: Rule = Rule(), only_group: bool = True, permission=NORMAL, **kwargs
