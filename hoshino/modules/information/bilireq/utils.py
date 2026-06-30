@@ -16,9 +16,9 @@ from hoshino import db_dir
 from hoshino.hooks import on_serial_startup
 from hoshino.platform import (
     MessageLike,
-    image_segment,
-    message_from_parts,
-    text_message,
+    UniMessage,
+    uni_image,
+    uni_text,
 )
 from hoshino.service import Service
 from hoshino.util import (
@@ -209,16 +209,17 @@ class BiliBiliDynamic(Post):
     ) -> list[MessageLike]:
         head = post_message.text
         if post_message.screenshot:
-            head = "\n".join(
-                part for part in (head, str(image_segment(post_message.screenshot))) if part
-            )
-        messages: list[MessageLike] = []
-        if head:
-            messages.append(text_message(head))
+            screenshot = uni_image(post_message.screenshot)
+            if head:
+                screenshot = uni_text(head) + screenshot
+            messages: list[MessageLike] = [screenshot]
+        else:
+            messages = [uni_text(head)] if head else []
         if post_message.images:
-            messages.append(
-                message_from_parts([image_segment(pic) for pic in post_message.images])
-            )
+            images = UniMessage()
+            for pic in post_message.images:
+                images += uni_image(pic)
+            messages.append(images)
         return messages
 
     def _build_text(self, include_content: bool) -> str:

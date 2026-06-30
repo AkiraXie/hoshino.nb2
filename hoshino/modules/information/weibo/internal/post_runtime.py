@@ -12,12 +12,12 @@ from hoshino.modules.information.utils import PostMessage
 from hoshino.platform import (
     MessageLike,
     Target,
+    UniMessage,
     group_target,
-    image_segment,
-    message_from_parts,
     send_to_target,
-    text_message,
-    video_segment,
+    uni_image,
+    uni_text,
+    uni_video,
 )
 from hoshino.util import (
     save_img_by_path,
@@ -433,15 +433,17 @@ class _MessageRenderer:
     def build_image_messages(self, image_paths: list[Path]) -> list[MessageLike]:
         if not image_paths:
             return []
-        segments = [image_segment(image_path) for image_path in image_paths]
         messages: list[MessageLike] = []
         chunk_size = 4
         for divisor in (7, 6, 5, 4, 3):
-            if len(segments) % divisor == 0:
+            if len(image_paths) % divisor == 0:
                 chunk_size = divisor
                 break
-        for index in range(0, len(segments), chunk_size):
-            messages.append(message_from_parts(segments[index : index + chunk_size]))
+        for index in range(0, len(image_paths), chunk_size):
+            msg = UniMessage()
+            for image_path in image_paths[index : index + chunk_size]:
+                msg += uni_image(image_path)
+            messages.append(msg)
         return messages
 
     def render(
@@ -450,9 +452,7 @@ class _MessageRenderer:
         post: "WeiboPost | None" = None,
     ) -> list[MessageLike]:
         head = post_message.text or ""
-        if post_message.screenshot:
-            head += "\n" + str(image_segment(post_message.screenshot))
-        elif post_message.content:
+        if not post_message.screenshot and post_message.content:
             head += "\n" + post_message.content
         if post:
             tail = post._build_text_tail()
@@ -460,10 +460,13 @@ class _MessageRenderer:
                 head += "\n" + tail
 
         messages: list[MessageLike] = []
-        if head:
-            messages.append(text_message(head))
+        if post_message.screenshot:
+            screenshot = uni_image(post_message.screenshot)
+            messages.append(uni_text(head) + screenshot if head else screenshot)
+        elif head:
+            messages.append(uni_text(head))
         messages.extend(self.build_image_messages(post_message.images))
-        messages.extend(video_segment(video) for video in post_message.videos)
+        messages.extend(uni_video(video) for video in post_message.videos)
         return messages
 
 class _MessageDispatcher:

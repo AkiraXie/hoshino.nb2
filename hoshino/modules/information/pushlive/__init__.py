@@ -9,11 +9,11 @@ from hoshino.schedule import scheduled_job
 from hoshino.platform import (
     dump_target,
     get_group_id,
-    image_segment,
     load_target_or_group,
     send_to_target,
     target_from_event,
-    text_message,
+    uni_image,
+    uni_text,
 )
 
 from .db import (
@@ -180,15 +180,15 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
 
     if info.show_status == 1:
         text = f"🔴 [{plat_name}] {info.anchor} 开播了！\n标题: {info.title}\n{info.url}"
-        msg_parts = [text_message(text)]
+        msg_parts = [uni_text(text)]
         if info.cover:
-            msg_parts.append(image_segment(info.cover))
+            msg_parts.append(uni_image(info.cover))
     else:
         duration = _format_live_duration(old_time) if old_time else ""
         duration_text = f"  本次直播: {duration}" if duration else ""
         text = f"⚪ [{plat_name}] {info.anchor} 下播了{duration_text}\n{info.url}"
 
-        msg_parts = [text_message(text)]
+        msg_parts = [uni_text(text)]
 
     # 获取所有已启用该服务的群
     enabled_groups = await sv.get_enable_groups()

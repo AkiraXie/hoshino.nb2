@@ -6,14 +6,14 @@ from hoshino.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Bot, Event
 from nonebot.matcher import Matcher
-from hoshino.types import OneBotV11Message
+from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.config import config
 from hoshino.platform import (
+    UniMessage,
     get_event_message,
     get_group_id,
     get_session_id,
     get_user_id,
-    image_segment,
 )
 from hoshino.util.aiohttpx import get
 from PIL import Image
@@ -27,8 +27,17 @@ def parse_legacy_answer_message(answer: str) -> OneBotV11Message:
     return OneBotV11Message(answer)
 
 
+async def legacy_answer_unimessage(answer: str) -> UniMessage:
+    return await UniMessage.generate(message=parse_legacy_answer_message(answer))
+
+
 async def finish_legacy_answer(answer: str) -> None:
-    await ans.finish(parse_legacy_answer_message(answer))
+    await (await legacy_answer_unimessage(answer)).send()
+    await ans.finish()
+
+
+def legacy_answer_image_segment(path) -> OneBotV11MessageSegment:
+    return OneBotV11MessageSegment.image(path)
 
 
 async def event_image_in_local(
@@ -64,7 +73,7 @@ async def event_image_in_local(
             s = "{}-{}{}".format(sid, (url.split("/")[-2]).split("-")[-1], ext)
             f = img_dir / s
             f.write_bytes(img.content)
-            answer_msg[i] = image_segment(f)
+            answer_msg[i] = legacy_answer_image_segment(f)
     return (question, str(answer_msg))
 
 

@@ -1,5 +1,5 @@
 import asyncio
-from hoshino.platform import MessageLike, image_segment, text_message
+from hoshino.platform import MessageLike, uni_image, uni_text
 from hoshino.util import aiohttpx, get_cookies, send_segments, send
 from time import strftime, localtime
 import re
@@ -77,15 +77,13 @@ async def get_bili_video_resp(bvid: str = "", avid: str = "") -> MessageLike | N
         return None
 
     pubdate = strftime("%Y-%m-%d %H:%M:%S", localtime(res["pubdate"]))
-    msg = []
-    msg.append(str(image_segment(res["pic"])))
-    msg.append(f"标题：{res['title']}")
+    msg = [f"标题：{res['title']}"]
     msg.append(f"类型：{res['tname']} | UP: {res['owner']['name']} | 日期：{pubdate}")
     msg.append(
         f"播放：{handle_num(res['stat']['view'])} | 弹幕：{handle_num(res['stat']['danmaku'])} | 收藏：{handle_num(res['stat']['favorite'])}"
     )
     msg.append(f"链接: https://www.bilibili.com/video/av{res['aid']}")
-    return text_message("\n".join(msg))
+    return uni_image(res["pic"]) + uni_text("\n".join(msg))
 
 
 async def _send_bili_video(*, bvid: str = "", avid: str = "") -> bool:

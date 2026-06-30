@@ -7,7 +7,7 @@ from nonebot.adapters import Bot, Event
 from hoshino.permission import SUPERUSER
 from hoshino import data_dir
 from hoshino.util import send_segments
-from hoshino.platform import MessageLike, text_message
+from hoshino.platform import MessageLike, uni_text
 
 from .sv import sv
 from .internal.post_runtime import (
@@ -168,7 +168,7 @@ def _build_favorite_search_messages(
         if index == len(chunks):
             text += "\n使用 查看微博收藏 ID"
             text += "\n或 查看微博收藏 UID_ID"
-        messages.append(text_message(text))
+        messages.append(uni_text(text))
     return messages
 
 

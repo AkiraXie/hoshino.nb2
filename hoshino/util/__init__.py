@@ -21,6 +21,7 @@ from nonebot.adapters import Bot
 from nonebot.matcher import Matcher, current_bot, current_event
 from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.platform import (
+    UniMessage,
     custom_node_segment,
     get_event_message,
     get_group_id,
@@ -468,7 +469,7 @@ async def get_img_from_url(url: str) -> OneBotV11MessageSegment:
 
 
 async def send(
-    message: str | "OneBotV11Message" | "OneBotV11MessageSegment",
+    message: str | "OneBotV11Message" | "OneBotV11MessageSegment" | UniMessage,
     *,
     call_header: bool = False,
     at_sender: bool = False,
@@ -477,6 +478,9 @@ async def send(
     matcher = current_matcher.get()
     if matcher is None:
         raise ValueError("No running matcher found!")
+    if isinstance(message, UniMessage):
+        await message.send(at_sender=at_sender, **kwargs)
+        return
     await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
 
 
@@ -490,12 +494,17 @@ def construct_nodes(
 
 
 async def send_segments(
-    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str],
+    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str | UniMessage],
 ):
     if not message:
         return
     if len(message) == 1:
         await send(message[0])
+        return
+    if any(isinstance(item, UniMessage) for item in message):
+        for item in message:
+            await send(item)
+            await asyncio.sleep(0.3)
         return
     bot = current_bot.get()
     event = current_event.get()
@@ -511,7 +520,7 @@ async def send_segments(
 async def send_group_segments(
     bot: Bot,
     group_id: int,
-    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str],
+    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str | UniMessage],
 ):
     from hoshino.platform import send_to_target
 
@@ -519,6 +528,12 @@ async def send_group_segments(
         return
     if len(message) == 1:
         await send_to_target(bot, group_target(group_id), message[0])
+        return
+    if any(isinstance(item, UniMessage) for item in message):
+        target = group_target(group_id)
+        for item in message:
+            await send_to_target(bot, target, item)
+            await asyncio.sleep(0.3)
         return
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     await send_group_forward(bot, group_id, nodes)

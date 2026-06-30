@@ -7,9 +7,9 @@ from hoshino import data_dir
 from hoshino.platform import (
     MessageLike,
     get_group_id,
-    image_segment,
     upload_group_file,
-    video_segment,
+    uni_image,
+    uni_video,
 )
 from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
 import re
@@ -194,7 +194,7 @@ async def parse_xhs_explore(url: str, xhs_id: str):
     title_desc = f"{notedetail.nickname} 小红书笔记~\n{notedetail.title}\n--------\n{notedetail.desc}\n"
     msg = [title_desc, f"笔记链接: {resp.url}"]
     for img_url in notedetail.image_urls:
-        msg.append(image_segment(img_url))
+        msg.append(uni_image(img_url))
     video_url = notedetail.video_url
     if video_url:
         header = {
@@ -210,7 +210,7 @@ async def parse_xhs_explore(url: str, xhs_id: str):
             if path.stat().st_size >= 100 * 1000 * 1000:  # 100MB limit
                 res = path
             else:
-                msg.append(video_segment(path))
+                msg.append(uni_video(path))
         return msg, res
     return msg, None
 
