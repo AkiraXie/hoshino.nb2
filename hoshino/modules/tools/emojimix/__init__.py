@@ -5,8 +5,7 @@ from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 from hoshino.util import aiohttpx
 from hoshino.permission import SUPERUSER
-from nonebot.adapters import Event
-from hoshino.platform import UniMessage, get_event_message, get_event_value, get_plaintext
+from hoshino.platform import EventMessage, PlainText, RawMessage, UniMessage
 from .data import emojis, qqface
 
 sv = Service("emojimix", visible=False, enable_on_default=False)
@@ -22,13 +21,15 @@ def char_ord(s: str) -> str:
     return f"{ord(s):x}"
 
 
-async def emojimatch(event: Event, state: T_State):
-    msg = get_event_message(event, [])
+async def emojimatch(
+    state: T_State,
+    msg=EventMessage([]),
+    text: str = PlainText(),
+):
     res = []
     if len(msg) > 2:
         return False
     if len(msg) == 1:
-        text = get_plaintext(event)
         lt = len(text)
         if lt > 4:
             return False
@@ -67,12 +68,16 @@ async def emojimatch(event: Event, state: T_State):
 
 
 @sv.on_command("testemoji", permission=SUPERUSER)
-async def _(matcher: Matcher, event: Event):
-    raw_message = get_event_value(event, "raw_message", "")
+async def _(
+    matcher: Matcher,
+    raw_message: str = RawMessage(),
+    event_message=EventMessage(""),
+    text: str = PlainText(),
+):
     msg = []
-    msg.append(str(get_event_message(event, "")))
+    msg.append(str(event_message))
     msg.append(raw_message)
-    msg.append(str([ord(i) for i in get_plaintext(event)]))
+    msg.append(str([ord(i) for i in text]))
     msg.append(str([ord(i) for i in raw_message]))
     await matcher.send("\n".join(msg))
 

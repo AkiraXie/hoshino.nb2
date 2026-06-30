@@ -72,6 +72,23 @@ def PlainText() -> str:
     return Depends(_)
 
 
+def EventMessage(default: Any = None) -> Any:
+    """DI：当前事件消息对象"""
+    async def _(event: Event) -> Any:
+        get_message = getattr(event, "get_message", None)
+        if callable(get_message):
+            return get_message()
+        return default
+    return Depends(_)
+
+
+def RawMessage(default: str = "") -> str:
+    """DI：当前事件 raw_message"""
+    async def _(event: Event) -> str:
+        return str(getattr(event, "raw_message", default))
+    return Depends(_)
+
+
 def ReplyMessage() -> Any:
     """DI：回复消息对象，无回复返回 None"""
     async def _(event: Event) -> Any:
