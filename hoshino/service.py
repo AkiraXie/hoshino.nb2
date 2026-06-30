@@ -68,6 +68,20 @@ else:
         def __call__(self, func):
             return self._inner.handle()(func)
 
+        def got(
+            self,
+            key: str,
+            prompt=None,
+            parameterless=None,
+            args_parser=None,
+            **kwargs,
+        ):
+            """桥接 args_parser — AlconnaMatcher.got 不支持，回退到 monkey-patched Matcher.got"""
+            if args_parser is not None:
+                from nonebot.matcher import Matcher as _M
+                return _M.got(key, prompt, parameterless, args_parser=args_parser)
+            return self._inner.got(key, prompt, parameterless, **kwargs)
+
         def __getattr__(self, name: str):
             return getattr(self._inner, name)
 
