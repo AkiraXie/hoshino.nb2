@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -103,8 +104,6 @@ def _generate_thumbnails(uid: str, post_id: str, source_path: Path) -> bool:
     if jpg_dest.exists() and webp_dest.exists():
         return True
     try:
-        from PIL import Image
-
         img = Image.open(source_path)
         img.thumbnail((600, 800))
         if img.mode in ("RGBA", "P"):

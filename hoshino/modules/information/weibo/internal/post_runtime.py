@@ -311,6 +311,7 @@ class _PostArchiveStore:
         sv.logger.warning(
             f"weibo post not found in cache, refetching: uid={uid} post_id={post_id}"
         )
+        # Lazy import: request facade imports this runtime through post/WeiboPost.
         from ..request import parse_weibo_with_id
 
         post = await parse_weibo_with_id(post_id)

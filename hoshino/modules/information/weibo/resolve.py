@@ -77,6 +77,7 @@ async def handle_weibo_reaction(state: T_State):
 
     else:
         try:
+            # Lazy import: request facade imports post runtime used by this resolver.
             from .request import parse_weibo_with_id, parse_mapp_weibo
 
             if name == "weibo":

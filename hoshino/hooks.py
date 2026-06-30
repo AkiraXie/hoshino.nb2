@@ -22,6 +22,7 @@ class _Registry:
 
     def on_startup(self, func: Callable) -> Callable:
         if self._replayed:
+            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
             return nonebot.get_driver().on_startup(func)
         self._startup.append(func)
@@ -30,6 +31,7 @@ class _Registry:
     def on_serial_startup(self, func: Callable) -> Callable:
         """串行 startup 回调，按注册顺序依次执行，阻塞 server 启动。"""
         if self._replayed:
+            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
             async def _wrapper():
                 await func()
@@ -40,6 +42,7 @@ class _Registry:
     def on_post_startup(self, func: Callable) -> Callable:
         """Server 启动后执行的后台任务，不阻塞启动。"""
         if self._replayed:
+            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
             async def _wrapper():
                 asyncio.create_task(func())
@@ -49,6 +52,7 @@ class _Registry:
 
     def on_shutdown(self, func: Callable) -> Callable:
         if self._replayed:
+            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
             return nonebot.get_driver().on_shutdown(func)
         self._shutdown.append(func)
@@ -56,6 +60,7 @@ class _Registry:
 
     def on_bot_connect(self, func: Callable) -> Callable:
         if self._replayed:
+            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
             return nonebot.get_driver().on_bot_connect(func)
         self._bot_connect.append(func)
@@ -63,6 +68,7 @@ class _Registry:
 
     def on_bot_disconnect(self, func: Callable) -> Callable:
         if self._replayed:
+            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
             return nonebot.get_driver().on_bot_disconnect(func)
         self._bot_disconnect.append(func)
@@ -70,6 +76,7 @@ class _Registry:
 
     def run_preprocessor(self, func: Callable) -> Callable:
         if self._replayed:
+            # Lazy import: nonebot.message is only safe after nonebot initialization.
             from nonebot.message import run_preprocessor as _rp
             return _rp(func)
         self._preprocessors.append(func)
@@ -77,6 +84,7 @@ class _Registry:
 
     def event_preprocessor(self, func: Callable) -> Callable:
         if self._replayed:
+            # Lazy import: nonebot.message is only safe after nonebot initialization.
             from nonebot.message import event_preprocessor as _rp
             return _rp(func)
         self._event_preprocessors.append(func)
@@ -93,6 +101,7 @@ class _Registry:
             asyncio.create_task(_run_post())
 
     def replay(self, driver) -> None:
+        # Lazy import: nonebot.message is only safe after nonebot initialization.
         from nonebot.message import run_preprocessor as _rp
         from nonebot.message import event_preprocessor as _ep
         if self._serial_startup or self._post_startup:

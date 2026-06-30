@@ -17,6 +17,7 @@ from hoshino.platform import (
     uni_text,
 )
 
+from .bilibili import get_room_status as get_bilibili_room_status
 from .db import (
     LiveSub,
     add_subscription,
@@ -26,6 +27,7 @@ from .db import (
     remove_group_subscription,
     remove_group_subscription_by_name,
 )
+from .douyu import get_room_status as get_douyu_room_status
 from .model import LiveInfo
 from ..utils import UIDManager
 
@@ -97,11 +99,8 @@ def parse_platform_filter(text: str) -> str | None:
 async def get_room_status(room_id: str, platform: str) -> LiveInfo:
     """根据平台分发获取直播间状态"""
     if platform == "douyu":
-        from .douyu import get_room_status as _get
-    else:
-        from .bilibili import get_room_status as _get
-    res = await _get(room_id)
-    return res
+        return await get_douyu_room_status(room_id)
+    return await get_bilibili_room_status(room_id)
 
 def _format_live_duration(show_time: datetime | None) -> str:
     """根据开播时间计算并格式化直播时长"""

@@ -666,6 +666,7 @@ class WeiboRequestRuntime:
                 self._missing_target_queue.task_done()
 
     async def process_missing_target(self, target: str) -> None:
+        # Lazy import: subscription runtime imports this request runtime for polling.
         from ..db import remove_subscriptions_by_uid, uid_has_any_subscription
         from ..sub import uid_manager
 

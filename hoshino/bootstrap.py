@@ -161,6 +161,7 @@ def bootstrap() -> None:
     Adapter.add_custom_model(GroupMsgEmojiLikeEvent)
 
     # 4. 配置日志
+    # Lazy import: hoshino.log imports hoshino.service state used by bootstrap patches.
     from .log import configure as _log_configure
     _log_configure()
 
