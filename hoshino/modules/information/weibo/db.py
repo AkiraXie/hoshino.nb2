@@ -1,7 +1,7 @@
 import os
 
 from hoshino import db_dir
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Float, Integer, Text
 
@@ -23,6 +23,7 @@ class WeiboDB(Base):
     time: Mapped[float] = mapped_column(Float, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     keyword: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    target_data: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class WeiboConfig(Base):
@@ -35,6 +36,16 @@ class WeiboConfig(Base):
 
 
 Base.metadata.create_all(engine)
+
+
+def _ensure_schema() -> None:
+    columns = {column["name"] for column in inspect(engine).get_columns("weibodb")}
+    if "target_data" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE weibodb ADD COLUMN target_data TEXT"))
+
+
+_ensure_schema()
 
 
 def _normalize_flag(value: int | bool) -> int:
@@ -57,6 +68,7 @@ def add_or_update_subscription(
     name: str,
     timestamp: float,
     keyword: str = "",
+    target_data: str | None = None,
 ) -> None:
     with Session() as session:
         stmt = select(WeiboDB).where(WeiboDB.group == group_id, WeiboDB.uid == uid)
@@ -65,6 +77,8 @@ def add_or_update_subscription(
             obj.name = name
             obj.time = timestamp
             obj.keyword = keyword
+            if target_data:
+                obj.target_data = target_data
         else:
             obj = WeiboDB(
                 group=group_id,
@@ -72,6 +86,7 @@ def add_or_update_subscription(
                 name=name,
                 time=timestamp,
                 keyword=keyword,
+                target_data=target_data,
             )
             session.add(obj)
         session.commit()

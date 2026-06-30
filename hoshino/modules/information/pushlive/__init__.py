@@ -6,7 +6,12 @@ from hoshino.types import Bot, Event, Message, MessageSegment
 from hoshino.service import Service
 from hoshino.hooks import on_post_startup
 from hoshino.schedule import scheduled_job
-from hoshino.platform import Target, send_to_target
+from hoshino.platform import (
+    dump_target,
+    load_target_or_group,
+    send_to_target,
+    target_from_event,
+)
 
 from .db import (
     LiveSub,
@@ -184,16 +189,19 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
 
     # 获取所有已启用该服务的群
     enabled_groups = await sv.get_enable_groups()
-    target_groups = {sub.group for sub in subs}
+    target_groups: dict[int, LiveSub] = {}
+    for sub in subs:
+        target_groups.setdefault(sub.group, sub)
 
-    for gid in target_groups:
+    for gid, sub in target_groups.items():
         if gid not in enabled_groups:
             continue
         bots = enabled_groups[gid]
         for bot in bots:
             try:
+                target = load_target_or_group(sub.target_data, gid)
                 for msg in msg_parts:
-                    await send_to_target(bot, Target(str(gid)), msg)
+                    await send_to_target(bot, target, msg)
                     await asyncio.sleep(0.3)
                 sv.logger.info(f"直播推送 {info.anchor}({room_id}/{platform}) -> 群{gid} 成功")
             except Exception as e:
@@ -207,6 +215,7 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
 @sv.on_command("添加直播订阅", aliases=("订阅直播", "添加直播", "addbililive", "adblive", "addlive"))
 async def cmd_add_live(bot: Bot, event: Event):
     gid = event.group_id
+    target_data = dump_target(target_from_event(bot, event))
     msg = event.get_plaintext().strip()
     if not msg:
         await bot.send(event, "用法: 添加直播订阅 房间号[:平台]\n平台: bilibili(默认), douyu/斗鱼")
@@ -233,7 +242,7 @@ async def cmd_add_live(bot: Bot, event: Event):
         await bot.send(event, f"获取 [{plat_name}] 直播间信息失败: {room_id}")
         return
     
-    add_subscription(gid, room_id, info.anchor, platform)
+    add_subscription(gid, room_id, info.anchor, platform, target_data)
     await room_manager.add_uid(_room_key(room_id, platform))
     if (room_id, platform) not in _live_status:
         _live_status[(room_id, platform)] = (info.show_time or datetime.now()) if info.show_status == 1 else None
@@ -241,7 +250,7 @@ async def cmd_add_live(bot: Bot, event: Event):
     if info.show_status == 1:
         start_time = _live_status.get((room_id, platform))
         duration = _format_live_duration(start_time) if start_time else ""
-        reply += f"\n🔴 当前直播中"
+        reply += "\n🔴 当前直播中"
         if info.title:
             reply += f"  标题: {info.title}"
         if duration:

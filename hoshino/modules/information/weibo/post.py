@@ -198,6 +198,7 @@ class WeiboPost(Post):
         gid: int,
         post_message: PostMessage,
         *,
+        target=None,
         use_segments: bool = False,
     ) -> dict:
         return await send_post_message(
@@ -205,6 +206,7 @@ class WeiboPost(Post):
             gid,
             self,
             post_message,
+            target=target,
             use_segments=use_segments,
         )
 

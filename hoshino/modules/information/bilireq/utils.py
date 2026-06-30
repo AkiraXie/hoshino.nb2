@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import json
 import math
@@ -9,6 +8,8 @@ from sqlalchemy import (
     Integer,
     Text,
     create_engine,
+    inspect,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
@@ -287,8 +288,17 @@ class DynamicDB(Base):
     group: Mapped[int] = mapped_column(Integer, primary_key=True)
     time: Mapped[float] = mapped_column(Float, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    target_data: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-# 初始化数据库
-if not db_path.exists():
-    Base.metadata.create_all(engine)
+Base.metadata.create_all(engine)
+
+
+def _ensure_schema() -> None:
+    columns = {column["name"] for column in inspect(engine).get_columns("dynamicdb")}
+    if "target_data" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE dynamicdb ADD COLUMN target_data TEXT"))
+
+
+_ensure_schema()

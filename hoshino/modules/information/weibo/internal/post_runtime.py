@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Iterable
 from hoshino.types import Bot, Message, MessageSegment
 from hoshino import config
 from hoshino.modules.information.utils import PostMessage
-from hoshino.platform import Target, send_to_target
+from hoshino.platform import Target, group_target, send_to_target
 from hoshino.util import (
     save_img_by_path,
     save_video_by_path,
@@ -464,18 +464,20 @@ class _MessageDispatcher:
         gid: int,
         msgs: list[Message | MessageSegment] | None = None,
         *,
+        target: Target | None = None,
         uid: str = "",
         post_id: str = "",
     ) -> dict:
         if not msgs:
             return {}
+        target = target or group_target(gid)
         sv.logger.info(
             "微博发送普通消息: "
             f"group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
         )
-        result = await send_to_target(bot, Target(str(gid)), msgs[0])
+        result = await send_to_target(bot, target, msgs[0])
         for message in msgs[1:]:
-            await send_to_target(bot, Target(str(gid)), message)
+            await send_to_target(bot, target, message)
             await asyncio.sleep(0.3)
         return result
 
@@ -485,16 +487,18 @@ class _MessageDispatcher:
         gid: int,
         msgs: list[Message | MessageSegment] | None = None,
         *,
+        target: Target | None = None,
         uid: str = "",
         post_id: str = "",
     ) -> dict:
         if not msgs:
             return {}
+        target = target or group_target(gid)
         sv.logger.info(
             "微博发送分段消息: "
             f"group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
         )
-        result = await send_to_target(bot, Target(str(gid)), msgs[0])
+        result = await send_to_target(bot, target, msgs[0])
         if len(msgs) > 1:
             await asyncio.sleep(0.3)
             await send_group_segments(bot, gid, msgs[1:])
@@ -563,10 +567,18 @@ async def send_weibo_messages(
     gid: int,
     msgs: list[Message | MessageSegment] | None = None,
     *,
+    target: Target | None = None,
     uid: str = "",
     post_id: str = "",
 ) -> dict:
-    return await _dispatcher.send_messages(bot, gid, msgs, uid=uid, post_id=post_id)
+    return await _dispatcher.send_messages(
+        bot,
+        gid,
+        msgs,
+        target=target,
+        uid=uid,
+        post_id=post_id,
+    )
 
 
 async def send_weibo_segments(
@@ -574,10 +586,18 @@ async def send_weibo_segments(
     gid: int,
     msgs: list[Message | MessageSegment] | None = None,
     *,
+    target: Target | None = None,
     uid: str = "",
     post_id: str = "",
 ) -> dict:
-    return await _dispatcher.send_segments(bot, gid, msgs, uid=uid, post_id=post_id)
+    return await _dispatcher.send_segments(
+        bot,
+        gid,
+        msgs,
+        target=target,
+        uid=uid,
+        post_id=post_id,
+    )
 
 
 async def save_post_message(
@@ -599,6 +619,7 @@ class WeiboDispatchTask:
     post: "WeiboPost"
     message: PostMessage
     group_id: int
+    target: Target | None = None
 
     def get_id(self) -> str:
         return f"{self.group_id}_{self.post.id}"
@@ -689,6 +710,7 @@ async def send_post_message(
     post_message: PostMessage | None = None,
     *,
     messages: list[Message | MessageSegment] | None = None,
+    target: Target | None = None,
     use_segments: bool = False,
 ) -> dict:
     final_messages = messages
@@ -701,6 +723,7 @@ async def send_post_message(
             bot=bot,
             gid=gid,
             msgs=final_messages,
+            target=target,
             uid=post.uid,
             post_id=post.id,
         )
@@ -708,6 +731,7 @@ async def send_post_message(
         bot=bot,
         gid=gid,
         msgs=final_messages,
+        target=target,
         uid=post.uid,
         post_id=post.id,
     )

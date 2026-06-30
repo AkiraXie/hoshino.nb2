@@ -1,9 +1,13 @@
 import asyncio
 import time
-from hoshino.schedule import scheduled_job
 from hoshino.types import Bot, Event
 from hoshino.hooks import on_post_startup
-from hoshino.platform import Target, send_to_target
+from hoshino.platform import (
+    dump_target,
+    load_target_or_group,
+    send_to_target,
+    target_from_event,
+)
 import random
 from hoshino.util import send_group_segments, send_segments
 from .utils import (
@@ -28,6 +32,7 @@ tz = timezone("Asia/Shanghai")
 @sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅", "adddyn"))
 async def _(bot: Bot, event: Event):
     gid = event.group_id
+    target_data = dump_target(target_from_event(bot, event))
     uid = event.get_plaintext()
     try:
         dyn = await get_new_dynamic(uid)
@@ -47,8 +52,15 @@ async def _(bot: Bot, event: Event):
         if obj:
             obj.time = ts
             obj.name = name
+            obj.target_data = target_data
         else:
-            obj = db(group=gid, uid=uid_int, time=ts, name=name)
+            obj = db(
+                group=gid,
+                uid=uid_int,
+                time=ts,
+                name=name,
+                target_data=target_data,
+            )
             session.add(obj)
         session.commit()
     await uid_manager.add_uid(dyn.uid)
@@ -217,7 +229,8 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
         with Session() as session:
             stmt = select(db).where(db.uid == uid)
             rows = session.execute(stmt).scalars().all()
-        _gids = [row.group for row in rows]
+        rows_by_group = {row.group: row for row in rows}
+        _gids = list(rows_by_group)
         await asyncio.sleep(random.uniform(1, 5))
         groups = await sv.get_enable_groups()
         gids = list(filter(lambda x: x in groups, _gids))
@@ -239,6 +252,7 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
         for gid in gids:
             await asyncio.sleep(random.uniform(2, 5))
             bot = groups[gid][0]
+            target = load_target_or_group(rows_by_group[gid].target_data, gid)
             with Session() as session:
                 stmt = select(db).where(db.uid == uid, db.group == gid)
                 obj = session.execute(stmt).scalar_one_or_none()
@@ -249,7 +263,7 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
             try:
                 if msgs:
                     m = msgs[0]
-                    await send_to_target(bot, Target(str(gid)), m)
+                    await send_to_target(bot, target, m)
                     await asyncio.sleep(random.uniform(0, 0.5))
                     await send_group_segments(bot, gid, msgs[1:])
             except Exception as e:

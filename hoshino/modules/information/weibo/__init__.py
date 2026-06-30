@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 import time
 from hoshino.types import Bot, Event, Message
+from hoshino.platform import dump_target, target_from_event
 from hoshino.permission import SUPERUSER
 from hoshino.permission import ADMIN
 from hoshino.util import (
@@ -186,6 +187,7 @@ async def weibo_random_video(event: Event):
 )
 async def add_subscription(bot: Bot, event: Event):
     gid = event.group_id
+    target_data = dump_target(target_from_event(bot, event))
     msg = event.get_plaintext().strip()
     keywords = []
     try:
@@ -214,7 +216,7 @@ async def add_subscription(bot: Bot, event: Event):
         return
     kw = "-_-".join(keywords) if keywords else ""
     ts = time.time()
-    add_or_update_subscription(gid, uid, post.nickname, ts, kw)
+    add_or_update_subscription(gid, uid, post.nickname, ts, kw, target_data)
     await uid_manager.add_uid(uid)
     if keywords:
         await bot.send(

@@ -3,6 +3,8 @@ import random
 import time
 from dataclasses import dataclass
 
+from hoshino.platform import Target, load_target_or_group
+
 from ..db import (
     get_group_config,
     list_subscriptions_by_uid,
@@ -33,7 +35,7 @@ class RuntimeState:
 @dataclass
 class MatchedPost:
     post: WeiboPost
-    group_ids: list[int]
+    rows: list[object]
     with_screenshot: bool
 
 
@@ -41,6 +43,7 @@ class MatchedPost:
 class DeliveryPlan:
     bot: object
     gid: int
+    target: Target
     post: WeiboPost
     message: object
     use_segments: bool
@@ -65,7 +68,7 @@ class SubscriptionMatcher:
 
         matched_posts: list[MatchedPost] = []
         for post in posts:
-            matched_groups: list[int] = []
+            matched_rows: list[object] = []
             with_screenshot = False
             for row in rows:
                 if row.group not in state.enable_groups:
@@ -75,17 +78,17 @@ class SubscriptionMatcher:
                 if not self._match_keywords(post, row_keywords_map[row.group]):
                     continue
 
-                matched_groups.append(row.group)
+                matched_rows.append(row)
                 group_config = state.group_configs.get(row.group)
                 if group_config and bool(group_config.send_screenshot):
                     with_screenshot = True
 
-            if not matched_groups:
+            if not matched_rows:
                 continue
             matched_posts.append(
                 MatchedPost(
                     post=post,
-                    group_ids=matched_groups,
+                    rows=matched_rows,
                     with_screenshot=with_screenshot,
                 )
             )
@@ -128,11 +131,16 @@ class FetchMainline:
                 built_message = await self._build_message(uid_str, item.post, item.with_screenshot)
                 if not built_message:
                     continue
-                for group_id in item.group_ids:
-                    task = WeiboDispatchTask(item.post, built_message, group_id)
+                for row in item.rows:
+                    task = WeiboDispatchTask(
+                        item.post,
+                        built_message,
+                        row.group,
+                        load_target_or_group(row.target_data, row.group),
+                    )
                     if weibo_queue.put(task):
                         sv.logger.info(
-                            f"获取到微博更新: {item.post.uid} {item.post.nickname} {group_id} {item.post.timestamp} {item.post.url}"
+                            f"获取到微博更新: {item.post.uid} {item.post.nickname} {row.group} {item.post.timestamp} {item.post.url}"
                         )
 
             update_subscriptions_for_uid(uid_str, max(post.timestamp for post in posts), posts[0].nickname)
@@ -204,6 +212,7 @@ class DispatchMainline:
         return DeliveryPlan(
             bot=state.enable_groups[task.group_id][0],
             gid=task.group_id,
+            target=task.target or load_target_or_group(None, task.group_id),
             post=task.post,
             message=adapted,
             use_segments=bool(group_config.send_segments) and not busy,
@@ -215,6 +224,7 @@ class DeliveryExecutor:
         return await plan.post.send(
             bot=plan.bot,
             gid=plan.gid,
+            target=plan.target,
             post_message=plan.message,
             use_segments=plan.use_segments,
         )

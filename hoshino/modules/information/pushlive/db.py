@@ -1,7 +1,7 @@
 import os
 
 from hoshino import db_dir
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Integer, Text
 
@@ -22,12 +22,29 @@ class LiveSub(Base):
     group: Mapped[int] = mapped_column(Integer, primary_key=True)
     platform: Mapped[str] = mapped_column(Text, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    target_data: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 Base.metadata.create_all(engine)
 
 
-def add_subscription(group_id: int, room_id: str, name: str, platform: str = "bilibili") -> None:
+def _ensure_schema() -> None:
+    columns = {column["name"] for column in inspect(engine).get_columns("livesub")}
+    if "target_data" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE livesub ADD COLUMN target_data TEXT"))
+
+
+_ensure_schema()
+
+
+def add_subscription(
+    group_id: int,
+    room_id: str,
+    name: str,
+    platform: str = "bilibili",
+    target_data: str | None = None,
+) -> None:
     with Session() as session:
         stmt = select(LiveSub).where(
             LiveSub.group == group_id,
@@ -37,8 +54,16 @@ def add_subscription(group_id: int, room_id: str, name: str, platform: str = "bi
         obj = session.execute(stmt).scalar_one_or_none()
         if obj:
             obj.name = name
+            if target_data:
+                obj.target_data = target_data
         else:
-            obj = LiveSub(group=group_id, room_id=room_id, name=name, platform=platform)
+            obj = LiveSub(
+                group=group_id,
+                room_id=room_id,
+                name=name,
+                platform=platform,
+                target_data=target_data,
+            )
             session.add(obj)
         session.commit()
 
