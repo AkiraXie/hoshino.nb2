@@ -7,7 +7,7 @@ from hoshino.util import (
     check_cookies,
     delete_cookies,
 )
-from hoshino.types import Event
+from nonebot.adapters import Event
 from hoshino.platform import get_plaintext
 from simplejson import loads
 

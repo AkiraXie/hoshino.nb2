@@ -6,7 +6,7 @@ from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
 
-from hoshino.types import Bot
+from nonebot.adapters import Bot
 from hoshino.modules.information.utils import PostMessage
 from hoshino.platform import MessageLike
 

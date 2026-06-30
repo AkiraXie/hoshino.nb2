@@ -1,5 +1,6 @@
 from hoshino.service import Service
-from hoshino.types import Matcher, T_State
+from nonebot.matcher import Matcher
+from nonebot.typing import T_State
 from hoshino.platform import image_segment
 from hoshino.permission import SUPERUSER
 import os

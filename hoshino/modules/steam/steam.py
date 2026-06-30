@@ -3,7 +3,7 @@ from loguru import logger
 from lxml import etree
 import json
 from hoshino.schedule import scheduled_job
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino.service import Service
 from hoshino import db_dir
 from hoshino.permission import ADMIN

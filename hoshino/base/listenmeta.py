@@ -1,5 +1,5 @@
 from hoshino import config as config
-from hoshino.types import Bot
+from nonebot.adapters import Bot
 from hoshino.hooks import on_bot_connect
 from hoshino.platform import Target, send_to_target
 

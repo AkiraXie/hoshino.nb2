@@ -1,7 +1,7 @@
-from nonebot.adapters.onebot.v11.message import MessageSegment
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent
+from nonebot.adapters.onebot.v11.message import MessageSegment as OneBotV11MessageSegment
+from nonebot.adapters.onebot.v11.event import GroupMessageEvent as OneBotV11GroupMessageEvent
 from hoshino.event import Event, get_event
-from hoshino.types import Bot
+from nonebot.adapters import Bot
 from hoshino.util import get_bot_list, sucmd
 from nonebot.matcher import matchers
 
@@ -31,13 +31,13 @@ async def _(bot: Bot, event: Event):
 
 
 @test4.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
-    ms = MessageSegment(
+async def _(bot: Bot, event: OneBotV11GroupMessageEvent):
+    ms = OneBotV11MessageSegment(
         "node",
         {
             "user_id": event.get_user_id(),
             "name": "test",
-            "content": "testtest" + MessageSegment.face(233),
+            "content": "testtest" + OneBotV11MessageSegment.face(233),
         },
     )
     await bot.send_group_forward_msg(group_id=event.group_id, messages=[ms])

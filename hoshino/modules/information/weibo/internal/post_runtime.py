@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
-from hoshino.types import Bot
+from nonebot.adapters import Bot
 from hoshino import config
 from hoshino.modules.information.utils import PostMessage
 from hoshino.platform import (

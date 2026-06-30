@@ -2,7 +2,9 @@ import asyncio
 from io import BytesIO
 from PIL import Image
 from pathlib import Path
-from hoshino.types import Bot, Event, Message, MessageSegment, T_State
+from nonebot.adapters import Bot, Event
+from nonebot.typing import T_State
+from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.permission import SUPERUSER
 from hoshino import img_dir, fav_dir, video_dir
 from hoshino.util import (
@@ -57,7 +59,7 @@ async def like_img_rule(
         return False
     msg = msg.get("message")
     if msg:
-        msg = type_validate_python(Message, msg)
+        msg = type_validate_python(OneBotV11Message, msg)
         img_list = [s for s in msg if s.type == "image"]
         img_list.extend(await _get_imgs_from_forward_msg(bot, msg))
         if img_list:
@@ -82,7 +84,7 @@ async def reaction_img_rule(
         return False
     msg = msg.get("message")
     if msg:
-        msg = type_validate_python(Message, msg)
+        msg = type_validate_python(OneBotV11Message, msg)
         img_list = [s for s in msg if s.type == "image"]
         img_list.extend(await _get_imgs_from_forward_msg(bot, msg))
         if img_list:
@@ -118,7 +120,7 @@ async def reaction_video_rule(
     msg = msg.get("message")
     if event.code == "424":
         if msg:
-            msg = type_validate_python(Message, msg)
+            msg = type_validate_python(OneBotV11Message, msg)
             img_list = [s for s in msg if s.type == "video"]
             img_list.extend(await _get_videos_from_forward_msg(bot, msg))
             if img_list:
@@ -145,7 +147,7 @@ async def like_video_rule(
         return False
     msg = msg.get("message")
     if msg:
-        msg = type_validate_python(Message, msg)
+        msg = type_validate_python(OneBotV11Message, msg)
         img_list = [s for s in msg if s.type == "video"]
         img_list.extend(await _get_videos_from_forward_msg(bot, msg))
         if img_list:
@@ -189,7 +191,7 @@ async def save_img_cmd(
     event: GroupMessageEvent | GroupReactionEvent | GroupMsgEmojiLikeEvent,
     state: T_State,
 ):
-    segs: list[MessageSegment] = state.get(__SU_IMGLIST, [])
+    segs: list[OneBotV11MessageSegment] = state.get(__SU_IMGLIST, [])
     cnt = 0
     tasks = []
     is_fav = (
@@ -219,7 +221,7 @@ async def save_img_cmd(
 async def save_vi_cmd(
     event: GroupReactionEvent | GroupMsgEmojiLikeEvent, state: T_State
 ):
-    segs: list[MessageSegment] = state.get(__SU_VIDEOLIST, [])
+    segs: list[OneBotV11MessageSegment] = state.get(__SU_VIDEOLIST, [])
     cnt = 0
     tasks = []
     for i, seg in enumerate(segs):
@@ -359,7 +361,7 @@ timg = on_keyword(
 
 @timg.handle()
 async def toimg_cmd(bot: Bot, state: T_State):
-    segs: list[MessageSegment] = state[__SU_IMGLIST]
+    segs: list[OneBotV11MessageSegment] = state[__SU_IMGLIST]
     res = []
     for seg in segs:
         url = seg.data.get("url", seg.data.get("file"))
@@ -395,6 +397,6 @@ async def toimg_cmd(bot: Bot, state: T_State):
                 logger.exception(f"获取图片失败: {url}")
                 continue
     if res:
-        await timg.finish(Message(res))
+        await timg.finish(OneBotV11Message(res))
     else:
         await timg.finish("获取图片失败")

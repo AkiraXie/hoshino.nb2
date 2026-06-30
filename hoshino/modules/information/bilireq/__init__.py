@@ -1,6 +1,6 @@
 import asyncio
 import time
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino.hooks import on_post_startup
 from hoshino.platform import (
     dump_target,

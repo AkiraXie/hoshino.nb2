@@ -2,7 +2,7 @@ import asyncio
 from collections import defaultdict
 from datetime import datetime
 
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino.service import Service
 from hoshino.hooks import on_post_startup
 from hoshino.schedule import scheduled_job

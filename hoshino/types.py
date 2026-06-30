@@ -1,6 +1,8 @@
 """Hoshino 常用类型集中 re-export。导入此模块不触发 NoneBot 运行时。"""
 from typing import TYPE_CHECKING
 
+from nonebot.adapters import Bot as Bot
+from nonebot.adapters import Event as Event
 from nonebot.typing import T_Handler as T_Handler
 from nonebot.typing import T_State as T_State
 from nonebot.params import Depends as Depends
@@ -13,13 +15,16 @@ from nonebot.dependencies import Dependent as Dependent
 from nonebot.matcher import Matcher as Matcher
 from nonebot.matcher import current_bot as current_bot
 from nonebot.matcher import current_event as current_event
-from nonebot.adapters.onebot.v11 import Adapter as Adapter
-from nonebot.adapters.onebot.v11 import Bot as Bot
-from nonebot.adapters.onebot.v11.utils import escape as escape
-from .message import MessageSegment as MessageSegment
-from .message import Message as Message
+from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
+from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
+from nonebot.adapters.onebot.v11 import Event as OneBotV11Event
+from nonebot.adapters.onebot.v11.utils import escape as onebot_v11_escape
+from .message import MessageSegment as OneBotV11MessageSegment
+from .message import Message as OneBotV11Message
 from .message import MessageTemplate as MessageTemplate
-from .event import Event as Event
+
+OneBotV11Adapter = OneBotV11Adapter
+onebot_v11_escape = onebot_v11_escape
 
 if TYPE_CHECKING:
     from typing import Any, Callable, Type as _Type
@@ -31,16 +36,16 @@ if TYPE_CHECKING:
         def got(
             cls: _Type[Matcher],
             key: str,
-            prompt: str | Message | MessageSegment | MessageTemplate | None = None,
+            prompt: str | OneBotV11Message | OneBotV11MessageSegment | MessageTemplate | None = None,
             parameterless: list | None = None,
             args_parser: T_Handler | None = None,
         ) -> Callable[[T_Handler], T_Handler]: ...
 
-    class Bot(_OrigBot):
+    class OneBotV11Bot(_OrigBot):
         async def send(
             self,
-            event: Event,
-            message: str | Message | MessageSegment,
+            event: OneBotV11Event,
+            message: str | OneBotV11Message | OneBotV11MessageSegment,
             at_sender: bool = False,
             call_header: bool = False,
             **kwargs,

@@ -1,6 +1,7 @@
 import re
 from functools import cmp_to_key
-from hoshino.types import Bot, Event, T_State
+from nonebot.adapters import Bot, Event
+from nonebot.typing import T_State
 from hoshino.service import Service
 from hoshino.platform import (
     event_scope_key,

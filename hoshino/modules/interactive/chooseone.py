@@ -1,17 +1,15 @@
 from hoshino.service import Service
-from hoshino.types import Event, Bot, Message
-from hoshino.platform import get_event_message
+from hoshino.platform import Alconna, Args, UniMessage
 import random
 
 sv = Service("chooseone")
-co = sv.on_command("选择", only_group=False, priority=2)
+co = sv.on_alconna(Alconna("选择", Args["text", str]), only_group=False, priority=2)
 
 
 @co.handle()
-async def _(bot: Bot, event: Event):
+async def _(text: str):
     rng = random.SystemRandom()
-    msg = str(get_event_message(event))
-    msg = msg.split("还是")
+    msg = text.split("还是")
     if len(msg) == 1:
         return
     choices = list(filter(lambda x: len(x) != 0, msg))
@@ -25,4 +23,4 @@ async def _(bot: Bot, event: Event):
     else:
         final = rng.randint(0, len(choices) - 1)
         msgs.append(f"建议您选择: {choices[final]}")
-    await co.finish(Message("\n".join(msgs)), call_header=True)
+    await UniMessage.text("\n".join(msgs)).send()

@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime
 import time
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino.platform import dump_target, get_group_id, target_from_event
 from hoshino.permission import SUPERUSER
 from hoshino.permission import ADMIN

@@ -14,7 +14,7 @@ from .utils import (
     QbtClient,
 )
 from hoshino.permission import ADMIN
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino.platform import get_group_id, get_plaintext
 from nonebot.params import Depends
 

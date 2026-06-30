@@ -9,10 +9,12 @@ from nonebot.params import Depends
 from hoshino.hooks import run_preprocessor
 from nonebot.exception import RejectedException, PausedException, FinishedException
 from nonebot.rule import ArgumentParser, to_me, command, shell_command
-from hoshino.types import Bot, Message, MessageSegment, Matcher, current_bot, current_event
+from nonebot.adapters import Bot
+from nonebot.adapters import Event
+from nonebot.matcher import Matcher, current_bot, current_event
+from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino import service_dir as _service_dir
 from hoshino.message import MessageTemplate
-from hoshino.event import Event
 from nonebot.plugin import (
     on_message,
     on_startswith,
@@ -547,7 +549,7 @@ class Service:
 
         if not msgs:
             return
-        if isinstance(msgs, (str, Message, MessageSegment)):
+        if isinstance(msgs, (str, OneBotV11Message, OneBotV11MessageSegment)):
             msgs = (msgs,)
         gdict = await self.get_enable_groups()
         for gid in gdict.keys():
@@ -607,7 +609,7 @@ class MatcherWrapper:
     def got(
         self,
         key: str,
-        prompt: str | Message | MessageSegment | MessageTemplate | None = None,
+        prompt: str | OneBotV11Message | OneBotV11MessageSegment | MessageTemplate | None = None,
         args_parser: T_Handler | None = None,
         parameterless: list | None = None,
     ):
@@ -618,7 +620,7 @@ class MatcherWrapper:
 
     async def reject(
         self,
-        prompt: str | Message | MessageSegment | None = None,
+        prompt: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
         *,
         call_header: bool = False,
         at_sender: bool = False,
@@ -632,7 +634,7 @@ class MatcherWrapper:
 
     async def pause(
         self,
-        prompt: str | Message | MessageSegment | None = None,
+        prompt: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
         *,
         call_header: bool = False,
         at_sender: bool = False,
@@ -646,7 +648,7 @@ class MatcherWrapper:
 
     async def send(
         self,
-        message: str | Message | MessageSegment,
+        message: str | OneBotV11Message | OneBotV11MessageSegment,
         *,
         call_header: bool = False,
         at_sender: bool = False,
@@ -675,7 +677,7 @@ class MatcherWrapper:
 
     async def finish(
         self,
-        message: str | Message | MessageSegment | None = None,
+        message: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
         *,
         call_header: bool = False,
         at_sender: bool = False,

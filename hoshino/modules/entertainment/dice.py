@@ -1,4 +1,5 @@
-from hoshino.types import Matcher, T_State
+from nonebot.matcher import Matcher
+from nonebot.typing import T_State
 from hoshino.service import Service
 import random
 

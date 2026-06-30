@@ -17,7 +17,9 @@ from nonebot.adapters import Event
 from nonebot.typing import T_State
 from nonebot.params import Depends
 from hoshino import fav_dir, img_dir, hsn_nickname, video_dir
-from hoshino.types import Matcher, current_bot, current_event, MessageSegment, Message, Bot
+from nonebot.adapters import Bot
+from nonebot.matcher import Matcher, current_bot, current_event
+from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.platform import (
     custom_node_segment,
     get_event_message,
@@ -157,7 +159,7 @@ def img_to_bytes(pic: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-def img_to_segment(pic: Image.Image) -> MessageSegment:
+def img_to_segment(pic: Image.Image) -> OneBotV11MessageSegment:
     return image_segment(img_to_bytes(pic))
 
 
@@ -196,7 +198,9 @@ async def parse_qq(bot: Bot, event: Event, state: T_State):
         state["ids"] = ids.copy()
 
 
-async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegment]:
+async def _get_imgs_from_forward_msg(
+    bot: Bot, msg: OneBotV11Message
+) -> list[OneBotV11MessageSegment]:
     res = []
     for s in msg:
         if s.type == "forward":
@@ -210,7 +214,7 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
                 for msg in msgs:
                     content = msg.get("content", msg.get("data", {}).get("content"))
                     if content:
-                        content = type_validate_python(Message, content)
+                        content = type_validate_python(OneBotV11Message, content)
                         p = [
                             s for s in content if s.type == "image" or s.type == "mface"
                         ]
@@ -219,7 +223,9 @@ async def _get_imgs_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegm
     return res
 
 
-async def _get_videos_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSegment]:
+async def _get_videos_from_forward_msg(
+    bot: Bot, msg: OneBotV11Message
+) -> list[OneBotV11MessageSegment]:
     res = []
     for s in msg:
         if s.type == "forward":
@@ -233,13 +239,13 @@ async def _get_videos_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSe
                         if data:
                             content = data.get("content")
                             if content:
-                                content = type_validate_python(Message, content)
+                                content = type_validate_python(OneBotV11Message, content)
                                 p = [s for s in content if s.type == "video"]
                                 res.extend(p)
                 if not msgs:
                     msgs = dic.get("messages")
                     for m in msgs:
-                        content = type_validate_python(Message, m)
+                        content = type_validate_python(OneBotV11Message, m)
                         p = [
                             s for s in content if s.type == "image" or s.type == "mface"
                         ]
@@ -249,7 +255,7 @@ async def _get_videos_from_forward_msg(bot: Bot, msg: Message) -> list[MessageSe
 
 async def get_image_segments_from_forward(
     bot: Bot, event: Event
-) -> list[MessageSegment]:
+) -> list[OneBotV11MessageSegment]:
     res = []
     msg = get_event_message(event)
     if msg:
@@ -406,7 +412,7 @@ def random_image_or_video_by_path(
     seed: int | None = None,
     video: bool = False,
     keyword: str | None = None,
-) -> list[MessageSegment]:
+) -> list[OneBotV11MessageSegment]:
     files = []
     for file_path in path.iterdir():
         if file_path.is_file():
@@ -456,13 +462,13 @@ async def send_to_superuser(msg=""):
         await send_to_target(bot, Target(str(su), private=True), msg)
 
 
-async def get_img_from_url(url: str) -> MessageSegment:
+async def get_img_from_url(url: str) -> OneBotV11MessageSegment:
     resp = await aiohttpx.get(url)
     return image_segment(resp.content)
 
 
 async def send(
-    message: str | "Message" | "MessageSegment",
+    message: str | "OneBotV11Message" | "OneBotV11MessageSegment",
     *,
     call_header: bool = False,
     at_sender: bool = False,
@@ -475,16 +481,16 @@ async def send(
 
 
 def construct_nodes(
-    user_id: int, segments: Sequence[Message | MessageSegment | str]
-) -> Message:
+    user_id: int, segments: Sequence[OneBotV11Message | OneBotV11MessageSegment | str]
+) -> OneBotV11Message:
     def node(content):
         return custom_node_segment(user_id=user_id, nickname=hsn_nickname, content=content)
 
-    return Message([node(seg) for seg in segments])
+    return OneBotV11Message([node(seg) for seg in segments])
 
 
 async def send_segments(
-    message: Sequence[Message | MessageSegment | str],
+    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str],
 ):
     if not message:
         return
@@ -505,7 +511,7 @@ async def send_segments(
 async def send_group_segments(
     bot: Bot,
     group_id: int,
-    message: Sequence[Message | MessageSegment | str],
+    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str],
 ):
     from hoshino.platform import send_to_target
 
@@ -519,7 +525,7 @@ async def send_group_segments(
 
 
 async def finish(
-    message: str | "Message" | "MessageSegment" | None = None,
+    message: str | "OneBotV11Message" | "OneBotV11MessageSegment" | None = None,
     *,
     call_header: bool = False,
     at_sender: bool = False,

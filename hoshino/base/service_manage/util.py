@@ -1,4 +1,5 @@
-from hoshino.types import Bot, Event, T_State
+from nonebot.adapters import Bot, Event
+from nonebot.typing import T_State
 from hoshino.platform import get_group_list, get_plaintext
 
 

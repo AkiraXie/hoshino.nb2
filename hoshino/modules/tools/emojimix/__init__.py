@@ -1,10 +1,11 @@
 ## Thanks to github.com/FloatTech/ZeroBot-Plugin/plugin/emojimix
 
 from hoshino.service import Service
-from hoshino.types import T_State, Matcher
+from nonebot.matcher import Matcher
+from nonebot.typing import T_State
 from hoshino.util import aiohttpx
 from hoshino.permission import SUPERUSER
-from hoshino.types import Event
+from nonebot.adapters import Event
 from hoshino.platform import get_event_message, get_event_value, get_plaintext, image_segment
 from .data import emojis, qqface
 

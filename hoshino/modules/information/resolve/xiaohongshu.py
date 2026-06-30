@@ -2,7 +2,7 @@ import json
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino import data_dir
 from hoshino.platform import (
     MessageLike,

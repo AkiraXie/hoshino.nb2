@@ -4,7 +4,9 @@ from nonebot.params import Depends
 from .data import Question, Session
 from hoshino.permission import ADMIN
 from hoshino.service import Service
-from hoshino.types import Bot, Event, Message, Matcher
+from nonebot.adapters import Bot, Event
+from nonebot.matcher import Matcher
+from hoshino.types import OneBotV11Message
 from hoshino.config import config
 from hoshino.platform import (
     get_event_message,
@@ -36,7 +38,7 @@ async def event_image_in_local(
     if answer == question:
         await matcher.finish()
     sid = get_session_id(event, "")
-    answer_msg = Message(answer)
+    answer_msg = OneBotV11Message(answer)
     for i, s in enumerate(answer_msg):
         if s.type == "image":
             url = s.data.get("file", s.data.get("url"))
@@ -121,7 +123,7 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
             )
             session.add(obj)
         session.commit()
-    await group_ques.finish(Message(f"好的我记住{question}了"))
+    await group_ques.finish(OneBotV11Message(f"好的我记住{question}了"))
 
 
 @person_ques.handle()
@@ -142,7 +144,7 @@ async def _(event: Event, msg: tuple[str, str] = set_qa_dep):
             obj = Question(question=question, answer=answer, group=gid, user=uid)
             session.add(obj)
         session.commit()
-    await person_ques.finish(Message(f"好的我记住{question}了"))
+    await person_ques.finish(OneBotV11Message(f"好的我记住{question}了"))
 
 
 @del_gqa.handle()
@@ -162,9 +164,9 @@ async def _(bot: Bot, event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_gqa.finish(Message('我不记得"{}"这个问题'.format(question)))
+        await del_gqa.finish(OneBotV11Message('我不记得"{}"这个问题'.format(question)))
     else:
-        await del_gqa.finish(Message('我不再回答"{}"了'.format(question)))
+        await del_gqa.finish(OneBotV11Message('我不再回答"{}"了'.format(question)))
 
 
 @del_qa.handle()
@@ -185,9 +187,9 @@ async def _(bot: Bot, event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_qa.finish(Message('我不记得"{}"这个问题'.format(question)))
+        await del_qa.finish(OneBotV11Message('我不记得"{}"这个问题'.format(question)))
     else:
-        await del_qa.finish(Message('我不再回答"{}"了'.format(question)))
+        await del_qa.finish(OneBotV11Message('我不再回答"{}"了'.format(question)))
 
 
 async def parse_question(state: T_State, event: Event):
@@ -223,10 +225,10 @@ async def _(bot: Bot, event: Event, state: T_State):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_pqa.finish(Message('我不记得"{}"这个问题'.format(state["question"])))
+        await del_pqa.finish(OneBotV11Message('我不记得"{}"这个问题'.format(state["question"])))
     else:
         await del_pqa.finish(
-            Message('我不再回答"{}"这个问题了'.format(state["question"]))
+            OneBotV11Message('我不再回答"{}"这个问题了'.format(state["question"]))
         )
 
 
@@ -238,7 +240,7 @@ async def _(bot: Bot, event: Event):
         stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
-    await lookqa.finish(Message("您设置的问题有: " + " | ".join(msg)), at_sender=True)
+    await lookqa.finish(OneBotV11Message("您设置的问题有: " + " | ".join(msg)), at_sender=True)
 
 
 @lookgqa.handle()
@@ -250,14 +252,14 @@ async def _(bot: Bot, event: Event):
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
     await lookgqa.finish(
-        Message('该群设置的"有人问"有: ' + " | ".join(msg)), at_sender=True
+        OneBotV11Message('该群设置的"有人问"有: ' + " | ".join(msg)), at_sender=True
     )
 
 
 @ans.handle()
 async def _(state: T_State):
     if answer := state["answer"]:
-        msg = Message(answer)
+        msg = OneBotV11Message(answer)
         await ans.finish(msg)
 
 
@@ -272,6 +274,6 @@ async def _(event: Event):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_allqa.finish(Message("该群没有设置任何问答"))
+        await del_allqa.finish(OneBotV11Message("该群没有设置任何问答"))
     else:
-        await del_allqa.finish(Message("已删除该群的所有问答"))
+        await del_allqa.finish(OneBotV11Message("已删除该群的所有问答"))

@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Session, update_client
 from hoshino.permission import ADMIN
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino import hsn_nickname
 from hoshino.platform import get_group_id, get_group_member_info, get_plaintext, get_user_id
 from nonebot.params import Depends

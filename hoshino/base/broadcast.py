@@ -1,6 +1,6 @@
 from loguru import logger
 from hoshino.util import sucmd
-from hoshino.types import Bot, Event
+from nonebot.adapters import Bot, Event
 from hoshino.platform import get_event_message, get_group_list, group_target, send_to_target
 from asyncio import sleep
 

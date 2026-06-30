@@ -5,7 +5,7 @@ from hoshino import db_dir
 from hoshino.hooks import on_serial_startup, on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
-from hoshino.types import Event
+from nonebot.adapters import Event
 from hoshino.platform import get_group_id
 
 db_path = db_dir / "alisten.db"
