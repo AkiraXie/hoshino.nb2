@@ -23,6 +23,14 @@ img_dir = config.static_dir / "img" / "QA"
 img_dir.mkdir(parents=True, exist_ok=True)
 
 
+def parse_legacy_answer_message(answer: str) -> OneBotV11Message:
+    return OneBotV11Message(answer)
+
+
+async def finish_legacy_answer(answer: str) -> None:
+    await ans.finish(parse_legacy_answer_message(answer))
+
+
 async def event_image_in_local(
     matcher: Matcher, event: Event
 ) -> tuple[str, str]:
@@ -38,7 +46,7 @@ async def event_image_in_local(
     if answer == question:
         await matcher.finish()
     sid = get_session_id(event, "")
-    answer_msg = OneBotV11Message(answer)
+    answer_msg = parse_legacy_answer_message(answer)
     for i, s in enumerate(answer_msg):
         if s.type == "image":
             url = s.data.get("file", s.data.get("url"))
@@ -259,8 +267,7 @@ async def _(bot: Bot, event: Event):
 @ans.handle()
 async def _(state: T_State):
     if answer := state["answer"]:
-        msg = OneBotV11Message(answer)
-        await ans.finish(msg)
+        await finish_legacy_answer(answer)
 
 
 @del_allqa.handle()
