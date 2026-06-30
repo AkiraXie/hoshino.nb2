@@ -11,7 +11,7 @@ bihuas = dict()
 configurl = "https://bihua.bleatingsheep.org/meme-data.json"
 prefix = "https://bihua.bleatingsheep.org/meme/"
 m = sv.on_alconna(Alconna("bihua", Args["text", str]), aliases=("b话", "壁画"), block=True)
-r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=True)
+r = sv.on_alconna(Alconna("随机壁画"), aliases=("随机bihua", "随机b话"), block=True)
 s = sv.on_alconna(Alconna("搜索壁画", Args["text", str]), aliases=("searchbihua", "搜索b话"), block=True)
 
 

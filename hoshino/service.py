@@ -49,7 +49,8 @@ from hoshino.logger_wrapper import LoggerWrapper
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: dict[str, "Service"] = {}
-_loaded_matchers: dict["type[Matcher]", "MatcherWrapper"] = {}
+_loaded_matchers: dict["type[Matcher]", "Service"] = {}
+_matcher_sv_map: dict[int, "Service"] = {}
 
 
 def _iter_to_set(words: set | list | tuple | str | None) -> set:
@@ -342,23 +343,23 @@ class Service:
         permission: Permission = NORMAL,
         aliases: set[str] | tuple[str, ...] | None = None,
         **kwargs,
-    ) -> "MatcherWrapper":
+    ):
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        priority = kwargs.get("priority", 1)
-        matcher: Matcher = on_alconna(command, aliases=aliases, **kwargs)
-        mw = MatcherWrapper(
-            self,
-            "Message.alconna",
-            priority,
-            matcher,
-            command=str(command),
-            only_group=only_group,
+        matcher = on_alconna(command, aliases=aliases, **kwargs)
+        matcher.__hoshino_info__ = {
+            "service": self.name,
+            "type": "Message.alconna",
+            "command": str(command),
+            "only_group": only_group,
+        }
+        self.matchers.append(
+            f"<Matcher from Service {self.name}, type=Message.alconna, command={command}>"
         )
-        self.matchers.append(str(mw))
-        _loaded_matchers[matcher.__class__] = mw
-        return mw
+        _loaded_matchers[type(matcher)] = self
+        _matcher_sv_map[id(matcher)] = self
+        return matcher
 
     def on_startswith(
         self,
@@ -715,11 +716,13 @@ class MatcherWrapper:
 
 
 async def log_matcherwrapper(matcher: Matcher):
-    mw = _loaded_matchers.get(matcher.__class__, None)
-    if mw and mw.log:
-        mw.sv.logger.info(f"Event will be handled by <lc>{mw}</>")
+    sv = _loaded_matchers.get(type(matcher))
+    if sv is not None:
+        info = getattr(matcher, "__hoshino_info__", {})
+        label = info.get("type", "?") + ":" + info.get("command", "?")
+        sv.logger.info(f"Event will be handled by <lc>{label}</>")
         yield
-        mw.sv.logger.info(f"Event was completed handling by <lc>{mw}</>")
+        sv.logger.info(f"Event was completed handling by <lc>{label}</>")
     else:
         yield
 
