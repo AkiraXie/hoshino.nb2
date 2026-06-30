@@ -1,6 +1,6 @@
 """Hoshino 运行时初始化。必须在 nonebot.init() 后、nonebot.run() 前调用。"""
 from __future__ import annotations
-from typing import Any, Union, Optional, Type
+from typing import Any, Type
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter, Bot
@@ -23,7 +23,7 @@ from . import hooks
 async def send(
     self: Bot,
     event: Event,
-    message: Union[str, Message, MessageSegment],
+    message: str | Message | MessageSegment,
     at_sender: bool = False,
     call_header: bool = False,
     **kwargs,
@@ -89,9 +89,9 @@ async def send(
 def got(
     cls: Type[Matcher],
     key: str,
-    prompt: Optional[Union[str, Message, MessageSegment, MessageTemplate]] = None,
-    parameterless: Optional[list] = None,
-    args_parser: Optional[T_Handler] = None,
+    prompt: str | Message | MessageSegment | MessageTemplate | None = None,
+    parameterless: list | None = None,
+    args_parser: T_Handler | None = None,
 ):
     """装饰一个函数来指示 NoneBot 获取一个参数 ``key``。
     当要获取的 ``key`` 不存在时接收用户新的一条消息再运行该函数，

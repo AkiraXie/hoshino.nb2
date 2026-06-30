@@ -1,6 +1,7 @@
 import os
 
 from hoshino import db_dir
+from hoshino.hooks import on_serial_startup
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Integer, Text
@@ -25,17 +26,17 @@ class LiveSub(Base):
     target_data: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-Base.metadata.create_all(engine)
-
-
 def _ensure_schema() -> None:
+    Base.metadata.create_all(engine)
     columns = {column["name"] for column in inspect(engine).get_columns("livesub")}
     if "target_data" not in columns:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE livesub ADD COLUMN target_data TEXT"))
 
 
-_ensure_schema()
+@on_serial_startup
+async def _ensure_live_schema() -> None:
+    _ensure_schema()
 
 
 def add_subscription(

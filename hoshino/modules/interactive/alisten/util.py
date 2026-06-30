@@ -2,7 +2,7 @@ from pydantic import BaseModel, RootModel
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, sessionmaker
 from sqlalchemy import select, create_engine, Integer, Text
 from hoshino import db_dir
-from hoshino.hooks import on_startup
+from hoshino.hooks import on_serial_startup, on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
 from hoshino.types import Event
@@ -30,7 +30,9 @@ class AlistenConfig(Base):
     server_url: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-Base.metadata.create_all(engine)
+@on_serial_startup
+async def _ensure_alisten_schema() -> None:
+    Base.metadata.create_all(engine)
 
 
 async def get_config(event: Event) -> AlistenConfig | None:

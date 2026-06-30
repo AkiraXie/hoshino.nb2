@@ -13,6 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
+from hoshino.hooks import on_serial_startup
 from hoshino.platform import (
     MessageLike,
     image_segment,
@@ -296,14 +297,14 @@ class DynamicDB(Base):
     target_data: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-Base.metadata.create_all(engine)
-
-
 def _ensure_schema() -> None:
+    Base.metadata.create_all(engine)
     columns = {column["name"] for column in inspect(engine).get_columns("dynamicdb")}
     if "target_data" not in columns:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE dynamicdb ADD COLUMN target_data TEXT"))
 
 
-_ensure_schema()
+@on_serial_startup
+async def _ensure_dynamic_schema() -> None:
+    _ensure_schema()

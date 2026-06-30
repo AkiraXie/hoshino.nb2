@@ -4,7 +4,7 @@ from asyncio import Queue
 from pathlib import Path
 import re
 from hoshino.platform import MessageLike
-from typing import Protocol, Union, TypeVar, Generic
+from typing import Protocol, TypeVar, Generic
 import time
 
 try:
@@ -75,7 +75,7 @@ class Post:
     """发布者昵称"""
     description: str = ""
     """描述信息"""
-    repost: Union[Self, None] = None
+    repost: Self | None = None
     """转发的Post"""
 
     async def get_message(self, **kwargs) -> PostMessage: ...

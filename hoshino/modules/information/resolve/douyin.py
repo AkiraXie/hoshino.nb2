@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import Any, List, Optional
+from typing import Any, List
 import re
 from hoshino.util import (
     aiohttpx,
@@ -147,7 +147,7 @@ class Video(BaseModel):
 
 
 class Image(BaseModel):
-    video: Optional[Video] = None
+    video: Video | None = None
     url_list: List[str] = Field(default_factory=list)
 
 
@@ -182,15 +182,15 @@ class SlidesInfo(BaseModel):
 class VideoData(BaseModel):
     author: Author
     desc: str
-    images: Optional[List[Image]] = None
-    video: Optional[Video] = None
+    images: List[Image] | None = None
+    video: Video | None = None
 
     @property
-    def images_urls(self) -> Optional[List[str]]:
+    def images_urls(self) -> List[str] | None:
         return [image.url_list[0] for image in self.images] if self.images else None
 
     @property
-    def video_url(self) -> Optional[str]:
+    def video_url(self) -> str | None:
         return (
             self.video.play_addr.url_list[0].replace("playwm", "play")
             if self.video
@@ -198,7 +198,7 @@ class VideoData(BaseModel):
         )
 
     @property
-    def cover_url(self) -> Optional[str]:
+    def cover_url(self) -> str | None:
         return self.video.cover.url_list[0] if self.video else None
 
 
@@ -217,13 +217,13 @@ class VideoOrNotePage(BaseModel):
 
 
 class LoaderData(BaseModel):
-    video_page: Optional[VideoOrNotePage] = Field(alias="video_(id)/page", default=None)
-    note_page: Optional[VideoOrNotePage] = Field(alias="note_(id)/page", default=None)
+    video_page: VideoOrNotePage | None = Field(alias="video_(id)/page", default=None)
+    note_page: VideoOrNotePage | None = Field(alias="note_(id)/page", default=None)
 
 
 class RouterData(BaseModel):
     loaderData: LoaderData
-    errors: Optional[dict[str, Any]] = None
+    errors: dict[str, Any] | None = None
 
     @property
     def video_data(self) -> VideoData | None:

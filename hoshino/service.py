@@ -3,7 +3,7 @@ import re
 import os
 import json
 from collections import defaultdict
-from typing import Iterable, Optional, Union
+from typing import Iterable
 import nonebot
 from nonebot.params import Depends
 from hoshino.hooks import run_preprocessor
@@ -228,7 +228,7 @@ class Service:
         manage_perm: Permission = ADMIN,
         enable_on_default: bool = True,
         visible: bool = True,
-    ) -> Union["Service", None]:
+    ) -> "Service | None":
         names = nonebot.get_available_plugin_names()
         if plugin_name in names:
             return None
@@ -261,7 +261,7 @@ class Service:
         self,
         name: str,
         only_to_me: bool = False,
-        aliases: Optional[set | list | tuple | str] = None,
+        aliases: set | list | tuple | str | None = None,
         only_group: bool = True,
         permission: Permission = NORMAL,
         force_whitespace: bool | None = None,
@@ -294,8 +294,8 @@ class Service:
         self,
         name: str,
         only_to_me: bool = False,
-        aliases: Optional[set | list | tuple | str] = None,
-        parser: Optional[ArgumentParser] = None,
+        aliases: set | list | tuple | str | None = None,
+        parser: ArgumentParser | None = None,
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
@@ -371,7 +371,7 @@ class Service:
 
     def on_keyword(
         self,
-        keywords: Optional[set | list | tuple | str],
+        keywords: set | list | tuple | str | None,
         normal: bool = True,
         only_to_me: bool = False,
         only_group: bool = True,
@@ -399,7 +399,7 @@ class Service:
 
     def on_fullmatch(
         self,
-        keywords: Optional[set | list | tuple | str],
+        keywords: set | list | tuple | str | None,
         normal: bool = True,
         only_to_me: bool = False,
         only_group: bool = True,
@@ -515,7 +515,7 @@ class Service:
         _loaded_matchers[mw.matcher] = mw
         return mw
 
-    async def broadcast(self, msgs: Optional[Iterable], tag="", interval_time=0.5):
+    async def broadcast(self, msgs: Iterable | None, tag="", interval_time=0.5):
         from hoshino.platform import Target, send_to_target
 
         if not msgs:
@@ -562,7 +562,7 @@ class MatcherWrapper:
     def get_loaded_matchers() -> list[str]:
         return list(map(str, _loaded_matchers.values()))
 
-    def handle(self, parameterless: Optional[list] = None):
+    def handle(self, parameterless: list | None = None):
         def deco(func: T_Handler):
             return self.matcher.handle(parameterless)(func)
 
@@ -571,7 +571,7 @@ class MatcherWrapper:
     def __call__(self, func: T_Handler) -> T_Handler:
         return self.handle()(func)
 
-    def receive(self, id: str = "", parameterless: Optional[list] = None):
+    def receive(self, id: str = "", parameterless: list | None = None):
         def deco(func: T_Handler):
             return self.matcher.receive(id=id, parameterless=parameterless)(func)
 
@@ -580,9 +580,9 @@ class MatcherWrapper:
     def got(
         self,
         key: str,
-        prompt: Optional[str | Message | MessageSegment | MessageTemplate] = None,
-        args_parser: Optional[T_Handler] = None,
-        parameterless: Optional[list] = None,
+        prompt: str | Message | MessageSegment | MessageTemplate | None = None,
+        args_parser: T_Handler | None = None,
+        parameterless: list | None = None,
     ):
         def deco(func: T_Handler):
             return self.matcher.got(key, prompt, parameterless, args_parser)(func)
@@ -591,7 +591,7 @@ class MatcherWrapper:
 
     async def reject(
         self,
-        prompt: Optional[Union[str, "Message", "MessageSegment"]] = None,
+        prompt: str | Message | MessageSegment | None = None,
         *,
         call_header: bool = False,
         at_sender: bool = False,
@@ -605,7 +605,7 @@ class MatcherWrapper:
 
     async def pause(
         self,
-        prompt: Optional[Union[str, "Message", "MessageSegment"]] = None,
+        prompt: str | Message | MessageSegment | None = None,
         *,
         call_header: bool = False,
         at_sender: bool = False,
@@ -619,7 +619,7 @@ class MatcherWrapper:
 
     async def send(
         self,
-        message: Union[str, "Message", "MessageSegment"],
+        message: str | Message | MessageSegment,
         *,
         call_header: bool = False,
         at_sender: bool = False,
@@ -646,7 +646,7 @@ class MatcherWrapper:
 
     async def finish(
         self,
-        message: Optional[Union[str, "Message", "MessageSegment"]] = None,
+        message: str | Message | MessageSegment | None = None,
         *,
         call_header: bool = False,
         at_sender: bool = False,

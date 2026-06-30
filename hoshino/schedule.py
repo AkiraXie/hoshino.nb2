@@ -1,7 +1,7 @@
 from functools import wraps
 from loguru import logger
 from apscheduler import job
-from typing import Callable, Any, Awaitable, List, Dict, Optional
+from typing import Callable, Any, Awaitable, List, Dict
 
 
 def _get_scheduler():
@@ -13,8 +13,8 @@ def _get_scheduler():
 def wrapper(
     func: Callable[[], Any],
     id: str,
-    args: Optional[List] = None,
-    kwargs: Optional[Dict[str, Any]] = None,
+    args: List | None = None,
+    kwargs: Dict[str, Any] | None = None,
 ):
     @wraps(func)
     async def _wrapper():
@@ -44,8 +44,8 @@ def wrapper(
 
 def scheduled_job(
     trigger: str,
-    args: Optional[List] = None,
-    kwargs: Optional[Dict[str, Any]] = None,
+    args: List | None = None,
+    kwargs: Dict[str, Any] | None = None,
     **triger_kwargs,
 ):
     def deco(func: Callable[[], Any]) -> Callable[[], Awaitable[Any]]:
@@ -65,8 +65,8 @@ def scheduled_job(
 def add_job(
     func: Callable[[], Any],
     trigger: str,
-    args: Optional[List] = None,
-    kwargs: Optional[Dict[str, Any]] = None,
+    args: List | None = None,
+    kwargs: Dict[str, Any] | None = None,
     **triger_kwargs,
 ) -> job.Job:
     triger_kwargs.setdefault("timezone", "Asia/Shanghai")

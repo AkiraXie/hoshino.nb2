@@ -7,7 +7,6 @@ from hoshino.util import sucmd, parse_qq
 from hoshino.log import logger
 from hoshino.platform import get_user_id, is_message_event
 from datetime import datetime, timedelta
-from typing import Union
 from pytz import timezone
 from .data import black as db, Session
 from sqlalchemy import select
@@ -31,7 +30,7 @@ async def _():
     logger.info("blocked users has recovered from db")
 
 
-def block_uid(uid: int, date: Union[datetime, timedelta]):
+def block_uid(uid: int, date: datetime | timedelta):
     if isinstance(date, timedelta):
         sec = int(date.total_seconds())
         date = datetime.now(timezone("Asia/Shanghai")) + date

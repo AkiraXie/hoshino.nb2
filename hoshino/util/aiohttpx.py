@@ -131,7 +131,7 @@ async def get(
             cookies=resp.cookies,
         )
         return res
-    except BaseException as e:
+    except Exception as e:
         logger.error(
             f"GET request failed - URL: {url}, params: {kwargs}, cookies: {cookies},error: {e}"
         )
@@ -159,7 +159,7 @@ async def post(
             cookies=resp.cookies,
         )
         return res
-    except BaseException as e:
+    except Exception as e:
         logger.error(
             f"POST request failed - URL: {url}, params: {kwargs}, cookies: {cookies}, error: {e}"
         )
@@ -179,6 +179,6 @@ async def head(
             resp = await client.head(url, **kwargs)
         res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
         return res
-    except BaseException as e:
+    except Exception as e:
         logger.error(f"HEAD request failed - URL: {url}, params: {kwargs},  error: {e}")
         raise

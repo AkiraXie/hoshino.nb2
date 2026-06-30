@@ -22,7 +22,7 @@ from .message import MessageTemplate as MessageTemplate
 from .event import Event as Event
 
 if TYPE_CHECKING:
-    from typing import Any, Callable, Optional, Type as _Type, Union as _Union
+    from typing import Any, Callable, Type as _Type
     from nonebot.matcher import Matcher as _OrigMatcher
     from nonebot.adapters.onebot.v11 import Bot as _OrigBot
 
@@ -31,16 +31,16 @@ if TYPE_CHECKING:
         def got(
             cls: _Type[Matcher],
             key: str,
-            prompt: Optional[_Union[str, Message, MessageSegment, MessageTemplate]] = None,
-            parameterless: Optional[list] = None,
-            args_parser: Optional[T_Handler] = None,
+            prompt: str | Message | MessageSegment | MessageTemplate | None = None,
+            parameterless: list | None = None,
+            args_parser: T_Handler | None = None,
         ) -> Callable[[T_Handler], T_Handler]: ...
 
     class Bot(_OrigBot):
         async def send(
             self,
             event: Event,
-            message: _Union[str, Message, MessageSegment],
+            message: str | Message | MessageSegment,
             at_sender: bool = False,
             call_header: bool = False,
             **kwargs,

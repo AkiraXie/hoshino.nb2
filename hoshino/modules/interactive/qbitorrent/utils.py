@@ -4,7 +4,7 @@ from sqlalchemy import select, create_engine, Integer, Text
 import re
 
 from hoshino import db_dir
-from hoshino.hooks import on_startup
+from hoshino.hooks import on_serial_startup, on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post, get
 from hoshino.types import Event
@@ -36,7 +36,9 @@ class QbtConfig(Base):
     category: Mapped[str] = mapped_column(Text, nullable=True, default="hoshino")
 
 
-Base.metadata.create_all(engine)
+@on_serial_startup
+async def _ensure_qbt_schema() -> None:
+    Base.metadata.create_all(engine)
 
 
 async def get_config(event: Event) -> QbtConfig | None:

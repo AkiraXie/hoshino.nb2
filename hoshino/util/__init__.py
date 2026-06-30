@@ -8,7 +8,7 @@ import unicodedata
 import asyncio
 import os
 from asyncio import get_running_loop
-from typing import List, Optional, Type, Union, Sequence
+from typing import List, Type, Sequence
 from io import BytesIO
 from collections import defaultdict
 from PIL import Image
@@ -52,7 +52,7 @@ __SU_VIDEOLIST = "__superuser__videolist"
 
 def Cooldown(
     cooldown: float = 10,
-    prompt: Optional[str] = None,
+    prompt: str | None = None,
 ) -> None:
     debounced = set()
 
@@ -116,7 +116,7 @@ async def _strip_cmd(bot: "Bot", event: "Event", state: T_State):
 
 
 def sucmd(
-    name: str, only_to_me: bool = True, aliases: Optional[set] = None, **kwargs
+    name: str, only_to_me: bool = True, aliases: set | None = None, **kwargs
 ) -> Type[Matcher]:
     kwargs["aliases"] = aliases
     kwargs["permission"] = SUPERUSER
@@ -403,9 +403,9 @@ async def save_video_by_path(
 def random_image_or_video_by_path(
     path: Path = img_dir,
     num: int = 12,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     video: bool = False,
-    keyword: Optional[str] = None,
+    keyword: str | None = None,
 ) -> list[MessageSegment]:
     files = []
     for file_path in path.iterdir():
@@ -462,7 +462,7 @@ async def get_img_from_url(url: str) -> MessageSegment:
 
 
 async def send(
-    message: Union[str, "Message", "MessageSegment"],
+    message: str | "Message" | "MessageSegment",
     *,
     call_header: bool = False,
     at_sender: bool = False,
@@ -519,7 +519,7 @@ async def send_group_segments(
 
 
 async def finish(
-    message: Union[str, "Message", "MessageSegment", None] = None,
+    message: str | "Message" | "MessageSegment" | None = None,
     *,
     call_header: bool = False,
     at_sender: bool = False,
@@ -558,7 +558,7 @@ cookiejar: dict[str, str] = {}
 _cookies_lock = asyncio.Lock()
 
 
-async def save_cookies(name: str, cookies: Union[str, dict]):
+async def save_cookies(name: str, cookies: str | dict):
     if isinstance(cookies, dict):
         cookies = "; ".join(f"{k}={v}" for k, v in cookies.items())
     cookiejar[name] = cookies

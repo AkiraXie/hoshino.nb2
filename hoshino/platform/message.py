@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 from nonebot.adapters import Bot, Event, Message as AdapterMessage
 from nonebot_plugin_alconna.uniseg import Target, UniMessage
@@ -10,7 +10,7 @@ from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 from hoshino.message import Message, MessageSegment
 from .event import get_user_id
 
-MessageLike = Union[str, Message, MessageSegment, UniMessage]
+MessageLike = str | Message | MessageSegment | UniMessage
 
 
 def text_message(text: str) -> Message:
