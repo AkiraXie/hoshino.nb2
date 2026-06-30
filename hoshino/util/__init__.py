@@ -432,11 +432,13 @@ def get_event_imageurl(event: MessageEvent) -> List[str]:
 
 
 async def send_to_superuser(msg=""):
+    from hoshino.platform import Target, send_to_target
+
     bot: Bot = nonebot.get_bot()
     sus = bot.config.superusers
     for su in sus:
         await asyncio.sleep(0.5)
-        await bot.send_private_msg(user_id=int(su), message=msg)
+        await send_to_target(bot, Target(str(su), private=True), msg)
 
 
 async def get_img_from_url(url: str) -> MessageSegment:
@@ -496,10 +498,12 @@ async def send_group_segments(
     group_id: int,
     message: Sequence[Message | MessageSegment | str],
 ):
+    from hoshino.platform import Target, send_to_target
+
     if not message:
         return
     if len(message) == 1:
-        await bot.send_group_msg(group_id=group_id, message=message[0])
+        await send_to_target(bot, Target(str(group_id)), message[0])
         return
     nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     api = "send_group_forward_msg"

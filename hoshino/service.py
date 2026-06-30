@@ -167,11 +167,10 @@ class Service:
 
     def check_service(self, only_to_me: bool = False, only_group: bool = True) -> Rule:
         async def _cs(event: Event) -> bool:
-            if not "group_id" in event.dict():
+            group_id = getattr(event, "group_id", None)
+            if group_id is None:
                 return not only_group
-            else:
-                group_id = int(event.group_id)
-                return self.check_enabled(group_id)
+            return self.check_enabled(int(group_id))
 
         rule = Rule(_cs)
         if only_to_me:
@@ -472,6 +471,8 @@ class Service:
         return mw
 
     async def broadcast(self, msgs: Optional[Iterable], tag="", interval_time=0.5):
+        from hoshino.platform import Target, send_to_target
+
         if not msgs:
             return
         if isinstance(msgs, (str, Message, MessageSegment)):
@@ -483,7 +484,7 @@ class Service:
                 for msg in msgs:
                     await asyncio.sleep(interval_time)
                     try:
-                        await bot.send_group_msg(group_id=gid, message=msg)
+                        await send_to_target(bot, Target(str(gid)), msg)
                         self.logger.info(f"{sid}在群{gid}投递{tag}成功")
                     except Exception:
                         self.logger.error(f"{sid}在群{gid}投递{tag}失败")
