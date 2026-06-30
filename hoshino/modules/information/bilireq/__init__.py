@@ -3,6 +3,7 @@ import time
 from hoshino.schedule import scheduled_job
 from hoshino.types import Bot, Event
 from hoshino.hooks import on_post_startup
+from hoshino.platform import Target, send_to_target
 import random
 from hoshino.util import send_group_segments, send_segments
 from .utils import (
@@ -248,7 +249,7 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
             try:
                 if msgs:
                     m = msgs[0]
-                    await bot.send_group_msg(group_id=gid, message=m)
+                    await send_to_target(bot, Target(str(gid)), m)
                     await asyncio.sleep(random.uniform(0, 0.5))
                     await send_group_segments(bot, gid, msgs[1:])
             except Exception as e:

@@ -6,6 +6,7 @@ from hoshino.types import Bot, Event, Message, MessageSegment
 from hoshino.service import Service
 from hoshino.hooks import on_post_startup
 from hoshino.schedule import scheduled_job
+from hoshino.platform import Target, send_to_target
 
 from .db import (
     LiveSub,
@@ -192,7 +193,7 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
         for bot in bots:
             try:
                 for msg in msg_parts:
-                    await bot.send_group_msg(group_id=gid, message=msg)
+                    await send_to_target(bot, Target(str(gid)), msg)
                     await asyncio.sleep(0.3)
                 sv.logger.info(f"直播推送 {info.anchor}({room_id}/{platform}) -> 群{gid} 成功")
             except Exception as e:

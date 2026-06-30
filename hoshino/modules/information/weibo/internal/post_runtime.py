@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Iterable
 from hoshino.types import Bot, Message, MessageSegment
 from hoshino import config
 from hoshino.modules.information.utils import PostMessage
+from hoshino.platform import Target, send_to_target
 from hoshino.util import (
     save_img_by_path,
     save_video_by_path,
@@ -472,9 +473,9 @@ class _MessageDispatcher:
             "微博发送普通消息: "
             f"group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
         )
-        result = await bot.send_group_msg(group_id=gid, message=msgs[0])
+        result = await send_to_target(bot, Target(str(gid)), msgs[0])
         for message in msgs[1:]:
-            await bot.send_group_msg(group_id=gid, message=message)
+            await send_to_target(bot, Target(str(gid)), message)
             await asyncio.sleep(0.3)
         return result
 
@@ -493,7 +494,7 @@ class _MessageDispatcher:
             "微博发送分段消息: "
             f"group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
         )
-        result = await bot.send_group_msg(group_id=gid, message=msgs[0])
+        result = await send_to_target(bot, Target(str(gid)), msgs[0])
         if len(msgs) > 1:
             await asyncio.sleep(0.3)
             await send_group_segments(bot, gid, msgs[1:])

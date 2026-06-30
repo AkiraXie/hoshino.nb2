@@ -9,6 +9,7 @@ from hoshino import db_dir
 from hoshino.permission import ADMIN
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx
+from hoshino.platform import Target, send_to_target
 
 sv = Service("steam", enable_on_default=False, visible=False)
 sub = {"subscribes": {}}
@@ -212,5 +213,5 @@ async def check_steam_status():
 async def broadcast(group_list: Iterable, msg):
     for group in group_list:
         for bot in get_bot_list():
-            await bot.send_group_msg(group_id=group, message=msg)
+            await send_to_target(bot, Target(str(group)), msg)
             await sleep(0.5)
