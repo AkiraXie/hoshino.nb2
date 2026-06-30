@@ -2,7 +2,6 @@ from hoshino.util.playwrights import (
     get_b,
     Page,
     Browser,
-    MessageSegment,
     mobile_context_params,
     bili_mobilejs,
 )
@@ -10,7 +9,7 @@ from hoshino.util import get_cookies
 from nonebot.log import logger
 
 
-async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | None:
+async def get_bili_dynamic_screenshot(url: str, cookies={}) -> bytes | None:
     b: Browser = await get_b()
     c = await b.new_context(**mobile_context_params)
     if not cookies:
@@ -41,7 +40,7 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> MessageSegment | 
             return None
         image = await element.screenshot()
 
-        return MessageSegment.image(image)
+        return image
     except Exception as e:
         logger.error(f"get_bili_dynamic_screenshot error: {e} url: {url}")
         return None

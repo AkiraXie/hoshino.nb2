@@ -13,7 +13,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
-from hoshino.types import Message, MessageSegment
+from hoshino.platform import (
+    MessageLike,
+    image_segment,
+    message_from_parts,
+    text_message,
+)
 from hoshino.service import Service
 from hoshino.util import (
     aiohttpx,
@@ -200,18 +205,18 @@ class BiliBiliDynamic(Post):
     @override
     def render_message(
         self, post_message: PostMessage
-    ) -> list[Message | MessageSegment]:
+    ) -> list[MessageLike]:
         head = post_message.text
         if post_message.screenshot:
             head = "\n".join(
-                part for part in (head, str(post_message.screenshot)) if part
+                part for part in (head, str(image_segment(post_message.screenshot))) if part
             )
-        messages: list[Message | MessageSegment] = []
+        messages: list[MessageLike] = []
         if head:
-            messages.append(Message(head))
+            messages.append(text_message(head))
         if post_message.images:
             messages.append(
-                Message([MessageSegment.image(pic) for pic in post_message.images])
+                message_from_parts([image_segment(pic) for pic in post_message.images])
             )
         return messages
 

@@ -19,13 +19,16 @@ from .event import (
     is_private_event,
 )
 from .message import (
+    MessageLike,
     Target,
     UniMessage,
     custom_node_segment,
     image_segment,
+    message_from_parts,
     send_to_event,
     send_to_event_or_fallback,
     send_to_target,
+    text_message,
     to_unimessage,
     video_segment,
 )
@@ -43,6 +46,7 @@ from .target import (
 )
 
 __all__ = [
+    "MessageLike",
     "Target",
     "UniMessage",
     "custom_node_segment",
@@ -66,6 +70,7 @@ __all__ = [
     "image_segment",
     "load_target",
     "load_target_or_group",
+    "message_from_parts",
     "platform_key",
     "private_target",
     "send_group_forward",
@@ -75,6 +80,7 @@ __all__ = [
     "send_to_target",
     "target_from_event",
     "target_scope_key",
+    "text_message",
     "to_unimessage",
     "upload_group_file",
     "video_segment",

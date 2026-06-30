@@ -13,6 +13,14 @@ from .event import get_user_id
 MessageLike = Union[str, Message, MessageSegment, UniMessage]
 
 
+def text_message(text: str) -> Message:
+    return Message(text)
+
+
+def message_from_parts(parts: Any) -> Message:
+    return Message(parts)
+
+
 def image_segment(file: Any) -> MessageSegment:
     return MessageSegment.image(file)
 

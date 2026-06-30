@@ -3,10 +3,11 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-from hoshino.types import Bot, Event, Message
+from hoshino.types import Bot, Event
 from hoshino.permission import SUPERUSER
 from hoshino import data_dir
 from hoshino.util import send_segments
+from hoshino.platform import MessageLike, text_message
 
 from .sv import sv
 from .internal.post_runtime import (
@@ -151,14 +152,14 @@ def _build_favorite_search_messages(
     keyword: str,
     results: list[dict[str, str]],
     target_uid: str | None = None,
-) -> list[Message]:
+) -> list[MessageLike]:
     lines = []
     for item in results:
         summary = _summarize_favorite_content(item["content"])
         lines.append(f"UID: {item['uid']} ID: {item['id']} 内容: {summary}")
 
     chunks = [lines[index : index + 10] for index in range(0, len(lines), 10)]
-    messages: list[Message] = []
+    messages: list[MessageLike] = []
     total = len(results)
     scope = f" UID: {target_uid}" if target_uid else ""
     for index, chunk in enumerate(chunks, start=1):
@@ -167,7 +168,7 @@ def _build_favorite_search_messages(
         if index == len(chunks):
             text += "\n使用 查看微博收藏 ID"
             text += "\n或 查看微博收藏 UID_ID"
-        messages.append(Message(text))
+        messages.append(text_message(text))
     return messages
 
 

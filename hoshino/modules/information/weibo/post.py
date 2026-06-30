@@ -6,8 +6,9 @@ from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
 
-from hoshino.types import Bot, Message, MessageSegment
+from hoshino.types import Bot
 from hoshino.modules.information.utils import PostMessage
+from hoshino.platform import MessageLike
 
 from ..utils import Post, clean_filename
 from .internal.post_runtime import (
@@ -188,7 +189,7 @@ class WeiboPost(Post):
     @override
     def render_message(
         self, post_message: PostMessage
-    ) -> list[Message | MessageSegment]:
+    ) -> list[MessageLike]:
         return render_messages(post_message, post=self)
 
     async def send(

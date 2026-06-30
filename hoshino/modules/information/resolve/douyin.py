@@ -13,7 +13,7 @@ from hoshino.util import (
 from hoshino import data_dir
 from ..utils import Post as BasePost, PostMessage, clean_filename
 from .sv import sv
-from hoshino.types import Message, MessageSegment
+from hoshino.platform import MessageLike, image_segment, text_message, video_segment
 
 COMMON_HEADER = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -120,12 +120,12 @@ class Post(BasePost):
 
     def render_message(
         self, post_message: PostMessage
-    ) -> list[Message | MessageSegment]:
-        messages: list[Message | MessageSegment] = []
+    ) -> list[MessageLike]:
+        messages: list[MessageLike] = []
         if post_message.text:
-            messages.append(Message(post_message.text))
-        messages.extend(MessageSegment.image(img) for img in post_message.images)
-        messages.extend(MessageSegment.video(vid) for vid in post_message.videos)
+            messages.append(text_message(post_message.text))
+        messages.extend(image_segment(img) for img in post_message.images)
+        messages.extend(video_segment(vid) for vid in post_message.videos)
         return messages
 
     def _build_text(self) -> str:

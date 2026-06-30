@@ -6,10 +6,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
-from hoshino.types import Bot, Message, MessageSegment
+from hoshino.types import Bot
 from hoshino import config
 from hoshino.modules.information.utils import PostMessage
-from hoshino.platform import Target, group_target, send_to_target
+from hoshino.platform import (
+    MessageLike,
+    Target,
+    group_target,
+    image_segment,
+    message_from_parts,
+    send_to_target,
+    text_message,
+    video_segment,
+)
 from hoshino.util import (
     save_img_by_path,
     save_video_by_path,
@@ -421,28 +430,28 @@ class _PostArchiveStore:
 
 
 class _MessageRenderer:
-    def build_image_messages(self, image_paths: list[Path]) -> list[Message | MessageSegment]:
+    def build_image_messages(self, image_paths: list[Path]) -> list[MessageLike]:
         if not image_paths:
             return []
-        segments = [MessageSegment.image(image_path) for image_path in image_paths]
-        messages: list[Message | MessageSegment] = []
+        segments = [image_segment(image_path) for image_path in image_paths]
+        messages: list[MessageLike] = []
         chunk_size = 4
         for divisor in (7, 6, 5, 4, 3):
             if len(segments) % divisor == 0:
                 chunk_size = divisor
                 break
         for index in range(0, len(segments), chunk_size):
-            messages.append(Message(segments[index : index + chunk_size]))
+            messages.append(message_from_parts(segments[index : index + chunk_size]))
         return messages
 
     def render(
         self,
         post_message: PostMessage,
         post: "WeiboPost | None" = None,
-    ) -> list[Message | MessageSegment]:
+    ) -> list[MessageLike]:
         head = post_message.text or ""
         if post_message.screenshot:
-            head += "\n" + str(MessageSegment.image(post_message.screenshot))
+            head += "\n" + str(image_segment(post_message.screenshot))
         elif post_message.content:
             head += "\n" + post_message.content
         if post:
@@ -450,11 +459,11 @@ class _MessageRenderer:
             if tail:
                 head += "\n" + tail
 
-        messages: list[Message | MessageSegment] = []
+        messages: list[MessageLike] = []
         if head:
-            messages.append(Message(head))
+            messages.append(text_message(head))
         messages.extend(self.build_image_messages(post_message.images))
-        messages.extend(MessageSegment.video(video) for video in post_message.videos)
+        messages.extend(video_segment(video) for video in post_message.videos)
         return messages
 
 class _MessageDispatcher:
@@ -462,7 +471,7 @@ class _MessageDispatcher:
         self,
         bot: Bot,
         gid: int,
-        msgs: list[Message | MessageSegment] | None = None,
+        msgs: list[MessageLike] | None = None,
         *,
         target: Target | None = None,
         uid: str = "",
@@ -485,7 +494,7 @@ class _MessageDispatcher:
         self,
         bot: Bot,
         gid: int,
-        msgs: list[Message | MessageSegment] | None = None,
+        msgs: list[MessageLike] | None = None,
         *,
         target: Target | None = None,
         uid: str = "",
@@ -551,21 +560,21 @@ async def take_post_screenshot(
 
 def build_image_messages(
     image_paths: list[Path],
-) -> list[Message | MessageSegment]:
+) -> list[MessageLike]:
     return _renderer.build_image_messages(image_paths)
 
 
 def render_messages(
     post_message: PostMessage,
     post: "WeiboPost | None" = None,
-) -> list[Message | MessageSegment]:
+) -> list[MessageLike]:
     return _renderer.render(post_message, post=post)
 
 
 async def send_weibo_messages(
     bot: Bot,
     gid: int,
-    msgs: list[Message | MessageSegment] | None = None,
+    msgs: list[MessageLike] | None = None,
     *,
     target: Target | None = None,
     uid: str = "",
@@ -584,7 +593,7 @@ async def send_weibo_messages(
 async def send_weibo_segments(
     bot: Bot,
     gid: int,
-    msgs: list[Message | MessageSegment] | None = None,
+    msgs: list[MessageLike] | None = None,
     *,
     target: Target | None = None,
     uid: str = "",
@@ -709,7 +718,7 @@ async def send_post_message(
     post,
     post_message: PostMessage | None = None,
     *,
-    messages: list[Message | MessageSegment] | None = None,
+    messages: list[MessageLike] | None = None,
     target: Target | None = None,
     use_segments: bool = False,
 ) -> dict:

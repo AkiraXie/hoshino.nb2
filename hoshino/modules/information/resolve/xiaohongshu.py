@@ -2,9 +2,15 @@ import json
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel
-from hoshino.types import Bot, Event, MessageSegment, Message
+from hoshino.types import Bot, Event
 from hoshino import data_dir
-from hoshino.platform import get_group_id, upload_group_file
+from hoshino.platform import (
+    MessageLike,
+    get_group_id,
+    image_segment,
+    upload_group_file,
+    video_segment,
+)
 from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
 import re
 from urllib.parse import parse_qs, urlparse
@@ -41,7 +47,7 @@ xhs_video_dir.mkdir(exist_ok=True)
 
 async def parse_xhs(
     url: str,
-) -> tuple[list[Message | MessageSegment | str] | None, Path | None]:
+) -> tuple[list[MessageLike] | None, Path | None]:
     if "xhslink" in url:
         url = await get_redirect(url, xhs_discovery_headers)
     pattern = r"(?:/explore/|/discovery/item/|source=note&noteId=)(\w+)"
@@ -188,7 +194,7 @@ async def parse_xhs_explore(url: str, xhs_id: str):
     title_desc = f"{notedetail.nickname} 小红书笔记~\n{notedetail.title}\n--------\n{notedetail.desc}\n"
     msg = [title_desc, f"笔记链接: {resp.url}"]
     for img_url in notedetail.image_urls:
-        msg.append(MessageSegment.image(img_url))
+        msg.append(image_segment(img_url))
     video_url = notedetail.video_url
     if video_url:
         header = {
@@ -204,7 +210,7 @@ async def parse_xhs_explore(url: str, xhs_id: str):
             if path.stat().st_size >= 100 * 1000 * 1000:  # 100MB limit
                 res = path
             else:
-                msg.append(MessageSegment.video(path))
+                msg.append(video_segment(path))
         return msg, res
     return msg, None
 

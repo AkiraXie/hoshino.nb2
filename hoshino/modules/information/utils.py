@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from asyncio import Queue
 from pathlib import Path
 import re
-from hoshino.types import Message, MessageSegment
+from hoshino.platform import MessageLike
 from typing import Protocol, Union, TypeVar, Generic
 import time
 
@@ -17,7 +17,7 @@ class Queueable(Protocol):
 
 
 T = TypeVar("T", bound=Queueable)
-RenderableMessage = Message | MessageSegment
+RenderableMessage = MessageLike
 PostResource = str | Path
 
 
