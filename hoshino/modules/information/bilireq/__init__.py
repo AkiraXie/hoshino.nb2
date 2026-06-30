@@ -31,7 +31,12 @@ uid_manager = UIDManager()
 tz = timezone("Asia/Shanghai")
 
 
-@sv.on_command("添加动态", aliases=("订阅动态", "新增动态", "动态订阅", "adddyn"))
+add_dynamic_cmd = sv.on_command(
+    "添加动态", aliases=("订阅动态", "新增动态", "动态订阅", "adddyn")
+)
+
+
+@add_dynamic_cmd.handle()
 async def _(gid: int | None = GroupID(), uid: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -70,10 +75,13 @@ async def _(gid: int | None = GroupID(), uid: str = PlainText()):
     await UniMessage.text(f"{name} 订阅动态成功").send()
 
 
-@sv.on_command(
+remove_dynamic_cmd = sv.on_command(
     "删除订阅动态",
     aliases=("取消订阅动态", "关闭订阅动态", "删除动态", "取消动态", "deldyn"),
 )
+
+
+@remove_dynamic_cmd.handle()
 async def _(gid: int | None = GroupID(), uid: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -122,10 +130,13 @@ async def _(gid: int | None = GroupID(), uid: str = PlainText()):
         await UniMessage.text(f"{uid} 删除订阅动态失败").send()
 
 
-@sv.on_command(
+list_dynamic_cmd = sv.on_command(
     "本群动态订阅",
     aliases={"订阅动态列表", "动态订阅列表", "动态列表", "listdyn", "lsdyn"},
 )
+
+
+@list_dynamic_cmd.handle()
 async def _(gid: int | None = GroupID()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -144,10 +155,13 @@ async def _(gid: int | None = GroupID()):
         await UniMessage.text("\n".join(msg)).send()
 
 
-@sv.on_command(
+check_dynamic_cmd = sv.on_command(
     "查看最新动态",
     aliases={"看动态", "看最新动态", "查动态", "查看动态", "seedyn", "kkdyn", "kkbl"},
 )
+
+
+@check_dynamic_cmd.handle()
 async def _(gid: int | None = GroupID(), arg: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()

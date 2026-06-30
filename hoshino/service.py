@@ -50,6 +50,22 @@ _loaded_matchers: dict["type[Matcher]", "Service"] = {}
 _matcher_sv_map: dict[int, "Service"] = {}
 
 
+class _DecoratableMatcher:
+    """薄包装：支持 @sv.on_xxx(...) 直接装饰 + 透传所有 matcher 方法"""
+
+    def __init__(self, inner: Matcher):
+        object.__setattr__(self, "_inner", inner)
+
+    def __call__(self, func):
+        return self._inner.handle()(func)
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    def __setattr__(self, name: str, value):
+        setattr(self._inner, name, value)
+
+
 def _iter_to_set(words: set | list | tuple | str | None) -> set:
     if isinstance(words, str):
         res = set([words])
@@ -349,7 +365,8 @@ class Service:
         )
         _loaded_matchers[type(matcher)] = self
         _matcher_sv_map[id(matcher)] = self
-        return matcher
+        matcher.__hoshino_sv__ = self
+        return _DecoratableMatcher(matcher)
 
     def _on_alconna_delegate(
         self,
@@ -361,6 +378,8 @@ class Service:
         aliases: set[str] | tuple[str, ...] | None = None,
         **kwargs,
     ):
+        if not isinstance(command, Alconna):
+            command = Alconna(command)
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
@@ -376,7 +395,8 @@ class Service:
         )
         _loaded_matchers[type(matcher)] = self
         _matcher_sv_map[id(matcher)] = self
-        return matcher
+        matcher.__hoshino_sv__ = self
+        return _DecoratableMatcher(matcher)
 
     def on_startswith(
         self,
@@ -682,7 +702,7 @@ class MatcherWrapper:
 
     def __str__(self) -> str:
         finfo = [
-            f"{k}={v}".replace("<", "\<").replace(">", "\>")
+            f"{k}={v}".replace("<", r"\<").replace(">", r"\>")
             for k, v in self.info.items()
         ]
         return (

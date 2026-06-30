@@ -1,18 +1,18 @@
-from nonebot.matcher import Matcher
-from nonebot.typing import T_State
-from hoshino.service import Service
 import random
+from hoshino.service import Service
+from hoshino.platform import AlconnaResult, UniMessage
 
 sv = Service("dice", visible=False)
 d = sv.on_regex(r".r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?")
 
 
 @d.handle()
-async def _(matcher: Matcher, state: T_State):
+async def _(result: AlconnaResult):
+    match_obj = result.result.header_match.result
     rd = random.SystemRandom()
-    num = state["match"].group(1)
-    mx = state["match"].group(2)
-    offset = state["match"].group(3)
+    num = match_obj.group(1)
+    mx = match_obj.group(2)
+    offset = match_obj.group(3)
     res = []
     rs = "本次掷骰结果为: "
     for i in range(int(num)):
@@ -29,4 +29,4 @@ async def _(matcher: Matcher, state: T_State):
         rs += off + "(offset)"
     if len(res) != 1 or offset is not None:
         rs += "=" + str(su)
-    await matcher.send(rs)
+    await UniMessage.text(rs).send()

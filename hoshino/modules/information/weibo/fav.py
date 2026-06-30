@@ -171,7 +171,7 @@ def _build_favorite_search_messages(
     return messages
 
 
-@sv.on_command(
+random_favorite_cmd = sv.on_command(
     "随机微博收藏",
     aliases=("微博随机收藏", "收藏微博", "randwbfav", "rwbfav"),
     only_group=False,
@@ -179,6 +179,9 @@ def _build_favorite_search_messages(
     permission=SUPERUSER,
     priority=5,
 )
+
+
+@random_favorite_cmd.handle()
 async def random_weibo_favorite(text: str = PlainText()):
     target_uid = text.strip() or None
     uid_ids = _list_favorite_uid_ids(target_uid)
@@ -201,13 +204,16 @@ async def random_weibo_favorite(text: str = PlainText()):
     await send_segments(msgs)
 
 
-@sv.on_command(
+search_favorite_cmd = sv.on_command(
     "搜索微博收藏",
     aliases=("搜微博收藏", "微博收藏搜索", "wbfavsearch", "searchwbfav"),
     only_group=False,
     permission=SUPERUSER,
     priority=5,
 )
+
+
+@search_favorite_cmd.handle()
 async def search_weibo_favorite(arg: str = PlainText()):
     arg = arg.strip()
     if not arg:
@@ -232,13 +238,16 @@ async def search_weibo_favorite(arg: str = PlainText()):
     await send_segments(messages)
 
 
-@sv.on_command(
+show_favorite_cmd = sv.on_command(
     "查看微博收藏",
     aliases=("重现微博收藏", "显示微博收藏", "showwbfav", "getwbfav"),
     only_group=False,
     permission=SUPERUSER,
     priority=5,
 )
+
+
+@show_favorite_cmd.handle()
 async def show_weibo_favorite(post_ref: str = PlainText()):
     post_ref = post_ref.strip()
     if not post_ref:

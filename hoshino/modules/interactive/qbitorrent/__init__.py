@@ -33,7 +33,7 @@ active_list = sv.on_command("下载列表", aliases={"活跃列表", "qbt列表"
 completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归档", "completed"})
 
 
-@configset
+@configset.handle()
 async def _(text: str = PlainText(), gid: int = GroupID()):
     """配置qBittorrent连接信息"""
     msgs = text.strip().split()
@@ -81,7 +81,7 @@ async def _(text: str = PlainText(), gid: int = GroupID()):
     )
 
 
-@configshow
+@configshow.handle()
 async def _(config: QbtConfig | None = Depends(get_config)):
     """显示当前qBittorrent配置"""
     if not config:
@@ -95,7 +95,7 @@ async def _(config: QbtConfig | None = Depends(get_config)):
     )
 
 
-@add_torrent
+@add_torrent.handle()
 async def _(
     text: str = PlainText(),
     client: QbtClient | None = Depends(get_client),
@@ -177,7 +177,7 @@ def _render_torrent_list(torrents: list[dict], max_show: int, title: str, catego
     return msg
 
 
-@active_list
+@active_list.handle()
 async def _(
     text: str = PlainText(),
     client: QbtClient | None = Depends(get_client),
@@ -198,7 +198,7 @@ async def _(
     await active_list.finish(msg, call_header=True)
 
 
-@completed_list
+@completed_list.handle()
 async def _(
     text: str = PlainText(),
     client: QbtClient | None = Depends(get_client),

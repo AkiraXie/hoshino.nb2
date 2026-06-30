@@ -215,7 +215,13 @@ async def _dispatch_status_change(room_id: str, platform: str, info: LiveInfo, o
 # ==================== 命令 ====================
 
 
-@sv.on_command("添加直播订阅", aliases=("订阅直播", "添加直播", "addbililive", "adblive", "addlive"))
+add_live_cmd = sv.on_command(
+    "添加直播订阅",
+    aliases=("订阅直播", "添加直播", "addbililive", "adblive", "addlive"),
+)
+
+
+@add_live_cmd.handle()
 async def cmd_add_live(
     gid: int | None = GroupID(),
     msg: str = PlainText(),
@@ -266,7 +272,13 @@ async def cmd_add_live(
     await UniMessage.text(reply).send()
 
 
-@sv.on_command("删除直播订阅", aliases=("取消直播", "删除直播", "rmbililive", "rmblive", "rmlive"))
+remove_live_cmd = sv.on_command(
+    "删除直播订阅",
+    aliases=("取消直播", "删除直播", "rmbililive", "rmblive", "rmlive"),
+)
+
+
+@remove_live_cmd.handle()
 async def cmd_remove_live(gid: int | None = GroupID(), args: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -306,7 +318,13 @@ async def cmd_remove_live(gid: int | None = GroupID(), args: str = PlainText()):
         await asyncio.sleep(0.3)
 
 
-@sv.on_command("直播订阅", aliases=("直播订阅列表", "lsbililive", "lsblive", "listbililive", "lslive"))
+list_live_cmd = sv.on_command(
+    "直播订阅",
+    aliases=("直播订阅列表", "lsbililive", "lsblive", "listbililive", "lslive"),
+)
+
+
+@list_live_cmd.handle()
 async def cmd_list_live(gid: int | None = GroupID(), filter_text: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -361,7 +379,13 @@ async def cmd_list_live(gid: int | None = GroupID(), filter_text: str = PlainTex
     await UniMessage.text("\n".join(lines)).send()
 
 
-@sv.on_command("直播状态", aliases=("查看直播", "checkbililive", "ckblive", "checklive"))
+check_live_cmd = sv.on_command(
+    "直播状态",
+    aliases=("查看直播", "checkbililive", "ckblive", "checklive"),
+)
+
+
+@check_live_cmd.handle()
 async def cmd_check_live(arg: str = PlainText()):
     arg = arg.strip()
     if not arg:

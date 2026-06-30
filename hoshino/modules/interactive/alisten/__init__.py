@@ -12,7 +12,7 @@ configshow = sv.on_command(
 )
 
 
-@configset
+@configset.handle()
 async def _(text: str = PlainText(), gid: int = GroupID()):
     msgs = text.strip().split()
     if len(msgs) not in (3, 4):
@@ -50,7 +50,7 @@ async def _(text: str = PlainText(), gid: int = GroupID()):
     )
 
 
-@configshow
+@configshow.handle()
 async def _(config: AlistenConfig | None = Depends(get_config)):
     if not config:
         await configshow.finish("当前没有配置听歌房")
@@ -92,7 +92,7 @@ async def get_user_name(
     return user_name
 
 
-@pickmusic
+@pickmusic.handle()
 async def _(
     text: str = PlainText(),
     user_name: str = Depends(get_user_name),
@@ -126,7 +126,7 @@ async def _(
         await pickmusic.finish("点歌失败!", call_header=True)
 
 
-@pickmusicid
+@pickmusicid.handle()
 async def _(
     text: str = PlainText(),
     user_name: str = Depends(get_user_name),
@@ -159,7 +159,7 @@ async def _(
         await pickmusicid.finish("点歌失败!", call_header=True)
 
 
-@houseuser
+@houseuser.handle()
 async def _(client: AlistenClient | None = Depends(get_client)):
     if not client:
         await houseuser.finish("当前没有配置听歌房")
@@ -173,7 +173,7 @@ async def _(client: AlistenClient | None = Depends(get_client)):
     await houseuser.finish(msg, call_header=True)
 
 
-@playlistcmd
+@playlistcmd.handle()
 async def _(client: AlistenClient | None = Depends(get_client)):
     if not client:
         await playlistcmd.finish("当前没有配置听歌房")

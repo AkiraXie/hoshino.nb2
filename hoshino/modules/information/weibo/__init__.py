@@ -120,7 +120,7 @@ async def set_weibo_config(state: T_State, gid: int | None = GroupID()):
     )
 
 
-@sv.on_command(
+random_image_cmd = sv.on_command(
     "微博随图",
     aliases=("wbimg", "wim"),
     only_group=False,
@@ -128,6 +128,9 @@ async def set_weibo_config(state: T_State, gid: int | None = GroupID()):
     permission=SUPERUSER,
     priority=5,
 )
+
+
+@random_image_cmd.handle()
 async def weibo_random_image(
     text: str = PlainText(),
     message_id: int | None = MessageID(),
@@ -154,7 +157,7 @@ async def weibo_random_image(
     await send_segments(imgs)
 
 
-@sv.on_command(
+random_video_cmd = sv.on_command(
     "微博随影",
     aliases=("wbvid", "wvi"),
     only_to_me=True,
@@ -162,6 +165,9 @@ async def weibo_random_image(
     permission=SUPERUSER,
     priority=5,
 )
+
+
+@random_video_cmd.handle()
 async def weibo_random_video(
     text: str = PlainText(),
     message_id: int | None = MessageID(),
@@ -188,10 +194,13 @@ async def weibo_random_video(
     await send_segments(imgs)
 
 
-@sv.on_command(
+add_weibo_cmd = sv.on_command(
     "添加微博订阅",
     aliases=("订阅微博", "新增微博", "添加微博", "添加weibo", "addweibo", "addwb"),
 )
+
+
+@add_weibo_cmd.handle()
 async def add_subscription(gid: int | None = GroupID(), msg: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -231,9 +240,12 @@ async def add_subscription(gid: int | None = GroupID(), msg: str = PlainText()):
         await UniMessage.text(f"成功订阅微博用户：{post.nickname} UID: {uid}").send()
 
 
-@sv.on_command(
+remove_weibo_cmd = sv.on_command(
     "删除微博订阅", aliases=("取消微博", "删除微博", "rmweibo", "删除weibo", "rmwb")
 )
+
+
+@remove_weibo_cmd.handle()
 async def remove_subscription(gid: int | None = GroupID(), uids: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -261,7 +273,12 @@ async def remove_subscription(gid: int | None = GroupID(), uids: str = PlainText
             await UniMessage.text(f"{uid} 删除微博订阅失败").send()
 
 
-@sv.on_command("微博订阅", aliases=("微博订阅列表", "lookweibo", "lswb", "listweibo"))
+list_weibo_cmd = sv.on_command(
+    "微博订阅", aliases=("微博订阅列表", "lookweibo", "lswb", "listweibo")
+)
+
+
+@list_weibo_cmd.handle()
 async def list_subscriptions(gid: int | None = GroupID()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -279,7 +296,12 @@ async def list_subscriptions(gid: int | None = GroupID()):
     await UniMessage.text(msg).send()
 
 
-@sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb", "seewb"))
+see_weibo_cmd = sv.on_command(
+    "微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb", "seewb")
+)
+
+
+@see_weibo_cmd.handle()
 async def see_weibo(gid: int | None = GroupID(), arg: str = PlainText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -307,13 +329,16 @@ async def see_weibo(gid: int | None = GroupID(), arg: str = PlainText()):
         await send_segments(msgs)
 
 
-@sv.on_command(
+query_weibo_cmd = sv.on_command(
     "查库微博",
     aliases=("wbquery", "微博查库"),
     permission=SUPERUSER,
     only_group=False,
     only_to_me=True,
 )
+
+
+@query_weibo_cmd.handle()
 async def query_weibo_user(arg: str = PlainText()):
     arg = arg.strip()
     if arg.isdecimal():

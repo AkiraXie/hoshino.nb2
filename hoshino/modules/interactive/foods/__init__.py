@@ -1,12 +1,9 @@
 from hoshino.service import Service
-from nonebot.matcher import Matcher
-from nonebot.typing import T_State
-from hoshino.platform import UniMessage
+from hoshino.platform import AlconnaResult, UniMessage
 from hoshino.permission import SUPERUSER
 import os
 import random
 from pathlib import Path
-
 
 sv = Service("foods", enable_on_default=False, manage_perm=SUPERUSER)
 foods = [
@@ -14,13 +11,16 @@ foods = [
 ]
 
 
-@sv.on_regex(r"(.{1,9})吃(什么|啥)", priority=3)
-async def _(m: Matcher, s: T_State):
+food = sv.on_regex(r"(.{1,9})吃(什么|啥)", priority=3)
+
+
+@food.handle()
+async def _(result: AlconnaResult):
     rng = random.SystemRandom()
     if not foods:
         return
     res = rng.choice(foods)
-    name = s["_matched_groups"][0]
+    name = result.result.header_match.result.group(1)
     with open(res, "rb") as f:
         img = f.read()
     await (UniMessage.text(f"{name}吃{res.stem}吧! \n") + UniMessage.image(raw=img)).send(

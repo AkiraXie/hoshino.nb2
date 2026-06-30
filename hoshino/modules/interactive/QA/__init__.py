@@ -228,8 +228,17 @@ async def parse_sin_qq(event: Event, state: T_State):
             break
 
 
-@del_pqa.got("question", "请输入要删除的问题", args_parser=parse_question)
-@del_pqa.got("user_id", "请输入要删除问题的id,支持at", args_parser=parse_sin_qq)
+@del_pqa.got("question", "请输入要删除的问题")
+async def _(state: T_State, text: str = PlainText()):
+    state["question"] = text
+
+
+@del_pqa.got("user_id", "请输入要删除问题的id,支持at")
+async def _(event: Event, state: T_State):
+    await parse_sin_qq(event, state)
+
+
+@del_pqa.handle()
 async def _(state: T_State, gid: int = GroupID()):
     if not state.get("user_id", None):
         return
