@@ -7,8 +7,7 @@ from hoshino import db_dir
 from hoshino.hooks import on_serial_startup, on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post, get
-from nonebot.adapters import Event
-from hoshino.platform import get_group_id
+from hoshino.platform import GroupID
 
 db_path = db_dir / "qbitorrent.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -41,9 +40,8 @@ async def _ensure_qbt_schema() -> None:
     Base.metadata.create_all(engine)
 
 
-async def get_config(event: Event) -> QbtConfig | None:
+async def get_config(gid: int | None = GroupID()) -> QbtConfig | None:
     """获取群组的qBittorrent配置"""
-    gid = get_group_id(event)
     if gid is None:
         return None
     with Session() as session:
@@ -223,8 +221,7 @@ async def init_qbt_clients():
     sv.logger.info(f"Initialized {len(_clients)} qbitorrent clients")
 
 
-def get_client(event: Event) -> QbtClient | None:
-    gid = get_group_id(event)
+def get_client(gid: int | None = GroupID()) -> QbtClient | None:
     if gid is None:
         return None
     return _clients.get(gid)

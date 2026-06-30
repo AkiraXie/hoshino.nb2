@@ -5,8 +5,7 @@ from hoshino import db_dir
 from hoshino.hooks import on_serial_startup, on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
-from nonebot.adapters import Event
-from hoshino.platform import get_group_id
+from hoshino.platform import GroupID
 
 db_path = db_dir / "alisten.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -35,8 +34,7 @@ async def _ensure_alisten_schema() -> None:
     Base.metadata.create_all(engine)
 
 
-async def get_config(event: Event) -> AlistenConfig | None:
-    gid = get_group_id(event)
+async def get_config(gid: int | None = GroupID()) -> AlistenConfig | None:
     if gid is None:
         return None
     with Session() as session:
@@ -212,8 +210,7 @@ async def init_alisten_clients():
     sv.logger.info(f"Initialized {len(_clients)} alisten clients")
 
 
-def get_client(event: Event) -> AlistenClient | None:
-    gid = get_group_id(event)
+def get_client(gid: int | None = GroupID()) -> AlistenClient | None:
     if gid is None:
         return None
     return _clients.get(gid)

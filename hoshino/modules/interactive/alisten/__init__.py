@@ -1,9 +1,9 @@
 from sqlalchemy import select
 from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Session, update_client
 from hoshino.permission import ADMIN
-from nonebot.adapters import Bot, Event
+from nonebot.adapters import Bot
 from hoshino import hsn_nickname
-from hoshino.platform import GroupID, PlainText, get_group_id, get_group_member_info, get_user_id
+from hoshino.platform import GroupID, PlainText, SenderID, get_group_member_info
 from nonebot.params import Depends
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)
@@ -74,9 +74,11 @@ playlistcmd = sv.on_command(
 )
 
 
-async def get_user_name(bot: Bot, event: Event) -> str:
-    group_id = get_group_id(event)
-    user_id = get_user_id(event)
+async def get_user_name(
+    bot: Bot,
+    group_id: int | None = GroupID(),
+    user_id: int | None = SenderID(),
+) -> str:
     if group_id is None or user_id is None:
         return hsn_nickname
     info = await get_group_member_info(

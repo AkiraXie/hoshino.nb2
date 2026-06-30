@@ -1,15 +1,14 @@
 from loguru import logger
 from hoshino.util import sucmd
-from nonebot.adapters import Bot, Event
-from hoshino.platform import get_event_message, get_group_list, group_target, send_to_target
+from nonebot.adapters import Bot
+from hoshino.platform import EventMessage, get_group_list, group_target, send_to_target
 from asyncio import sleep
 
 bc = sucmd("bc", aliases={"广播", "broadcast"})
 
 
 @bc.handle()
-async def _(bot: Bot, event: Event):
-    msg = get_event_message(event)
+async def _(bot: Bot, msg=EventMessage()):
     gids = list(gdic["group_id"] for gdic in await get_group_list(bot))
     count = 0
     for gid in gids:
@@ -21,5 +20,5 @@ async def _(bot: Bot, event: Event):
         except Exception as e:
             logger.exception(e)
             logger.error(type(e))
-            await bot.send(event, f"群{gid} 投递失败：\n {type(e)} {e}")
+            await bc.send(f"群{gid} 投递失败：\n {type(e)} {e}")
     await bc.finish(f"广播完成,投递成功{count}个群")
