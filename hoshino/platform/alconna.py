@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from nonebot.adapters import Event
+from nonebot.params import Depends
 from nonebot_plugin_alconna import Alconna as Alconna
 from nonebot_plugin_alconna import AlconnaMatches as AlconnaMatches
 from nonebot_plugin_alconna import AlconnaResult as AlconnaResult
@@ -38,3 +40,41 @@ def uni_video(file: Any) -> UniMessage:
     if isinstance(file, str) and file.startswith(("http://", "https://")):
         return UniMessage.video(url=file)
     return UniMessage.video(path=file)
+
+
+# ── Custom Depends for non-Alconna handlers ──
+
+
+def GroupID() -> int | None:
+    """DI：当前事件的群号，私聊或无群号返回 None"""
+    async def _(event: Event) -> int | None:
+        return getattr(event, "group_id", None)
+    return Depends(_)
+
+
+def SenderID() -> int | None:
+    """DI：当前事件发送者的 user_id"""
+    async def _(event: Event) -> int | None:
+        return getattr(event, "user_id", None)
+    return Depends(_)
+
+
+def PlainText() -> str:
+    """DI：消息纯文本"""
+    async def _(event: Event) -> str:
+        get_plaintext = getattr(event, "get_plaintext", None)
+        if callable(get_plaintext):
+            return get_plaintext()
+        msg = getattr(event, "get_message", None)
+        if callable(msg):
+            return str(msg())
+        return ""
+    return Depends(_)
+
+
+def ReplyMessage() -> Any:
+    """DI：回复消息对象，无回复返回 None"""
+    async def _(event: Event) -> Any:
+        reply = getattr(event, "reply", None)
+        return reply.message if reply else None
+    return Depends(_)
