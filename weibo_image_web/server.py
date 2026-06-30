@@ -788,7 +788,6 @@ async def api_post_tags(uid: str, post_id: str):
     """Return tags for a specific post."""
     tags = _load_tags()
     result = []
-    key = f"{uid}_{post_id}"
     for tag_name, uid_map in tags.items():
         ids = uid_map.get(uid, [])
         if post_id in ids:

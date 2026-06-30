@@ -60,10 +60,10 @@ async def _(bot: Bot, event: Event):
         if rsp["personaname"] == "":
             await bot.send(event, "查询失败！")
         elif rsp["gameextrainfo"] == "":
-            await bot.send(event, f"%s 没在玩游戏！" % rsp["personaname"])
+            await bot.send(event, "%s 没在玩游戏！" % rsp["personaname"])
         else:
             await bot.send(
-                event, f"%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
+                event, "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
             )
         await update_steam_ids(account, event.group_id)
         await bot.send(event, "订阅成功")
@@ -104,10 +104,10 @@ async def _(bot: Bot, event: Event):
     if rsp["personaname"] == "":
         await bot.send(event, "查询失败！")
     elif rsp["gameextrainfo"] == "":
-        await bot.send(event, f"%s 没在玩游戏！" % rsp["personaname"])
+        await bot.send(event, "%s 没在玩游戏！" % rsp["personaname"])
     else:
         await bot.send(
-            event, f"%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
+            event, "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
         )
 
 

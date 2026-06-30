@@ -16,7 +16,6 @@ from .internal.post_runtime import (
     save_post_message,
     send_post_message,
 )
-from .sv import sv
 
 
 _IMAGE_URL_PATTERN = re.compile(

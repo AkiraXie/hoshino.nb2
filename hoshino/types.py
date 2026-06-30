@@ -1,14 +1,25 @@
 """Hoshino 常用类型集中 re-export。导入此模块不触发 NoneBot 运行时。"""
 from typing import TYPE_CHECKING
 
-from nonebot.typing import T_Handler, T_State
-from nonebot.params import Depends, BotParam, EventParam, StateParam, MatcherParam, DependParam
-from nonebot.dependencies import Dependent
-from nonebot.matcher import Matcher, current_bot, current_event
-from nonebot.adapters.onebot.v11 import Adapter, Bot
-from nonebot.adapters.onebot.v11.utils import escape
-from .message import MessageSegment, Message, MessageTemplate
-from .event import Event
+from nonebot.typing import T_Handler as T_Handler
+from nonebot.typing import T_State as T_State
+from nonebot.params import Depends as Depends
+from nonebot.params import BotParam as BotParam
+from nonebot.params import EventParam as EventParam
+from nonebot.params import StateParam as StateParam
+from nonebot.params import MatcherParam as MatcherParam
+from nonebot.params import DependParam as DependParam
+from nonebot.dependencies import Dependent as Dependent
+from nonebot.matcher import Matcher as Matcher
+from nonebot.matcher import current_bot as current_bot
+from nonebot.matcher import current_event as current_event
+from nonebot.adapters.onebot.v11 import Adapter as Adapter
+from nonebot.adapters.onebot.v11 import Bot as Bot
+from nonebot.adapters.onebot.v11.utils import escape as escape
+from .message import MessageSegment as MessageSegment
+from .message import Message as Message
+from .message import MessageTemplate as MessageTemplate
+from .event import Event as Event
 
 if TYPE_CHECKING:
     from typing import Any, Callable, Optional, Type as _Type, Union as _Union

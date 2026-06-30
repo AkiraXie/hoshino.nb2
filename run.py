@@ -1,6 +1,9 @@
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter
 
+from hoshino import config
+from hoshino.bootstrap import bootstrap
+
 
 moduledir = "hoshino/modules/"
 base = "hoshino/base/"
@@ -12,9 +15,6 @@ driver.register_adapter(Adapter)
 
 nonebot.load_plugin("nonebot_plugin_apscheduler")
 nonebot.load_plugin("nonebot_plugin_alconna")
-
-from hoshino import config
-from hoshino.bootstrap import bootstrap
 
 bootstrap()
 

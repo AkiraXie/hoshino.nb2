@@ -22,7 +22,7 @@ async def save_cookies_cmd(
     cookies = msgs[1]
     try:
         cookies = loads(cookies)
-    except Exception as e:
+    except Exception:
         pass
     if not name:
         await finish("请提供cookie名称")

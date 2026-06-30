@@ -1,7 +1,6 @@
 from hoshino.service import Service
 from hoshino.types import Event, MessageSegment
 from hoshino.schedule import scheduled_job
-from hoshino.hooks import on_startup
 from hoshino.util import aiohttpx
 from urllib.parse import quote
 import random

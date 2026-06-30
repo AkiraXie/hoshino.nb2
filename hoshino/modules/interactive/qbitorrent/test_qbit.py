@@ -3,7 +3,6 @@
 """
 
 import asyncio
-import sys
 import httpx
 
 # ====== 配置区 (来自 data/db/qbitorrent.db) ======
@@ -95,7 +94,7 @@ async def test():
                 print(f"body: {r.text[:300]}")
 
         # ── 3. 二次请求验证 session 持久性 ──
-        print(f"\n── 二次请求 (验证 session 持久性) ──")
+        print("\n── 二次请求 (验证 session 持久性) ──")
         r2 = await cli.get(
             f"{BASE_URL}/api/v2/torrents/info",
             headers={"Cookie": f"SID={sid}"},
@@ -109,10 +108,10 @@ async def test():
         # ── 4. 诊断结论 ──
         print(f"\n{'=' * 60}")
         print("诊断结论:")
-        print(f"  登录方式: form-data (正确用于 v4.5.x)")
+        print("  登录方式: form-data (正确用于 v4.5.x)")
         print(f"  SID 获取: {'正常' if sid else '失败'}")
         print(f"  若列表为空但 status=200: 可能 CATEGORY='{CATEGORY}' 下无种子，或 filter 过滤后无结果")
-        print(f"  若 status=403: SID 过期或无效，需重新登录")
+        print("  若 status=403: SID 过期或无效，需重新登录")
         print(f"{'=' * 60}")
 
 

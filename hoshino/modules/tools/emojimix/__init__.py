@@ -10,8 +10,14 @@ from .data import emojis, qqface
 sv = Service("emojimix", visible=False, enable_on_default=False)
 
 bed = "https://www.gstatic.com/android/keyboard/emojikitchen/%s/u%s/u%s_u%s.png"
-multichar_ord = lambda s: "-".join(map(lambda c: f"{ord(c):x}", s))
-char_ord = lambda s: f"{ord(s):x}"
+
+
+def multichar_ord(s: str) -> str:
+    return "-".join(f"{ord(c):x}" for c in s)
+
+
+def char_ord(s: str) -> str:
+    return f"{ord(s):x}"
 
 
 async def emojimatch(event: MessageEvent, state: T_State):

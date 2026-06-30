@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime
 import time
-from hoshino.types import Bot, Event, Message
+from hoshino.types import Bot, Event
 from hoshino.platform import dump_target, target_from_event
 from hoshino.permission import SUPERUSER
 from hoshino.permission import ADMIN
@@ -26,26 +26,15 @@ from .db import (
 from .sub import uid_manager
 from .sv import sv
 from .internal.post_runtime import (
-    get_cached_weibo_uid_id,
-    post_msg_from_uid_id,
     render_messages,
     weibo_img_dir,
-    weibo_msg_dir,
     weibo_video_dir,
 )
 from .request import (
     get_weibo_new,
 )
-from .fav import (
-    append_fav,
-    random_weibo_favorite,
-    search_weibo_favorite,
-    show_weibo_favorite,
-)
-from .resolve import (
-    reaction_weibo_rule,
-    handle_weibo_reaction,
-)
+from . import fav as _fav  # noqa: F401
+from . import resolve as _resolve  # noqa: F401
 import re
 from nonebot.typing import T_State
 

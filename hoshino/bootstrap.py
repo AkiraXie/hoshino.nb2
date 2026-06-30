@@ -9,7 +9,7 @@ from nonebot.params import (
     Depends, BotParam, EventParam, StateParam, MatcherParam, DependParam,
 )
 from nonebot.dependencies import Dependent
-from nonebot.matcher import Matcher, current_bot, current_event
+from nonebot.matcher import Matcher, current_bot
 from nonebot.typing import T_Handler
 
 from .message import MessageSegment, Message, MessageTemplate

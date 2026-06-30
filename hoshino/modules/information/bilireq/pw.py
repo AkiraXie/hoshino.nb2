@@ -1,5 +1,3 @@
-from playwright.async_api import Route
-
 from hoshino.util.playwrights import (
     get_b,
     Page,

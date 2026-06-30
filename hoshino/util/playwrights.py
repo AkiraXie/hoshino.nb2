@@ -1,12 +1,9 @@
 from pathlib import Path
-from playwright.async_api import async_playwright, Browser, Playwright, Page
-from hoshino.types import MessageSegment
+from playwright.async_api import async_playwright, Browser, Playwright, Page as Page
+from hoshino.types import MessageSegment as MessageSegment
 from hoshino.schedule import scheduled_job
 from hoshino.hooks import on_startup
-from nonebot.log import logger
 import ssl
-
-from hoshino.util import get_cookies
 
 ssl._create_default_https_context = ssl._create_unverified_context
 ## thansks to github.com/SK-415/HarukaBot
