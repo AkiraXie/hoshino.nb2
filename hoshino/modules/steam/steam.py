@@ -3,13 +3,12 @@ from loguru import logger
 from lxml import etree
 import json
 from hoshino.schedule import scheduled_job
-from nonebot.adapters import Bot, Event
 from hoshino.service import Service
 from hoshino import db_dir
 from hoshino.permission import ADMIN
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx
-from hoshino.platform import get_group_id, group_target, send_to_target
+from hoshino.platform import Alconna, Args, MsgTarget, UniMessage, group_target, send_to_target
 
 sv = Service("steam", enable_on_default=False, visible=False)
 sub = {"subscribes": {}}
@@ -34,10 +33,10 @@ async def format_id(id: str) -> str:
         return xml.xpath("/profile/steamID64")[0].text
 
 
-adds = sv.on_command("添加steam订阅", permission=ADMIN)
-dels = sv.on_command("取消steam订阅", permission=ADMIN)
-looks = sv.on_command(
-    "steam订阅列表",
+adds = sv.on_alconna(Alconna("添加steam订阅", Args["account", str]), permission=ADMIN)
+dels = sv.on_alconna(Alconna("取消steam订阅", Args["account", str]), permission=ADMIN)
+looks = sv.on_alconna(
+    Alconna("steam订阅列表"),
     aliases=(
         "查看本群steam",
         "本群steam订阅",
@@ -47,47 +46,51 @@ looks = sv.on_command(
         "kksteam",
     ),
 )
-look = sv.on_command(
-    "查询steam账号", permission=ADMIN, aliases=("查看steam", "查看steam订阅")
+look = sv.on_alconna(
+    Alconna("查询steam账号", Args["account", str]),
+    permission=ADMIN,
+    aliases=("查看steam", "查看steam订阅"),
 )
 
 
+def _group_id(target) -> int:
+    return int(target.parent_id or target.id)
+
+
 @adds.handle()
-async def _(bot: Bot, event: Event):
-    account = event.get_plaintext().strip()
-    group_id = get_group_id(event)
+async def _(target: MsgTarget, account: str):
+    group_id = _group_id(target)
     try:
         rsp = await get_account_status(account)
         if rsp["personaname"] == "":
-            await bot.send(event, "查询失败！")
+            await UniMessage.text("查询失败！").send(target)
         elif rsp["gameextrainfo"] == "":
-            await bot.send(event, "%s 没在玩游戏！" % rsp["personaname"])
+            await UniMessage.text("%s 没在玩游戏！" % rsp["personaname"]).send(target)
         else:
-            await bot.send(
-                event, "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
-            )
+            await UniMessage.text(
+                "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
+            ).send(target)
         await update_steam_ids(account, group_id)
-        await bot.send(event, "订阅成功")
+        await UniMessage.text("订阅成功").send(target)
     except Exception as e:
         logger.exception(e)
-        await bot.send(event, "订阅失败")
+        await UniMessage.text("订阅失败").send(target)
 
 
 @dels.handle()
-async def _(bot: Bot, event: Event):
-    account = event.get_plaintext().strip()
-    group_id = get_group_id(event)
+async def _(target: MsgTarget, account: str):
+    group_id = _group_id(target)
     try:
         await del_steam_ids(account, group_id)
-        await bot.send(event, "删除订阅成功")
+        await UniMessage.text("删除订阅成功").send(target)
     except Exception as e:
         logger.exception(e)
-        await bot.send(event, "删除订阅失败")
+        await UniMessage.text("删除订阅失败").send(target)
 
 
 @looks.handle()
-async def _(bot: Bot, event: Event):
-    group_id = get_group_id(event)
+async def _(target: MsgTarget):
+    group_id = _group_id(target)
     msg = "======steam======\n"
     await update_game_status()
     for key, val in playing_state.items():
@@ -96,21 +99,20 @@ async def _(bot: Bot, event: Event):
                 msg += "%s 没在玩游戏\n" % val["personaname"]
             else:
                 msg += "%s 正在游玩 %s\n" % (val["personaname"], val["gameextrainfo"])
-    await bot.send(event, msg)
+    await UniMessage.text(msg).send(target)
 
 
 @look.handle()
-async def _(bot: Bot, event: Event):
-    account = event.get_plaintext()
+async def _(target: MsgTarget, account: str):
     rsp = await get_account_status(account)
     if rsp["personaname"] == "":
-        await bot.send(event, "查询失败！")
+        await UniMessage.text("查询失败！").send(target)
     elif rsp["gameextrainfo"] == "":
-        await bot.send(event, "%s 没在玩游戏！" % rsp["personaname"])
+        await UniMessage.text("%s 没在玩游戏！" % rsp["personaname"]).send(target)
     else:
-        await bot.send(
-            event, "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
-        )
+        await UniMessage.text(
+            "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
+        ).send(target)
 
 
 async def get_account_status(id) -> dict:
