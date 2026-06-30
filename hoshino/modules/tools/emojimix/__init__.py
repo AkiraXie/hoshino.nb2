@@ -5,12 +5,13 @@ from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 from hoshino.util import aiohttpx
 from hoshino.permission import SUPERUSER
-from hoshino.platform import EventMessage, PlainText, RawMessage, UniMessage
+from hoshino.platform import Alconna, EventMessage, PlainText, RawMessage, UniMessage
 from .data import emojis, qqface
 
 sv = Service("emojimix", visible=False, enable_on_default=False)
 
 bed = "https://www.gstatic.com/android/keyboard/emojikitchen/%s/u%s/u%s_u%s.png"
+testemoji = sv.on_alconna(Alconna("testemoji"), permission=SUPERUSER)
 
 
 def multichar_ord(s: str) -> str:
@@ -67,7 +68,7 @@ async def emojimatch(
         return False
 
 
-@sv.on_command("testemoji", permission=SUPERUSER)
+@testemoji.handle()
 async def _(
     matcher: Matcher,
     raw_message: str = RawMessage(),

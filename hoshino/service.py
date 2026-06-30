@@ -8,7 +8,7 @@ import nonebot
 from nonebot.params import Depends
 from hoshino.hooks import run_preprocessor
 from nonebot.exception import RejectedException, PausedException, FinishedException
-from nonebot.rule import ArgumentParser, to_me, command, shell_command
+from nonebot.rule import ArgumentParser, to_me, shell_command
 from nonebot.adapters import Bot
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher, current_bot, current_event
@@ -43,7 +43,7 @@ from hoshino.platform import (
 from nonebot.typing import (
     T_Handler,
 )
-from nonebot_plugin_alconna import Alconna, on_alconna
+from nonebot_plugin_alconna import Alconna, Args, on_alconna
 from hoshino.logger_wrapper import LoggerWrapper
 
 
@@ -279,29 +279,22 @@ class Service:
         permission: Permission = NORMAL,
         force_whitespace: bool | None = None,
         **kwargs,
-    ) -> "MatcherWrapper":
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        priority = kwargs.get("priority", 1)
-        handlers = kwargs.pop("handlers", [])
-        handlers.insert(0, _strip_cmd)
-        kwargs["handlers"] = handlers
-        commands = set([name]) | (_iter_to_set(aliases) or set())
-        kwargs["rule"] = kwargs["rule"] & command(
-            *commands, force_whitespace=force_whitespace
-        )
-        mw = MatcherWrapper(
-            self,
-            "Message.command",
-            priority,
-            on_message(**kwargs),
-            command=name,
+    ):
+        alc = name if isinstance(name, Alconna) else Alconna(name, Args["text", str])
+        alc_aliases: set[str] | tuple[str, ...] | None = None
+        if aliases:
+            if isinstance(aliases, str):
+                alc_aliases = (aliases,)
+            elif isinstance(aliases, (set, list, tuple)):
+                alc_aliases = tuple(aliases)
+        return self.on_alconna(
+            alc,
+            only_to_me=only_to_me,
             only_group=only_group,
+            permission=permission,
+            aliases=alc_aliases,
+            **kwargs,
         )
-        self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
-        return mw
 
     def on_shell_command(
         self,
