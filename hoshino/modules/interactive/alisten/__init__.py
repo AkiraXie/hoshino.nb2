@@ -1,9 +1,8 @@
 from sqlalchemy import select
 from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Session, update_client
 from hoshino.permission import ADMIN
-from hoshino.types import Bot
+from hoshino.types import Bot, Event
 from hoshino import hsn_nickname
-from hoshino.event import GroupMessageEvent
 from nonebot.params import Depends
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)
@@ -13,7 +12,7 @@ configshow = sv.on_command(
 
 
 @configset
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: Event):
     msgs = event.get_plaintext().strip().split()
     if len(msgs) not in (3, 4):
         await configset.finish("请检查参数个数")
@@ -54,7 +53,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 @configshow
 async def _(
     bot: Bot,
-    event: GroupMessageEvent,
+    event: Event,
     config: AlistenConfig | None = Depends(get_config),
 ):
     if not config:
@@ -79,7 +78,7 @@ playlistcmd = sv.on_command(
 )
 
 
-async def get_user_name(bot: Bot, event: GroupMessageEvent) -> str:
+async def get_user_name(bot: Bot, event: Event) -> str:
     info = await bot.get_group_member_info(
         group_id=event.group_id, user_id=event.user_id, no_cache=True
     )
@@ -93,7 +92,7 @@ async def get_user_name(bot: Bot, event: GroupMessageEvent) -> str:
 
 @pickmusic
 async def _(
-    event: GroupMessageEvent,
+    event: Event,
     user_name: str = Depends(get_user_name),
     client: AlistenClient | None = Depends(get_client),
 ):
@@ -127,7 +126,7 @@ async def _(
 
 @pickmusicid
 async def _(
-    event: GroupMessageEvent,
+    event: Event,
     user_name: str = Depends(get_user_name),
     client: AlistenClient | None = Depends(get_client),
 ):

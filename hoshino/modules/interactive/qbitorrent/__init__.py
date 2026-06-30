@@ -14,8 +14,7 @@ from .utils import (
     QbtClient,
 )
 from hoshino.permission import ADMIN
-from hoshino.types import Bot
-from hoshino.event import GroupMessageEvent
+from hoshino.types import Bot, Event
 from nonebot.params import Depends
 
 # 配置命令
@@ -35,7 +34,7 @@ completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归�
 
 
 @configset
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: Event):
     """配置qBittorrent连接信息"""
     msgs = event.get_plaintext().strip().split()
     if len(msgs) not in (3, 4):
@@ -86,7 +85,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 @configshow
 async def _(
     bot: Bot,
-    event: GroupMessageEvent,
+    event: Event,
     config: QbtConfig | None = Depends(get_config),
 ):
     """显示当前qBittorrent配置"""
@@ -103,7 +102,7 @@ async def _(
 
 @add_torrent
 async def _(
-    event: GroupMessageEvent,
+    event: Event,
     client: QbtClient | None = Depends(get_client),
 ):
     """添加种子下载"""
@@ -185,7 +184,7 @@ def _render_torrent_list(torrents: list[dict], max_show: int, title: str, catego
 
 @active_list
 async def _(
-    event: GroupMessageEvent,
+    event: Event,
     client: QbtClient | None = Depends(get_client),
 ):
     if not client:
@@ -206,7 +205,7 @@ async def _(
 
 @completed_list
 async def _(
-    event: GroupMessageEvent,
+    event: Event,
     client: QbtClient | None = Depends(get_client),
 ):
     if not client:

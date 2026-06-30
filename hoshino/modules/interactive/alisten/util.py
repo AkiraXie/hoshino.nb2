@@ -1,11 +1,11 @@
 from pydantic import BaseModel, RootModel
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, sessionmaker
-from sqlalchemy import select, create_engine, Integer, Float, Text
+from sqlalchemy import select, create_engine, Integer, Text
 from hoshino import db_dir
 from hoshino.hooks import on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
-from hoshino.event import GroupMessageEvent
+from hoshino.types import Event
 
 db_path = db_dir / "alisten.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -32,7 +32,7 @@ class AlistenConfig(Base):
 Base.metadata.create_all(engine)
 
 
-async def get_config(event: GroupMessageEvent) -> AlistenConfig | None:
+async def get_config(event: Event) -> AlistenConfig | None:
     gid = event.group_id
     with Session() as session:
         stmt = select(AlistenConfig).where(AlistenConfig.gid == gid)
@@ -207,7 +207,7 @@ async def init_alisten_clients():
     sv.logger.info(f"Initialized {len(_clients)} alisten clients")
 
 
-def get_client(event: GroupMessageEvent) -> AlistenClient | None:
+def get_client(event: Event) -> AlistenClient | None:
     return _clients.get(event.group_id)
 
 

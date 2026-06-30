@@ -1,14 +1,13 @@
 from pydantic import BaseModel
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, sessionmaker
 from sqlalchemy import select, create_engine, Integer, Text
-import asyncio
 import re
 
 from hoshino import db_dir
 from hoshino.hooks import on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post, get
-from hoshino.event import GroupMessageEvent
+from hoshino.types import Event
 
 db_path = db_dir / "qbitorrent.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -39,7 +38,7 @@ class QbtConfig(Base):
 Base.metadata.create_all(engine)
 
 
-async def get_config(event: GroupMessageEvent) -> QbtConfig | None:
+async def get_config(event: Event) -> QbtConfig | None:
     """获取群组的qBittorrent配置"""
     gid = event.group_id
     with Session() as session:
@@ -219,7 +218,7 @@ async def init_qbt_clients():
     sv.logger.info(f"Initialized {len(_clients)} qbitorrent clients")
 
 
-def get_client(event: GroupMessageEvent) -> QbtClient | None:
+def get_client(event: Event) -> QbtClient | None:
     return _clients.get(event.group_id)
 
 
