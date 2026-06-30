@@ -30,7 +30,16 @@ from hoshino.rule import (
     regex,
     keyword,
 )
-from hoshino.platform import event_scope_key, get_group_id, get_group_list, group_scope_key, platform_key
+from hoshino.platform import (
+    Target,
+    event_scope_key,
+    get_group_id,
+    get_group_list,
+    group_scope_key,
+    platform_key,
+    send_to_event,
+    send_to_target,
+)
 from nonebot.typing import (
     T_Handler,
 )
@@ -545,8 +554,6 @@ class Service:
         return mw
 
     async def broadcast(self, msgs: Iterable | None, tag="", interval_time=0.5):
-        from hoshino.platform import Target, send_to_target
-
         if not msgs:
             return
         if isinstance(msgs, (str, OneBotV11Message, OneBotV11MessageSegment)):
@@ -654,8 +661,6 @@ class MatcherWrapper:
         at_sender: bool = False,
         **kwargs,
     ):
-        from hoshino.platform import send_to_event
-
         bot = current_bot.get()
         event = current_event.get()
         return await send_to_event(
@@ -669,8 +674,6 @@ class MatcherWrapper:
         at_sender: bool = False,
         **kwargs,
     ):
-        from hoshino.platform import send_to_event
-
         bot = current_bot.get()
         event = current_event.get()
         return await send_to_event(bot, event, message, at_sender=at_sender, **kwargs)

@@ -21,6 +21,7 @@ from nonebot.adapters import Bot
 from nonebot.matcher import Matcher, current_bot, current_event
 from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.platform import (
+    Target,
     UniMessage,
     custom_node_segment,
     get_event_message,
@@ -35,6 +36,7 @@ from hoshino.platform import (
     is_private_event,
     send_group_forward,
     send_private_forward,
+    send_to_target,
     video_segment,
 )
 from nonebot.matcher import current_matcher
@@ -454,8 +456,6 @@ def get_event_imageurl(event: Event) -> List[str]:
 
 
 async def send_to_superuser(msg=""):
-    from hoshino.platform import Target, send_to_target
-
     bot: Bot = nonebot.get_bot()
     sus = bot.config.superusers
     for su in sus:
@@ -522,8 +522,6 @@ async def send_group_segments(
     group_id: int,
     message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str | UniMessage],
 ):
-    from hoshino.platform import send_to_target
-
     if not message:
         return
     if len(message) == 1:

@@ -24,5 +24,5 @@ async def _(m: Matcher, s: T_State):
     with open(res, "rb") as f:
         img = f.read()
     await (UniMessage.text(f"{name}吃{res.stem}吧! \n") + UniMessage.image(raw=img)).send(
-        at_sender=True
+        call_header=True
     )

@@ -6,7 +6,7 @@ from hoshino.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
-from hoshino.types import OneBotV11MessageSegment
+from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.config import config
 from hoshino.platform import (
     UniMessage,
@@ -28,7 +28,6 @@ img_dir.mkdir(parents=True, exist_ok=True)
 
 def _cq_parse(answer: str):
     """Parse legacy CQ-format answer string to OneBot message for image extraction."""
-    from hoshino.types import OneBotV11Message
     return OneBotV11Message(answer)
 
 
@@ -261,7 +260,7 @@ async def _(gid: int = GroupID(), uid: int = SenderID()):
         stmt = select(Question).where(Question.group == gid, Question.user == uid)
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
-    await lookqa.finish("您设置的问题有: " + " | ".join(msg), at_sender=True)
+    await lookqa.finish("您设置的问题有: " + " | ".join(msg), call_header=True)
 
 
 @lookgqa.handle()
@@ -271,7 +270,7 @@ async def _(gid: int = GroupID()):
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
     await lookgqa.finish(
-        '该群设置的"有人问"有: ' + " | ".join(msg), at_sender=True
+        '该群设置的"有人问"有: ' + " | ".join(msg), call_header=True
     )
 
 
