@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from nonebot.adapters import Bot
 
-from hoshino.message import Message, MessageSegment
+from hoshino.platform.ob11.types import Message, MessageSegment
 
 
 async def get_group_list(bot: Bot) -> list[dict]:

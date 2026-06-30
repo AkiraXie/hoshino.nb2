@@ -1,0 +1,14 @@
+"""OneBot v11 类型 — Message, MessageSegment, Bot, Event 等"""
+
+from nonebot.adapters.onebot.v11 import Adapter as Adapter
+from nonebot.adapters.onebot.v11 import Bot as Bot
+from nonebot.adapters.onebot.v11 import Event as Event
+from nonebot.adapters.onebot.v11.event import (
+    GroupMessageEvent as GroupMessageEvent,
+    MessageEvent as MessageEvent,
+    NoticeEvent as NoticeEvent,
+    PrivateMessageEvent as PrivateMessageEvent,
+)
+from nonebot.adapters.onebot.v11.message import Message as Message
+from nonebot.adapters.onebot.v11.message import MessageSegment as MessageSegment
+from nonebot.adapters.onebot.v11.utils import escape as escape

@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, Type
 
 import nonebot
-from nonebot.adapters.onebot.v11 import Adapter, Bot
-from nonebot.adapters.onebot.v11.utils import escape
+from hoshino.platform.ob11.types import Adapter, Bot
+from hoshino.platform.ob11.types import escape
 from nonebot.params import (
     Depends, BotParam, EventParam, StateParam, MatcherParam, DependParam,
 )

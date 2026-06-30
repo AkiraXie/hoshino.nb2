@@ -7,7 +7,7 @@ from nonebot_plugin_alconna.uniseg import Target, UniMessage
 from nonebot_plugin_alconna.uniseg.constraint import SerializeFailed
 from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
-from hoshino.message import Message, MessageSegment
+from hoshino.platform.ob11.types import Message, MessageSegment
 from .event import get_user_id
 
 MessageLike = str | Message | MessageSegment | UniMessage

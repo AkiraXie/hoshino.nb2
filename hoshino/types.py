@@ -15,21 +15,16 @@ from nonebot.dependencies import Dependent as Dependent
 from nonebot.matcher import Matcher as Matcher
 from nonebot.matcher import current_bot as current_bot
 from nonebot.matcher import current_event as current_event
-from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
-from nonebot.adapters.onebot.v11 import Bot as OneBotV11Bot
-from nonebot.adapters.onebot.v11 import Event as OneBotV11Event
-from nonebot.adapters.onebot.v11.utils import escape as onebot_v11_escape
-from .message import MessageSegment as OneBotV11MessageSegment
-from .message import Message as OneBotV11Message
+from hoshino.platform.ob11.types import Bot as OneBotV11Bot
+from hoshino.platform.ob11.types import Event as OneBotV11Event
+from hoshino.platform.ob11.types import Message as OneBotV11Message
+from hoshino.platform.ob11.types import MessageSegment as OneBotV11MessageSegment
 from .message import MessageTemplate as MessageTemplate
-
-OneBotV11Adapter = OneBotV11Adapter
-onebot_v11_escape = onebot_v11_escape
 
 if TYPE_CHECKING:
     from typing import Any, Callable, Type as _Type
     from nonebot.matcher import Matcher as _OrigMatcher
-    from nonebot.adapters.onebot.v11 import Bot as _OrigBot
+    from hoshino.platform.ob11.types import Bot as _OrigBot
 
     class Matcher(_OrigMatcher):
         @classmethod
