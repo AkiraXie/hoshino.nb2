@@ -95,9 +95,55 @@ sv = Service("name", manage_perm=ADMIN, enable_on_default=True, visible=True)
 
 此项目运行在远程机器上。测试服务时需先运行 `ip addr` 获取实际 IP，**禁止使用 localhost/127.0.0.1**。前端 UI 验证使用 playwright-mcp 打开浏览器测试。
 
+### 平台抽象层 (`hoshino/platform/`)
+
+解耦 OneBot v11 的适配器无关层。新插件**只应通过此层与平台交互**。
+
+```
+hoshino/platform/
+├── alconna.py   # Alconna 命令 + UniMessage + 自定义 DI Depends
+├── message.py   # 消息发送 facade (send_to_event, to_unimessage)
+├── event.py     # 事件属性访问器 (get_group_id, is_group_event, ...)
+├── bot.py       # Bot API 包装器 (get_group_list, send_group_forward, ...)
+└── target.py    # Target 序列化/工厂 (group_target, dump_target, ...)
+```
+
+**关键规则**：
+- 构造消息用 `uni_text()`, `uni_image()`, `uni_video()` — 直接产出 `UniMessage`，不经过 OneBot
+- 发送消息用 `UniMessage.text("x").send()` 或 `send_to_event(bot, event, msg)`
+- handler 获取数据用 DI Depends：`GroupID()`, `PlainText()`, `SenderID()`
+- 事件判断用 `is_group_event(event)`, `is_private_event(event)`
+
 ## 代码风格
 
-- 严格保持 Python 3.10 兼容性（使用 `Optional[str]` 而非 `str | None` 作为运行时注解）
-- `from __future__ import annotations` 在需要推迟求值的文件中使用
-- Ruff lint（配置在 `pyproject.toml` 的 `[tool.ruff]` 段）
+### Pythonic 原则
+
+**Zen of Python** — `python -c "import this"`
+
+核心规则：
+- **简单 > 复杂** — 封装只在有复杂状态要维护时才用。无状态工厂/查询不需要类
+- **声明你需要什么，不要自己去拿** — handler 用 DI 声明依赖，不调 event 方法
+- **不问类型，直接调** — 鸭子类型，不 `isinstance`
+- **表达式 > 语句** — 推导式优先于 for-append 循环
+- **上下文管理器管状态** — 资源获取/释放用 `with`/`async with`
+
+### Import 规则（PEP 8）
+
+- 所有 import 在文件顶部，按 stdlib → third-party → local 分组
+- 函数内 import 仅允许：循环依赖、可选依赖、重型 lazy load，且必须注释原因
+- `import onebot` 在模块层即为 blocker — 仅 5 个核心文件允许
+
+### 平台解耦规则
+
+- 新插件**零** `from nonebot.adapters.onebot` import
+- 用 `hoshino.platform` helper 替代原始 event/bot 操作
+- Bot/Event 类型加 `OneBotV11` 前缀（types.py）
+- 不写 `isinstance(event, GroupMessageEvent)` — 用 `is_group_event(event)`
+- 不写 `event.group_id` / `event.user_id` — 用 Depends 或 platform helper
+
+### Python 版本
+
+- 严格保持 Python 3.10 兼容
+- `from __future__ import annotations` 仅在需要推迟求值的文件中使用
+- Ruff lint（配置在 `pyproject.toml`）
 - 默认不写注释，除非 WHY 不明显
