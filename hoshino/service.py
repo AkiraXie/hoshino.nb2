@@ -32,6 +32,7 @@ from hoshino.platform import event_scope_key, get_group_id, get_group_list, grou
 from nonebot.typing import (
     T_Handler,
 )
+from nonebot_plugin_alconna import Alconna, on_alconna
 from hoshino.logger_wrapper import LoggerWrapper
 
 
@@ -321,6 +322,32 @@ class Service:
         _loaded_matchers[mw.matcher] = mw
         return mw
 
+    def on_alconna(
+        self,
+        command: Alconna | str,
+        *,
+        only_to_me: bool = False,
+        only_group: bool = True,
+        permission: Permission = NORMAL,
+        aliases: set[str] | tuple[str, ...] | None = None,
+        **kwargs,
+    ) -> "MatcherWrapper":
+        kwargs["permission"] = permission
+        rule = self.check_service(only_to_me, only_group)
+        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
+        priority = kwargs.get("priority", 1)
+        mw = MatcherWrapper(
+            self,
+            "Message.alconna",
+            priority,
+            on_alconna(command, aliases=aliases, **kwargs),
+            command=str(command),
+            only_group=only_group,
+        )
+        self.matchers.append(str(mw))
+        _loaded_matchers[mw.matcher] = mw
+        return mw
+
     def on_startswith(
         self,
         msg: str,
@@ -598,7 +625,7 @@ class MatcherWrapper:
         **kwargs,
     ):
         if prompt:
-            await self.matcher.send(
+            await self.send(
                 prompt, call_header=call_header, at_sender=at_sender, **kwargs
             )
         raise RejectedException
@@ -625,10 +652,12 @@ class MatcherWrapper:
         at_sender: bool = False,
         **kwargs,
     ):
+        from hoshino.platform import send_to_event
+
         bot = current_bot.get()
         event = current_event.get()
-        return await bot.send(
-            event, message, at_sender=at_sender, call_header=call_header, **kwargs
+        return await send_to_event(
+            bot, event, message, at_sender=at_sender, call_header=call_header, **kwargs
         )
 
     async def send_uni(

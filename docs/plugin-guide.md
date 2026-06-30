@@ -9,13 +9,17 @@
 ```python
 # hoshino/modules/develop/my_plugin.py
 from hoshino.service import Service
-from hoshino.types import Bot, Event
+from hoshino.platform import UniMessage, UniMsg
 
 sv = Service("my_plugin", enable_on_default=True)
 
-@sv.on_command("hello")
-async def _(bot: Bot, event: Event):
-    await bot.send(event, "Hello World!")
+@sv.on_alconna("hello")
+async def _():
+    await UniMessage.text("Hello World!").send()
+
+@sv.on_alconna("echo")
+async def _(msg: UniMsg):
+    await msg.send()
 ```
 
 ## 消息发送
@@ -23,34 +27,35 @@ async def _(bot: Bot, event: Event):
 ### 推荐方式
 
 ```python
-from hoshino.platform import send_to_event, send_to_target, UniMessage
+from hoshino.platform import group_target, send_to_target, UniMessage
 
 # 回复当前事件
-await send_to_event(bot, event, "Hello!")
+await UniMessage.text("Hello!").send()
 
 # 发送到指定群
-from hoshino.platform import group_target
 await send_to_target(bot, group_target(12345678), "Hello group!")
 
-# 发送图片
-from hoshino.platform import image_segment
-await send_to_event(bot, event, image_segment("/path/to/image.png"))
+# 发送图片到当前事件
+await UniMessage.image(path="/path/to/image.png").send()
 
-# 构造复杂消息
+# 构造复杂消息，并用当前 matcher 上下文发送
 msg = UniMessage.text("标题\n") + UniMessage.image(file="/path/to/img.png")
-await send_to_event(bot, event, msg)
-```
-
-### 旧方式（仍可用但不推荐新代码使用）
-
-```python
-# 仍然工作，但不鼓励在新插件中使用
-await bot.send(event, "Hello!")
+await msg.send()
 ```
 
 ## 事件访问
 
-用 `hoshino.platform` 的 helper，不要直接访问 event 属性：
+新代码优先用 Alconna/NoneBot 依赖注入直接拿需要的数据，不要把 `bot/event` 当成默认签名：
+
+```python
+from hoshino.platform import UniMsg, MsgTarget, UniMessage
+
+@sv.on_alconna("inspect")
+async def _(msg: UniMsg, target: MsgTarget):
+    await UniMessage.text(f"target={target.id}, text={msg.extract_plain_text()}").send()
+```
+
+只有兼容旧 matcher 或特殊事件时，再用 `hoshino.platform` 的 helper：
 
 ```python
 from hoshino.platform import get_group_id, get_user_id, get_plaintext, get_event_message
@@ -143,7 +148,16 @@ async def _ensure_schema():
 
 ## Message 构造（information 类插件）
 
-构造消息用 platform 包装器：
+新代码优先构造 `UniMessage`：
+
+```python
+from hoshino.platform import UniMessage
+
+msg = UniMessage.text("标题") + UniMessage.image(url="https://example.com/a.png")
+await msg.send()
+```
+
+兼容旧 `Message` 消费者时，再用 platform 包装器：
 
 ```python
 from hoshino.platform import (
@@ -219,3 +233,4 @@ async def push_to_group(bot: Bot, gid: int, title: str, img_path: str):
 5. **不要** import 时执行 DB DDL — 用 `@on_serial_startup` 钩子
 6. **不要** `except BaseException` — 用 `except Exception`
 7. **不要** 为无状态工厂创建类 — 函数足够
+8. **不要** 默认写 `(bot: Bot, event: Event)` handler — 优先用 `UniMsg` / `MsgTarget` / Alconna 参数注入
