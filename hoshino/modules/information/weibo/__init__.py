@@ -3,8 +3,14 @@
 import asyncio
 from datetime import datetime
 import time
-from nonebot.adapters import Bot, Event
-from hoshino.platform import dump_target, get_group_id, target_from_event
+from hoshino.platform import (
+    GroupID,
+    MessageID,
+    PlainText,
+    UniMessage,
+    dump_target,
+    group_target,
+)
 from hoshino.permission import SUPERUSER
 from hoshino.permission import ADMIN
 from hoshino.util import (
@@ -71,20 +77,26 @@ showconfigwb = sv.on_command(
 
 
 @configwb.handle()
-async def show_weibo_config(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    await bot.send(event, format_weibo_config_message(gid, editable=True))
+async def show_weibo_config(gid: int | None = GroupID()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    await UniMessage.text(format_weibo_config_message(gid, editable=True)).send()
 
 
 @showconfigwb.handle()
-async def show_weibo_config_readonly(bot: Bot, event: Event):
-    gid = get_group_id(event)
+async def show_weibo_config_readonly(gid: int | None = GroupID()):
+    if gid is None:
+        await showconfigwb.finish("请在群聊中使用")
+        return
     await showconfigwb.finish(format_weibo_config_message(gid, editable=False))
 
 
 @configwb.got("config_bits")
-async def set_weibo_config(state: T_State, event: Event):
-    gid = get_group_id(event)
+async def set_weibo_config(state: T_State, gid: int | None = GroupID()):
+    if gid is None:
+        await configwb.finish("请在群聊中使用")
+        return
     config_bits = str(state["config_bits"]).strip()
     if not re.fullmatch(r"[01]{3}", config_bits):
         current_bits = format_weibo_config_bits(gid)
@@ -116,10 +128,13 @@ async def set_weibo_config(state: T_State, event: Event):
     permission=SUPERUSER,
     priority=5,
 )
-async def weibo_random_image(event: Event):
+async def weibo_random_image(
+    text: str = PlainText(),
+    message_id: int | None = MessageID(),
+):
     path = weibo_img_dir
     num = 12
-    text = event.get_plaintext().strip()
+    text = text.strip()
     texts = text.split(maxsplit=1)
     keyword = None
     if len(texts) == 2:
@@ -132,7 +147,7 @@ async def weibo_random_image(event: Event):
         keyword = texts[0]
         if keyword.isdigit():
             num = int(keyword)
-    seed = time.time() + event.message_id
+    seed = time.time() + (message_id or 0)
     imgs = random_image_or_video_by_path(
         path, num=num, seed=seed, video=False, keyword=keyword
     )
@@ -147,10 +162,13 @@ async def weibo_random_image(event: Event):
     permission=SUPERUSER,
     priority=5,
 )
-async def weibo_random_video(event: Event):
+async def weibo_random_video(
+    text: str = PlainText(),
+    message_id: int | None = MessageID(),
+):
     path = weibo_video_dir
     num = 2
-    text = event.get_plaintext().strip()
+    text = text.strip()
     texts = text.split(maxsplit=1)
     keyword = None
     if len(texts) == 2:
@@ -163,7 +181,7 @@ async def weibo_random_video(event: Event):
         keyword = texts[0]
         if keyword.isdigit():
             num = int(keyword)
-    seed = time.time() + event.message_id
+    seed = time.time() + (message_id or 0)
     imgs = random_image_or_video_by_path(
         path, num=num, seed=seed, video=True, keyword=keyword
     )
@@ -174,10 +192,12 @@ async def weibo_random_video(event: Event):
     "添加微博订阅",
     aliases=("订阅微博", "新增微博", "添加微博", "添加weibo", "addweibo", "addwb"),
 )
-async def add_subscription(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    target_data = dump_target(target_from_event(bot, event))
-    msg = event.get_plaintext().strip()
+async def add_subscription(gid: int | None = GroupID(), msg: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    target_data = dump_target(group_target(gid))
+    msg = msg.strip()
     keywords = []
     try:
         msg = msg.split(" ")
@@ -191,36 +211,34 @@ async def add_subscription(bot: Bot, event: Event):
             if match:
                 uid = match.group(2)
             else:
-                await bot.send(
-                    event, "无效的UID格式，请输入数字ID或完整的微博个人主页链接"
-                )
+                await UniMessage.text("无效的UID格式，请输入数字ID或完整的微博个人主页链接").send()
                 return
         post = await get_weibo_new(uid, ts=0)
         if not post:
-            await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
+            await UniMessage.text(f"无法获取微博用户信息，UID: {uid}").send()
             return
     except Exception as e:
         sv.logger.exception(e)
-        await bot.send(event, f"无法获取微博用户信息，UID: {uid}")
+        await UniMessage.text(f"无法获取微博用户信息，UID: {uid}").send()
         return
     kw = "-_-".join(keywords) if keywords else ""
     ts = time.time()
     add_or_update_subscription(gid, uid, post.nickname, ts, kw, target_data)
     await uid_manager.add_uid(uid)
     if keywords:
-        await bot.send(
-            event, f"成功订阅微博用户：{post.nickname} UID: {uid} 关键词: {kw}"
-        )
+        await UniMessage.text(f"成功订阅微博用户：{post.nickname} UID: {uid} 关键词: {kw}").send()
     else:
-        await bot.send(event, f"成功订阅微博用户：{post.nickname} UID: {uid}")
+        await UniMessage.text(f"成功订阅微博用户：{post.nickname} UID: {uid}").send()
 
 
 @sv.on_command(
     "删除微博订阅", aliases=("取消微博", "删除微博", "rmweibo", "删除weibo", "rmwb")
 )
-async def remove_subscription(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    uids = event.get_plaintext().strip()
+async def remove_subscription(gid: int | None = GroupID(), uids: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    uids = uids.strip()
     uids = uids.split()
     for uid in uids:
         await asyncio.sleep(0.3)
@@ -238,17 +256,19 @@ async def remove_subscription(bot: Bot, event: Event):
                     lambda u: bool(list_subscriptions_by_uid(u)),
                 )
         if num:
-            await bot.send(event, f"{uid} 删除微博订阅成功")
+            await UniMessage.text(f"{uid} 删除微博订阅成功").send()
         else:
-            await bot.send(event, f"{uid} 删除微博订阅失败")
+            await UniMessage.text(f"{uid} 删除微博订阅失败").send()
 
 
 @sv.on_command("微博订阅", aliases=("微博订阅列表", "lookweibo", "lswb", "listweibo"))
-async def list_subscriptions(bot: Bot, event: Event):
-    gid = get_group_id(event)
+async def list_subscriptions(gid: int | None = GroupID()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
     rows = list_group_subscriptions(gid)
     if not rows:
-        await bot.send(event, "本群没有订阅微博用户")
+        await UniMessage.text("本群没有订阅微博用户").send()
         return
     msg = "当前订阅的微博用户：\n"
     for i, row in enumerate(rows):
@@ -256,19 +276,21 @@ async def list_subscriptions(bot: Bot, event: Event):
         name = row.name
         ts = datetime.fromtimestamp(row.time).strftime("%Y-%m-%d %H:%M:%S")
         msg += f"{i + 1}. UID: {uid}, 昵称: {name}, 上次更新时间: {ts}\n"
-    await bot.send(event, msg)
+    await UniMessage.text(msg).send()
 
 
 @sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb", "seewb"))
-async def see_weibo(bot: Bot, event: Event):
-    gid = get_group_id(event)
-    arg = event.get_plaintext().strip()
+async def see_weibo(gid: int | None = GroupID(), arg: str = PlainText()):
+    if gid is None:
+        await UniMessage.text("请在群聊中使用").send()
+        return
+    arg = arg.strip()
     if arg.isdecimal():
         rows = list_group_subscriptions_by_uid(gid, arg)
     else:
         rows = list_group_subscriptions_by_name(gid, arg)
     if not rows:
-        await bot.send(event, f"没有订阅{arg}微博")
+        await UniMessage.text(f"没有订阅{arg}微博").send()
     else:
         uid = rows[0].uid
         keywords = rows[0].keyword
@@ -278,7 +300,7 @@ async def see_weibo(bot: Bot, event: Event):
             keywords = []
         post = await get_weibo_new(uid, 0)
         if not post:
-            await bot.send(event, f"没有获取到{arg}微博")
+            await UniMessage.text(f"没有获取到{arg}微博").send()
             return
         post_message = await post.get_message()
         msgs = render_messages(post_message, post=post)
@@ -292,14 +314,14 @@ async def see_weibo(bot: Bot, event: Event):
     only_group=False,
     only_to_me=True,
 )
-async def query_weibo_user(bot: Bot, event: Event):
-    arg = event.get_plaintext().strip()
+async def query_weibo_user(arg: str = PlainText()):
+    arg = arg.strip()
     if arg.isdecimal():
         rows = list_subscriptions_by_uid(arg)
     else:
         rows = list_subscriptions_by_name(arg)
     if not rows:
-        await bot.send(event, f"没有查到微博用户 {arg}")
+        await UniMessage.text(f"没有查到微博用户 {arg}").send()
         return
     msg = "微博用户信息:\n"
     for row in rows:
@@ -308,4 +330,4 @@ async def query_weibo_user(bot: Bot, event: Event):
             f"上次更新时间: {datetime.fromtimestamp(row.time).strftime('%Y-%m-%d %H:%M:%S')}\n"
         )
         break
-    await bot.send(event, msg)
+    await UniMessage.text(msg).send()
