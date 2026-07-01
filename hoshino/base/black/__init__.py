@@ -5,8 +5,8 @@ from hoshino.hooks import event_preprocessor, on_startup
 from nonebot.adapters import Event
 from hoshino.util import sucmd
 from hoshino.log import logger
+from hoshino.command import UniMsg
 from hoshino.platform import (
-    UniMsg,
     get_user_id,
     is_message_event,
 )

@@ -16,6 +16,10 @@ def get_event_value(event: Event, name: str, default: Any = None) -> Any:
     return default
 
 
+def get_event(event: Event) -> str:
+    return str(getattr(event, "__dict__", {}))
+
+
 def get_group_id(event: Event, default: int | None = None) -> int | None:
     return get_event_value(event, "group_id", default)
 

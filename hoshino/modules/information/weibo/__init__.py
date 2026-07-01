@@ -3,14 +3,12 @@
 import asyncio
 from datetime import datetime
 import time
+from hoshino.command import UniMessage
 from hoshino.platform import (
-    GroupID,
-    MessageID,
-    PlainText,
-    UniMessage,
     dump_target,
     group_target,
 )
+from hoshino.platform.ob11.depends import GroupID, MessageID, PlainText
 from hoshino.core.permission import SUPERUSER
 from hoshino.platform.ob11.permission import ADMIN
 from hoshino.util import (

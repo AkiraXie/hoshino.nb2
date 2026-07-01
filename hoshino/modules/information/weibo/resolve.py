@@ -5,7 +5,7 @@ from hoshino.core.permission import SUPERUSER
 from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent
 from hoshino.util import send_to_superuser
 from nonebot.typing import T_State
-from hoshino.platform import UniMessage
+from hoshino.command import UniMessage
 
 from .sv import sv
 from .internal.post_runtime import get_cached_weibo_uid_id

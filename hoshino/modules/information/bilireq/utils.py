@@ -14,7 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
 from hoshino.hooks import on_serial_startup
-from hoshino.platform import (
+from hoshino.command import (
     UniMessage,
     uni_image,
     uni_text,

@@ -5,17 +5,14 @@ from datetime import datetime
 from hoshino.service import Service
 from hoshino.hooks import on_post_startup
 from hoshino.schedule import scheduled_job
+from hoshino.command import UniMessage, uni_image, uni_text
 from hoshino.platform import (
-    GroupID,
-    PlainText,
-    UniMessage,
     dump_target,
     group_target,
     load_target_or_group,
     send_to_target,
-    uni_image,
-    uni_text,
 )
+from hoshino.platform.ob11.depends import GroupID, PlainText
 
 from .bilibili import get_room_status as get_bilibili_room_status
 from .db import (

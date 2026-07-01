@@ -6,15 +6,12 @@ from hoshino.platform.ob11.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
+from hoshino.command import UniMessage, uni_image
 from hoshino.platform import (
-    UniMessage,
-    GroupID,
-    SenderID,
-    PlainText,
     get_event_message,
     get_session_id,
-    uni_image,
 )
+from hoshino.platform.ob11.depends import GroupID, PlainText, SenderID
 from hoshino.config import config
 from hoshino.util.aiohttpx import get
 from PIL import Image

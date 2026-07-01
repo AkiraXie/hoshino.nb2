@@ -1,15 +1,14 @@
 import asyncio
 import time
 from hoshino.hooks import on_post_startup
+from hoshino.command import UniMessage
 from hoshino.platform import (
-    GroupID,
-    PlainText,
-    UniMessage,
     dump_target,
     group_target,
     load_target_or_group,
     send_to_target,
 )
+from hoshino.platform.ob11.depends import GroupID, PlainText
 import random
 from hoshino.util import send_group_segments, send_segments
 from .utils import (

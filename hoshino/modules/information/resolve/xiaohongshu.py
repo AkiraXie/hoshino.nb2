@@ -4,11 +4,11 @@ from pathlib import Path
 from pydantic import BaseModel
 from nonebot.adapters import Bot
 from hoshino import data_dir
-from hoshino.platform import (
-    upload_group_file,
+from hoshino.command import (
     uni_image,
     uni_video,
 )
+from hoshino.platform import upload_group_file
 from hoshino.types import MessageLike
 from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
 import re

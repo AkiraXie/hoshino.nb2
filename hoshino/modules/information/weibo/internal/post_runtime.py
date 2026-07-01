@@ -9,14 +9,11 @@ from typing import TYPE_CHECKING, Iterable
 from nonebot.adapters import Bot
 from hoshino import config
 from hoshino.modules.information.utils import PostMessage
+from hoshino.command import UniMessage, uni_image, uni_text, uni_video
 from hoshino.platform import (
     Target,
-    UniMessage,
     group_target,
     send_to_target,
-    uni_image,
-    uni_text,
-    uni_video,
 )
 from hoshino.types import MessageLike
 from hoshino.util import (

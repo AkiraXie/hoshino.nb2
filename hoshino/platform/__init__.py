@@ -1,17 +1,5 @@
 """Platform abstraction — OB11-shaped helpers + generic send/target"""
 
-# Re-export commonly-used Alconna/command symbols for backward compat
-from hoshino.command import (
-    Alconna as Alconna,
-    Args as Args,
-    At as At,
-    CommandMeta as CommandMeta,
-    UniMsg as UniMsg,
-    uni_image as uni_image,
-    uni_text as uni_text,
-    uni_video as uni_video,
-)
-
 from .bot import (
     get_group_list,
     get_group_member_info,
