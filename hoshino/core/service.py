@@ -447,7 +447,6 @@ class Service:
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        priority = kwargs.get("priority", 1)
         mw = MatcherWrapper(self.name, on_endswith(msg, **kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[self.name] = mw
@@ -542,7 +541,6 @@ class Service:
         self, rule: Rule = Rule(), only_group: bool = True, permission=NORMAL, **kwargs
     ) -> "MatcherWrapper":
         rule = self.check_service(False, only_group) & rule
-        priority = kwargs.get("priority", 1)
         mw = MatcherWrapper(self.name, on_notice(rule=rule, permission=permission, **kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[self.name] = mw
@@ -550,7 +548,6 @@ class Service:
 
     def on_request(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
         rule = self.check_service(False, only_group) & kwargs.pop("rule", Rule())
-        priority = kwargs.get("priority", 1)
         mw = MatcherWrapper(self.name, on_request(rule, **kwargs))
         self.matchers.append(str(mw))
         _loaded_matchers[self.name] = mw
