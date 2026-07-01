@@ -3,9 +3,14 @@ from nonebot.exception import FinishedException, IgnoredException
 from nonebot.typing import T_State
 from hoshino.hooks import event_preprocessor, on_startup
 from nonebot.adapters import Event
-from hoshino.util import sucmd, parse_qq
+from hoshino.util import sucmd
 from hoshino.log import logger
-from hoshino.platform import get_user_id, is_message_event
+from hoshino.platform import (
+    UniMsg,
+    get_user_id,
+    is_message_event,
+)
+from hoshino.command import At
 from datetime import datetime, timedelta
 from pytz import timezone
 from .data import black as db, Session
@@ -57,6 +62,24 @@ def unblock_uid(uid: int) -> bool:
     return res
 
 
+def _parse_ids_from_msg(msg: UniMsg | str) -> list[int]:
+    """从消息中提取 ID — At 目标 + 数字文本"""
+    ids: list[int] = []
+    if isinstance(msg, str):
+        for word in msg.split():
+            if word.isdigit():
+                ids.append(int(word))
+        return ids
+    for seg in msg:
+        if isinstance(seg, At):
+            ids.append(int(seg.target))
+    text = str(msg)
+    for word in text.split():
+        if word.isdigit():
+            ids.append(int(word))
+    return ids
+
+
 @event_preprocessor
 async def _(event: Event, state: T_State):
     if not is_message_event(event):
@@ -73,16 +96,21 @@ lahei = sucmd(
     "拉黑",
     True,
     aliases={"block", "封禁", "ban", "禁言", "小黑屋", "b了"},
-    handlers=[parse_qq],
 )
-jiefeng = sucmd("解封", True, aliases={"解禁"}, handlers=[parse_qq])
+jiefeng = sucmd("解封", True, aliases={"解禁"})
 
 
 @lahei.got(
     "ids",
     prompt="请输入要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~",
-    args_parser=parse_qq,
 )
+async def _(state: T_State, msg: UniMsg):
+    ids = _parse_ids_from_msg(msg)
+    if not ids:
+        await lahei.reject("请提供要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~")
+    state["ids"] = ids
+
+
 @lahei.got("hours", "请输入要拉黑的小时数")
 async def _(state: T_State):
     if not state.get("ids"):
@@ -96,8 +124,15 @@ async def _(state: T_State):
 @jiefeng.got(
     "ids",
     prompt="请输入要解封的id,并用空格隔开~\n在群聊中，还支持直接at哦~",
-    args_parser=parse_qq,
 )
+async def _(state: T_State, msg: UniMsg):
+    ids = _parse_ids_from_msg(msg)
+    if not ids:
+        await jiefeng.reject("请提供要解封的id,并用空格隔开~\n在群聊中，还支持直接at哦~")
+    state["ids"] = ids
+
+
+@jiefeng.handle()
 async def _(state: T_State):
     if not state.get("ids"):
         raise FinishedException
