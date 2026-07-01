@@ -129,8 +129,8 @@ await UniMessage.text("ok").send(reply_to=message_id)  # 回复
 **禁止**：
 ```python
 # ❌ 不要用 OneBot Message/MessageSegment
-from hoshino.types import OneBotV11Message
-msg = OneBotV11Message("text")
+from nonebot.adapters.onebot.v11 import Message
+msg = Message("text")
 ```
 
 ## 权限

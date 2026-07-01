@@ -11,8 +11,8 @@ from hoshino.platform import (
     dump_target,
     group_target,
 )
-from hoshino.permission import SUPERUSER
-from hoshino.permission import ADMIN
+from hoshino.core.permission import SUPERUSER
+from hoshino.platform.ob11.permission import ADMIN
 from hoshino.util import (
     send_segments,
     random_image_or_video_by_path,

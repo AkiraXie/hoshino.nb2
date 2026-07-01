@@ -5,7 +5,7 @@ from pathlib import Path
 from nonebot.adapters import Bot, Event
 from nonebot.typing import T_State
 from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
-from hoshino.permission import SUPERUSER
+from hoshino.core.permission import SUPERUSER
 from hoshino import img_dir, fav_dir, video_dir
 from hoshino.util import (
     __SU_IMGLIST,

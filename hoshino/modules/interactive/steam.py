@@ -5,7 +5,7 @@ import json
 from hoshino.schedule import scheduled_job
 from hoshino.service import Service
 from hoshino import db_dir
-from hoshino.permission import ADMIN
+from hoshino.platform.ob11.permission import ADMIN
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx
 from hoshino.command import Alconna, Args, MsgTarget, UniMessage

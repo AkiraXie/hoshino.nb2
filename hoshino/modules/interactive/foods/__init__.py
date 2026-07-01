@@ -1,6 +1,6 @@
 from hoshino.service import Service
 from hoshino.command import AlconnaResult, UniMessage
-from hoshino.permission import SUPERUSER
+from hoshino.core.permission import SUPERUSER
 import os
 import random
 from pathlib import Path

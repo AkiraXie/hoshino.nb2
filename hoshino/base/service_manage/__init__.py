@@ -15,7 +15,7 @@ from hoshino.command import (
     UniMsg,
     on_alconna,
 )
-from hoshino.permission import ADMIN
+from hoshino.platform.ob11.permission import ADMIN
 from hoshino.platform import (
     event_scope_key,
     get_group_id,

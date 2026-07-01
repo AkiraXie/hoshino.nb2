@@ -3,7 +3,7 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-from hoshino.permission import SUPERUSER
+from hoshino.core.permission import SUPERUSER
 from hoshino import data_dir
 from hoshino.util import send_segments
 from hoshino.command import UniMessage, uni_text

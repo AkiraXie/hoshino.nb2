@@ -22,7 +22,8 @@ from nonebot.plugin import (
     on_notice,
     on_request,
 )
-from hoshino.core.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
+from hoshino.core.permission import Permission, SUPERUSER
+from hoshino.platform.ob11.permission import ADMIN, NORMAL, OWNER
 from hoshino.core.rule import (
     Rule,
 )

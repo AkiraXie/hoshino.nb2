@@ -1,11 +1,11 @@
-"""OB11-shaped permission predicates — GROUP, PRIVATE, GROUP_ADMIN, GROUP_OWNER"""
+"""OB11-shaped permission predicates and combinations"""
 
 from __future__ import annotations
 
 from typing import Any
 
 from nonebot.adapters import Event
-from nonebot.permission import Permission
+from nonebot.permission import Permission, SUPERUSER
 
 
 def _get_value(source: Any, name: str) -> Any:
@@ -69,3 +69,21 @@ GROUP = Permission(_group)
 PRIVATE = Permission(_private)
 GROUP_ADMIN = Permission(_group_admin)
 GROUP_OWNER = Permission(_group_owner)
+
+ADMIN = SUPERUSER | GROUP_ADMIN | GROUP_OWNER
+PADMIN = SUPERUSER | GROUP_ADMIN | GROUP_OWNER | PRIVATE
+OWNER = SUPERUSER | GROUP_OWNER
+POWNER = SUPERUSER | GROUP_OWNER | PRIVATE
+NORMAL = SUPERUSER | GROUP | PRIVATE
+
+__all__ = [
+    "ADMIN",
+    "GROUP",
+    "GROUP_ADMIN",
+    "GROUP_OWNER",
+    "NORMAL",
+    "OWNER",
+    "PADMIN",
+    "POWNER",
+    "PRIVATE",
+]

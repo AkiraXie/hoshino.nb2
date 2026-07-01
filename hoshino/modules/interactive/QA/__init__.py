@@ -2,7 +2,7 @@ from io import BytesIO
 from nonebot.typing import T_State
 from nonebot.params import Depends
 from .data import Question, Session
-from hoshino.permission import ADMIN
+from hoshino.platform.ob11.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher

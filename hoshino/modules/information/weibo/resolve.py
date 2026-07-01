@@ -1,7 +1,7 @@
 import re
 
 from nonebot.adapters import Bot
-from hoshino.permission import SUPERUSER
+from hoshino.core.permission import SUPERUSER
 from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent
 from hoshino.util import send_to_superuser
 from nonebot.typing import T_State

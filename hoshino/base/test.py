@@ -1,6 +1,7 @@
 from nonebot.adapters.onebot.v11.message import MessageSegment as OneBotV11MessageSegment
 from nonebot.adapters.onebot.v11.event import GroupMessageEvent as OneBotV11GroupMessageEvent
-from hoshino.event import Event, get_event
+from hoshino.platform.ob11.types import Event
+from hoshino.platform.ob11.event import get_event
 from nonebot.adapters import Bot
 from hoshino.util import get_bot_list, sucmd
 from nonebot.matcher import matchers
