@@ -1,5 +1,6 @@
 """Hoshino 常用类型集中 re-export。导入此模块不触发 NoneBot 运行时。"""
-from typing import TYPE_CHECKING
+from __future__ import annotations
+from typing import TYPE_CHECKING, Union
 
 from nonebot.adapters import Bot as Bot
 from nonebot.adapters import Event as Event
@@ -33,3 +34,8 @@ if TYPE_CHECKING:
             call_header: bool = False,
             **kwargs,
         ) -> Any: ...
+
+
+# 统一消息类型 — 可接收任意平台的消息对象（运行时为 ForwardRef）
+T_Message = Union[str, "UniMessage", "OB11Message", "OB11Segment"]  # noqa: F821
+MessageLike = T_Message

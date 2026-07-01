@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from hoshino.platform.ob11.types import Message, MessageSegment
-
-MessageLike = str | Message | MessageSegment
+from hoshino.types import MessageLike
 
 
 def text_message(text: str) -> Message:

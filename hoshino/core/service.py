@@ -5,7 +5,7 @@ import re
 import os
 import json
 from collections import defaultdict
-from typing import TYPE_CHECKING, Iterable
+from typing import Iterable
 import nonebot
 from nonebot.params import Depends
 from hoshino.core.hooks import run_preprocessor
@@ -36,40 +36,89 @@ from hoshino.platform import (
     send_to_event,
     send_to_target,
 )
-from nonebot.typing import (
-    T_Handler,
-)
 from nonebot_plugin_alconna import Alconna, Args, CommandMeta, on_alconna
 from hoshino.core.logger_wrapper import LoggerWrapper
 
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: dict[str, "Service"] = {}
-_loaded_matchers: dict["type[Matcher]", "Service"] = {}
-_matcher_sv_map: dict[int, "Service"] = {}
+_loaded_matchers: dict[str, "MatcherWrapper"] = {}
 
 
-if TYPE_CHECKING:
-    class _DecoratableMatcher(Matcher):
-        """类型桩 — IDE 看到完整 Matcher 方法签名"""
+class MatcherWrapper:
+    """AlconnaMatcher 代理 — 记录 sv_name，手写 API，支持 @mw 直接装饰"""
 
-        def __call__(self, func): ...
+    def __init__(self, sv_name: str, matcher: Matcher):
+        object.__setattr__(self, "_matcher", matcher)
+        object.__setattr__(self, "sv_name", sv_name)
 
-else:
-    class _DecoratableMatcher:
-        """薄包装：支持 @sv.on_xxx(...) 直接装饰 + 透传所有 matcher 方法"""
+    @property
+    def matcher(self) -> Matcher:
+        return object.__getattribute__(self, "_matcher")
 
-        def __init__(self, inner: Matcher):
-            object.__setattr__(self, "_inner", inner)
+    def __call__(self, func):
+        return self.matcher.handle()(func)
 
-        def __call__(self, func):
-            return self._inner.handle()(func)
+    # -- 代理 AlconnaMatcher 核心 API --
 
-        def __getattr__(self, name: str):
-            return getattr(self._inner, name)
+    def handle(self, parameterless=None):
+        return self.matcher.handle(parameterless)
 
-        def __setattr__(self, name: str, value):
-            setattr(self._inner, name, value)
+    def receive(self, id: str = "", parameterless=None):
+        return self.matcher.receive(id, parameterless)
+
+    def got(self, key: str, prompt=None, parameterless=None):
+        return self.matcher.got(key, prompt, parameterless)
+
+    async def send(self, message, *, at_sender=False, call_header=False, **kwargs):
+        bot = current_bot.get()
+        event = current_event.get()
+        return await send_to_event(bot, event, message, at_sender=at_sender, call_header=call_header, **kwargs)
+
+    async def finish(self, message=None, *, at_sender=False, call_header=False, **kwargs):
+        if message:
+            await self.send(message, at_sender=at_sender, call_header=call_header, **kwargs)
+        raise FinishedException
+
+    async def reject(self, prompt=None, *, at_sender=False, call_header=False, **kwargs):
+        if prompt:
+            await self.send(prompt, at_sender=at_sender, call_header=call_header, **kwargs)
+        raise RejectedException
+
+    async def pause(self, prompt=None, *, at_sender=False, call_header=False, **kwargs):
+        if prompt:
+            await self.send(prompt, at_sender=at_sender, call_header=call_header, **kwargs)
+        raise PausedException
+
+    def assign(self, path: str, value=None):
+        return self.matcher.assign(path, value)
+
+    def dispatch(self, path: str, *, template: str | None = None):
+        return self.matcher.dispatch(path, template=template)
+
+    def got_path(self, path: str, prompt=None, middleware=None):
+        return self.matcher.got_path(path, prompt, middleware)
+
+    def reject_path(self, path: str, prompt=None):
+        return self.matcher.reject_path(path, prompt)
+
+    def set_path_arg(self, key: str, value):
+        return self.matcher.set_path_arg(key, value)
+
+    def get_path_arg(self, key: str):
+        return self.matcher.get_path_arg(key)
+
+    # -- 辅助 --
+
+    def set_arg(self, key: str, value):
+        return self.matcher.set_arg(key, value)
+
+    def get_arg(self, key: str, default=...):
+        return self.matcher.get_arg(key, default)
+
+    def __getattr__(self, name: str):
+        # Fallback: 未显式代理的方法透传到 AlconnaMatcher
+        return getattr(self.matcher, name)
 
 
 def _iter_to_set(words: set | list | tuple | str | None) -> set:
@@ -278,14 +327,9 @@ class Service:
     def add_nonebot_plugin_matcher(self, matcher: type[Matcher]) -> "MatcherWrapper":
         rule = self.check_service(False, False)
         matcher.rule = matcher.rule & rule
-        mw = MatcherWrapper(
-            self,
-            f"{matcher.type}.from_nonebot_plugin",
-            matcher.priority,
-            matcher,
-        )
+        mw = MatcherWrapper(self.name, matcher)
         self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
+        _loaded_matchers[self.name] = mw
         return mw
 
     def on_command(
@@ -341,10 +385,9 @@ class Service:
         self.matchers.append(
             f"<Matcher from Service {self.name}, type=Message.alconna, command={command}>"
         )
-        _loaded_matchers[type(matcher)] = self
-        _matcher_sv_map[id(matcher)] = self
-        matcher.__hoshino_sv__ = self
-        return _DecoratableMatcher(matcher)
+        mw = MatcherWrapper(self.name, matcher)
+        _loaded_matchers[self.name] = mw
+        return mw
 
     def _on_alconna_delegate(
         self,
@@ -371,10 +414,9 @@ class Service:
         self.matchers.append(
             f"<Matcher from Service {self.name}, type={type_label}, command={command}>"
         )
-        _loaded_matchers[type(matcher)] = self
-        _matcher_sv_map[id(matcher)] = self
-        matcher.__hoshino_sv__ = self
-        return _DecoratableMatcher(matcher)
+        mw = MatcherWrapper(self.name, matcher)
+        _loaded_matchers[self.name] = mw
+        return mw
 
     def on_startswith(
         self,
@@ -406,16 +448,9 @@ class Service:
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
         priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
-            "Message.endswith",
-            priority,
-            on_endswith(msg, **kwargs),
-            endswith=msg,
-            only_group=only_group,
-        )
+        mw = MatcherWrapper(self.name, on_endswith(msg, **kwargs))
         self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
+        _loaded_matchers[self.name] = mw
         return mw
 
     def on_keyword(
@@ -508,29 +543,17 @@ class Service:
     ) -> "MatcherWrapper":
         rule = self.check_service(False, only_group) & rule
         priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
-            "Notice",
-            priority,
-            on_notice(rule=rule, permission=permission, **kwargs),
-            only_group=only_group,
-        )
+        mw = MatcherWrapper(self.name, on_notice(rule=rule, permission=permission, **kwargs))
         self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
+        _loaded_matchers[self.name] = mw
         return mw
 
     def on_request(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
         rule = self.check_service(False, only_group) & kwargs.pop("rule", Rule())
         priority = kwargs.get("priority", 1)
-        mw = MatcherWrapper(
-            self,
-            "Request",
-            priority,
-            on_request(rule, **kwargs),
-            only_group=only_group,
-        )
+        mw = MatcherWrapper(self.name, on_request(rule, **kwargs))
         self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
+        _loaded_matchers[self.name] = mw
         return mw
 
     async def broadcast(self, msgs: Iterable | None, tag="", interval_time=0.5):
@@ -551,157 +574,18 @@ class Service:
                         self.logger.error(f"{sid}在群{gid}投递{tag}失败")
 
 
-class MatcherWrapper:
-    """
-    封装了 ``nonebot.matcher.Matcher`` ,使之可以受Service干预。
-
-    并将 ``Matcher`` 常见的类方法进行了封装，如果需要其他类方法，请调用 ``.matcher.* ``
-    """
-
-    def __init__(
-        self,
-        sv: Service,
-        type: str,
-        priority: int,
-        matcher: type[Matcher],
-        log: bool = True,
-        **info,
-    ) -> None:
-        self.matcher = matcher
-        self.sv = sv
-        self.priority = priority
-        self.info = info
-        self.type = type
-        self.log = log
-
-    def __getattr__(self, name: str):
-        """Proxy unknown attributes to the underlying AlconnaMatcher/Matcher."""
-        if "matcher" in self.__dict__:
-            return getattr(self.__dict__["matcher"], name)
-        raise AttributeError(name)
-
-    @staticmethod
-    def get_loaded_matchers() -> list[str]:
-        return list(map(str, _loaded_matchers.values()))
-
-    def handle(self, parameterless: list | None = None):
-        def deco(func: T_Handler):
-            return self.matcher.handle(parameterless)(func)
-
-        return deco
-
-    def __call__(self, func: T_Handler) -> T_Handler:
-        return self.handle()(func)
-
-    def receive(self, id: str = "", parameterless: list | None = None):
-        def deco(func: T_Handler):
-            return self.matcher.receive(id=id, parameterless=parameterless)(func)
-
-        return deco
-
-    def got(
-        self,
-        key: str,
-        prompt: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
-        parameterless: list | None = None,
-    ):
-        def deco(func: T_Handler):
-            return self.matcher.got(key, prompt, parameterless)(func)
-
-        return deco
-
-    async def reject(
-        self,
-        prompt: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
-        *,
-        call_header: bool = False,
-        at_sender: bool = False,
-        **kwargs,
-    ):
-        if prompt:
-            await self.send(
-                prompt, call_header=call_header, at_sender=at_sender, **kwargs
-            )
-        raise RejectedException
-
-    async def pause(
-        self,
-        prompt: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
-        *,
-        call_header: bool = False,
-        at_sender: bool = False,
-        **kwargs,
-    ):
-        if prompt:
-            await self.send(
-                prompt, call_header=call_header, at_sender=at_sender, **kwargs
-            )
-        raise PausedException
-
-    async def send(
-        self,
-        message: str | OneBotV11Message | OneBotV11MessageSegment,
-        *,
-        call_header: bool = False,
-        at_sender: bool = False,
-        **kwargs,
-    ):
-        bot = current_bot.get()
-        event = current_event.get()
-        return await send_to_event(
-            bot, event, message, at_sender=at_sender, call_header=call_header, **kwargs
-        )
-
-    async def send_uni(
-        self,
-        message,
-        *,
-        at_sender: bool = False,
-        **kwargs,
-    ):
-        bot = current_bot.get()
-        event = current_event.get()
-        return await send_to_event(bot, event, message, at_sender=at_sender, **kwargs)
-
-    async def finish(
-        self,
-        message: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
-        *,
-        call_header: bool = False,
-        at_sender: bool = False,
-        **kwargs,
-    ):
-        if message:
-            await self.send(
-                message, call_header=call_header, at_sender=at_sender, **kwargs
-            )
-        raise FinishedException
-
-    def __str__(self) -> str:
-        finfo = [
-            f"{k}={v}".replace("<", r"\<").replace(">", r"\>")
-            for k, v in self.info.items()
-        ]
-        return (
-            f"<Matcher from Service {self.sv.name}, priority={self.priority}, type={self.type}, "
-            + ", ".join(finfo)
-            + ">"
-        )
-
-    def __repr__(self) -> str:
-        return self.__str__()
-
-
 async def log_matcherwrapper(matcher: Matcher):
-    sv = _loaded_matchers.get(type(matcher))
-    if sv is not None:
-        info = getattr(matcher, "__hoshino_info__", {})
+    info = getattr(matcher, "__hoshino_info__", None)
+    if info is not None:
+        sv_name = info.get("service", "?")
         label = info.get("type", "?") + ":" + info.get("command", "?")
-        sv.logger.info(f"Event will be handled by <lc>{label}</>")
-        yield
-        sv.logger.info(f"Event was completed handling by <lc>{label}</>")
-    else:
-        yield
+        sv = _loaded_services.get(sv_name)
+        if sv is not None:
+            sv.logger.info(f"Event will be handled by <lc>{label}</>")
+            yield
+            sv.logger.info(f"Event was completed handling by <lc>{label}</>")
+            return
+    yield
 
 
 @run_preprocessor
