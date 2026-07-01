@@ -12,7 +12,7 @@ from hoshino.platform import (
     get_session_id,
 )
 from hoshino.platform.ob11.depends import GroupID, PlainText, SenderID
-from hoshino.config import config
+from hoshino.core.config import config
 from hoshino.util.aiohttpx import get
 from PIL import Image
 from sqlalchemy import select

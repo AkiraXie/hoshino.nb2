@@ -1,18 +1,14 @@
 from __future__ import annotations
 from pathlib import Path
 import random
-import pytz
 import nonebot
-from nonebot.log import logger
 import unicodedata
 import asyncio
 import os
 from asyncio import get_running_loop
-from typing import List, Type, Sequence
+from typing import Type, Sequence
 from io import BytesIO
-from collections import defaultdict
 from PIL import Image
-from datetime import datetime, timedelta
 from nonebot.adapters import Event
 from nonebot.typing import T_State
 from nonebot.params import Depends
@@ -26,14 +22,11 @@ from hoshino.platform import (
     custom_node_segment,
     get_event_message,
     get_group_id,
-    get_plaintext,
     get_reply_message,
     get_session_id,
     image_segment,
     get_user_id,
     group_target,
-    is_group_event,
-    is_private_event,
     send_group_forward,
     send_private_forward,
     send_to_target,
@@ -48,7 +41,6 @@ from . import aiohttpx
 from sqlalchemy import Text, Float, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
-from hoshino.core.hooks import on_post_startup
 from time import time
 
 __SU_IMGLIST = "__superuser__imglist"
@@ -203,6 +195,19 @@ async def _get_videos_from_forward_msg(
                         res.extend(p)
     return res
 
+
+
+async def get_image_segments_from_forward(
+    bot: Bot, event: Event
+) -> list[OneBotV11MessageSegment]:
+    res = []
+    msg = get_event_message(event)
+    if msg:
+        res.extend(await _get_imgs_from_forward_msg(bot, msg))
+    reply_message = get_reply_message(event)
+    if reply_message:
+        res.extend(await _get_imgs_from_forward_msg(bot, reply_message))
+    return res
 
 
 
@@ -402,6 +407,15 @@ async def send(
         return
     await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
 
+
+
+def construct_nodes(
+    user_id: int, segments: Sequence[OneBotV11Message | OneBotV11MessageSegment | str]
+) -> OneBotV11Message:
+    def node(content):
+        return custom_node_segment(user_id=user_id, nickname=hsn_nickname, content=content)
+
+    return OneBotV11Message([node(seg) for seg in segments])
 
 
 
@@ -608,5 +622,4 @@ async def get_redirect(url: str, headers={}) -> str | None:
     if not loc:
         return url
     return loc
-
 
