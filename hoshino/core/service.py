@@ -49,12 +49,12 @@ class MatcherWrapper:
     """通用 Matcher 包装 — sv_name + handle/got/send/finish/reject/pause"""
 
     def __init__(self, sv_name: str, matcher: Matcher):
-        object.__setattr__(self, "_matcher", matcher)
-        object.__setattr__(self, "sv_name", sv_name)
+        self._matcher = matcher
+        self.sv_name = sv_name
 
     @property
     def matcher(self) -> Matcher:
-        return object.__getattribute__(self, "_matcher")
+        return self._matcher
 
     def __call__(self, func):
         return self.matcher.handle()(func)
