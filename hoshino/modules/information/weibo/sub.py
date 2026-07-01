@@ -1,4 +1,4 @@
-from hoshino.hooks import on_startup
+from hoshino.core.hooks import on_startup
 from hoshino.core.schedule import scheduled_job
 
 from .db import list_uid_time_pairs

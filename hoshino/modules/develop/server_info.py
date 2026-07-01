@@ -2,7 +2,7 @@ import asyncio
 import time
 from hoshino.util import sucmd, send_to_superuser
 from nonebot.adapters import Bot
-from hoshino.hooks import on_bot_connect
+from hoshino.core.hooks import on_bot_connect
 from asyncio import all_tasks
 from datetime import datetime, UTC
 import psutil

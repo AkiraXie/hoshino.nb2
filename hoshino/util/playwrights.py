@@ -1,7 +1,7 @@
 from pathlib import Path
 from playwright.async_api import async_playwright, Browser, Playwright, Page as Page
 from hoshino.core.schedule import scheduled_job
-from hoshino.hooks import on_startup
+from hoshino.core.hooks import on_startup
 import ssl
 
 ssl._create_default_https_context = ssl._create_unverified_context

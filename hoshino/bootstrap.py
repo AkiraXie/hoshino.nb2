@@ -5,8 +5,8 @@ import nonebot
 from hoshino.platform.ob11.bootstrap import apply_patches
 from hoshino.platform.ob11.events import GroupReactionEvent, GroupMsgEmojiLikeEvent
 from hoshino.platform.ob11.types import Adapter
-from . import config as _config
-from . import hooks
+from hoshino.core.config import config as _config
+from hoshino.core import hooks
 
 
 def bootstrap() -> None:

@@ -1,7 +1,7 @@
 import asyncio
 from nonebot.exception import FinishedException, IgnoredException
 from nonebot.typing import T_State
-from hoshino.hooks import event_preprocessor, on_startup
+from hoshino.core.hooks import event_preprocessor, on_startup
 from nonebot.adapters import Event
 from hoshino.util import sucmd
 from hoshino.core.log import logger

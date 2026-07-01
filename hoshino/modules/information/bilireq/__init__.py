@@ -1,6 +1,6 @@
 import asyncio
 import time
-from hoshino.hooks import on_post_startup
+from hoshino.core.hooks import on_post_startup
 from hoshino.command import UniMessage
 from hoshino.platform import (
     dump_target,

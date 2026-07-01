@@ -2,7 +2,7 @@ from pydantic import BaseModel, RootModel
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, sessionmaker
 from sqlalchemy import select, create_engine, Integer, Text
 from hoshino import db_dir
-from hoshino.hooks import on_serial_startup, on_startup
+from hoshino.core.hooks import on_serial_startup, on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
 from hoshino.platform.ob11.depends import GroupID

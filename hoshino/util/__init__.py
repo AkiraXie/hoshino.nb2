@@ -48,7 +48,7 @@ from . import aiohttpx
 from sqlalchemy import Text, Float, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
-from hoshino.hooks import on_post_startup
+from hoshino.core.hooks import on_post_startup
 from time import time
 
 __SU_IMGLIST = "__superuser__imglist"

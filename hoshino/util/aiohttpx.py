@@ -6,7 +6,7 @@ from httpx import URL
 from loguru import logger
 import os
 import simplejson
-from hoshino.hooks import on_startup, on_shutdown
+from hoshino.core.hooks import on_startup, on_shutdown
 import ssl
 
 _timeout = 5.0
