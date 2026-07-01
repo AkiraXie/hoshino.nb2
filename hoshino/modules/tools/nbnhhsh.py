@@ -1,5 +1,5 @@
 from hoshino.service import Service
-from hoshino.platform import AlconnaResult, UniMessage
+from hoshino.command import AlconnaResult, UniMessage
 from hoshino.util import aiohttpx
 
 sv = Service("nbnhhsh")

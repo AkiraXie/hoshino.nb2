@@ -16,7 +16,7 @@
 │  import: platform, nonebot, alconna               │
 ├─────────────────────────────────────────────────┤
 │  hoshino/command/        Alconna 命令 facade      │
-│  Alconna, Args, CommandMeta, UniMsg               │
+│  Alconna, Args, CommandMeta, UniMsg, UniMessage   │
 │  import: nonebot_plugin_alconna, nonebot          │
 ├─────────────────────────────────────────────────┤
 │  hoshino/platform/       平台抽象层               │
@@ -54,7 +54,8 @@ hoshino/
 ├── content/                # 内容推送引擎
 │   ├── engine.py          # Post, PostMessage, PostQueue, UIDManager
 │   └── __init__.py        # 统一导出
-├── command/               # Alconna facade（下一步）
+├── command/               # Alconna facade（不含 OB11 depends）
+│   └── __init__.py        # Alconna, Args, UniMsg, UniMessage, ...
 ├── core/                  # 核心基础设施（下一步）
 │   ├── service.py
 │   ├── hooks.py

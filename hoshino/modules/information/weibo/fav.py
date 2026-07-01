@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING
 from hoshino.permission import SUPERUSER
 from hoshino import data_dir
 from hoshino.util import send_segments
-from hoshino.platform import MessageLike, PlainText, UniMessage, uni_text
+from hoshino.command import UniMessage, uni_text
+from hoshino.platform import MessageLike
+from hoshino.platform.ob11.depends import PlainText
 
 from .sv import sv
 from .internal.post_runtime import (

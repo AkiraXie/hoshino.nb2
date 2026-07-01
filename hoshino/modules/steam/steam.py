@@ -8,7 +8,8 @@ from hoshino import db_dir
 from hoshino.permission import ADMIN
 from asyncio import sleep
 from hoshino.util import get_bot_list, aiohttpx
-from hoshino.platform import Alconna, Args, MsgTarget, UniMessage, group_target, send_to_target
+from hoshino.command import Alconna, Args, MsgTarget, UniMessage
+from hoshino.platform import group_target, send_to_target
 
 sv = Service("steam", enable_on_default=False, visible=False)
 sub = {"subscribes": {}}

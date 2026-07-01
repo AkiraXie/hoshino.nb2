@@ -1,7 +1,8 @@
 from hoshino.util import sucmds
 from nonebot.adapters import Bot
 from hoshino.service import Service, MatcherWrapper
-from hoshino.platform import PlainText, get_group_list
+from hoshino.platform import get_group_list
+from hoshino.platform.ob11.depends import PlainText
 
 
 async def ls_group(bot: Bot):

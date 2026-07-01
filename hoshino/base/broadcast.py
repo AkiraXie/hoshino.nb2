@@ -1,7 +1,8 @@
 from loguru import logger
 from hoshino.util import sucmd
 from nonebot.adapters import Bot
-from hoshino.platform import EventMessage, get_group_list, group_target, send_to_target
+from hoshino.platform import get_group_list, group_target, send_to_target
+from hoshino.platform.ob11.depends import EventMessage
 from asyncio import sleep
 
 bc = sucmd("bc", aliases={"广播", "broadcast"})

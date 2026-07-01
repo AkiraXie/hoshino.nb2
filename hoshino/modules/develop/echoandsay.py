@@ -2,7 +2,7 @@ from html import unescape
 
 from hoshino.service import Service
 from hoshino.permission import SUPERUSER
-from hoshino.platform import Alconna, Args, MsgId, UniMessage, UniMsg
+from hoshino.command import Alconna, Args, MsgId, UniMessage, UniMsg
 
 sv = Service("echoandsay", manage_perm=SUPERUSER, enable_on_default=True)
 

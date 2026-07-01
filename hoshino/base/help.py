@@ -1,7 +1,7 @@
 """命令帮助系统 — 利用 Alconna 的 CommandMeta 和 get_help()"""
 
 from hoshino.service import Service
-from hoshino.platform import Alconna, Args, CommandMeta, UniMessage
+from hoshino.command import Alconna, Args, CommandMeta, UniMessage
 from hoshino.permission import ADMIN
 
 sv = Service("help", enable_on_default=True, visible=False, manage_perm=ADMIN)

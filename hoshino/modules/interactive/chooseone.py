@@ -1,5 +1,5 @@
 from hoshino.service import Service
-from hoshino.platform import Alconna, Args, UniMessage
+from hoshino.command import Alconna, Args, UniMessage
 import random
 
 sv = Service("chooseone")

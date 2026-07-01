@@ -14,7 +14,7 @@ from .utils import (
     QbtClient,
 )
 from hoshino.permission import ADMIN
-from hoshino.platform import GroupID, PlainText
+from hoshino.platform.ob11.depends import GroupID, PlainText
 from nonebot.params import Depends
 
 # 配置命令

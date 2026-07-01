@@ -1,6 +1,6 @@
 import base64
 from hoshino.service import Service
-from hoshino.platform import Alconna, Args, UniMessage
+from hoshino.command import Alconna, Args, UniMessage
 
 sv = Service("b64", enable_on_default=False)
 

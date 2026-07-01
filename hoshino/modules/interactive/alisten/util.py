@@ -5,7 +5,7 @@ from hoshino import db_dir
 from hoshino.hooks import on_serial_startup, on_startup
 from hoshino.service import Service
 from hoshino.util.aiohttpx import post
-from hoshino.platform import GroupID
+from hoshino.platform.ob11.depends import GroupID
 
 db_path = db_dir / "alisten.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)

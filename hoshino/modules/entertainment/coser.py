@@ -1,5 +1,5 @@
 from hoshino.service import Service
-from hoshino.platform import Alconna, UniMessage
+from hoshino.command import Alconna, UniMessage
 from hoshino.util import Cooldown, aiohttpx
 
 sv = Service("coser", visible=False, enable_on_default=False)

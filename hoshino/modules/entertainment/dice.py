@@ -1,6 +1,6 @@
 import random
 from hoshino.service import Service
-from hoshino.platform import AlconnaResult, UniMessage
+from hoshino.command import AlconnaResult, UniMessage
 
 sv = Service("dice", visible=False)
 d = sv.on_regex(r".r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?")
