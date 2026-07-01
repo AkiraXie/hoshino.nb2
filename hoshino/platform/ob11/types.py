@@ -12,3 +12,10 @@ from nonebot.adapters.onebot.v11.event import (
 from nonebot.adapters.onebot.v11.message import Message as Message
 from nonebot.adapters.onebot.v11.message import MessageSegment as MessageSegment
 from nonebot.adapters.onebot.v11.utils import escape as escape
+
+# 带 OneBotV11 前缀的别名 — 方便模块层显式声明 OB11 依赖
+OneBotV11Adapter = Adapter
+OneBotV11Bot = Bot
+OneBotV11Event = Event
+OneBotV11Message = Message
+OneBotV11MessageSegment = MessageSegment

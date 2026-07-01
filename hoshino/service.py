@@ -42,7 +42,7 @@ from hoshino.platform import (
 from nonebot.typing import (
     T_Handler,
 )
-from nonebot_plugin_alconna import Alconna, Args, on_alconna
+from nonebot_plugin_alconna import Alconna, Args, CommandMeta, on_alconna
 from hoshino.logger_wrapper import LoggerWrapper
 
 
@@ -314,9 +314,13 @@ class Service:
         only_group: bool = True,
         permission: Permission = NORMAL,
         force_whitespace: bool | None = None,
+        meta: CommandMeta | None = None,
         **kwargs,
     ):
-        alc = name if isinstance(name, Alconna) else Alconna(name, Args["text", str])
+        if isinstance(name, Alconna):
+            alc = name
+        else:
+            alc = Alconna(name, Args["text", str], meta=meta) if meta else Alconna(name, Args["text", str])
         alc_aliases: set[str] | tuple[str, ...] | None = None
         if aliases:
             if isinstance(aliases, str):
