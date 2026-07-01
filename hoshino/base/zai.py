@@ -1,6 +1,6 @@
 from nonebot import on_command
 from nonebot.rule import to_me
-from hoshino import config
+from hoshino.core import config
 
 zai = on_command(
     "zai",

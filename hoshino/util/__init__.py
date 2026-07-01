@@ -79,30 +79,6 @@ def Cooldown(
     return Depends(dependency)
 
 
-class DailyNumberLimiter:
-    tz = pytz.timezone("Asia/Shanghai")
-
-    def __init__(self, max_num):
-        self.today = -1
-        self.count = defaultdict(int)
-        self.max = max_num
-
-    def check(self, key) -> bool:
-        now = datetime.now(self.tz)
-        day = (now - timedelta(hours=5)).day
-        if day != self.today:
-            self.today = day
-            self.count.clear()
-        return bool(self.count[key] < self.max)
-
-    def get_num(self, key):
-        return self.count[key]
-
-    def increase(self, key, num=1):
-        self.count[key] += num
-
-    def reset(self, key):
-        self.count[key] = 0
 
 
 def get_bot_list() -> Sequence[Bot]:
@@ -156,23 +132,10 @@ def sumsg(
     return on_message(**kwargs)
 
 
-def img_to_bytes(pic: Image.Image) -> bytes:
-    buf = BytesIO()
-    pic.save(buf, format="PNG")
-    return buf.getvalue()
 
 
-def img_to_segment(pic: Image.Image) -> OneBotV11MessageSegment:
-    return image_segment(img_to_bytes(pic))
 
 
-def concat_pic(pics, border=5):
-    num = len(pics)
-    w, h = pics[0].size
-    des = Image.new("RGBA", (w, num * h + (num - 1) * border), (255, 255, 255, 255))
-    for i, pic in enumerate(pics):
-        des.paste(pic, (0, i * (h + border)), pic)
-    return des
 
 
 def normalize_str(string: str) -> str:
@@ -184,21 +147,6 @@ def normalize_str(string: str) -> str:
     return string
 
 
-async def parse_qq(bot: Bot, event: Event, state: T_State):
-    ids = []
-    if is_group_event(event):
-        for m in get_event_message(event, []):
-            if m.type == "at" and m.data["qq"] != "all":
-                ids.append(int(m.data["qq"]))
-        for m in get_plaintext(event).split():
-            if m.isdigit():
-                ids.append(int(m))
-    elif is_private_event(event):
-        for m in get_plaintext(event).split():
-            if m.isdigit():
-                ids.append(int(m))
-    if ids:
-        state["ids"] = ids.copy()
 
 
 async def _get_imgs_from_forward_msg(
@@ -256,17 +204,6 @@ async def _get_videos_from_forward_msg(
     return res
 
 
-async def get_image_segments_from_forward(
-    bot: Bot, event: Event
-) -> list[OneBotV11MessageSegment]:
-    res = []
-    msg = get_event_message(event)
-    if msg:
-        res.extend(await _get_imgs_from_forward_msg(bot, msg))
-    reply_message = get_reply_message(event)
-    if reply_message:
-        res.extend(await _get_imgs_from_forward_msg(bot, reply_message))
-    return res
 
 
 async def get_event_image_segments(
@@ -286,13 +223,6 @@ async def get_event_image_segments(
     return False
 
 
-def get_event_image(event: Event) -> list[str]:
-    msg = get_event_message(event, [])
-    reply_message = get_reply_message(event)
-    imglist = [s.data["file"] for s in msg if s.type == "image" and "file" in s.data]
-    if reply_message:
-        imglist.extend([s.data["file"] for s in reply_message if s.type == "image"])
-    return imglist
 
 
 async def save_img(
@@ -443,16 +373,8 @@ def random_image_or_video_by_path(
     return imgs
 
 
-def random_modify_pixel(img: Image.Image):
-    i, j = random.randint(0, img.size[0]), random.randint(0, img.size[1])
-    rand_color = random.choices(range(256), k=3)
-    img.putpixel((i, j), tuple(rand_color))
 
 
-def get_event_imageurl(event: Event) -> List[str]:
-    msg = get_event_message(event, [])
-    imglist = [s.data.get("url", s.data.get("file")) for s in msg if s.type == "image"]
-    return imglist
 
 
 async def send_to_superuser(msg=""):
@@ -463,9 +385,6 @@ async def send_to_superuser(msg=""):
         await send_to_target(bot, Target(str(su), private=True), msg)
 
 
-async def get_img_from_url(url: str) -> OneBotV11MessageSegment:
-    resp = await aiohttpx.get(url)
-    return image_segment(resp.content)
 
 
 async def send(
@@ -484,13 +403,6 @@ async def send(
     await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
 
 
-def construct_nodes(
-    user_id: int, segments: Sequence[OneBotV11Message | OneBotV11MessageSegment | str]
-) -> OneBotV11Message:
-    def node(content):
-        return custom_node_segment(user_id=user_id, nickname=hsn_nickname, content=content)
-
-    return OneBotV11Message([node(seg) for seg in segments])
 
 
 async def send_segments(
@@ -698,10 +610,3 @@ async def get_redirect(url: str, headers={}) -> str | None:
     return loc
 
 
-@on_post_startup
-async def init_cookies():
-    dic = check_all_cookies()
-    msg = "加载 cookies 完成, 当前可用 cookies: " + ", ".join(
-        k for k, v in dic.items() if v
-    )
-    logger.info(msg)

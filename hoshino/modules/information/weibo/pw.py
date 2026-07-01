@@ -11,7 +11,7 @@ from hoshino.util.playwrights import (
 )
 from hoshino.util import get_cookies
 from nonebot.log import logger
-from hoshino import config
+from hoshino.core import config
 
 weibo_script = """
 document.querySelector('div.wrap')?.remove();
