@@ -10,7 +10,6 @@ from nonebot.adapters import Bot
 from hoshino import config
 from hoshino.modules.information.utils import PostMessage
 from hoshino.platform import (
-    MessageLike,
     Target,
     UniMessage,
     group_target,
@@ -19,6 +18,7 @@ from hoshino.platform import (
     uni_text,
     uni_video,
 )
+from hoshino.types import MessageLike
 from hoshino.util import (
     save_img_by_path,
     save_video_by_path,

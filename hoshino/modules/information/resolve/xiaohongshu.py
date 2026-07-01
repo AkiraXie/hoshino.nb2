@@ -5,11 +5,11 @@ from pydantic import BaseModel
 from nonebot.adapters import Bot
 from hoshino import data_dir
 from hoshino.platform import (
-    MessageLike,
     upload_group_file,
     uni_image,
     uni_video,
 )
+from hoshino.types import MessageLike
 from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
 import re
 from urllib.parse import parse_qs, urlparse

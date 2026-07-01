@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from nonebot.adapters import Bot
 from hoshino.modules.information.utils import PostMessage
-from hoshino.platform import MessageLike
+from hoshino.types import MessageLike
 
 from ..utils import Post, clean_filename
 from .internal.post_runtime import (

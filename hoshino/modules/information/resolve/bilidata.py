@@ -1,6 +1,6 @@
 import asyncio
 from hoshino.command import uni_image, uni_text
-from hoshino.platform import MessageLike
+from hoshino.types import MessageLike
 from hoshino.util import aiohttpx, get_cookies, send_segments, send
 from time import strftime, localtime
 import re

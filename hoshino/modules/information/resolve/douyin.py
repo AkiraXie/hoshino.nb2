@@ -14,7 +14,7 @@ from hoshino import data_dir
 from ..utils import Post as BasePost, PostMessage, clean_filename
 from .sv import sv
 from hoshino.command import uni_image, uni_text, uni_video
-from hoshino.platform import MessageLike
+from hoshino.types import MessageLike
 
 COMMON_HEADER = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) "

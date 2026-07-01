@@ -15,12 +15,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from hoshino import db_dir
 from hoshino.hooks import on_serial_startup
 from hoshino.platform import (
-    MessageLike,
     UniMessage,
     uni_image,
     uni_text,
 )
 from hoshino.service import Service
+from hoshino.types import MessageLike
 from hoshino.util import (
     aiohttpx,
     get_cookies_with_ts,

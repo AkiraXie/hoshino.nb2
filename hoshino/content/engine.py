@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from asyncio import Queue
 from pathlib import Path
 import re
-from hoshino.platform import MessageLike
+from hoshino.types import MessageLike
 from typing import Protocol, TypeVar, Generic
 import time
 
