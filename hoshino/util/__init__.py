@@ -19,7 +19,7 @@ from nonebot.params import Depends
 from hoshino import fav_dir, img_dir, hsn_nickname, video_dir
 from nonebot.adapters import Bot
 from nonebot.matcher import Matcher, current_bot, current_event
-from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
+from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.platform import (
     Target,
     UniMessage,

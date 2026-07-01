@@ -20,7 +20,7 @@ if not subscribe_file.exists():
 with subscribe_file.open(mode="r") as f:
     f = f.read()
     sub = json.loads(f)
-cfg = sv.config
+cfg = sv.get_config()
 
 playing_state = {}
 

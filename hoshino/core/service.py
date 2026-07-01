@@ -15,7 +15,7 @@ from nonebot.rule import to_me
 from nonebot.adapters import Bot
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher, current_bot, current_event
-from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
+from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino import service_dir as _service_dir
 from nonebot.plugin import (
     on_endswith,
@@ -216,8 +216,8 @@ class Service:
                 gl[g].append(bot)
         return gl
 
-    @property
-    def config(self) -> dict:
+    def get_config(self) -> dict:
+        """读取服务配置 JSON → dict。无配置时返回空 dict。"""
         filename = os.path.join(_service_dir.parent, "service_config", f"{self.name}.json")
         try:
             with open(filename, encoding="utf8") as f:
