@@ -12,8 +12,10 @@ from nonebot.dependencies import Dependent
 from nonebot.matcher import Matcher, current_bot
 from nonebot.typing import T_Handler
 
-from .message import MessageSegment, Message, MessageTemplate
-from .event import Event, GroupReactionEvent, GroupMsgEmojiLikeEvent
+from hoshino.platform.ob11.types import MessageSegment, Message
+from hoshino.platform.ob11.events import GroupReactionEvent, GroupMsgEmojiLikeEvent
+from hoshino.platform.ob11.types import Event
+from nonebot.adapters import MessageTemplate
 from . import config as _config
 from . import hooks
 
