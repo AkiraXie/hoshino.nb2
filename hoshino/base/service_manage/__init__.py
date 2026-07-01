@@ -1,73 +1,73 @@
 import re
 from functools import cmp_to_key
+
 from nonebot.adapters import Bot, Event
-from nonebot.typing import T_State
-from hoshino.service import Service
+from nonebot.rule import to_me
+
+from hoshino.command import (
+    Alconna,
+    AlconnaMatches,
+    Args,
+    At,
+    MultiVar,
+    Option,
+    UniMessage,
+    UniMsg,
+    on_alconna,
+)
+from hoshino.permission import ADMIN
 from hoshino.platform import (
     event_scope_key,
     get_group_id,
     get_group_list,
-    get_plaintext,
     group_scope_key,
     is_group_event,
-    is_private_event,
     platform_key,
 )
-from nonebot.rule import to_me, ArgumentParser
-from hoshino.permission import ADMIN
-from nonebot.plugin import on_shell_command
-from hoshino.util import _strip_cmd
-from .util import parse_gid, parse_service
+from hoshino.service import Service
 
-parser = ArgumentParser()
-parser.add_argument("-a", "--all", action="store_true")
-parser.add_argument("-p", "--picture", action="store_true")
-parser.add_argument("-i", "--invisible", action="store_true")
-parser1 = ArgumentParser()
-parser1.add_argument("-a", "--all", action="store_true")
-lssv = on_shell_command(
-    "lssv",
-    to_me(),
+lssv = on_alconna(
+    Alconna(
+        "lssv",
+        Args["gids", MultiVar(str, "*")],
+        Option("--all|-a"),
+        Option("--picture|-p"),
+        Option("--invisible|-i"),
+    ),
+    rule=to_me(),
     aliases={"服务列表", "功能列表"},
     permission=ADMIN,
-    parser=parser,
     block=True,
-    handlers=[_strip_cmd],
 )
-enable = on_shell_command(
-    "enable",
-    to_me(),
+enable = on_alconna(
+    Alconna("enable", Args["items", MultiVar(str, "*")], Option("--all|-a")),
+    rule=to_me(),
     aliases={"开启", "打开", "启用"},
-    parser=parser1,
-    state={"action": "开启"},
+    permission=ADMIN,
     block=True,
-    handlers=[_strip_cmd],
 )
-disable = on_shell_command(
-    "disable",
-    to_me(),
+disable = on_alconna(
+    Alconna("disable", Args["items", MultiVar(str, "*")], Option("--all|-a")),
+    rule=to_me(),
     aliases={"关闭", "停用", "禁用"},
-    parser=parser1,
-    state={"action": "关闭"},
+    permission=ADMIN,
     block=True,
-    handlers=[_strip_cmd],
 )
 
 
 @lssv.handle()
-async def _(event: Event, state: T_State):
-    if (group_id := get_group_id(event)) is not None:
-        state["gids"] = [group_id]
-
-
-@lssv.got("gids", prompt="请输入群号，并用空格隔开。", args_parser=parse_gid)
-async def _(bot: Bot, event: Event, state: T_State):
-    if "gids" not in state:
-        await enable.finish("无效输入")
-    verbose_all = state["_args"].all
-    verbose_hide = state["_args"].invisible
+async def _(bot: Bot, event: Event, gids: tuple[str, ...], matches=AlconnaMatches()):
+    target_gids, failure, illegal = await _resolve_gids(bot, event, gids)
+    if illegal:
+        await lssv.send(f'"{"，".join(sorted(illegal))}"无效，群ID只能为纯数字')
+    if failure:
+        await lssv.send(f"bot未入群 {', '.join(sorted(failure))}")
+    if not target_gids:
+        await lssv.finish("无效输入")
+    verbose_all = "all" in matches.options
+    verbose_hide = "invisible" in matches.options
     svs = Service.get_loaded_services().values()
-    for gid in state["gids"]:
+    for gid in target_gids:
         scope_key = (
             event_scope_key(bot, event)
             if is_group_event(event) and gid == get_group_id(event)
@@ -94,53 +94,64 @@ async def _(bot: Bot, event: Event, state: T_State):
         await lssv.finish("\n".join(reply))
 
 
-async def handle_msg(bot: Bot, event: Event, state: T_State):
-    if (group_id := get_group_id(event)) is not None:
-        state["gids"] = [group_id]
-        await parse_service(event, state)
-
-    elif is_private_event(event):
-        services = []
-        glist = list(g["group_id"] for g in await get_group_list(bot))
-        failure = set()
-        msgs = get_plaintext(event).split(" ")
-        gids = []
-        for msg in msgs:
-            if msg.isdigit():
-                gid = int(msg)
-                if gid not in glist:
-                    failure.add(msg)
-                    continue
-                else:
-                    gids.append(gid)
-            elif msg != "":
-                services.append(msg)
-        if failure:
-            await enable.send(f"bot未入群 {', '.join(failure)}")
-        if len(gids) != 0:
-            state["gids"] = gids.copy()
-        if len(services) != 0:
-            state["services"] = services.copy()
+@enable.handle()
+async def _(
+    bot: Bot,
+    event: Event,
+    items: tuple[str, ...],
+    msg: UniMsg,
+    matches=AlconnaMatches(),
+):
+    reply = await _switch_services(
+        bot,
+        event,
+        items,
+        msg,
+        action="开启",
+        all_services="all" in matches.options,
+    )
+    await UniMessage.text(reply).finish()
 
 
-disable.handle()(handle_msg)
-enable.handle()(handle_msg)
+@disable.handle()
+async def _(
+    bot: Bot,
+    event: Event,
+    items: tuple[str, ...],
+    msg: UniMsg,
+    matches=AlconnaMatches(),
+):
+    reply = await _switch_services(
+        bot,
+        event,
+        items,
+        msg,
+        action="关闭",
+        all_services="all" in matches.options,
+    )
+    await UniMessage.text(reply).finish()
 
 
-@disable.got("gids", "请输入要关闭服务的群ID，用空格间隔", args_parser=parse_gid)
-@disable.got("services", "请输入服务名称，用空格间隔", args_parser=parse_service)
-@enable.got("gids", "请输入要开启服务的群ID，用空格间隔", args_parser=parse_gid)
-@enable.got("services", "请输入服务名称，用空格间隔", args_parser=parse_service)
-async def _(bot: Bot, event: Event, state: T_State):
-    if not state["gids"] or not state["services"]:
-        await enable.finish("无效输入")
-    action = state["action"]
+async def _switch_services(
+    bot: Bot,
+    event: Event,
+    items: tuple[str, ...],
+    msg,
+    *,
+    action: str,
+    all_services: bool,
+) -> str:
+    gids, services, failure = await _resolve_switch_targets(bot, event, items, msg)
+    if failure:
+        await UniMessage.text(f"bot未入群 {', '.join(sorted(failure))}").send()
+    if not gids or (not services and not all_services):
+        return "无效输入"
     svs = Service.get_loaded_services()
-    if "all" in state["_args"].__dict__ and state["_args"].all:
-        state["services"] = svs.keys()
+    if all_services:
+        services = tuple(svs.keys())
     allsv = set(svs.keys())
     exclude, succ, notfound, succ_group = set(), set(), set(), set()
-    for name in state["services"]:
+    for name in services:
         flag = 1
         if name.startswith(("!", "！")) or name.endswith(("!", "！")):
             name = re.sub(r"[!！]", "", name)
@@ -155,9 +166,9 @@ async def _(bot: Bot, event: Event, state: T_State):
         else:
             notfound.add(name)
     if not succ and notfound:
-        await enable.finish(f"未找到服务: {', '.join(notfound)}")
+        return f"未找到服务: {', '.join(notfound)}"
     succ = succ if not exclude else allsv - exclude
-    for gid in state["gids"]:
+    for gid in gids:
         scope_key = (
             event_scope_key(bot, event)
             if is_group_event(event) and gid == get_group_id(event)
@@ -179,4 +190,67 @@ async def _(bot: Bot, event: Event, state: T_State):
         reply.append(f"已在群 {', '.join(succ_group)} {action}服务: {', '.join(succ)}")
     if notfound:
         reply.append(f"未找到服务: {', '.join(notfound)}")
-    await enable.finish("\n".join(reply))
+    return "\n".join(reply)
+
+
+async def _resolve_switch_targets(
+    bot: Bot,
+    event: Event,
+    items: tuple[str, ...],
+    msg,
+) -> tuple[list[int], tuple[str, ...], set[str]]:
+    if (group_id := get_group_id(event)) is not None:
+        return [group_id], tuple(item for item in items if item), set()
+
+    group_ids = await _joined_group_ids(bot)
+    gids: list[int] = []
+    services: list[str] = []
+    failure: set[str] = set()
+    for item in items:
+        if item.isdigit():
+            gid = int(item)
+            if gid in group_ids:
+                gids.append(gid)
+            else:
+                failure.add(item)
+        elif item:
+            services.append(item)
+    for at in msg.get(At):
+        if at.target.isdigit():
+            gid = int(at.target)
+            if gid in group_ids:
+                gids.append(gid)
+            else:
+                failure.add(at.target)
+    return _dedupe_ints(gids), tuple(services), failure
+
+
+async def _resolve_gids(
+    bot: Bot,
+    event: Event,
+    values: tuple[str, ...],
+) -> tuple[list[int], set[str], set[str]]:
+    if (group_id := get_group_id(event)) is not None and not values:
+        return [group_id], set(), set()
+    group_ids = await _joined_group_ids(bot)
+    gids: list[int] = []
+    failure: set[str] = set()
+    illegal: set[str] = set()
+    for value in values:
+        if value.isdigit():
+            gid = int(value)
+            if gid in group_ids:
+                gids.append(gid)
+            else:
+                failure.add(value)
+        elif value:
+            illegal.add(value)
+    return _dedupe_ints(gids), failure, illegal
+
+
+async def _joined_group_ids(bot: Bot) -> set[int]:
+    return {int(group["group_id"]) for group in await get_group_list(bot)}
+
+
+def _dedupe_ints(values: list[int]) -> list[int]:
+    return list(dict.fromkeys(values))

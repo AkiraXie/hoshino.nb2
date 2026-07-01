@@ -1,21 +1,14 @@
 """Hoshino 运行时初始化。必须在 nonebot.init() 后、nonebot.run() 前调用。"""
 from __future__ import annotations
-from typing import Any, Type
+from typing import Any
 
 import nonebot
 from hoshino.platform.ob11.types import Adapter, Bot
 from hoshino.platform.ob11.types import escape
-from nonebot.params import (
-    Depends, BotParam, EventParam, StateParam, MatcherParam, DependParam,
-)
-from nonebot.dependencies import Dependent
-from nonebot.matcher import Matcher, current_bot
-from nonebot.typing import T_Handler
 
 from hoshino.platform.ob11.types import MessageSegment, Message
 from hoshino.platform.ob11.events import GroupReactionEvent, GroupMsgEmojiLikeEvent
 from hoshino.platform.ob11.types import Event
-from nonebot.adapters import MessageTemplate
 from . import config as _config
 from . import hooks
 
@@ -85,63 +78,6 @@ async def send(
     )
 
 
-# ── Matcher.got patch ──
-
-@classmethod
-def got(
-    cls: Type[Matcher],
-    key: str,
-    prompt: str | Message | MessageSegment | MessageTemplate | None = None,
-    parameterless: list | None = None,
-    args_parser: T_Handler | None = None,
-):
-    """装饰一个函数来指示 NoneBot 获取一个参数 ``key``。
-    当要获取的 ``key`` 不存在时接收用户新的一条消息再运行该函数，
-    如果 ``key`` 已存在则直接继续运行。
-    """
-    if args_parser:
-        args_parser = Dependent[Any].parse(
-            call=args_parser,
-            allow_types=[BotParam, EventParam, StateParam, MatcherParam, DependParam],
-        )
-
-    async def _key_getter(event: Event, matcher: "Matcher"):
-        matcher.set_target(key)
-        if matcher.get_target() == key:
-            if not args_parser:
-                matcher.set_arg(key, event.get_message())
-            else:
-                bot = current_bot.get()
-                await args_parser(
-                    matcher=matcher, bot=bot, event=event, state=matcher.state
-                )
-            return
-        if matcher.get_arg(key, ...) is not ...:
-            return
-        await matcher.reject(prompt)
-
-    _parameterless = (Depends(_key_getter), *(parameterless or ()))
-
-    def _decorator(func: T_Handler) -> T_Handler:
-        if cls.handlers and cls.handlers[-1].call is func:
-            func_handler = cls.handlers[-1]
-            new_handler = Dependent(
-                call=func_handler.call,
-                params=func_handler.params,
-                parameterless=Dependent.parse_parameterless(
-                    tuple(_parameterless), cls.HANDLER_PARAM_TYPES
-                )
-                + func_handler.parameterless,
-            )
-            cls.handlers[-1] = new_handler
-        else:
-            cls.append_handler(func, parameterless=_parameterless)
-
-        return func
-
-    return _decorator
-
-
 # ── bootstrap ──
 
 def bootstrap() -> None:
@@ -154,9 +90,8 @@ def bootstrap() -> None:
     for sub in ("favorite", "image", "db", "service", "video"):
         (data_dir / sub).mkdir(exist_ok=True)
 
-    # 2. Patch Adapter 和 Matcher
+    # 2. Patch Adapter
     Adapter.custom_send(send)
-    setattr(Matcher, "got", got)
 
     # 3. 注册自定义事件模型
     Adapter.add_custom_model(GroupReactionEvent)

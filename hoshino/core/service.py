@@ -17,7 +17,6 @@ from nonebot.adapters import Event
 from nonebot.matcher import Matcher, current_bot, current_event
 from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino import service_dir as _service_dir
-from nonebot.adapters import MessageTemplate
 from nonebot.plugin import (
     on_endswith,
     on_notice,
@@ -65,20 +64,6 @@ else:
 
         def __call__(self, func):
             return self._inner.handle()(func)
-
-        def got(
-            self,
-            key: str,
-            prompt=None,
-            parameterless=None,
-            args_parser=None,
-            **kwargs,
-        ):
-            """桥接 args_parser — AlconnaMatcher.got 不支持，回退到 monkey-patched Matcher.got"""
-            if args_parser is not None:
-                from nonebot.matcher import Matcher as _M
-                return _M.got(key, prompt, parameterless, args_parser=args_parser)
-            return self._inner.got(key, prompt, parameterless, **kwargs)
 
         def __getattr__(self, name: str):
             return getattr(self._inner, name)
@@ -233,12 +218,11 @@ class Service:
 
     @property
     def config(self) -> dict:
-        filename = f"hoshino/service_config/{self.name}.json"
+        filename = os.path.join(_service_dir.parent, "service_config", f"{self.name}.json")
         try:
             with open(filename, encoding="utf8") as f:
                 return json.load(f)
         except (Exception, FileNotFoundError):
-            self.logger.error("Failed to load config")
             return dict()
 
     def check_enabled(self, group_id: int) -> bool:
@@ -618,12 +602,11 @@ class MatcherWrapper:
     def got(
         self,
         key: str,
-        prompt: str | OneBotV11Message | OneBotV11MessageSegment | MessageTemplate | None = None,
-        args_parser: T_Handler | None = None,
+        prompt: str | OneBotV11Message | OneBotV11MessageSegment | None = None,
         parameterless: list | None = None,
     ):
         def deco(func: T_Handler):
-            return self.matcher.got(key, prompt, parameterless, args_parser)(func)
+            return self.matcher.got(key, prompt, parameterless)(func)
 
         return deco
 
