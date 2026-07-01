@@ -60,13 +60,19 @@ hoshino/
 │   ├── service.py
 │   ├── hooks.py
 │   ├── config.py
+│   ├── log.py
+│   ├── logger_wrapper.py
 │   ├── permission.py
-│   └── rule.py
+│   ├── rule.py
+│   └── schedule.py
 ├── service.py             # → compat re-export（过渡期）
 ├── hooks.py               # → compat re-export（过渡期）
 ├── config.py              # → compat re-export（过渡期）
 ├── permission.py          # → compat re-export（过渡期）
 ├── rule.py                # → compat re-export（过渡期）
+├── log.py                 # → compat re-export（过渡期）
+├── logger_wrapper.py      # → compat re-export（过渡期）
+├── schedule.py            # → compat re-export（过渡期）
 ├── types.py               # 纯 NoneBot 类型，零 OneBot
 ├── message.py             # → compat re-export（过渡期，后续删除）
 ├── event.py               # → compat re-export（过渡期，后续删除）

@@ -162,7 +162,7 @@ def bootstrap() -> None:
 
     # 4. 配置日志
     # Lazy import: hoshino.log imports hoshino.service state used by bootstrap patches.
-    from .log import configure as _log_configure
+    from hoshino.core.log import configure as _log_configure
     _log_configure()
 
     # 5. 下发所有延迟 hook 到真实 driver

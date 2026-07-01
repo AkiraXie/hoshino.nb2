@@ -43,7 +43,7 @@ from nonebot.typing import (
     T_Handler,
 )
 from nonebot_plugin_alconna import Alconna, Args, CommandMeta, on_alconna
-from hoshino.logger_wrapper import LoggerWrapper
+from hoshino.core.logger_wrapper import LoggerWrapper
 
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
