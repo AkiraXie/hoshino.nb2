@@ -6,8 +6,6 @@ from hoshino.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
-from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
-from hoshino.config import config
 from hoshino.platform import (
     UniMessage,
     GroupID,
@@ -15,7 +13,9 @@ from hoshino.platform import (
     PlainText,
     get_event_message,
     get_session_id,
+    uni_image,
 )
+from hoshino.config import config
 from hoshino.util.aiohttpx import get
 from PIL import Image
 from sqlalchemy import select
@@ -24,24 +24,13 @@ img_dir = config.static_dir / "img" / "QA"
 img_dir.mkdir(parents=True, exist_ok=True)
 
 
-# ── Legacy answer compat (isolated) ──
-
-def _cq_parse(answer: str):
-    """Parse legacy CQ-format answer string to OneBot message for image extraction."""
-    return OneBotV11Message(answer)
+async def _parse_answer(answer: str) -> UniMessage:
+    return await UniMessage.generate(message=answer)
 
 
-async def _cq_to_unimessage(answer: str) -> UniMessage:
-    return await UniMessage.generate(message=_cq_parse(answer))
-
-
-async def _cq_finish(answer: str) -> None:
-    await (await _cq_to_unimessage(answer)).send()
+async def _finish_answer(answer: str) -> None:
+    await (await _parse_answer(answer)).send()
     await ans.finish()
-
-
-def _cq_image_segment(path) -> OneBotV11MessageSegment:
-    return OneBotV11MessageSegment.image(path)
 
 
 async def event_image_in_local(
@@ -61,10 +50,10 @@ async def event_image_in_local(
     if answer == question:
         await matcher.finish()
     sid = get_session_id(event, "")
-    answer_msg = _cq_parse(answer)
-    for i, s in enumerate(answer_msg):
-        if s.type == "image":
-            url = s.data.get("file", s.data.get("url"))
+    answer_msg = await _parse_answer(answer)
+    for i, seg in enumerate(answer_msg):
+        if seg.type == "image":
+            url = str(getattr(seg, "url", None) or seg.data.get("url", ""))
             url = url.replace("https://", "http://")
             img = await get(url, timeout=120, verify=False)
             im = Image.open(BytesIO(img.content))
@@ -79,7 +68,7 @@ async def event_image_in_local(
             s = "{}-{}{}".format(sid, (url.split("/")[-2]).split("-")[-1], ext)
             f = img_dir / s
             f.write_bytes(img.content)
-            answer_msg[i] = _cq_image_segment(f)
+            answer_msg[i] = uni_image(f)
     return (question, str(answer_msg))
 
 
@@ -286,7 +275,7 @@ async def _(gid: int = GroupID()):
 @ans.handle()
 async def _(state: T_State):
     if answer := state["answer"]:
-        await _cq_finish(answer)
+        await _finish_answer(answer)
 
 
 @del_allqa.handle()

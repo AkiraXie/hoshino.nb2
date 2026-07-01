@@ -5,8 +5,7 @@ from hoshino.permission import SUPERUSER
 from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent
 from hoshino.util import send_to_superuser
 from nonebot.typing import T_State
-from nonebot.compat import type_validate_python
-from hoshino.platform.ob11.types import OneBotV11Message
+from hoshino.platform import UniMessage
 
 from .sv import sv
 from .internal.post_runtime import get_cached_weibo_uid_id
@@ -35,7 +34,7 @@ async def reaction_weibo_rule(
         return False
     msg = msg.get("message")
     if msg:
-        msg = type_validate_python(OneBotV11Message, msg)
+        msg = await UniMessage.generate(message=msg)
         text = msg.extract_plain_text()
         text = text.strip()
         for name, regex in weibo_regexs.items():
