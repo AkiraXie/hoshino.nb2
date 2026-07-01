@@ -73,7 +73,7 @@ async def _(bot: Bot, event: Event, gids: tuple[str, ...], matches=AlconnaMatche
             if is_group_event(event) and gid == get_group_id(event)
             else group_scope_key(gid, platform=platform_key(bot))
         )
-        current_svs = map(lambda sv: (sv, sv.check_scope_enabled(scope_key, gid)), svs)
+        current_svs = map(lambda sv: (sv, sv.check_enabled(scope_key)), svs)
         cmpfunc = cmp_to_key(
             lambda x, y: (y[1] - x[1])
             or (-1 if x[0].name < y[0].name else 1 if x[0].name > y[0].name else 0)
@@ -177,11 +177,9 @@ async def _switch_services(
         for name in succ:
             sv = svs[name]
             if action == "开启":
-                sv.set_enable(gid)
-                sv.set_scope_enable(scope_key)
+                sv.set_enable(scope_key)
             else:
-                sv.set_disable(gid)
-                sv.set_scope_disable(scope_key)
+                sv.set_disable(scope_key)
         succ_group.add(str(gid))
     reply = []
     if is_group_event(event):
