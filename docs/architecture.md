@@ -5,7 +5,11 @@
 ```
 ┌─────────────────────────────────────────────────┐
 │  hoshino/modules/        业务插件                 │
-│  import: core, platform, command                  │
+│  import: core, platform, command, content        │
+├─────────────────────────────────────────────────┤
+│  hoshino/content/        内容推送引擎              │
+│  Post, PostMessage, PostQueue, UIDManager        │
+│  import: platform                                 │
 ├─────────────────────────────────────────────────┤
 │  hoshino/core/           核心基础设施              │
 │  Service, hooks, config, permission, rule         │
@@ -42,10 +46,14 @@ hoshino/
 │   │   ├── events.py      # GroupReactionEvent, GroupMsgEmojiLikeEvent
 │   │   ├── event.py       # get_group_id, get_user_id, is_group_event, ...
 │   │   ├── message.py     # image_segment, video_segment, text_message, ...
-│   │   └── bot.py         # get_group_list, send_group_forward, ...
+│   │   ├── bot.py         # get_group_list, send_group_forward, ...
+│   │   └── depends.py     # GroupID, PlainText, GroupMemberName, ...
 │   ├── send.py            # to_unimessage, send_to_event, send_to_target
 │   └── target.py          # Target 序列化, scope key
 │   └── __init__.py        # compat re-export（过渡期）
+├── content/                # 内容推送引擎
+│   ├── engine.py          # Post, PostMessage, PostQueue, UIDManager
+│   └── __init__.py        # 统一导出
 ├── command/               # Alconna facade（下一步）
 ├── core/                  # 核心基础设施（下一步）
 │   ├── service.py
