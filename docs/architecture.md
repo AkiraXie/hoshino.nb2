@@ -56,13 +56,17 @@ hoshino/
 │   └── __init__.py        # 统一导出
 ├── command/               # Alconna facade（不含 OB11 depends）
 │   └── __init__.py        # Alconna, Args, UniMsg, UniMessage, ...
-├── core/                  # 核心基础设施（下一步）
+├── core/                  # 核心基础设施
 │   ├── service.py
 │   ├── hooks.py
 │   ├── config.py
-│   ├── bootstrap.py
 │   ├── permission.py
 │   └── rule.py
+├── service.py             # → compat re-export（过渡期）
+├── hooks.py               # → compat re-export（过渡期）
+├── config.py              # → compat re-export（过渡期）
+├── permission.py          # → compat re-export（过渡期）
+├── rule.py                # → compat re-export（过渡期）
 ├── types.py               # 纯 NoneBot 类型，零 OneBot
 ├── message.py             # → compat re-export（过渡期，后续删除）
 ├── event.py               # → compat re-export（过渡期，后续删除）

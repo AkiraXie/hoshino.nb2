@@ -1,22 +1,19 @@
-"""权限系统 — 组合 OB11 predicates + NoneBot SUPERUSER"""
+"""Compatibility shim for hoshino.core.permission."""
 
-from __future__ import annotations
-
-from hoshino.platform.ob11.permission import (
+from hoshino.core.permission import (
+    ADMIN as ADMIN,
     GROUP as GROUP,
     GROUP_ADMIN as GROUP_ADMIN,
     GROUP_OWNER as GROUP_OWNER,
+    NORMAL as NORMAL,
+    OWNER as OWNER,
+    PADMIN as PADMIN,
+    POWNER as POWNER,
     PRIVATE as PRIVATE,
+    Permission as Permission,
+    SUPERUSER as SUPERUSER,
+    USER as USER,
 )
-from nonebot.permission import SUPERUSER as SUPERUSER
-from nonebot.permission import Permission as Permission
-from nonebot.permission import USER as USER
-
-ADMIN = SUPERUSER | GROUP_ADMIN | GROUP_OWNER
-PADMIN = SUPERUSER | GROUP_ADMIN | GROUP_OWNER | PRIVATE
-OWNER = SUPERUSER | GROUP_OWNER
-POWNER = SUPERUSER | GROUP_OWNER | PRIVATE
-NORMAL = SUPERUSER | GROUP | PRIVATE
 
 __all__ = [
     "ADMIN",

@@ -1,5 +1,5 @@
 """HoshinoBot - 核心包。import 此模块不需 nonebot.init()。"""
-from .config import config
+from hoshino.core.config import config
 
 hsn_nickname = next(iter(config.nickname), "Hoshino")
 fav_dir     = config.data_dir / "favorite"
