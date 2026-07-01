@@ -11,7 +11,7 @@ from nonebot.params import Depends
 from hoshino.core.hooks import run_preprocessor
 from nonebot.exception import RejectedException, PausedException, FinishedException
 
-from nonebot.rule import ArgumentParser, to_me, shell_command
+from nonebot.rule import to_me
 from nonebot.adapters import Bot
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher, current_bot, current_event
@@ -19,13 +19,11 @@ from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino import service_dir as _service_dir
 from nonebot.adapters import MessageTemplate
 from nonebot.plugin import (
-    on_message,
     on_endswith,
     on_notice,
     on_request,
 )
 from hoshino.core.permission import ADMIN, NORMAL, OWNER, Permission, SUPERUSER
-from hoshino.util import _strip_cmd
 from hoshino.core.rule import (
     Rule,
 )
@@ -335,37 +333,6 @@ class Service:
             aliases=alc_aliases,
             **kwargs,
         )
-
-    def on_shell_command(
-        self,
-        name: str,
-        only_to_me: bool = False,
-        aliases: set | list | tuple | str | None = None,
-        parser: ArgumentParser | None = None,
-        only_group: bool = True,
-        permission: Permission = NORMAL,
-        **kwargs,
-    ) -> "MatcherWrapper":
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        priority = kwargs.get("priority", 1)
-        handlers = kwargs.pop("handlers", [])
-        handlers.insert(0, _strip_cmd)
-        kwargs["handlers"] = handlers
-        commands = set([name]) | (_iter_to_set(aliases) or set())
-        kwargs["rule"] = kwargs["rule"] & shell_command(*commands, parser=parser)
-        mw = MatcherWrapper(
-            self,
-            "Message.shell_command",
-            priority,
-            on_message(**kwargs),
-            command=name,
-            only_group=only_group,
-        )
-        self.matchers.append(str(mw))
-        _loaded_matchers[mw.matcher] = mw
-        return mw
 
     def on_alconna(
         self,
