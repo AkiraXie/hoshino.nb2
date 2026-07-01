@@ -14,8 +14,4 @@ from nonebot.dependencies import Dependent as Dependent
 from nonebot.matcher import Matcher as Matcher
 from nonebot.matcher import current_bot as current_bot
 from nonebot.matcher import current_event as current_event
-from hoshino.platform.ob11.types import Bot as OneBotV11Bot
-from hoshino.platform.ob11.types import Event as OneBotV11Event
-from hoshino.platform.ob11.types import Message as OneBotV11Message
-from hoshino.platform.ob11.types import MessageSegment as OneBotV11MessageSegment
 from nonebot.adapters import MessageTemplate as MessageTemplate
