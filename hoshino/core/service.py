@@ -46,7 +46,7 @@ _loaded_matchers: dict[str, "MatcherWrapper"] = {}
 
 
 class MatcherWrapper:
-    """AlconnaMatcher 代理 — 记录 sv_name，手写 API，支持 @mw 直接装饰"""
+    """通用 Matcher 包装 — sv_name + handle/got/send/finish/reject/pause"""
 
     def __init__(self, sv_name: str, matcher: Matcher):
         object.__setattr__(self, "_matcher", matcher)
@@ -58,8 +58,6 @@ class MatcherWrapper:
 
     def __call__(self, func):
         return self.matcher.handle()(func)
-
-    # -- 代理 AlconnaMatcher 核心 API --
 
     def handle(self, parameterless=None):
         return self.matcher.handle(parameterless)
@@ -90,6 +88,19 @@ class MatcherWrapper:
             await self.send(prompt, at_sender=at_sender, call_header=call_header, **kwargs)
         raise PausedException
 
+    def set_arg(self, key: str, value):
+        return self.matcher.set_arg(key, value)
+
+    def get_arg(self, key: str, default=...):
+        return self.matcher.get_arg(key, default)
+
+    def __getattr__(self, name: str):
+        return getattr(self.matcher, name)
+
+
+class AlconnaMatcherWrapper(MatcherWrapper):
+    """AlconnaMatcher 包装 — 增加 assign/dispatch/got_path 等 Alconna 特有方法"""
+
     def assign(self, path: str, value=None):
         return self.matcher.assign(path, value)
 
@@ -107,18 +118,6 @@ class MatcherWrapper:
 
     def get_path_arg(self, key: str):
         return self.matcher.get_path_arg(key)
-
-    # -- 辅助 --
-
-    def set_arg(self, key: str, value):
-        return self.matcher.set_arg(key, value)
-
-    def get_arg(self, key: str, default=...):
-        return self.matcher.get_arg(key, default)
-
-    def __getattr__(self, name: str):
-        # Fallback: 未显式代理的方法透传到 AlconnaMatcher
-        return getattr(self.matcher, name)
 
 
 def _iter_to_set(words: set | list | tuple | str | None) -> set:
@@ -293,7 +292,7 @@ class Service:
     def add_nonebot_plugin_matcher(self, matcher: type[Matcher]) -> "MatcherWrapper":
         rule = self.check_service(False, False)
         matcher.rule = matcher.rule & rule
-        mw = MatcherWrapper(self.name, matcher)
+        mw = AlconnaMatcherWrapper(self.name, matcher)
         self.matchers.append(str(mw))
         _loaded_matchers[self.name] = mw
         return mw
@@ -351,7 +350,7 @@ class Service:
         self.matchers.append(
             f"<Matcher from Service {self.name}, type=Message.alconna, command={command}>"
         )
-        mw = MatcherWrapper(self.name, matcher)
+        mw = AlconnaMatcherWrapper(self.name, matcher)
         _loaded_matchers[self.name] = mw
         return mw
 
@@ -380,7 +379,7 @@ class Service:
         self.matchers.append(
             f"<Matcher from Service {self.name}, type={type_label}, command={command}>"
         )
-        mw = MatcherWrapper(self.name, matcher)
+        mw = AlconnaMatcherWrapper(self.name, matcher)
         _loaded_matchers[self.name] = mw
         return mw
 
