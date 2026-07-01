@@ -24,11 +24,13 @@ from hoshino.util import (
     save_video,
     random_image_or_video_by_path,
 )
-from hoshino.event import (
+from hoshino.platform.ob11.events import (
     GroupReactionEvent,
     GroupMsgEmojiLikeEvent,
-    NoticeEvent,
+)
+from hoshino.platform.ob11.types import (
     GroupMessageEvent,
+    NoticeEvent,
 )
 from hoshino.platform import get_message_id, get_plaintext, image_segment
 from nonebot.plugin import on_notice, on_keyword

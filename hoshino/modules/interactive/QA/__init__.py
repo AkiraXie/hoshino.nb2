@@ -6,7 +6,7 @@ from hoshino.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
-from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
+from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino.config import config
 from hoshino.platform import (
     UniMessage,

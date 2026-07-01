@@ -2,11 +2,11 @@ import re
 
 from nonebot.adapters import Bot
 from hoshino.permission import SUPERUSER
-from hoshino.event import GroupMsgEmojiLikeEvent
+from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent
 from hoshino.util import send_to_superuser
 from nonebot.typing import T_State
 from nonebot.compat import type_validate_python
-from hoshino.types import OneBotV11Message
+from hoshino.platform.ob11.types import OneBotV11Message
 
 from .sv import sv
 from .internal.post_runtime import get_cached_weibo_uid_id

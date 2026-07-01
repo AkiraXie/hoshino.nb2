@@ -19,7 +19,7 @@ from hoshino.platform.ob11.types import Bot as OneBotV11Bot
 from hoshino.platform.ob11.types import Event as OneBotV11Event
 from hoshino.platform.ob11.types import Message as OneBotV11Message
 from hoshino.platform.ob11.types import MessageSegment as OneBotV11MessageSegment
-from .message import MessageTemplate as MessageTemplate
+from nonebot.adapters import MessageTemplate as MessageTemplate
 
 if TYPE_CHECKING:
     from typing import Any, Callable, Type as _Type

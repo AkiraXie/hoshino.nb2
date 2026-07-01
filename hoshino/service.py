@@ -17,7 +17,7 @@ from nonebot.adapters import Event
 from nonebot.matcher import Matcher, current_bot, current_event
 from hoshino.types import OneBotV11Message, OneBotV11MessageSegment
 from hoshino import service_dir as _service_dir
-from hoshino.message import MessageTemplate
+from nonebot.adapters import MessageTemplate
 from nonebot.plugin import (
     on_message,
     on_endswith,
