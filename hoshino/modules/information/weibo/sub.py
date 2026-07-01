@@ -1,5 +1,5 @@
 from hoshino.hooks import on_startup
-from hoshino.schedule import scheduled_job
+from hoshino.core.schedule import scheduled_job
 
 from .db import list_uid_time_pairs
 from .internal.post_runtime import WeiboDispatchTask

@@ -1,6 +1,6 @@
 from pathlib import Path
 from playwright.async_api import async_playwright, Browser, Playwright, Page as Page
-from hoshino.schedule import scheduled_job
+from hoshino.core.schedule import scheduled_job
 from hoshino.hooks import on_startup
 import ssl
 

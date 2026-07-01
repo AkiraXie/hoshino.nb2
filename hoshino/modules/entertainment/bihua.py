@@ -1,6 +1,6 @@
 from hoshino.service import Service
 from hoshino.command import Alconna, Args, UniMessage
-from hoshino.schedule import scheduled_job
+from hoshino.core.schedule import scheduled_job
 from hoshino.util import aiohttpx
 from urllib.parse import quote
 import random

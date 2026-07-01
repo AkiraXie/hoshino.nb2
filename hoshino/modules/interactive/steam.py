@@ -2,7 +2,7 @@ from typing import Iterable
 from loguru import logger
 from lxml import etree
 import json
-from hoshino.schedule import scheduled_job
+from hoshino.core.schedule import scheduled_job
 from hoshino.service import Service
 from hoshino import db_dir
 from hoshino.platform.ob11.permission import ADMIN

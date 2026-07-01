@@ -4,7 +4,7 @@ from datetime import datetime
 
 from hoshino.service import Service
 from hoshino.hooks import on_post_startup
-from hoshino.schedule import scheduled_job
+from hoshino.core.schedule import scheduled_job
 from hoshino.command import UniMessage, uni_image, uni_text
 from hoshino.platform import (
     dump_target,
