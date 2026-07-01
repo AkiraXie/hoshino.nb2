@@ -18,7 +18,7 @@ from hoshino.platform.ob11.message import (
     video_segment as video_segment,
 )
 from hoshino.platform.ob11.types import Message
-from .event import get_user_id
+from .ob11.event import get_user_id
 
 
 async def to_unimessage(
