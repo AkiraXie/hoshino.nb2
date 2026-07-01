@@ -7,7 +7,7 @@ from typing import Any
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_alconna.uniseg import Target, get_target
 from nonebot_plugin_alconna.uniseg.constraint import SerializeFailed
-from .event import get_group_id, get_user_id
+from .ob11.event import get_group_id, get_user_id
 
 
 def group_target(group_id: int | str) -> Target:
