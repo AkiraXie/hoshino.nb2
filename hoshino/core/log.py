@@ -13,6 +13,8 @@ class Filter:
     def __call__(self, record: dict):
         record["name"] = record["name"].split(".")[0]
         levelno = logger.level(self.level).no
+        if "Succeeded to load plugin" in record["message"]:
+            return record["level"].no >= levelno
         # Lazy import: hoshino.service imports logger during module initialization.
         from hoshino.core.service import _loaded_matchers
         nologmatchers = map(str, _loaded_matchers.keys())
