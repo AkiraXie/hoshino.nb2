@@ -15,8 +15,8 @@ nonebot.load_plugin("nonebot_plugin_apscheduler")
 nonebot.load_plugin("nonebot_plugin_alconna")
 
 # 延后到 alconna 注册完成后再 import hoshino
-from hoshino import config
-from hoshino.bootstrap import bootstrap
+from hoshino import config  # noqa: E402
+from hoshino.bootstrap import bootstrap  # noqa: E402
 
 base = "hoshino/base/"
 
