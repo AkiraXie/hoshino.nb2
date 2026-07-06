@@ -26,8 +26,12 @@ nonebot.load_plugins(base)
 
 if modules := config.modules:
     for module in modules:
-        print(f"加载模块: {module}")
         nonebot.load_plugins(config.modules_dir / module)
+
+# 验证：打印实际加载的插件总数
+_loaded = [p for p in nonebot.get_loaded_plugins() if p.name]
+_avail = nonebot.get_available_plugin_names()
+print(f"插件加载完成: {len(_loaded)} loaded / {len(_avail)} available")
 
 
 def main():
