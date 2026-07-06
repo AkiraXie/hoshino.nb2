@@ -13,8 +13,9 @@ nonebot.init()
 driver = nonebot.get_driver()
 driver.register_adapter(Adapter)
 
+nonebot.require("nonebot_plugin_alconna")
 nonebot.load_plugin("nonebot_plugin_apscheduler")
-nonebot.load_plugin("nonebot_plugin_alconna")
+
 
 bootstrap()
 
