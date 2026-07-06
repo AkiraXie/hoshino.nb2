@@ -13,7 +13,7 @@ nonebot.init()
 driver = nonebot.get_driver()
 driver.register_adapter(Adapter)
 
-nonebot.require("nonebot_plugin_alconna")
+# nonebot_plugin_alconna is auto-loaded via hoshino.command imports
 nonebot.load_plugin("nonebot_plugin_apscheduler")
 
 
