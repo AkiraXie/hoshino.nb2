@@ -320,7 +320,7 @@ class Service:
         if isinstance(name, Alconna):
             alc = name
         else:
-            alc = Alconna(name, Args["text", str], meta=meta) if meta else Alconna(name, Args["text", str])
+            alc = Alconna(name, Args["text?", str], meta=meta) if meta else Alconna(name, Args["text?", str])
         alc_aliases: set[str] | tuple[str, ...] | None = None
         if aliases:
             if isinstance(aliases, str):
