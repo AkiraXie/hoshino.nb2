@@ -11,7 +11,9 @@ telegram_bots=[{"token":"123456:ABC...","is_webhook":false}]
 
 `is_webhook=false` 使用 polling；webhook 模式还需要配置 `telegram_webhook_url`。
 
-Telegram 事件、消息、Bot API 和 DI helper 位于 `hoshino/platform/telegram/`；业务插件应使用 `hoshino.platform`、`hoshino.platform.depends`、`hoshino.platform.permission` 和 `UniMessage`，不要直接 import adapter 类型。
+Telegram 事件、消息和 Bot API 位于 `hoshino/platform/telegram/`。跨平台会话 ID、成员名和权限由 `nonebot-plugin-uninfo` 支撑的 `hoshino.platform.depends` / `hoshino.platform.permission` 提供；业务插件不要直接 import adapter 类型。
+
+当前 `nonebot-plugin-uninfo==0.6.10` 的 `Uninfo` 类型别名与 Pydantic 2.12 不兼容，因此业务 handler 暂时继续使用公共 DI；直接声明 `session: Uninfo` 会触发 `Session._validate()` 类型错误。nonebug 中保留了 strict xfail，待上游修复后会提示移除兼容层。
 
 ## 当前兼容性
 
@@ -50,6 +52,7 @@ Telegram 事件、消息、Bot API 和 DI helper 位于 `hoshino/platform/telegr
 ## 平台限制
 
 - Telegram Bot API 不能列出机器人加入的所有聊天，因此 common `get_group_list()` 对 Telegram 返回空列表。
+- uninfo 对 Telegram 的 `query_scenes/query_users/query_members` 也未实现；其短期缓存不能替代全 chat 枚举。
 - Telegram 没有 OB11 的 constructed forward node 语义；`send_group_forward()` / `send_private_forward()` 会明确抛出 `NotImplementedError`。
 - Telegram admin/owner 权限通过 `get_chat_member` 在线查询；API 查询失败时权限检查返回 false。
 - `upload_group_file()` 在 Telegram 映射为 `sendDocument`。

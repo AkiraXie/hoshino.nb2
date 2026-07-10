@@ -1,16 +1,5 @@
 """Telegram adapter types and helpers."""
 
-from hoshino.platform.telegram.depends import (
-    ChatID as ChatID,
-    EventMessage as EventMessage,
-    GroupID as GroupID,
-    GroupMemberName as GroupMemberName,
-    MessageID as MessageID,
-    PlainText as PlainText,
-    RawMessage as RawMessage,
-    ReplyMessage as ReplyMessage,
-    SenderID as SenderID,
-)
 from hoshino.platform.telegram.event import (
     get_chat_id as get_chat_id,
     get_event_message as get_event_message,
@@ -35,18 +24,9 @@ from hoshino.platform.telegram.types import (
 __all__ = [
     "Adapter",
     "Bot",
-    "ChatID",
     "Event",
-    "EventMessage",
-    "GroupID",
-    "GroupMemberName",
     "Message",
-    "MessageID",
     "MessageSegment",
-    "PlainText",
-    "RawMessage",
-    "ReplyMessage",
-    "SenderID",
     "get_chat_id",
     "get_event_message",
     "get_group_id",

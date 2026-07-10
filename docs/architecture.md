@@ -49,15 +49,13 @@ hoshino/
 │   │   ├── event.py       # get_group_id, get_user_id, is_group_event, ...
 │   │   ├── message.py     # image_segment, video_segment, text_message, ...
 │   │   ├── bot.py         # get_group_list, send_group_forward, ...
-│   │   └── depends.py     # GroupID, PlainText, GroupMemberName, ...
 │   ├── telegram/          # Telegram 类型和 helper 隔离区
 │   │   ├── types.py       # Message, MessageSegment, Bot, Adapter, Event
 │   │   ├── event.py       # chat/user/message accessors
-│   │   ├── bot.py         # get_chat_member, send/upload wrappers
-│   │   └── depends.py     # ChatID, GroupID, PlainText, ...
+│   │   └── bot.py         # get_chat_member, send/upload wrappers
 │   ├── event.py           # adapter-aware event 分发
-│   ├── depends.py         # adapter-aware DI
-│   ├── permission.py      # adapter-aware 权限
+│   ├── depends.py         # uninfo-backed IDs + message DI
+│   ├── permission.py      # uninfo-backed 权限
 │   ├── message.py         # UniMessage send facade
 │   ├── target.py          # Target 序列化, scope key
 │   └── __init__.py        # common facade

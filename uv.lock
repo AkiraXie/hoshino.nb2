@@ -349,13 +349,10 @@ dependencies = [
     { name = "nonebot-plugin-apscheduler" },
     { name = "nonebot-plugin-uninfo" },
     { name = "nonebot2", extra = ["fastapi"] },
-    { name = "nonebug" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "psutil" },
     { name = "pycryptodomex" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
     { name = "pytz" },
     { name = "simplejson" },
     { name = "sqlalchemy" },
@@ -365,6 +362,9 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "nonebug" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
 
@@ -380,13 +380,10 @@ requires-dist = [
     { name = "nonebot-plugin-apscheduler", specifier = "==0.5.0" },
     { name = "nonebot-plugin-uninfo", specifier = ">=0.6.10" },
     { name = "nonebot2", extras = ["fastapi"], specifier = "~=2.3.0" },
-    { name = "nonebug", specifier = ">=0.4.4" },
     { name = "pillow", specifier = ">=11.0.0,<12" },
     { name = "playwright", specifier = "~=1.56.0" },
     { name = "psutil", specifier = ">=5.8.0,<6" },
     { name = "pycryptodomex", specifier = ">=3.23.0,<4" },
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pytz", specifier = "~=2025.2" },
     { name = "simplejson", specifier = ">=3.20.1,<4" },
     { name = "sqlalchemy", specifier = ">=2.0.41,<3" },
@@ -395,7 +392,12 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.11.12,<0.12" }]
+dev = [
+    { name = "nonebug", specifier = ">=0.4.4" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "ruff", specifier = ">=0.11.12,<0.12" },
+]
 
 [[package]]
 name = "httpcore"

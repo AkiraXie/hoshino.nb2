@@ -141,7 +141,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-tests/
 *node_modules/
 *.png
 *.jpg

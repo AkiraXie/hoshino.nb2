@@ -6,19 +6,20 @@ from typing import Any
 
 from nonebot.adapters import Bot, Event
 from nonebot.params import Depends
-from nonebot_plugin_uninfo import SceneType, get_session
+from nonebot_plugin_uninfo import get_session
 
-from hoshino.platform.bot import get_group_member_info
 from hoshino.platform.event import (
     get_event_message,
+    get_message_id,
     get_plaintext,
+    get_reply_message,
 )
 
 
 def GroupID() -> int | None:
-    async def _(event: Event) -> int | None:
-        session = await get_session(bot=None, event=event)
-        if session and session.scene.type == SceneType.GROUP:
+    async def _(bot: Bot, event: Event) -> int | None:
+        session = await get_session(bot, event)
+        if session and session.scene.is_group:
             return int(session.scene.id)
         return None
 
@@ -26,11 +27,9 @@ def GroupID() -> int | None:
 
 
 def SenderID() -> int | None:
-    async def _(event: Event) -> int | None:
-        session = await get_session(bot=None, event=event)
-        if session:
-            return int(session.user.id)
-        return None
+    async def _(bot: Bot, event: Event) -> int | None:
+        session = await get_session(bot, event)
+        return int(session.user.id) if session else None
 
     return Depends(_)
 
@@ -60,8 +59,6 @@ def RawMessage(default: str = "") -> str:
 
 def ReplyMessage() -> Any:
     async def _(event: Event) -> Any:
-        from hoshino.platform.event import get_reply_message
-
         return get_reply_message(event)
 
     return Depends(_)
@@ -69,24 +66,23 @@ def ReplyMessage() -> Any:
 
 def MessageID() -> int | None:
     async def _(event: Event) -> int | None:
-        from hoshino.platform.event import get_message_id
-
         return get_message_id(event)
 
     return Depends(_)
 
 
 def GroupMemberName(default: str = "") -> str:
-    async def _(
-        bot: Bot,
-        group_id: int | None = GroupID(),
-        user_id: int | None = SenderID(),
-    ) -> str:
-        if group_id is None or user_id is None:
+    async def _(bot: Bot, event: Event) -> str:
+        session = await get_session(bot, event)
+        if session is None:
             return default
-        info = await get_group_member_info(bot, group_id, user_id)
-        for key in ("card", "nickname"):
-            if value := info.get(key):
+        member = session.member
+        for value in (
+            member.nick if member else None,
+            session.user.nick,
+            session.user.name,
+        ):
+            if value:
                 return str(value)
         return default
 
