@@ -227,8 +227,7 @@ async def get_weibo_cookies_from_local() -> dict:
     ap = await get_ap()
     context = await ap.chromium.launch_persistent_context(
         config.chrome_path,
-        headless=True,
-        channel="chrome",
+        headless=True
     )
     page = None
     try:
