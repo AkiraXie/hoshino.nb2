@@ -57,6 +57,10 @@ class MatcherWrapper:
     def matcher(self) -> Matcher:
         return self._matcher
 
+    @staticmethod
+    def get_loaded_matchers() -> dict[str, "MatcherWrapper"]:
+        return _loaded_matchers
+
     def __call__(self, func):
         return self.matcher.handle()(func)
 

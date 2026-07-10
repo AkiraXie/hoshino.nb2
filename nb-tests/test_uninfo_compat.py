@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from exceptiongroup import ExceptionGroup
 from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Adapter as OB11Adapter
 from nonebot.adapters.onebot.v11 import Bot as OB11Bot
@@ -155,7 +156,7 @@ async def test_telegram_uninfo_dependencies(app: App):
 
 
 @pytest.mark.xfail(
-    raises=TypeError,
+    raises=(TypeError, ExceptionGroup),
     reason="upstream: nonebot-plugin-uninfo 0.6.10 Session._validate incompatible with Pydantic >=2.12",
     strict=False,
 )
