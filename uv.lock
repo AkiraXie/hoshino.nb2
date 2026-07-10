@@ -229,6 +229,7 @@ dependencies = [
     { name = "nonebot-adapter-telegram" },
     { name = "nonebot-plugin-alconna" },
     { name = "nonebot-plugin-apscheduler" },
+    { name = "nonebot-plugin-uninfo" },
     { name = "nonebot2", extra = ["fastapi"] },
     { name = "pillow" },
     { name = "playwright" },
@@ -256,6 +257,7 @@ requires-dist = [
     { name = "nonebot-adapter-telegram", specifier = ">=0.1.0b20" },
     { name = "nonebot-plugin-alconna", specifier = ">=0.50.0" },
     { name = "nonebot-plugin-apscheduler", specifier = "==0.5.0" },
+    { name = "nonebot-plugin-uninfo", specifier = ">=0.6.10" },
     { name = "nonebot2", extras = ["fastapi"], specifier = "~=2.3.0" },
     { name = "pillow", specifier = ">=11.0.0,<12" },
     { name = "playwright", specifier = "~=1.56.0" },
@@ -729,6 +731,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d6/53/019bfea58c506c0166d8ef77959fd8676019469d0d3d8e135ae8f1a4b772/nonebot_plugin_apscheduler-0.5.0.tar.gz", hash = "sha256:6c0230e99765f275dc83d6639ff33bd6f71203fa10cd1b8a204b0f95530cda86", size = 3816, upload-time = "2024-06-28T13:17:10.57Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/f4/8a3334dcd91e368d2f4e2b21f4805ac70b5dd8a1f9dac94fea5269e82bd3/nonebot_plugin_apscheduler-0.5.0-py3-none-any.whl", hash = "sha256:8b99b5ee60c4bc195d4df2fd27dab3d6963691e3332f6cee31a06eb4277c307f", size = 4307, upload-time = "2024-06-28T13:17:09.593Z" },
+]
+
+[[package]]
+name = "nonebot-plugin-uninfo"
+version = "0.6.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "importlib-metadata" },
+    { name = "nonebot2" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/63/64/1afc9d26af007b85cc7a60b160277b41369f9e3b71dfb108f516e27f1ba5/nonebot_plugin_uninfo-0.6.10.tar.gz", hash = "sha256:6b1a6789b7abcaac54bc33c5ac995461c24d15f81b4e5ba16b84c5a0147c8041", size = 36193, upload-time = "2025-02-17T17:36:20.649Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/82/1f7328268ff001dd2117f95a931329ce0b11454c16662399c2d7ac29033c/nonebot_plugin_uninfo-0.6.10-py3-none-any.whl", hash = "sha256:47640767b6beebb3b90dc003f58435a88e3ff89e87e35a97233600d9218eb374", size = 56695, upload-time = "2025-02-17T17:36:17.703Z" },
 ]
 
 [[package]]

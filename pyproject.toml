@@ -25,6 +25,7 @@ dependencies = [
     "pycryptodomex>=3.23.0,<4",
     "nonebot-plugin-alconna>=0.50.0",
     "nonebot-adapter-telegram>=0.1.0b20",
+    "nonebot-plugin-uninfo>=0.6.10",
 ]
 
 [project.scripts]

@@ -1,4 +1,4 @@
-"""Adapter-aware dependency providers."""
+"""Adapter-aware dependency providers — backed by nonebot-plugin-uninfo."""
 
 from __future__ import annotations
 
@@ -6,28 +6,31 @@ from typing import Any
 
 from nonebot.adapters import Bot, Event
 from nonebot.params import Depends
+from nonebot_plugin_uninfo import SceneType, get_session
 
 from hoshino.platform.bot import get_group_member_info
 from hoshino.platform.event import (
     get_event_message,
-    get_group_id,
-    get_message_id,
     get_plaintext,
-    get_reply_message,
-    get_user_id,
 )
 
 
 def GroupID() -> int | None:
     async def _(event: Event) -> int | None:
-        return get_group_id(event)
+        session = await get_session(bot=None, event=event)
+        if session and session.scene.type == SceneType.GROUP:
+            return int(session.scene.id)
+        return None
 
     return Depends(_)
 
 
 def SenderID() -> int | None:
     async def _(event: Event) -> int | None:
-        return get_user_id(event)
+        session = await get_session(bot=None, event=event)
+        if session:
+            return int(session.user.id)
+        return None
 
     return Depends(_)
 
@@ -57,6 +60,8 @@ def RawMessage(default: str = "") -> str:
 
 def ReplyMessage() -> Any:
     async def _(event: Event) -> Any:
+        from hoshino.platform.event import get_reply_message
+
         return get_reply_message(event)
 
     return Depends(_)
@@ -64,6 +69,8 @@ def ReplyMessage() -> Any:
 
 def MessageID() -> int | None:
     async def _(event: Event) -> int | None:
+        from hoshino.platform.event import get_message_id
+
         return get_message_id(event)
 
     return Depends(_)

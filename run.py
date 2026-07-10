@@ -15,6 +15,7 @@ driver.register_adapter(TGAdapter)  # Telegram adapter
 # RuntimeError: not loaded as a plugin，所有 Alconna matcher 静默失效。
 nonebot.load_plugin("nonebot_plugin_apscheduler")
 nonebot.load_plugin("nonebot_plugin_alconna")
+nonebot.load_plugin("nonebot_plugin_uninfo")
 
 # 延后到 alconna 注册完成后再 import hoshino
 from hoshino import config  # noqa: E402
