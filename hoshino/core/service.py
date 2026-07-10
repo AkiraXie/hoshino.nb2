@@ -23,7 +23,7 @@ from nonebot.plugin import (
     on_request,
 )
 from hoshino.core.permission import Permission, SUPERUSER
-from hoshino.platform.ob11.permission import ADMIN, NORMAL, OWNER
+from hoshino.platform.permission import ADMIN, NORMAL, OWNER
 from hoshino.core.rule import (
     Rule,
 )
@@ -224,6 +224,14 @@ class Service:
         for bot in nonebot.get_bots().values():
             platform = platform_key(bot)
             sgl = set(g["group_id"] for g in await get_group_list(bot))
+            if not sgl and platform == "telegram":
+                prefix = f"{platform}:"
+                sgl = {
+                    int(scope.removeprefix(prefix))
+                    for scope in self.enable_scope
+                    if scope.startswith(prefix)
+                    and scope.removeprefix(prefix).lstrip("-").isdigit()
+                }
             if self.enable_on_default:
                 sgl = {
                     gid

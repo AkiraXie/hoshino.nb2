@@ -8,7 +8,7 @@ from hoshino.platform import (
     load_target_or_group,
     send_to_target,
 )
-from hoshino.platform.ob11.depends import GroupID, PlainText
+from hoshino.platform.depends import GroupID, PlainText
 import random
 from hoshino.util import send_group_segments, send_segments
 from .utils import (

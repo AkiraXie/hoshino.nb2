@@ -13,8 +13,8 @@ from .utils import (
     format_size,
     QbtClient,
 )
-from hoshino.platform.ob11.permission import ADMIN
-from hoshino.platform.ob11.depends import GroupID, PlainText
+from hoshino.platform.depends import GroupID, PlainText
+from hoshino.platform.permission import ADMIN
 from nonebot.params import Depends
 
 # 配置命令

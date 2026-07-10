@@ -6,7 +6,7 @@
 hoshino/
 ├── core/           # Service, hooks, config, permission, rule
 ├── command/        # Alconna, Args, CommandMeta, UniMsg (Alconna facade)
-├── platform/ob11/  # OneBot v11 类型和 helper（平台隔离层）
+├── platform/       # adapter-aware facade + ob11/telegram 隔离层
 ├── content/        # Post/PostMessage/UIDManager (内容推送引擎)
 ├── modules/        # 业务插件 ← 你的代码在这里
 └── util/           # 工具函数
@@ -81,7 +81,7 @@ async def _(bot, event):
 用 DI 获取事件信息，无需 `bot`/`event` 参数：
 
 ```python
-from hoshino.platform.ob11.depends import GroupID, SenderID, PlainText
+from hoshino.platform.depends import GroupID, SenderID, PlainText
 
 @sv.on_alconna(Alconna("投票", Args["option", str]))
 async def _(option: str, gid: int = GroupID(), uid: int = SenderID()):
@@ -136,7 +136,8 @@ msg = Message("text")
 ## 权限
 
 ```python
-from hoshino.core.permission import ADMIN, NORMAL, SUPERUSER, OWNER
+from hoshino.core.permission import SUPERUSER
+from hoshino.platform.permission import ADMIN, NORMAL, OWNER
 
 @sv.on_alconna(Alconna("admin_cmd"), permission=ADMIN)
 async def _():
@@ -150,7 +151,7 @@ async def _():
 ## 事件判断
 
 ```python
-from hoshino.platform.ob11.event import is_group_event, is_private_event
+from hoshino.platform import is_group_event, is_private_event
 
 @sv.on_alconna(Alconna("test"), only_group=False)
 async def _(msg: UniMsg):
@@ -176,10 +177,11 @@ async def _ensure_schema():
 ```python
 # hoshino/modules/information/my_subscribe.py
 from hoshino.core.service import Service
-from hoshino.core.permission import ADMIN
 from hoshino.command import Alconna, Args, CommandMeta, UniMessage
-from hoshino.platform.ob11.depends import GroupID
-from hoshino.platform.target import group_target, send_to_target
+from hoshino.platform.depends import GroupID
+from hoshino.platform.message import send_to_target
+from hoshino.platform.permission import ADMIN
+from hoshino.platform.target import group_target
 
 sv = Service("my_subscribe", enable_on_default=False, manage_perm=ADMIN)
 
@@ -192,9 +194,9 @@ async def _(keyword: str, gid: int = GroupID()):
     # 保存订阅...
     await UniMessage.text(f"已订阅: {keyword}").send()
 
-async def push_to_group(gid: int, title: str, img_path: str):
+async def push_to_group(bot, gid: int, title: str, img_path: str):
     msg = UniMessage.text(title) + UniMessage.image(file=img_path)
-    await send_to_target(group_target(gid), msg)
+    await send_to_target(bot, group_target(gid), msg)
 ```
 
 ## Import 速查表
@@ -204,10 +206,10 @@ async def push_to_group(gid: int, title: str, img_path: str):
 | Service | `hoshino.core.service` |
 | Alconna/Args/UniMessage | `hoshino.command` |
 | CommandMeta | `hoshino.command` |
-| Permission (ADMIN/NORMAL...) | `hoshino.core.permission` |
-| DI (GroupID/PlainText...) | `hoshino.platform.ob11.depends` |
-| 事件判断 (is_group_event...) | `hoshino.platform.ob11.event` |
-| Target/send | `hoshino.platform.target` / `hoshino.platform.send` |
+| Permission (ADMIN/NORMAL...) | `hoshino.platform.permission` |
+| DI (GroupID/PlainText...) | `hoshino.platform.depends` |
+| 事件判断 (is_group_event...) | `hoshino.platform` |
+| Target/send | `hoshino.platform.target` / `hoshino.platform.message` |
 | Hooks (on_startup...) | `hoshino.core.hooks` |
 
 ## 绝对禁止

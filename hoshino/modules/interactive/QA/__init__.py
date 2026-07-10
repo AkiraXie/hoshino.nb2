@@ -2,7 +2,7 @@ from io import BytesIO
 from nonebot.typing import T_State
 from nonebot.params import Depends
 from .data import Question, Session
-from hoshino.platform.ob11.permission import ADMIN
+from hoshino.platform.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
@@ -11,7 +11,7 @@ from hoshino.platform import (
     get_event_message,
     get_session_id,
 )
-from hoshino.platform.ob11.depends import GroupID, PlainText, SenderID
+from hoshino.platform.depends import GroupID, PlainText, SenderID
 from hoshino.core.config import config
 from hoshino.util.aiohttpx import get
 from PIL import Image

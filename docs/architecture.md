@@ -20,10 +20,9 @@
 │  import: nonebot_plugin_alconna, nonebot          │
 ├─────────────────────────────────────────────────┤
 │  hoshino/platform/       平台抽象层               │
-│  ├─ common:  Target, send, scope key              │
-│  │   import: nonebot, nonebot_plugin_alconna      │
-│  └─ ob11/:   OneBot v11 隔离区                    │
-│      import: nonebot.adapters.onebot.v11          │
+│  ├─ common: event, depends, permission, Target, send │
+│  ├─ ob11/: OneBot v11 隔离区                      │
+│  └─ telegram/: Telegram 隔离区                    │
 ├─────────────────────────────────────────────────┤
 │  nonebot_plugin_alconna                           │
 │  UniMessage, Alconna, MsgTarget, UniMsg, Args     │
@@ -32,6 +31,9 @@
 │  Matcher, Bot(基类), Event(基类), Rule, Permission │
 ├─────────────────────────────────────────────────┤
 │  nonebot-adapter-onebot (OB11)                    │
+│  Message, MessageSegment, Adapter, Bot            │
+├─────────────────────────────────────────────────┤
+│  nonebot-adapter-telegram                         │
 │  Message, MessageSegment, Adapter, Bot            │
 └─────────────────────────────────────────────────┘
 ```
@@ -48,9 +50,17 @@ hoshino/
 │   │   ├── message.py     # image_segment, video_segment, text_message, ...
 │   │   ├── bot.py         # get_group_list, send_group_forward, ...
 │   │   └── depends.py     # GroupID, PlainText, GroupMemberName, ...
-│   ├── send.py            # to_unimessage, send_to_event, send_to_target
-│   └── target.py          # Target 序列化, scope key
-│   └── __init__.py        # compat re-export（过渡期）
+│   ├── telegram/          # Telegram 类型和 helper 隔离区
+│   │   ├── types.py       # Message, MessageSegment, Bot, Adapter, Event
+│   │   ├── event.py       # chat/user/message accessors
+│   │   ├── bot.py         # get_chat_member, send/upload wrappers
+│   │   └── depends.py     # ChatID, GroupID, PlainText, ...
+│   ├── event.py           # adapter-aware event 分发
+│   ├── depends.py         # adapter-aware DI
+│   ├── permission.py      # adapter-aware 权限
+│   ├── message.py         # UniMessage send facade
+│   ├── target.py          # Target 序列化, scope key
+│   └── __init__.py        # common facade
 ├── content/                # 内容推送引擎
 │   ├── engine.py          # Post, PostMessage, PostQueue, UIDManager
 │   └── __init__.py        # 统一导出
@@ -85,16 +95,16 @@ hoshino/
 | `modules/` | core, platform, command, nonebot_plugin_alconna |
 | `core/` | platform, nonebot, nonebot_plugin_alconna |
 | `command/` | nonebot_plugin_alconna, nonebot（不能 import platform/ob11） |
-| `platform/common` (send.py, target.py) | nonebot, nonebot_plugin_alconna.uniseg（不能 import platform/ob11） |
+| `platform/common` | nonebot, nonebot_plugin_alconna.uniseg, platform adapter modules |
 | `platform/ob11/` | nonebot.adapters.onebot.v11（OneBot 符号唯一入口） |
+| `platform/telegram/` | nonebot.adapters.telegram（Telegram 符号唯一入口） |
 
 ### 禁止
 
 - `modules/` 不能直接 import `nonebot.adapters.onebot.v11`
 - `modules/` 不能直接 import `hoshino.message` 或 `hoshino.event`（过渡期兼容除外）
-- `platform/common` 不能 import `platform/ob11`
 - `command/` 不能 import `platform/ob11`
-- `hoshino/types.py` 不能重新导出 OneBot 类型
+- `hoshino/types.py` 只能在 `TYPE_CHECKING` 下引用 adapter 消息类型
 - 业务代码不能 `isinstance(event, GroupMessageEvent)` — 用 `is_group_event(event)`
 
 ### 允许的特殊例外
@@ -116,5 +126,9 @@ rg "from hoshino\.(types|message|event) import" hoshino/ --glob '*.py' -c
 
 # 模块层不得 import OneBot
 rg "from nonebot\.adapters\.onebot" hoshino/modules/ --glob '*.py'
+# 预期输出：空
+
+# 模块层不得 import Telegram adapter
+rg "from nonebot\.adapters\.telegram" hoshino/modules/ --glob '*.py'
 # 预期输出：空
 ```

@@ -7,7 +7,7 @@ from hoshino.core.permission import SUPERUSER
 from hoshino import data_dir
 from hoshino.util import send_segments
 from hoshino.command import UniMessage, uni_text
-from hoshino.platform.ob11.depends import PlainText
+from hoshino.platform.depends import PlainText
 from hoshino.types import MessageLike
 
 from .sv import sv

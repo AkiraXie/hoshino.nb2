@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Session, update_client
-from hoshino.platform.ob11.permission import ADMIN
+from hoshino.platform.permission import ADMIN
 from hoshino import hsn_nickname
-from hoshino.platform.ob11.depends import GroupID, GroupMemberName, PlainText
+from hoshino.platform.depends import GroupID, GroupMemberName, PlainText
 from nonebot.params import Depends
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)

@@ -7,8 +7,17 @@ if TYPE_CHECKING:
     from nonebot_plugin_alconna.uniseg import UniMessage
     from hoshino.platform.ob11.types import Message as OB11Message
     from hoshino.platform.ob11.types import MessageSegment as OB11Segment
+    from hoshino.platform.telegram.types import Message as TelegramMessage
+    from hoshino.platform.telegram.types import MessageSegment as TelegramSegment
 
-    T_Message: TypeAlias = str | UniMessage | OB11Message | OB11Segment
+    T_Message: TypeAlias = (
+        str
+        | UniMessage
+        | OB11Message
+        | OB11Segment
+        | TelegramMessage
+        | TelegramSegment
+    )
 else:
     T_Message: TypeAlias = Any
 

@@ -18,7 +18,9 @@ from hoshino.platform.ob11.message import (
     video_segment as video_segment,
 )
 from hoshino.platform.ob11.types import Message
-from .ob11.event import get_user_id
+from hoshino.platform.event import get_user_id
+from hoshino.platform.telegram.types import Message as TelegramMessage
+from hoshino.platform.telegram.types import MessageSegment as TelegramMessageSegment
 
 
 async def to_unimessage(
@@ -33,6 +35,12 @@ async def to_unimessage(
         return UniMessage.text(message)
     if isinstance(message, AdapterMessage):
         return await UniMessage.generate(message=message, bot=bot, event=event)
+    if isinstance(message, TelegramMessageSegment):
+        return await UniMessage.generate(
+            message=TelegramMessage(message),
+            bot=bot,
+            event=event,
+        )
     return await UniMessage.generate(message=Message(message), bot=bot, event=event)
 
 

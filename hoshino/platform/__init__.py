@@ -7,7 +7,7 @@ from .bot import (
     send_private_forward,
     upload_group_file,
 )
-from .ob11.event import (
+from .event import (
     get_event_message,
     get_event_value,
     get_group_id,

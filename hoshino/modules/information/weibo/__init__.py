@@ -8,9 +8,9 @@ from hoshino.platform import (
     dump_target,
     group_target,
 )
-from hoshino.platform.ob11.depends import GroupID, MessageID, PlainText
+from hoshino.platform.depends import GroupID, MessageID, PlainText
 from hoshino.core.permission import SUPERUSER
-from hoshino.platform.ob11.permission import ADMIN
+from hoshino.platform.permission import ADMIN
 from hoshino.util import (
     send_segments,
     random_image_or_video_by_path,

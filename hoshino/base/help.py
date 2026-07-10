@@ -2,7 +2,7 @@
 
 from hoshino.service import Service
 from hoshino.command import Alconna, Args, CommandMeta, UniMessage
-from hoshino.platform.ob11.permission import ADMIN
+from hoshino.platform.permission import ADMIN
 
 sv = Service("help", enable_on_default=True, visible=False, manage_perm=ADMIN)
 

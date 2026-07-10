@@ -8,6 +8,10 @@
 3. 复制 env.prod.example 到 env.example
 4. python run.py
 
+项目会同时注册 OneBot V11 和 Telegram adapter。Telegram token 通过
+`telegram_bots=[{"token":"..."}]` 配置；详细平台边界和插件兼容性见
+[`docs/telegram.md`](docs/telegram.md)。
+
 ## 特别感谢
 
 - [Ice-Cirno / HoshinoBot](https://github.com/Ice-Cirno/HoshinoBot)

@@ -2,12 +2,13 @@ from typing import Iterable
 from loguru import logger
 from lxml import etree
 import json
+from nonebot.adapters import Bot
 from hoshino.core.schedule import scheduled_job
 from hoshino.service import Service
 from hoshino import db_dir
-from hoshino.platform.ob11.permission import ADMIN
+from hoshino.platform.permission import ADMIN
 from asyncio import sleep
-from hoshino.util import get_bot_list, aiohttpx
+from hoshino.util import aiohttpx
 from hoshino.command import Alconna, Args, MsgTarget, UniMessage
 from hoshino.platform import group_target, send_to_target
 
@@ -199,24 +200,23 @@ async def check_steam_status():
     await sleep(0.5)
     for key, val in playing_state.items():
         if val["gameextrainfo"] != old_state[key]["gameextrainfo"]:
-            glist = set(sub["subscribes"][key]) & set(
-                (await sv.get_enable_groups()).keys()
-            )
+            enabled_groups = await sv.get_enable_groups()
+            glist = set(sub["subscribes"][key]) & set(enabled_groups)
             if val["gameextrainfo"] == "":
                 await broadcast(
-                    glist,
+                    {group: enabled_groups[group] for group in glist},
                     "%s 不玩 %s 了！"
                     % (val["personaname"], old_state[key]["gameextrainfo"]),
                 )
             else:
                 await broadcast(
-                    glist,
+                    {group: enabled_groups[group] for group in glist},
                     "%s 开始游玩 %s ！" % (val["personaname"], val["gameextrainfo"]),
                 )
 
 
-async def broadcast(group_list: Iterable, msg):
-    for group in group_list:
-        for bot in get_bot_list():
+async def broadcast(group_bots: dict[int, Iterable[Bot]], msg):
+    for group, bots in group_bots.items():
+        for bot in bots:
             await send_to_target(bot, group_target(group), msg)
             await sleep(0.5)

@@ -226,6 +226,7 @@ dependencies = [
     { name = "httpx" },
     { name = "lxml" },
     { name = "nonebot-adapter-onebot" },
+    { name = "nonebot-adapter-telegram" },
     { name = "nonebot-plugin-alconna" },
     { name = "nonebot-plugin-apscheduler" },
     { name = "nonebot2", extra = ["fastapi"] },
@@ -252,6 +253,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1,<0.29" },
     { name = "lxml", specifier = ">=5.4.0,<6" },
     { name = "nonebot-adapter-onebot", specifier = "~=2.4.0" },
+    { name = "nonebot-adapter-telegram", specifier = ">=0.1.0b20" },
     { name = "nonebot-plugin-alconna", specifier = ">=0.50.0" },
     { name = "nonebot-plugin-apscheduler", specifier = "==0.5.0" },
     { name = "nonebot2", extras = ["fastapi"], specifier = "~=2.3.0" },
@@ -681,6 +683,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/11/97/504e898471c2ba18a5c0f8db99ed81e755f6b3cbf647ce804485d8b8f77e/nonebot_adapter_onebot-2.4.6.tar.gz", hash = "sha256:e33c93649ad11b320d8e9ff213635f29b23b4d0413c9158bd031c513c2f8f701", size = 40107, upload-time = "2024-10-24T07:34:57.623Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/a8/219fb6327b3395b9b05d2e46383795825d079d1c024660304037d3dc0448/nonebot_adapter_onebot-2.4.6-py3-none-any.whl", hash = "sha256:b1ec7023fd83d731f63b513217327a57d12893a261944934b9195f79173791ad", size = 49626, upload-time = "2024-10-24T07:34:56.115Z" },
+]
+
+[[package]]
+name = "nonebot-adapter-telegram"
+version = "0.1.0b20"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "nonebot2" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/89/18/28944035c60d6cbf9beceefe800cc68e797595effbb439ff253b58fd55ee/nonebot-adapter-telegram-0.1.0b20.tar.gz", hash = "sha256:fc17df61cbdb3162f29dbada1e5712b26f37c185da87602b613694bca32c9ada", size = 29594, upload-time = "2024-11-24T09:01:06.882Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/3e/12d823f920fe3b42a474d8a5220e57ea1113a007d47860c23a224b2f570b/nonebot_adapter_telegram-0.1.0b20-py3-none-any.whl", hash = "sha256:a90acf29b8a9c8a16d4aaa93fb930debde4648d514f2050af945e973cd37a8d4", size = 30266, upload-time = "2024-11-24T09:01:05.258Z" },
 ]
 
 [[package]]

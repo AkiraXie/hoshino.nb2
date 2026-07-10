@@ -6,7 +6,7 @@ from nonebot.typing import T_State
 from hoshino.util import aiohttpx
 from hoshino.core.permission import SUPERUSER
 from hoshino.command import Alconna, UniMessage
-from hoshino.platform.ob11.depends import EventMessage, PlainText, RawMessage
+from hoshino.platform.depends import EventMessage, PlainText, RawMessage
 from .data import emojis, qqface
 
 sv = Service("emojimix", visible=False, enable_on_default=False)

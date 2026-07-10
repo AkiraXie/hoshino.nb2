@@ -7,7 +7,7 @@ from hoshino.util import (
     check_cookies,
     delete_cookies,
 )
-from hoshino.platform.ob11.depends import PlainText
+from hoshino.platform.depends import PlainText
 from simplejson import loads
 
 

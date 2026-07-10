@@ -12,7 +12,7 @@ from hoshino.platform import (
     load_target_or_group,
     send_to_target,
 )
-from hoshino.platform.ob11.depends import GroupID, PlainText
+from hoshino.platform.depends import GroupID, PlainText
 
 from .bilibili import get_room_status as get_bilibili_room_status
 from .db import (

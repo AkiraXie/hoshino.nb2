@@ -4,7 +4,7 @@ from nonebot.typing import T_State
 from .bilidata import (
     resolve_bilibili,
 )
-from hoshino.platform.ob11.depends import GroupID
+from hoshino.platform.depends import GroupID
 from .sv import sv
 from .xiaohongshu import resolve_xiaohongshu
 from json import loads
