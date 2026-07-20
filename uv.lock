@@ -519,7 +519,7 @@ dependencies = [
     { name = "nonebot-plugin-alconna" },
     { name = "nonebot-plugin-apscheduler" },
     { name = "nonebot-plugin-uninfo" },
-    { name = "nonebot2", extra = ["fastapi"] },
+    { name = "nonebot2", extra = ["fastapi", "websockets"] },
     { name = "pillow" },
     { name = "playwright" },
     { name = "psutil" },
@@ -552,7 +552,7 @@ requires-dist = [
     { name = "nonebot-plugin-alconna", specifier = ">=0.50.0" },
     { name = "nonebot-plugin-apscheduler", specifier = "==0.5.0" },
     { name = "nonebot-plugin-uninfo", specifier = ">=0.11.1" },
-    { name = "nonebot2", extras = ["fastapi"], specifier = ">=2.5.0" },
+    { name = "nonebot2", extras = ["fastapi", "websockets"], specifier = ">=2.5.0" },
     { name = "pillow", specifier = ">=11.0.0,<12" },
     { name = "playwright", specifier = "~=1.56.0" },
     { name = "psutil", specifier = ">=5.8.0,<6" },
@@ -1120,6 +1120,9 @@ wheels = [
 fastapi = [
     { name = "fastapi" },
     { name = "uvicorn", extra = ["standard"] },
+]
+websockets = [
+    { name = "websockets" },
 ]
 
 [[package]]

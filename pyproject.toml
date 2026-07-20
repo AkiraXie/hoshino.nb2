@@ -8,7 +8,7 @@ readme = "README.md"
 license = "GPL-3.0"
 dependencies = [
     "nonebot-adapter-onebot~=2.4.0",
-    "nonebot2[fastapi]>=2.5.0",
+    "nonebot2[fastapi,websockets]>=2.5.0",
     "pillow>=11.0.0,<12",
     "nonebot-plugin-apscheduler==0.5.0",
     "beautifulsoup4>=4.12.3,<5",
