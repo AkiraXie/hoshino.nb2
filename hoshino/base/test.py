@@ -1,10 +1,12 @@
-from nonebot.adapters.onebot.v11.message import MessageSegment as OneBotV11MessageSegment
-from nonebot.adapters.onebot.v11.event import GroupMessageEvent as OneBotV11GroupMessageEvent
-from hoshino.platform.ob11.types import Event
-from hoshino.platform.ob11.event import get_event
 from nonebot.adapters import Bot
-from hoshino.util import get_bot_list, sucmd
 from nonebot.matcher import matchers
+
+from hoshino.command import UniMessage
+from hoshino.platform import send_group_forward, send_private_forward
+from hoshino.platform.depends import GroupID, SenderID
+from hoshino.platform.ob11.event import get_event
+from hoshino.platform.ob11.types import Event
+from hoshino.util import get_bot_list, sucmd
 
 test1 = sucmd("testgetbot", True)
 test2 = sucmd("testmatchers", True)
@@ -32,13 +34,25 @@ async def _(bot: Bot, event: Event):
 
 
 @test4.handle()
-async def _(bot: Bot, event: OneBotV11GroupMessageEvent):
-    ms = OneBotV11MessageSegment(
-        "node",
-        {
-            "user_id": event.get_user_id(),
-            "name": "test",
-            "content": "testtest" + OneBotV11MessageSegment.face(233),
-        },
-    )
-    await bot.send_group_forward_msg(group_id=event.group_id, messages=[ms])
+async def _(
+    bot: Bot,
+    group_id: int | None = GroupID(),
+    user_id: int | None = SenderID(),
+):
+    messages = [UniMessage.text("testtest") + UniMessage.emoji("233")]
+    if group_id is not None:
+        await send_group_forward(
+            bot,
+            group_id,
+            messages,
+            user_id=user_id,
+            nickname="test",
+        )
+    elif user_id is not None:
+        await send_private_forward(
+            bot,
+            user_id,
+            messages,
+            node_user_id=user_id,
+            nickname="test",
+        )

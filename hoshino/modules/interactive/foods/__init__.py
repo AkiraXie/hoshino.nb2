@@ -1,9 +1,10 @@
-from hoshino.service import Service
-from hoshino.command import AlconnaResult, UniMessage
-from hoshino.core.permission import SUPERUSER
 import os
 import random
 from pathlib import Path
+
+from hoshino.command import AlconnaResult, UniMessage
+from hoshino.core.permission import SUPERUSER
+from hoshino.service import Service
 
 sv = Service("foods", enable_on_default=False, manage_perm=SUPERUSER)
 foods = [
@@ -23,6 +24,7 @@ async def _(result: AlconnaResult):
     name = result.result.header_match.result.group(1)
     with open(res, "rb") as f:
         img = f.read()
-    await (UniMessage.text(f"{name}吃{res.stem}吧! \n") + UniMessage.image(raw=img)).send(
-        call_header=True
+    await food.send(
+        UniMessage.text(f"{name}吃{res.stem}吧! \n") + UniMessage.image(raw=img),
+        call_header=True,
     )

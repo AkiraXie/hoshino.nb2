@@ -1,47 +1,48 @@
 from __future__ import annotations
-from pathlib import Path
-import random
-import nonebot
-import unicodedata
+
 import asyncio
 import os
+import random
+import unicodedata
 from asyncio import get_running_loop
-from typing import Type, Sequence
 from io import BytesIO
-from PIL import Image
-from nonebot.adapters import Event
-from nonebot.typing import T_State
+from pathlib import Path
+from time import time
+from typing import Sequence, Type
+
+import nonebot
+from nonebot.adapters import Bot, Event
+from nonebot.compat import type_validate_python
+from nonebot.matcher import Matcher, current_bot, current_event, current_matcher
 from nonebot.params import Depends
-from hoshino import fav_dir, img_dir, hsn_nickname, video_dir
-from nonebot.adapters import Bot
-from nonebot.matcher import Matcher, current_bot, current_event
-from hoshino.command import UniMessage
-from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
+from nonebot.permission import SUPERUSER
+from nonebot.plugin import CommandGroup, on_command, on_message
+from nonebot.rule import Rule, to_me
+from nonebot.typing import T_State
+from PIL import Image
+from sqlalchemy import Float, Text, create_engine, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
+from hoshino import db_dir, fav_dir, hsn_nickname, img_dir, video_dir
 from hoshino.platform import (
+    MessageLike,
     Target,
-    custom_node_segment,
     get_event_message,
     get_group_id,
     get_reply_message,
     get_session_id,
-    image_segment,
     get_user_id,
     group_target,
+    image_segment,
     send_group_forward,
     send_private_forward,
+    send_to_event,
     send_to_target,
     video_segment,
 )
-from nonebot.matcher import current_matcher
-from nonebot.permission import SUPERUSER
-from nonebot.plugin import CommandGroup, on_command, on_message
-from nonebot.rule import Rule, to_me
-from nonebot.compat import type_validate_python
+from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
+
 from . import aiohttpx
-from sqlalchemy import Text, Float, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from hoshino import db_dir
-from time import time
 
 __SU_IMGLIST = "__superuser__imglist"
 __SU_VIDEOLIST = "__superuser__videolist"
@@ -393,7 +394,7 @@ async def send_to_superuser(msg=""):
 
 
 async def send(
-    message: str | "OneBotV11Message" | "OneBotV11MessageSegment" | UniMessage,
+    message: MessageLike,
     *,
     call_header: bool = False,
     at_sender: bool = False,
@@ -402,43 +403,53 @@ async def send(
     matcher = current_matcher.get()
     if matcher is None:
         raise ValueError("No running matcher found!")
-    if isinstance(message, UniMessage):
-        await message.send(at_sender=at_sender, **kwargs)
+    if isinstance(message, str) and not call_header and not at_sender:
+        await matcher.send(
+            message,
+            call_header=call_header,
+            at_sender=at_sender,
+            **kwargs,
+        )
         return
-    await matcher.send(message, call_header=call_header, at_sender=at_sender, **kwargs)
-
-
-
-def construct_nodes(
-    user_id: int, segments: Sequence[OneBotV11Message | OneBotV11MessageSegment | str]
-) -> OneBotV11Message:
-    def node(content):
-        return custom_node_segment(user_id=user_id, nickname=hsn_nickname, content=content)
-
-    return OneBotV11Message([node(seg) for seg in segments])
+    bot = current_bot.get()
+    event = current_event.get()
+    await send_to_event(
+        bot,
+        event,
+        message,
+        call_header=call_header,
+        at_sender=at_sender,
+        **kwargs,
+    )
 
 
 
 async def send_segments(
-    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str | UniMessage],
+    message: Sequence[MessageLike],
 ):
     if not message:
         return
     if len(message) == 1:
         await send(message[0])
         return
-    if any(isinstance(item, UniMessage) for item in message):
-        for item in message:
-            await send(item)
-            await asyncio.sleep(0.3)
-        return
     bot = current_bot.get()
     event = current_event.get()
-    nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
     if (group_id := get_group_id(event)) is not None:
-        await send_group_forward(bot, group_id, nodes)
+        await send_group_forward(
+            bot,
+            group_id,
+            message,
+            user_id=bot.self_id,
+            nickname=hsn_nickname,
+        )
     elif (user_id := get_user_id(event)) is not None:
-        await send_private_forward(bot, user_id, nodes)
+        await send_private_forward(
+            bot,
+            user_id,
+            message,
+            node_user_id=bot.self_id,
+            nickname=hsn_nickname,
+        )
     else:
         return
 
@@ -446,25 +457,24 @@ async def send_segments(
 async def send_group_segments(
     bot: Bot,
     group_id: int,
-    message: Sequence[OneBotV11Message | OneBotV11MessageSegment | str | UniMessage],
+    message: Sequence[MessageLike],
 ):
     if not message:
         return
     if len(message) == 1:
         await send_to_target(bot, group_target(group_id), message[0])
         return
-    if any(isinstance(item, UniMessage) for item in message):
-        target = group_target(group_id)
-        for item in message:
-            await send_to_target(bot, target, item)
-            await asyncio.sleep(0.3)
-        return
-    nodes = construct_nodes(user_id=int(bot.self_id), segments=message)
-    await send_group_forward(bot, group_id, nodes)
+    await send_group_forward(
+        bot,
+        group_id,
+        message,
+        user_id=bot.self_id,
+        nickname=hsn_nickname,
+    )
 
 
 async def finish(
-    message: str | "OneBotV11Message" | "OneBotV11MessageSegment" | None = None,
+    message: MessageLike | None = None,
     *,
     call_header: bool = False,
     at_sender: bool = False,
@@ -473,9 +483,14 @@ async def finish(
     matcher = current_matcher.get()
     if matcher is None:
         raise ValueError("No running matcher found!")
-    await matcher.finish(
-        message, call_header=call_header, at_sender=at_sender, **kwargs
-    )
+    if message is not None:
+        await send(
+            message,
+            call_header=call_header,
+            at_sender=at_sender,
+            **kwargs,
+        )
+    await matcher.finish()
 
 
 class Base(DeclarativeBase):
@@ -622,4 +637,3 @@ async def get_redirect(url: str, headers={}) -> str | None:
     if not loc:
         return url
     return loc
-

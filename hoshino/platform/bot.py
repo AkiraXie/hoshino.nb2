@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from nonebot.adapters import Bot
+from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
 from hoshino.platform.milky.bot import get_group_list as milky_get_group_list
 from hoshino.platform.milky.bot import (
@@ -17,8 +18,6 @@ from hoshino.platform.ob11.bot import get_group_list as ob11_get_group_list
 from hoshino.platform.ob11.bot import (
     get_group_member_info as ob11_get_group_member_info,
 )
-from hoshino.platform.ob11.bot import send_group_forward as ob11_send_group_forward
-from hoshino.platform.ob11.bot import send_private_forward as ob11_send_private_forward
 from hoshino.platform.ob11.bot import upload_group_file as ob11_upload_group_file
 from hoshino.platform.telegram.bot import (
     get_group_list as telegram_get_group_list,
@@ -71,28 +70,50 @@ async def send_group_forward(
     bot: Bot,
     group_id: int | str,
     messages: Sequence[Any],
-):
-    if isinstance(bot, MilkyBot):
-        raise NotImplementedError(
-            "Milky forward nodes must be sent as a UniMessage reference"
-        )
-    if isinstance(bot, TelegramBot):
-        raise NotImplementedError("Telegram cannot send constructed forward nodes")
-    return await ob11_send_group_forward(bot, group_id, messages)
+    *,
+    user_id: int | str | None = None,
+    nickname: str | None = None,
+    fallback: bool | FallbackStrategy = FallbackStrategy.rollback,
+    sequential_delay: float = 0.3,
+) -> list[Any]:
+    # Deferred import avoids the platform facade's bot -> message import order.
+    from hoshino.platform.message import send_forward_to_target
+    from hoshino.platform.target import group_target
+
+    return await send_forward_to_target(
+        bot,
+        group_target(group_id),
+        messages,
+        user_id=user_id,
+        nickname=nickname,
+        fallback=fallback,
+        sequential_delay=sequential_delay,
+    )
 
 
 async def send_private_forward(
     bot: Bot,
     user_id: int | str,
     messages: Sequence[Any],
-):
-    if isinstance(bot, MilkyBot):
-        raise NotImplementedError(
-            "Milky forward nodes must be sent as a UniMessage reference"
-        )
-    if isinstance(bot, TelegramBot):
-        raise NotImplementedError("Telegram cannot send constructed forward nodes")
-    return await ob11_send_private_forward(bot, user_id, messages)
+    *,
+    node_user_id: int | str | None = None,
+    nickname: str | None = None,
+    fallback: bool | FallbackStrategy = FallbackStrategy.rollback,
+    sequential_delay: float = 0.3,
+) -> list[Any]:
+    # Deferred import avoids the platform facade's bot -> message import order.
+    from hoshino.platform.message import send_forward_to_target
+    from hoshino.platform.target import private_target
+
+    return await send_forward_to_target(
+        bot,
+        private_target(user_id),
+        messages,
+        user_id=node_user_id,
+        nickname=nickname,
+        fallback=fallback,
+        sequential_delay=sequential_delay,
+    )
 
 
 async def upload_group_file(

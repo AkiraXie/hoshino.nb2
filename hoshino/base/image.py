@@ -407,6 +407,6 @@ async def toimg_cmd(bot: Bot, state: T_State):
                 logger.exception(f"获取图片失败: {url}")
                 continue
     if res:
-        await timg.finish(OneBotV11Message(res))
+        await finish(OneBotV11Message(res))
     else:
         await timg.finish("获取图片失败")

@@ -55,6 +55,7 @@ adapter 事件模型泄漏。
 
 - Telegram Bot API 不能列出机器人加入的所有聊天，因此 common `get_group_list()` 对 Telegram 返回空列表。
 - uninfo 对 Telegram 的 `query_scenes/query_users/query_members` 也未实现；其短期缓存不能替代全 chat 枚举。
-- Telegram 没有 OB11 的 constructed forward node 语义；`send_group_forward()` / `send_private_forward()` 会明确抛出 `NotImplementedError`。
+- Telegram 没有 OB11/Milky 的 constructed forward node 语义；
+  `send_group_forward()` / `send_private_forward()` 会按节点顺序逐条发送内容。
 - Telegram admin/owner 权限通过 `get_chat_member` 在线查询；API 查询失败时权限检查返回 false。
 - `upload_group_file()` 在 Telegram 映射为 `sendDocument`。

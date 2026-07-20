@@ -191,6 +191,27 @@ async def _(msg: UniMsg):
 
 **禁止**：`isinstance(event, GroupMessageEvent)` — 用 `is_group_event(event)`。
 
+## 合并转发
+
+节点内容继续使用 `UniMessage`，不要构造 OB11 `node` segment：
+
+```python
+from hoshino.platform import send_group_forward
+
+await send_group_forward(
+    bot,
+    gid,
+    [
+        UniMessage.text("第一条"),
+        UniMessage.image(url="https://example.com/image.jpg"),
+    ],
+    user_id=bot.self_id,
+    nickname="Hoshino",
+)
+```
+
+OB11 与 Milky 会发送原生合并转发；Telegram 会按顺序逐条发送节点内容。
+
 ## DB 访问
 
 `create_all` 必须放在启动钩子中，不能放在 import 时：
@@ -241,7 +262,7 @@ async def push_to_group(bot, gid: int, title: str, img_path: str):
 | DI (GroupID/PlainText...) | `hoshino.platform.depends` |
 | 事件判断 (is_group_event...) | `hoshino.platform` |
 | Reaction DI | `hoshino.platform` (`Reaction`, `ReactedMessage`) |
-| Target/send | `hoshino.platform.target` / `hoshino.platform.message` |
+| Target/send/forward | `hoshino.platform` common facade |
 | Hooks (on_startup...) | `hoshino.core.hooks` |
 
 ## 绝对禁止

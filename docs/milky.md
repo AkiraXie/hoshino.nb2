@@ -25,6 +25,7 @@ Milky 类型、事件访问和 Bot API wrapper 位于 `hoshino/platform/milky/`�
 
 - 身份与权限：`GroupID()`、`SenderID()`、`GroupMemberName()` 和 Uninfo permission
 - 消息：`UniMessage`、`send_to_event()`、`send_to_target()`
+- 合并转发：`send_group_forward()`、`send_private_forward()`
 - reaction：`Reaction()`、`ReactedMessage()` 和 `reaction_event_rule`
 - 群 API：`get_group_list()`、`get_group_member_info()`、`upload_group_file()`
 
@@ -62,16 +63,24 @@ LLOneBot 的 `GroupMsgEmojiLikeEvent` 上报当前点赞集合，不提供独立
 | @ 消息段 | `at` | `mention` | `UniMessage.at()` |
 | 回复 ID | 全局样式 `message_id` | 会话内 `message_seq` | reaction 同时保留 `group_id` |
 | 群文件 | `upload_group_file(file=...)` | `upload_group_file(path=...)` | wrapper |
+| constructed forward | `send_*_forward_msg` | outgoing `forward` segment | `UniMessage.reference()` |
+
+普通发送会按消息的来源 adapter 先转换为 `UniMessage`，再导出到目标 adapter；因此
+legacy OB11 的常用 Message/MessageSegment 也能发送到 Milky。`call_header` 在 common 层
+通过 Uninfo 取得成员显示名，不会再作为未知参数透传给 Milky API。
+
+constructed forward 在 OB11 与 Milky 上导出为原生合并转发；Telegram 没有等价的
+自定义节点语义，因此 common helper 会保持顺序逐条发送节点内容。
 
 ## 尚未兼容的边界
 
-1. `send_group_forward()` / `send_private_forward()` 的旧 helper 仍接收 OB11
-   constructed node。Milky 协议本身支持 forward segment，但当前 common helper 会明确
-   抛出 `NotImplementedError`；调用方应迁移到 `UniMessage.reference()`。
+1. 已存在的 OB11 forward ID 与 Milky `forward_id` 都是协议端本地标识，不能跨 adapter
+   直接复用；跨 adapter 发送应提供 constructed node 内容。
 2. OB11 CQ 字符串、原生 `Message`/`MessageSegment` 和 `auto_escape` 语义不能直接传给
-   Milky。插件必须构造 `UniMessage`。
-3. `platform/ob11/bootstrap.py` 的 `Bot.send()` patch（`call_header` 等 legacy 行为）只在
-   OB11 注册时应用；Milky 使用 adapter 原生 `Bot.send()` 和 UniMessage exporter。
+   Milky。common facade 会转换常用 segment；新插件仍应直接构造 `UniMessage`。
+3. `platform/ob11/bootstrap.py` 的 direct `Bot.send()` legacy patch 只在 OB11 注册时应用；
+   Hoshino common facade 的 `call_header` 已跨 adapter 处理，Milky 其余发送使用原生
+   `Bot.send()` 和 UniMessage exporter。
 4. 直接调用 `get_msg`、`send_group_msg`、`get_forward_msg` 等 OB11 API 的测试或 legacy
    helper 仍是 OB11-only。当前 reaction 原消息获取、群列表、成员信息和群文件已经有
    common wrapper；其余直接 API 需要按实际业务逐项迁移。
