@@ -61,7 +61,7 @@ def _make_message(
             "self_id": 10000,
             "data": {
                 "message_scene": scene,
-                "peer_id": group_id,
+                "peer_id": group_id if scene == "group" else sender_id,
                 "message_seq": seq,
                 "sender_id": sender_id,
                 "time": 1,
@@ -184,8 +184,7 @@ def _stub_all_api(
 
     monkeypatch.setattr(MilkyAdapter, "call_http", _fake_call)
 
-    # Stub outbound HTTP so nbnhhsh/coser/bihua/emojimix never open
-    # live connections.
+    # Stub outbound HTTP so handlers never open live connections.
     async def _fake_post(url: str, **kwargs: Any) -> Any:
         del url, kwargs
         return type(
@@ -199,13 +198,11 @@ def _stub_all_api(
             },
         )()
 
-    try:
-        from hoshino.util import aiohttpx
+    from hoshino.util import aiohttpx
 
-        monkeypatch.setattr(aiohttpx, "post", _fake_post)
-        monkeypatch.setattr(aiohttpx, "get", _fake_post)
-    except Exception:
-        pass
+    monkeypatch.setattr(aiohttpx, "post", _fake_post)
+    monkeypatch.setattr(aiohttpx, "get", _fake_post)
+    monkeypatch.setattr(aiohttpx, "head", _fake_post)
 
     return calls
 
