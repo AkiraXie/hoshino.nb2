@@ -1,12 +1,11 @@
 """Representative OB11/Telegram command parsing for every Alconna service."""
 
+from re import Pattern
+
 import pytest
 from arclet.alconna import command_manager
 from nonebot.matcher import current_bot
-from re import Pattern
-
 from test_command_adapters import _ob11_group_message, _telegram_group_message
-
 
 COMMAND_SAMPLES = (
     ("help", "help", "help"),
@@ -17,7 +16,7 @@ COMMAND_SAMPLES = (
     ("QA", "看看我问", "看看我问"),
     ("alisten", "播放列表", "播放列表"),
     ("emojimix", "testemoji", "testemoji"),
-    ("foods", r"^(.{1,9})吃(什么|啥)", "今天吃什么"),
+    ("foods", r"^(.{0,9})吃(什么|啥)", "今天吃什么"),
     ("qbitorrent", "下载列表", "下载列表"),
     ("steam", "steam订阅列表", "steam订阅列表"),
     ("chooseone", "选择", "选择 红还是蓝"),

@@ -1,5 +1,5 @@
+from hoshino.command import AlcResult, UniMessage
 from hoshino.service import Service
-from hoshino.command import AlconnaResult, UniMessage
 from hoshino.util import aiohttpx
 
 sv = Service("nbnhhsh")
@@ -7,7 +7,7 @@ nbn = sv.on_regex(r"^[\?\？]{1,2} ?([a-z0-9]+)$", only_group=False)
 
 
 @nbn.handle()
-async def _(result: AlconnaResult):
+async def _(result: AlcResult):
     match_obj = result.result.header_match.result
     text = match_obj.group(1)
     resp = await aiohttpx.post(

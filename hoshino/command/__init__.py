@@ -7,6 +7,7 @@ from typing import Any
 from nonebot_plugin_alconna import Alconna as Alconna
 from nonebot_plugin_alconna import AlconnaMatches as AlconnaMatches
 from nonebot_plugin_alconna import AlconnaResult as AlconnaResult
+from nonebot_plugin_alconna import AlcResult as AlcResult
 from nonebot_plugin_alconna import Args as Args
 from nonebot_plugin_alconna import At as At
 from nonebot_plugin_alconna import CommandMeta as CommandMeta
@@ -49,6 +50,7 @@ __all__ = [
     "Alconna",
     "AlconnaMatches",
     "AlconnaResult",
+    "AlcResult",
     "Args",
     "At",
     "CommandMeta",

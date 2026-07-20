@@ -1,13 +1,14 @@
 import random
+
+from hoshino.command import AlcResult, UniMessage
 from hoshino.service import Service
-from hoshino.command import AlconnaResult, UniMessage
 
 sv = Service("dice", visible=False)
 d = sv.on_regex(r".r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?")
 
 
 @d.handle()
-async def _(result: AlconnaResult):
+async def _(result: AlcResult):
     match_obj = result.result.header_match.result
     rd = random.SystemRandom()
     num = match_obj.group(1)

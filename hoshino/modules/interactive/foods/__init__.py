@@ -2,7 +2,7 @@ import os
 import random
 from pathlib import Path
 
-from hoshino.command import AlconnaResult, UniMessage
+from hoshino.command import AlcResult, UniMessage
 from hoshino.core.permission import SUPERUSER
 from hoshino.service import Service
 
@@ -12,11 +12,11 @@ foods = [
 ]
 
 
-food = sv.on_regex(r"(.{1,9})吃(什么|啥)", priority=3)
+food = sv.on_regex(r"(.{0,9})吃(什么|啥)", priority=3)
 
 
 @food.handle()
-async def _(result: AlconnaResult):
+async def _(result: AlcResult):
     rng = random.SystemRandom()
     if not foods:
         return
