@@ -1,4 +1,5 @@
 from hoshino.command import AlcResult, UniMessage
+from hoshino.platform.depends import PlainText
 from hoshino.service import Service
 from hoshino.util import aiohttpx
 
@@ -7,9 +8,10 @@ nbn = sv.on_regex(r"^[\?\？]{1,2} ?([a-z0-9]+)$", only_group=False)
 
 
 @nbn.handle()
-async def _(result: AlcResult):
-    match_obj = result.result.header_match.result
-    text = match_obj.group(1)
+async def _(result: AlcResult, text: str = PlainText()):
+    text = text.lstrip("?？").strip()
+    if not text:
+        return
     resp = await aiohttpx.post(
         "https://lab.magiconch.com/api/nbnhhsh/guess", json={"text": text}
     )
