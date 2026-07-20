@@ -2,11 +2,11 @@
 
 import nonebot
 
-from hoshino.platform.ob11.bootstrap import apply_patches
-from hoshino.platform.ob11.events import GroupReactionEvent, GroupMsgEmojiLikeEvent
-from hoshino.platform.ob11.types import Adapter
-from hoshino.core.config import config as _config
 from hoshino.core import hooks
+from hoshino.core.config import config as _config
+from hoshino.platform.ob11.bootstrap import apply_patches
+from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent, GroupReactionEvent
+from hoshino.platform.ob11.types import Adapter as OB11Adapter
 
 
 def bootstrap() -> None:
@@ -19,16 +19,17 @@ def bootstrap() -> None:
     for sub in ("favorite", "image", "db", "service", "video"):
         (data_dir / sub).mkdir(exist_ok=True)
 
-    # 2. 应用 OB11 运行时 patch
-    apply_patches()
-
-    # 3. 注册自定义事件模型
-    Adapter.add_custom_model(GroupReactionEvent)
-    Adapter.add_custom_model(GroupMsgEmojiLikeEvent)
+    # 2. OB11-only patch and custom notice models.  Milky ships its reaction
+    #    event natively, so it must not be made to depend on these extensions.
+    if OB11Adapter.get_name() in nonebot.get_adapters():
+        apply_patches()
+        OB11Adapter.add_custom_model(GroupReactionEvent)
+        OB11Adapter.add_custom_model(GroupMsgEmojiLikeEvent)
 
     # 4. 配置日志
     # Lazy import: hoshino.log imports hoshino.service state used by bootstrap patches.
     from hoshino.core.log import configure as _log_configure
+
     _log_configure()
 
     # 5. 下发所有延迟 hook 到真实 driver

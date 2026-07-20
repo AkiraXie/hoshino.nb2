@@ -6,12 +6,16 @@ from typing import Any
 
 from nonebot.adapters import Event
 
+from hoshino.platform.milky import event as milky_event
+from hoshino.platform.milky.types import Event as MilkyEvent
 from hoshino.platform.ob11 import event as ob11_event
 from hoshino.platform.telegram import event as telegram_event
 from hoshino.platform.telegram.types import Event as TelegramEvent
 
 
 def _backend(event: Event):
+    if isinstance(event, MilkyEvent):
+        return milky_event
     return telegram_event if isinstance(event, TelegramEvent) else ob11_event
 
 
@@ -57,4 +61,3 @@ def is_group_event(event: Event) -> bool:
 
 def is_private_event(event: Event) -> bool:
     return _backend(event).is_private_event(event)
-

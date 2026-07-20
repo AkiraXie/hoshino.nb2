@@ -6,7 +6,7 @@
 hoshino/
 ├── core/           # Service, hooks, config, permission, rule
 ├── command/        # Alconna, Args, CommandMeta, UniMsg (Alconna facade)
-├── platform/       # adapter-aware facade + ob11/telegram 隔离层
+├── platform/       # adapter-aware facade + ob11/telegram/milky 隔离层
 ├── content/        # Post/PostMessage/UIDManager (内容推送引擎)
 ├── modules/        # 业务插件 ← 你的代码在这里
 └── util/           # 工具函数
@@ -97,6 +97,37 @@ async def _(option: str, gid: int = GroupID(), uid: int = SenderID()):
 | `SenderID()` | `int \| None` | 发送者 user_id |
 | `PlainText()` | `str` | 消息纯文本 |
 | `MsgTarget` | `MsgTarget` | Alconna 原生 — 发送目标 |
+
+### Reaction DI
+
+Reaction handler 不接收 adapter Event，也不直接调用 `bot.get_msg()`：
+
+```python
+from hoshino.platform import (
+    ReactedMessage,
+    Reaction,
+    ReactionInfo,
+    RetrievedMessage,
+    reaction_event_rule,
+)
+
+@sv.on_notice(rule=reaction_event_rule)
+async def _(
+    reaction: ReactionInfo | None = Reaction(),
+    message: RetrievedMessage | None = ReactedMessage(),
+):
+    if (
+        reaction is None
+        or message is None
+        or not reaction.is_add
+        or reaction.face_id != "66"
+    ):
+        return
+    text = message.content.extract_plain_text()
+```
+
+该对象统一 OB11 的 `GroupReactionEvent` / `GroupMsgEmojiLikeEvent` 与 Milky 的
+`GroupMessageReactionEvent`。字段定义和取消事件差异见 `docs/milky.md`。
 
 ## 消息构造
 
@@ -209,6 +240,7 @@ async def push_to_group(bot, gid: int, title: str, img_path: str):
 | Permission (ADMIN/NORMAL...) | `hoshino.platform.permission` |
 | DI (GroupID/PlainText...) | `hoshino.platform.depends` |
 | 事件判断 (is_group_event...) | `hoshino.platform` |
+| Reaction DI | `hoshino.platform` (`Reaction`, `ReactedMessage`) |
 | Target/send | `hoshino.platform.target` / `hoshino.platform.message` |
 | Hooks (on_startup...) | `hoshino.core.hooks` |
 
@@ -221,3 +253,4 @@ async def push_to_group(bot, gid: int, title: str, img_path: str):
 5. ❌ `bot.send_group_msg()` / `bot.send_private_msg()` — 用 `send_to_target()`
 6. ❌ import 时执行 DB DDL — 用 `@on_serial_startup`
 7. ❌ `except BaseException` — 用 `except Exception`
+8. ❌ reaction handler import adapter Event — 用 `Reaction()` DI

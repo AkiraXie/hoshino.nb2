@@ -20,9 +20,10 @@
 │  import: nonebot_plugin_alconna, nonebot          │
 ├─────────────────────────────────────────────────┤
 │  hoshino/platform/       平台抽象层               │
-│  ├─ common: event, depends, permission, Target, send │
+│  ├─ common: event, depends, reaction, Target, send   │
 │  ├─ ob11/: OneBot v11 隔离区                      │
-│  └─ telegram/: Telegram 隔离区                    │
+│  ├─ telegram/: Telegram 隔离区                    │
+│  └─ milky/: Milky QQNT 隔离区                     │
 ├─────────────────────────────────────────────────┤
 │  nonebot_plugin_alconna                           │
 │  UniMessage, Alconna, MsgTarget, UniMsg, Args     │
@@ -34,6 +35,9 @@
 │  Message, MessageSegment, Adapter, Bot            │
 ├─────────────────────────────────────────────────┤
 │  nonebot-adapter-telegram                         │
+│  Message, MessageSegment, Adapter, Bot            │
+├─────────────────────────────────────────────────┤
+│  nonebot-adapter-milky                            │
 │  Message, MessageSegment, Adapter, Bot            │
 └─────────────────────────────────────────────────┘
 ```
@@ -53,9 +57,17 @@ hoshino/
 │   │   ├── types.py       # Message, MessageSegment, Bot, Adapter, Event
 │   │   ├── event.py       # chat/user/message accessors
 │   │   └── bot.py         # get_chat_member, send/upload wrappers
+│   ├── milky/             # Milky 类型和 helper 隔离区
+│   │   ├── types.py       # Message, MessageSegment, Bot, Event
+│   │   ├── event.py       # Milky data model -> common accessor
+│   │   ├── reaction.py    # native reaction -> ReactionInfo
+│   │   ├── message.py     # Milky-only message constructors
+│   │   └── bot.py         # group/member/upload wrappers
 │   ├── event.py           # adapter-aware event 分发
 │   ├── depends.py         # uninfo-backed IDs + message DI
 │   ├── permission.py      # uninfo-backed 权限
+│   ├── reaction.py        # Reaction/ReactedMessage DI
+│   ├── models.py          # adapter-neutral value objects
 │   ├── message.py         # UniMessage send facade
 │   ├── target.py          # Target 序列化, scope key
 │   └── __init__.py        # common facade
@@ -96,19 +108,22 @@ hoshino/
 | `platform/common` | nonebot, nonebot_plugin_alconna.uniseg, platform adapter modules |
 | `platform/ob11/` | nonebot.adapters.onebot.v11（OneBot 符号唯一入口） |
 | `platform/telegram/` | nonebot.adapters.telegram（Telegram 符号唯一入口） |
+| `platform/milky/` | nonebot.adapters.milky（Milky 符号唯一入口） |
 
 ### 禁止
 
 - `modules/` 不能直接 import `nonebot.adapters.onebot.v11`
+- `modules/` 不能直接 import `nonebot.adapters.milky`
 - `modules/` 不能直接 import `hoshino.message` 或 `hoshino.event`（过渡期兼容除外）
 - `command/` 不能 import `platform/ob11`
 - `hoshino/types.py` 只能在 `TYPE_CHECKING` 下引用 adapter 消息类型
 - 业务代码不能 `isinstance(event, GroupMessageEvent)` — 用 `is_group_event(event)`
+- reaction handler 不能接收 adapter Event — 用 `Reaction()` / `ReactedMessage()` DI
 
 ### 允许的特殊例外
 
 - `hoshino/bootstrap.py` — Bot.send() monkey-patch 需要 OneBot Bot 类型
-- `hoshino/base/image.py` — 自定义事件（GroupReactionEvent 等）处理
+- `hoshino/base/image.py` — legacy OB11 Message 输出路径（reaction 已走公共 DI）
 - `hoshino/base/test.py` — 测试代码
 
 ## 验证脚本
@@ -128,5 +143,9 @@ rg "from nonebot\.adapters\.onebot" hoshino/modules/ --glob '*.py'
 
 # 模块层不得 import Telegram adapter
 rg "from nonebot\.adapters\.telegram" hoshino/modules/ --glob '*.py'
+# 预期输出：空
+
+# 模块层不得 import Milky adapter
+rg "from nonebot\.adapters\.milky" hoshino/modules/ --glob '*.py'
 # 预期输出：空
 ```

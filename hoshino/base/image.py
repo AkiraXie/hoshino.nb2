@@ -1,182 +1,192 @@
 import asyncio
+import os
 from io import BytesIO
-from PIL import Image
 from pathlib import Path
+from time import time
+from typing import Any, Sequence
+
+from httpx import URL
 from nonebot.adapters import Bot, Event
+from nonebot.consts import KEYWORD_KEY
+from nonebot.log import logger
+from nonebot.plugin import on_keyword, on_notice
+from nonebot.rule import KeywordsRule, Rule
 from nonebot.typing import T_State
-from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
+from nonebot_plugin_alconna.uniseg import Image as UniImage
+from nonebot_plugin_alconna.uniseg import Video as UniVideo
+from PIL import Image
+
+from hoshino import fav_dir, img_dir, video_dir
 from hoshino.core.permission import SUPERUSER
-from hoshino import img_dir, fav_dir, video_dir
+from hoshino.platform import (
+    ReactedMessage,
+    Reaction,
+    ReactionInfo,
+    RetrievedMessage,
+    get_group_id,
+    get_message_id,
+    get_plaintext,
+    get_session_id,
+    image_segment,
+    reaction_event_rule,
+)
+from hoshino.platform.ob11.types import OneBotV11Message
 from hoshino.util import (
     __SU_IMGLIST,
     __SU_VIDEOLIST,
-    save_img,
-    sucmd,
+    aiohttpx,
     finish,
+    get_event_image_segments,
+    random_image_or_video_by_path,
+    save_img,
+    save_video,
     send,
     send_segments,
-    get_event_image_segments,
     send_to_superuser,
-    _get_imgs_from_forward_msg,
-    _get_videos_from_forward_msg,
-    aiohttpx,
+    sucmd,
     sumsg,
-    save_video,
-    random_image_or_video_by_path,
 )
-from hoshino.platform.ob11.events import (
-    GroupReactionEvent,
-    GroupMsgEmojiLikeEvent,
-)
-from hoshino.platform.ob11.types import (
-    GroupMessageEvent,
-    NoticeEvent,
-)
-from hoshino.platform import get_message_id, get_plaintext, image_segment
-from nonebot.plugin import on_notice, on_keyword
-from nonebot.rule import Rule, KeywordsRule
-from nonebot.compat import type_validate_python
-from nonebot.log import logger
-from nonebot.consts import KEYWORD_KEY
-import os
-from time import time
-from httpx import URL
-
-
-async def like_img_rule(
-    bot: Bot,
-    event: GroupMsgEmojiLikeEvent,
-    state: T_State,
-) -> bool:
-    code = event.likes[0].emoji_id if event.likes else ""
-    if not code:
-        return False
-    if code != "76" and code != "66":
-        return False
-    msg_id = event.message_id
-    msg = await bot.get_msg(message_id=msg_id)
-    sender = msg.get("sender", {}).get("user_id")
-    sender = str(sender)
-    if sender != bot.self_id and sender not in bot.config.superusers:
-        return False
-    msg = msg.get("message")
-    if msg:
-        msg = type_validate_python(OneBotV11Message, msg)
-        img_list = [s for s in msg if s.type == "image"]
-        img_list.extend(await _get_imgs_from_forward_msg(bot, msg))
-        if img_list:
-            state[__SU_IMGLIST] = img_list
-            state["__IMG_FAV"] = True if code == "66" else False
-            return True
-    return False
 
 
 async def reaction_img_rule(
-    bot: Bot,
-    event: GroupReactionEvent,
     state: T_State,
+    reaction: ReactionInfo | None = Reaction(),
+    reacted_message: RetrievedMessage | None = ReactedMessage(
+        "66", "76", additions_only=True
+    ),
 ) -> bool:
-    if event.code != "76" and event.code != "66":
+    if (
+        reaction is None
+        or reacted_message is None
+        or not reaction.is_add
+        or reaction.face_id not in {"66", "76"}
+        or not reacted_message.trusted_sender
+    ):
         return False
-    msg_id = event.message_id
-    msg = await bot.get_msg(message_id=msg_id)
-    sender = msg.get("sender", {}).get("user_id")
-    sender = str(sender)
-    if sender != bot.self_id and sender not in bot.config.superusers:
+    images = [
+        segment
+        for message in reacted_message.messages
+        for segment in message
+        if isinstance(segment, UniImage)
+    ]
+    if not images:
         return False
-    msg = msg.get("message")
-    if msg:
-        msg = type_validate_python(OneBotV11Message, msg)
-        img_list = [s for s in msg if s.type == "image"]
-        img_list.extend(await _get_imgs_from_forward_msg(bot, msg))
-        if img_list:
-            state[__SU_IMGLIST] = img_list
-            state["__IMG_FAV"] = True if event.code == "66" else False
-            return True
-    return False
-
-
-async def img_rule(
-    bot: Bot,
-    event: NoticeEvent,
-    state: T_State,
-):
-    if isinstance(event, GroupMsgEmojiLikeEvent):
-        return await like_img_rule(bot, event, state)
-    elif isinstance(event, GroupReactionEvent):
-        return await reaction_img_rule(bot, event, state)
-    return False
+    state[__SU_IMGLIST] = images
+    state["__IMG_FAV"] = reaction.face_id == "66"
+    return True
 
 
 async def reaction_video_rule(
-    bot: Bot,
-    event: GroupReactionEvent,
     state: T_State,
+    reaction: ReactionInfo | None = Reaction(),
+    reacted_message: RetrievedMessage | None = ReactedMessage(
+        "424", additions_only=True
+    ),
 ) -> bool:
-    msg_id = event.message_id
-    msg = await bot.get_msg(message_id=msg_id)
-    sender = msg.get("sender", {}).get("user_id")
-    sender = str(sender)
-    if sender != bot.self_id and sender not in bot.config.superusers:
+    if (
+        reaction is None
+        or reacted_message is None
+        or not reaction.is_add
+        or reaction.face_id != "424"
+        or not reacted_message.trusted_sender
+    ):
         return False
-    msg = msg.get("message")
-    if event.code == "424":
-        if msg:
-            msg = type_validate_python(OneBotV11Message, msg)
-            img_list = [s for s in msg if s.type == "video"]
-            img_list.extend(await _get_videos_from_forward_msg(bot, msg))
-            if img_list:
-                state[__SU_VIDEOLIST] = img_list
-                return True
-    return False
+    videos = [
+        segment
+        for message in reacted_message.messages
+        for segment in message
+        if isinstance(segment, UniVideo)
+    ]
+    if not videos:
+        return False
+    state[__SU_VIDEOLIST] = videos
+    return True
 
 
-async def like_video_rule(
-    bot: Bot,
-    event: GroupMsgEmojiLikeEvent,
-    state: T_State,
-) -> bool:
-    msg_id = event.message_id
-    code = event.likes[0].emoji_id if event.likes else ""
-    if not code:
-        return False
-    if code != "424":
-        return False
-    msg = await bot.get_msg(message_id=msg_id)
-    sender = msg.get("sender", {}).get("user_id")
-    sender = str(sender)
-    if sender != bot.self_id and sender not in bot.config.superusers:
-        return False
-    msg = msg.get("message")
-    if msg:
-        msg = type_validate_python(OneBotV11Message, msg)
-        img_list = [s for s in msg if s.type == "video"]
-        img_list.extend(await _get_videos_from_forward_msg(bot, msg))
-        if img_list:
-            state[__SU_VIDEOLIST] = img_list
-            return True
-    return False
+def _media_url(segment: Any) -> str | None:
+    if url := getattr(segment, "url", None):
+        return str(url)
+    data = getattr(segment, "data", {})
+    if not isinstance(data, dict):
+        return None
+    for key in ("url", "file", "temp_url", "uri"):
+        if value := data.get(key):
+            return str(value)
+    return None
 
 
-async def video_rule(
-    bot: Bot,
-    event: NoticeEvent,
-    state: T_State,
-):
-    if isinstance(event, GroupMsgEmojiLikeEvent):
-        return await like_video_rule(bot, event, state)
-    elif isinstance(event, GroupReactionEvent):
-        return await reaction_video_rule(bot, event, state)
+def _media_filename(segment: Any, default: str) -> str:
+    data = getattr(segment, "data", {})
+    if isinstance(data, dict) and (filename := data.get("filename")):
+        return str(filename)
+    name = getattr(segment, "name", None)
+    if name and name not in {"image.png", "video.mp4"}:
+        return str(name)
+    return default
+
+
+async def _save_images(
+    segments: Sequence[Any],
+    *,
+    message_id: int,
+    session_id: str,
+    group_id: int | None,
+    is_fav: bool,
+) -> int:
+    tasks = []
+    dirname = str(group_id) if group_id is not None else "private"
+    for index, segment in enumerate(segments):
+        if not (url := _media_url(segment)):
+            continue
+        default = f"{message_id}_{session_id}_{index}.jpg"
+        filename = Path(dirname, _media_filename(segment, default))
+        tasks.append(
+            save_img(url.replace("https://", "http://"), filename, is_fav, False)
+        )
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    saved = 0
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"保存图片失败: {result}")
+        elif result:
+            saved += 1
+    if saved:
+        await send_to_superuser(f"成功保存{saved}张图片")
+    return saved
+
+
+async def _save_videos(
+    segments: Sequence[Any],
+    *,
+    message_id: int,
+    session_id: str,
+) -> int:
+    tasks = []
+    for index, segment in enumerate(segments):
+        if not (url := _media_url(segment)):
+            continue
+        default = f"{message_id}_{session_id}_{index}.mp4"
+        filename = _media_filename(segment, default)
+        tasks.append(save_video(url.replace("https://", "http://"), filename, False))
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    saved = 0
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"保存视频失败: {result}")
+        elif result:
+            saved += 1
+    await send_to_superuser(f"成功保存{saved}视频" if saved else "保存视频失败")
+    return saved
 
 
 svimg_notice = on_notice(
-    rule=img_rule,
+    rule=reaction_event_rule & Rule(reaction_img_rule),
     permission=SUPERUSER,
     priority=5,
     block=True,
 )
 svvideo_notice = on_notice(
-    rule=video_rule,
+    rule=reaction_event_rule & Rule(reaction_video_rule),
     permission=SUPERUSER,
     priority=5,
     block=True,
@@ -188,60 +198,50 @@ svvideo_notice = on_notice(
     rule=Rule(get_event_image_segments)
     & KeywordsRule("sim", "存图", "saveimg", "ctu", "fav", "fim"),
 ).handle()
-@svimg_notice.handle()
 async def save_img_cmd(
-    event: GroupMessageEvent | GroupReactionEvent | GroupMsgEmojiLikeEvent,
+    event: Event,
     state: T_State,
 ):
-    segs: list[OneBotV11MessageSegment] = state.get(__SU_IMGLIST, [])
-    cnt = 0
-    tasks = []
-    is_fav = (
-        True
-        if state.get("__IMG_FAV", False) or state.get(KEYWORD_KEY, "") in ("fav", "fim")
-        else False
+    await _save_images(
+        state.get(__SU_IMGLIST, []),
+        message_id=int(get_message_id(event, 0)),
+        session_id=get_session_id(event, "unknown") or "unknown",
+        group_id=get_group_id(event),
+        is_fav=bool(
+            state.get("__IMG_FAV", False)
+            or state.get(KEYWORD_KEY, "") in {"fav", "fim"}
+        ),
     )
-    for i, seg in enumerate(segs):
-        name = f"{event.message_id}_{event.get_session_id()}_{i}.jpg"
-        url = seg.data.get("url", seg.data.get("file"))
-        fname = seg.data.get("filename", name)
-        url = url.replace("https://", "http://")
-        dirname = str(event.group_id)
-        fname = Path(dirname, fname)
-        tasks.append(save_img(url, fname, is_fav, False))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for result in results:
-        if isinstance(result, Exception):
-            logger.exception(f"保存图片失败: {result}")
-        elif result:
-            cnt += 1
-    if cnt != 0:
-        await send_to_superuser(f"成功保存{cnt}张图片")
+
+
+@svimg_notice.handle()
+async def save_reaction_img_cmd(
+    state: T_State,
+    reaction: ReactionInfo | None = Reaction(),
+):
+    if reaction is None:
+        return
+    await _save_images(
+        state.get(__SU_IMGLIST, []),
+        message_id=reaction.message_id,
+        session_id=f"group_{reaction.group_id}_{reaction.user_id}",
+        group_id=reaction.group_id,
+        is_fav=bool(state.get("__IMG_FAV", False)),
+    )
 
 
 @svvideo_notice.handle()
 async def save_vi_cmd(
-    event: GroupReactionEvent | GroupMsgEmojiLikeEvent, state: T_State
+    state: T_State,
+    reaction: ReactionInfo | None = Reaction(),
 ):
-    segs: list[OneBotV11MessageSegment] = state.get(__SU_VIDEOLIST, [])
-    cnt = 0
-    tasks = []
-    for i, seg in enumerate(segs):
-        name = f"{event.message_id}_{event.get_session_id()}_{i}.mp4"
-        url = seg.data.get("file", seg.data.get("url"))
-        fname = seg.data.get("filename", name)
-        url = url.replace("https://", "http://")
-        tasks.append(save_video(url, fname, False))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for result in results:
-        if isinstance(result, Exception):
-            logger.exception(f"保存视频失败: {result}")
-        elif result:
-            cnt += 1
-    if cnt != 0:
-        await send_to_superuser(f"成功保存{cnt}视频")
-    else:
-        await send_to_superuser("保存视频失败")
+    if reaction is None:
+        return
+    await _save_videos(
+        state.get(__SU_VIDEOLIST, []),
+        message_id=reaction.message_id,
+        session_id=f"group_{reaction.group_id}_{reaction.user_id}",
+    )
 
 
 @sucmd(
@@ -363,12 +363,16 @@ timg = on_keyword(
 
 @timg.handle()
 async def toimg_cmd(bot: Bot, state: T_State):
-    segs: list[OneBotV11MessageSegment] = state[__SU_IMGLIST]
+    segs = state[__SU_IMGLIST]
     res = []
     for seg in segs:
-        url = seg.data.get("url", seg.data.get("file"))
+        url = _media_url(seg)
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/58.0.3029.110 Safari/537.3"
+            ),
         }
         if url:
             url = url.replace("https://", "http://")
@@ -382,7 +386,11 @@ async def toimg_cmd(bot: Bot, state: T_State):
                         ck = ck.get("cookies")
                         if ck:
                             headers = {
-                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+                                "User-Agent": (
+                                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                    "Chrome/58.0.3029.110 Safari/537.3"
+                                ),
                                 "cookies": ck,
                             }
                 except Exception as e:

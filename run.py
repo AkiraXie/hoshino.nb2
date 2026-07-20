@@ -1,16 +1,18 @@
 import nonebot
+from nonebot.adapters.milky import Adapter as MilkyAdapter
 from nonebot.adapters.onebot.v11 import Adapter as OB11Adapter
 from nonebot.adapters.telegram import Adapter as TGAdapter
-
 
 # 使用自定义配置初始化nonebot
 nonebot.init()
 driver = nonebot.get_driver()
 driver.register_adapter(OB11Adapter)
 driver.register_adapter(TGAdapter)  # Telegram adapter
+driver.register_adapter(MilkyAdapter)  # Milky QQ client adapter
 
 # 必须在任何 hoshino 模块导入之前加载 alconna ——
-# hoshino 的 import 链（bootstrap → platform.message/target → nonebot_plugin_alconna.uniseg）
+# hoshino 的 import 链会经过 platform.message/target，最终 import
+# nonebot_plugin_alconna.uniseg。
 # 会把它当作普通模块 import；若此刻尚未作为 plugin 注册，NoneBot 会抛
 # RuntimeError: not loaded as a plugin，所有 Alconna matcher 静默失效。
 nonebot.load_plugin("nonebot_plugin_apscheduler")

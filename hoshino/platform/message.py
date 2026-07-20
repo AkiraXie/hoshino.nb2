@@ -4,21 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot.adapters import Bot, Event, Message as AdapterMessage
+from nonebot.adapters import Bot, Event
+from nonebot.adapters import Message as AdapterMessage
 from nonebot_plugin_alconna.uniseg import Target, UniMessage
 from nonebot_plugin_alconna.uniseg.constraint import SerializeFailed
 from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
-from hoshino.platform.ob11.message import (
-    MessageLike as MessageLike,
-    custom_node_segment as custom_node_segment,
-    image_segment as image_segment,
-    message_from_parts as message_from_parts,
-    text_message as text_message,
-    video_segment as video_segment,
-)
-from hoshino.platform.ob11.types import Message
 from hoshino.platform.event import get_user_id
+from hoshino.platform.milky.types import Message as MilkyMessage
+from hoshino.platform.milky.types import MessageSegment as MilkyMessageSegment
+from hoshino.platform.ob11.message import MessageLike as MessageLike
+from hoshino.platform.ob11.message import custom_node_segment as custom_node_segment
+from hoshino.platform.ob11.message import image_segment as image_segment
+from hoshino.platform.ob11.message import message_from_parts as message_from_parts
+from hoshino.platform.ob11.message import text_message as text_message
+from hoshino.platform.ob11.message import video_segment as video_segment
+from hoshino.platform.ob11.types import Adapter as OB11Adapter
+from hoshino.platform.ob11.types import Message
 from hoshino.platform.telegram.types import Message as TelegramMessage
 from hoshino.platform.telegram.types import MessageSegment as TelegramMessageSegment
 
@@ -34,14 +36,35 @@ async def to_unimessage(
     if isinstance(message, str):
         return UniMessage.text(message)
     if isinstance(message, AdapterMessage):
+        if event is None:
+            return UniMessage.of(message, bot=bot)
         return await UniMessage.generate(message=message, bot=bot, event=event)
     if isinstance(message, TelegramMessageSegment):
+        adapter_message = TelegramMessage(message)
+        if event is None:
+            return UniMessage.of(adapter_message, bot=bot)
         return await UniMessage.generate(
-            message=TelegramMessage(message),
+            message=adapter_message,
             bot=bot,
             event=event,
         )
-    return await UniMessage.generate(message=Message(message), bot=bot, event=event)
+    if isinstance(message, MilkyMessageSegment):
+        adapter_message = MilkyMessage(message)
+        if event is None:
+            return UniMessage.of(adapter_message, bot=bot)
+        return await UniMessage.generate(
+            message=adapter_message,
+            bot=bot,
+            event=event,
+        )
+    adapter_message = Message(message)
+    if event is None:
+        return UniMessage.of(adapter_message, adapter=OB11Adapter.get_name())
+    return await UniMessage.generate(
+        message=adapter_message,
+        bot=bot,
+        event=event,
+    )
 
 
 async def send_to_event(

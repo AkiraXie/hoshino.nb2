@@ -1,7 +1,6 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from exceptiongroup import ExceptionGroup
 from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Adapter as OB11Adapter
 from nonebot.adapters.onebot.v11 import Bot as OB11Bot
@@ -26,7 +25,6 @@ from nonebot_plugin_uninfo import (
 )
 from nonebot_plugin_uninfo.adapters import INFO_FETCHER_MAPPING, alter_get_fetcher
 from nonebug import App
-import pytest
 
 from hoshino.platform.depends import GroupID, GroupMemberName, SenderID
 from hoshino.platform.permission import GROUP_ADMIN, GROUP_OWNER
@@ -74,7 +72,7 @@ def make_session(
         member=Member(
             user=user,
             nick="Alice member",
-            role=Role(id="ADMINISTRATOR", level=10, name="admin"),
+            roles=[Role(id="ADMINISTRATOR", level=10, name="admin")],
         ),
     )
 
@@ -155,12 +153,7 @@ async def test_telegram_uninfo_dependencies(app: App):
         ctx.should_return((-100123456, 42, "Alice member"))
 
 
-@pytest.mark.xfail(
-    raises=(TypeError, ExceptionGroup),
-    reason="upstream: nonebot-plugin-uninfo 0.6.10 Session._validate incompatible with Pydantic >=2.12",
-    strict=False,
-)
-async def test_upstream_uninfo_alias_on_pydantic_212(app: App):
+async def test_uninfo_alias_on_current_pydantic(app: App):
     async with app.test_dependent(
         uninfo_adapter,
         allow_types=Matcher.HANDLER_PARAM_TYPES,

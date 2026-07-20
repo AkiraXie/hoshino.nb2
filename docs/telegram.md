@@ -13,7 +13,9 @@ telegram_bots=[{"token":"123456:ABC...","is_webhook":false}]
 
 Telegram 事件、消息和 Bot API 位于 `hoshino/platform/telegram/`。跨平台会话 ID、成员名和权限由 `nonebot-plugin-uninfo` 支撑的 `hoshino.platform.depends` / `hoshino.platform.permission` 提供；业务插件不要直接 import adapter 类型。
 
-当前 `nonebot-plugin-uninfo==0.6.10` 的 `Uninfo` 类型别名与 Pydantic 2.12 不兼容，因此业务 handler 暂时继续使用公共 DI；直接声明 `session: Uninfo` 会触发 `Session._validate()` 类型错误。nonebug 中保留了 strict xfail，待上游修复后会提示移除兼容层。
+项目使用 `nonebot-plugin-uninfo>=0.11.1`；该版本兼容当前 Pydantic，并同时提供
+OneBot V11、Telegram 与 Milky fetcher。业务 handler 仍优先使用公共 DI，以避免
+adapter 事件模型泄漏。
 
 ## 当前兼容性
 
@@ -37,7 +39,7 @@ Telegram 事件、消息和 Bot API 位于 `hoshino/platform/telegram/`。跨平
 | `listenmeta` | 生命周期通知机制 | `superusers` 是跨 adapter 的全局 ID 列表，需自行配置 Telegram chat/user ID |
 | `ls` | matcher/service 列表 | Telegram Bot API 不能枚举全部群聊或好友 |
 | `service_manage` | 当前 Telegram 群内 enable/disable/lssv | 私聊中跨群管理依赖群列表，不可用 |
-| `weibo` | 命令、订阅、定时推送 | 表情回应收藏使用 OB11 `GroupMsgEmojiLikeEvent` |
+| `weibo` | 命令、订阅、定时推送 | reaction 收藏支持 OB11/Milky；Telegram 无对应映射 |
 | `healthchecker` | Bot 存活检查 | 无法用群列表 API 验证 Telegram chat 权限 |
 | `server_info` | `状态` 命令 | 上线主动通知受全局 `superusers` ID 限制 |
 

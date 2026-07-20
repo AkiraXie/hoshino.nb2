@@ -34,11 +34,19 @@ from .message import (
     to_unimessage,
     video_segment,
 )
+from .models import ReactionInfo, RetrievedMessage
+from .reaction import (
+    ReactedMessage,
+    Reaction,
+    get_reaction_info,
+    is_reaction_event,
+    reaction_event_rule,
+)
 from .target import (
     dump_target,
     event_scope_key,
-    group_target,
     group_scope_key,
+    group_target,
     load_target,
     load_target_or_group,
     platform_key,
@@ -49,6 +57,8 @@ from .target import (
 
 __all__ = [
     "MessageLike",
+    "ReactionInfo",
+    "RetrievedMessage",
     "Target",
     "UniMessage",
     "custom_node_segment",
@@ -70,11 +80,16 @@ __all__ = [
     "is_group_event",
     "is_message_event",
     "is_private_event",
+    "is_reaction_event",
     "load_target",
     "load_target_or_group",
     "message_from_parts",
     "platform_key",
     "private_target",
+    "ReactedMessage",
+    "Reaction",
+    "get_reaction_info",
+    "reaction_event_rule",
     "send_group_forward",
     "send_private_forward",
     "send_to_event",

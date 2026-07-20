@@ -1,16 +1,21 @@
 import re
 
-from nonebot.adapters import Bot
-from hoshino.core.permission import SUPERUSER
-from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent
-from hoshino.util import send_to_superuser
+from nonebot.rule import Rule
 from nonebot.typing import T_State
-from hoshino.command import UniMessage
 
-from .sv import sv
-from .internal.post_runtime import get_cached_weibo_uid_id
+from hoshino.core.permission import SUPERUSER
+from hoshino.platform import (
+    ReactedMessage,
+    Reaction,
+    ReactionInfo,
+    RetrievedMessage,
+    reaction_event_rule,
+)
+from hoshino.util import send_to_superuser
+
 from .fav import append_fav
-
+from .internal.post_runtime import get_cached_weibo_uid_id
+from .sv import sv
 
 weibo_regexs = {
     "weibo": re.compile(r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)"),
@@ -20,37 +25,35 @@ weibo_regexs = {
 
 
 async def reaction_weibo_rule(
-    bot: Bot,
-    event: GroupMsgEmojiLikeEvent,
     state: T_State,
+    reaction: ReactionInfo | None = Reaction(),
+    reacted_message: RetrievedMessage | None = ReactedMessage(
+        "319", additions_only=True
+    ),
 ) -> bool:
-    if event.get_emoji() != "319":
+    if (
+        reaction is None
+        or reacted_message is None
+        or not reaction.is_add
+        or reaction.face_id != "319"
+        or not reacted_message.trusted_sender
+    ):
         return False
-    msg_id = event.message_id
-    msg = await bot.get_msg(message_id=msg_id)
-    sender = msg.get("sender", {}).get("user_id")
-    sender = str(sender)
-    if sender != bot.self_id and sender not in bot.config.superusers:
-        return False
-    msg = msg.get("message")
-    if msg:
-        msg = await UniMessage.generate(message=msg)
-        text = msg.extract_plain_text()
-        text = text.strip()
-        for name, regex in weibo_regexs.items():
-            matched = regex.search(text)
-            if matched:
-                state["__weibo_name"] = name
-                state["__weibo_url"] = matched.group(0)
-                state["__weibo_matched"] = matched
-                state["__weibo_msg_id"] = msg_id
-                sv.logger.info(f"Matched weibo URL in reaction: {state['__weibo_url']}")
-                return True
+    text = reacted_message.content.extract_plain_text().strip()
+    for name, regex in weibo_regexs.items():
+        matched = regex.search(text)
+        if matched:
+            state["__weibo_name"] = name
+            state["__weibo_url"] = matched.group(0)
+            state["__weibo_matched"] = matched
+            state["__weibo_msg_id"] = reaction.message_id
+            sv.logger.info(f"Matched weibo URL in reaction: {state['__weibo_url']}")
+            return True
     return False
 
 
 svpost_notice = sv.on_notice(
-    rule=reaction_weibo_rule,
+    rule=reaction_event_rule & Rule(reaction_weibo_rule),
     permission=SUPERUSER,
     priority=5,
     block=True,
@@ -72,12 +75,14 @@ async def handle_weibo_reaction(state: T_State):
         appended = append_fav(uid, id)
         if appended:
             sv.logger.info(f"Added weibo to fav by cache: {uid} {id}")
-            await send_to_superuser(f"微博收藏新增: UID {uid} ID {id} URL {url} (from cache)")
+            await send_to_superuser(
+                f"微博收藏新增: UID {uid} ID {id} URL {url} (from cache)"
+            )
 
     else:
         try:
             # Lazy import: request facade imports post runtime used by this resolver.
-            from .request import parse_weibo_with_id, parse_mapp_weibo
+            from .request import parse_mapp_weibo, parse_weibo_with_id
 
             if name == "weibo":
                 _, _, post_id = matched.groups()
@@ -94,7 +99,9 @@ async def handle_weibo_reaction(state: T_State):
                 appended = append_fav(post.uid, post.id)
                 if appended:
                     sv.logger.info(f"Added weibo to fav: {post.uid} {post.id}")
-                    await send_to_superuser(f"微博收藏新增: UID {post.uid} ID {post.id} URL {post.url}")
+                    await send_to_superuser(
+                        f"微博收藏新增: UID {post.uid} ID {post.id} URL {post.url}"
+                    )
             else:
                 sv.logger.error(f"Failed to parse weibo URL: {url}")
         except Exception as e:
