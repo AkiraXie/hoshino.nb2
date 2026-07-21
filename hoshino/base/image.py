@@ -244,15 +244,7 @@ async def save_vi_cmd(
     )
 
 
-@sucmd(
-    "删图",
-    aliases={"st", "rmimg", "delimg", "deleteimg"},
-    only_to_me=True,
-).handle()
-async def delete_img_cmd(
-    event: Event,
-):
-    names = get_plaintext(event).split(None)
+async def _delete_images(names: list[str]) -> None:
     if not names:
         await finish()
     for name in names:
@@ -264,6 +256,28 @@ async def delete_img_cmd(
         if os.path.exists(path):
             os.remove(path)
             await send(f"删除收藏图片{name}成功")
+
+
+@sucmd(
+    "删图",
+    aliases={"rmimg", "delimg", "deleteimg"},
+    only_to_me=True,
+).handle()
+async def delete_img_cmd(event: Event):
+    await _delete_images(get_plaintext(event).split())
+
+
+def _short_delete_rule(event: Event) -> bool:
+    text = get_plaintext(event).lstrip()
+    return text == "st" or (text.startswith("st") and text[2:3].isspace())
+
+
+short_delete_img = sumsg(rule=Rule(_short_delete_rule))
+
+
+@short_delete_img.handle()
+async def short_delete_img_cmd(event: Event):
+    await _delete_images(get_plaintext(event).lstrip()[2:].split())
 
 
 @sucmd(

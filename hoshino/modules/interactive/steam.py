@@ -1,16 +1,18 @@
+import json
+from asyncio import sleep
 from typing import Iterable
+
 from loguru import logger
 from lxml import etree
-import json
 from nonebot.adapters import Bot
-from hoshino.core.schedule import scheduled_job
-from hoshino.service import Service
+
 from hoshino import db_dir
-from hoshino.platform.permission import ADMIN
-from asyncio import sleep
-from hoshino.util import aiohttpx
 from hoshino.command import Alconna, Args, MsgTarget, UniMessage
+from hoshino.core.schedule import scheduled_job
 from hoshino.platform import group_target, send_to_target
+from hoshino.platform.permission import ADMIN
+from hoshino.service import Service
+from hoshino.util import aiohttpx
 
 sv = Service("steam", enable_on_default=False, visible=False)
 sub = {"subscribes": {}}
@@ -65,18 +67,18 @@ async def _(target: MsgTarget, account: str):
     try:
         rsp = await get_account_status(account)
         if rsp["personaname"] == "":
-            await UniMessage.text("查询失败！").send(target)
+            await UniMessage.text("查询失败！").send()
         elif rsp["gameextrainfo"] == "":
-            await UniMessage.text("%s 没在玩游戏！" % rsp["personaname"]).send(target)
+            await UniMessage.text("%s 没在玩游戏！" % rsp["personaname"]).send()
         else:
             await UniMessage.text(
                 "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
-            ).send(target)
+            ).send()
         await update_steam_ids(account, group_id)
-        await UniMessage.text("订阅成功").send(target)
+        await UniMessage.text("订阅成功").send()
     except Exception as e:
         logger.exception(e)
-        await UniMessage.text("订阅失败").send(target)
+        await UniMessage.text("订阅失败").send()
 
 
 @dels.handle()
@@ -84,10 +86,10 @@ async def _(target: MsgTarget, account: str):
     group_id = _group_id(target)
     try:
         await del_steam_ids(account, group_id)
-        await UniMessage.text("删除订阅成功").send(target)
+        await UniMessage.text("删除订阅成功").send()
     except Exception as e:
         logger.exception(e)
-        await UniMessage.text("删除订阅失败").send(target)
+        await UniMessage.text("删除订阅失败").send()
 
 
 @looks.handle()
@@ -101,20 +103,20 @@ async def _(target: MsgTarget):
                 msg += "%s 没在玩游戏\n" % val["personaname"]
             else:
                 msg += "%s 正在游玩 %s\n" % (val["personaname"], val["gameextrainfo"])
-    await UniMessage.text(msg).send(target)
+    await UniMessage.text(msg).send()
 
 
 @look.handle()
-async def _(target: MsgTarget, account: str):
+async def _(account: str):
     rsp = await get_account_status(account)
     if rsp["personaname"] == "":
-        await UniMessage.text("查询失败！").send(target)
+        await UniMessage.text("查询失败！").send()
     elif rsp["gameextrainfo"] == "":
-        await UniMessage.text("%s 没在玩游戏！" % rsp["personaname"]).send(target)
+        await UniMessage.text("%s 没在玩游戏！" % rsp["personaname"]).send()
     else:
         await UniMessage.text(
             "%s 正在玩 %s ！" % (rsp["personaname"], rsp["gameextrainfo"])
-        ).send(target)
+        ).send()
 
 
 async def get_account_status(id) -> dict:

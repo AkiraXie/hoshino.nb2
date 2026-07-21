@@ -1,29 +1,29 @@
 from __future__ import annotations
 
 import asyncio
-import re
-import os
 import json
+import os
+import re
 from collections import defaultdict
 from typing import Iterable
-import nonebot
-from nonebot.params import Depends
-from hoshino.core.hooks import run_preprocessor
-from nonebot.exception import RejectedException, PausedException, FinishedException
 
-from nonebot.rule import to_me
-from nonebot.adapters import Bot
-from nonebot.adapters import Event
+import nonebot
+from nonebot.adapters import Bot, Event
+from nonebot.exception import FinishedException, PausedException, RejectedException
 from nonebot.matcher import Matcher, current_bot, current_event
-from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
-from hoshino import service_dir as _service_dir
+from nonebot.params import Depends
 from nonebot.plugin import (
     on_endswith,
     on_notice,
     on_request,
 )
-from hoshino.core.permission import Permission, SUPERUSER
-from hoshino.platform.permission import ADMIN, NORMAL, OWNER
+from nonebot.rule import to_me
+from nonebot_plugin_alconna import Alconna, Args, CommandMeta, on_alconna
+
+from hoshino import service_dir as _service_dir
+from hoshino.core.hooks import run_preprocessor
+from hoshino.core.logger_wrapper import LoggerWrapper
+from hoshino.core.permission import SUPERUSER, Permission
 from hoshino.core.rule import (
     Rule,
 )
@@ -37,9 +37,8 @@ from hoshino.platform import (
     send_to_event,
     send_to_target,
 )
-from nonebot_plugin_alconna import Alconna, Args, CommandMeta, on_alconna
-from hoshino.core.logger_wrapper import LoggerWrapper
-
+from hoshino.platform.ob11.types import OneBotV11Message, OneBotV11MessageSegment
+from hoshino.platform.permission import ADMIN, NORMAL, OWNER
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 _loaded_services: dict[str, "Service"] = {}
@@ -76,21 +75,33 @@ class MatcherWrapper:
     async def send(self, message, *, at_sender=False, call_header=False, **kwargs):
         bot = current_bot.get()
         event = current_event.get()
-        return await send_to_event(bot, event, message, at_sender=at_sender, call_header=call_header, **kwargs)
+        return await send_to_event(
+            bot, event, message, at_sender=at_sender, call_header=call_header, **kwargs
+        )
 
-    async def finish(self, message=None, *, at_sender=False, call_header=False, **kwargs):
+    async def finish(
+        self, message=None, *, at_sender=False, call_header=False, **kwargs
+    ):
         if message:
-            await self.send(message, at_sender=at_sender, call_header=call_header, **kwargs)
+            await self.send(
+                message, at_sender=at_sender, call_header=call_header, **kwargs
+            )
         raise FinishedException
 
-    async def reject(self, prompt=None, *, at_sender=False, call_header=False, **kwargs):
+    async def reject(
+        self, prompt=None, *, at_sender=False, call_header=False, **kwargs
+    ):
         if prompt:
-            await self.send(prompt, at_sender=at_sender, call_header=call_header, **kwargs)
+            await self.send(
+                prompt, at_sender=at_sender, call_header=call_header, **kwargs
+            )
         raise RejectedException
 
     async def pause(self, prompt=None, *, at_sender=False, call_header=False, **kwargs):
         if prompt:
-            await self.send(prompt, at_sender=at_sender, call_header=call_header, **kwargs)
+            await self.send(
+                prompt, at_sender=at_sender, call_header=call_header, **kwargs
+            )
         raise PausedException
 
     def set_arg(self, key: str, value):
@@ -181,7 +192,8 @@ class Service:
 
         *`name` : 服务名字
 
-        *`manage_perm` : 管理服务的权限,是一`Permission`实例,`ADMIN`和`OWNER`和`SUPERSUSER`是允许的
+        *`manage_perm` : 管理服务的权限，是一个 `Permission` 实例。
+        `ADMIN`、`OWNER` 和 `SUPERUSER` 是允许的。
 
         *`enable_on_default` : 默认开启状态
 
@@ -254,7 +266,9 @@ class Service:
 
     def get_config(self) -> dict:
         """读取服务配置 JSON → dict。无配置时返回空 dict。"""
-        filename = os.path.join(_service_dir.parent, "service_config", f"{self.name}.json")
+        filename = os.path.join(
+            _service_dir.parent, "service_config", f"{self.name}.json"
+        )
         try:
             with open(filename, encoding="utf8") as f:
                 return json.load(f)
@@ -324,7 +338,11 @@ class Service:
         if isinstance(name, Alconna):
             alc = name
         else:
-            alc = Alconna(name, Args["text?", str], meta=meta) if meta else Alconna(name, Args["text?", str])
+            alc = (
+                Alconna(name, Args["text?", str], meta=meta)
+                if meta
+                else Alconna(name, Args["text?", str])
+            )
         alc_aliases: set[str] | tuple[str, ...] | None = None
         if aliases:
             if isinstance(aliases, str):
@@ -361,7 +379,8 @@ class Service:
             "only_group": only_group,
         }
         self.matchers.append(
-            f"<Matcher from Service {self.name}, type=Message.alconna, command={command}>"
+            f"<Matcher from Service {self.name}, type=Message.alconna, "
+            f"command={command}>"
         )
         mw = AlconnaMatcherWrapper(self.name, matcher)
         _loaded_matchers[self.name] = mw
@@ -441,7 +460,12 @@ class Service:
     ):
         kw_set = _iter_to_set(keywords)
         if not kw_set:
-            return self.on_message(only_to_me=only_to_me, only_group=only_group, permission=permission, **kwargs)
+            return self.on_message(
+                only_to_me=only_to_me,
+                only_group=only_group,
+                permission=permission,
+                **kwargs,
+            )
         pattern = "|".join(re.escape(k) for k in sorted(kw_set))
         pattern = pattern if normal else rf"(?:^|\W)({pattern})(?:$|\W)"
         return self._on_alconna_delegate(
@@ -464,7 +488,12 @@ class Service:
     ):
         kw_set = _iter_to_set(keywords)
         if not kw_set:
-            return self.on_message(only_to_me=only_to_me, only_group=only_group, permission=permission, **kwargs)
+            return self.on_message(
+                only_to_me=only_to_me,
+                only_group=only_group,
+                permission=permission,
+                **kwargs,
+            )
         pattern = "|".join(re.escape(k) for k in sorted(kw_set))
         return self._on_alconna_delegate(
             re.compile(rf"^({pattern})$" if normal else rf"^({pattern})$"),
@@ -506,20 +535,30 @@ class Service:
         log: bool = False,
         **kwargs,
     ):
-        return self._on_alconna_delegate(
-            re.compile(r".+"),
-            "Message.message",
-            only_to_me=only_to_me,
-            only_group=only_group,
-            permission=permission,
-            **kwargs,
+        kwargs["permission"] = permission
+        rule = self.check_service(only_to_me, only_group)
+        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
+        matcher = nonebot.on_message(**kwargs)
+        matcher.__hoshino_info__ = {
+            "service": self.name,
+            "type": "Message.message",
+            "command": "",
+            "only_group": only_group,
+        }
+        self.matchers.append(
+            f"<Matcher from Service {self.name}, type=Message.message>"
         )
+        mw = MatcherWrapper(self.name, matcher)
+        _loaded_matchers[self.name] = mw
+        return mw
 
     def on_notice(
         self, rule: Rule = Rule(), only_group: bool = True, permission=NORMAL, **kwargs
     ) -> "MatcherWrapper":
         rule = self.check_service(False, only_group) & rule
-        mw = MatcherWrapper(self.name, on_notice(rule=rule, permission=permission, **kwargs))
+        mw = MatcherWrapper(
+            self.name, on_notice(rule=rule, permission=permission, **kwargs)
+        )
         self.matchers.append(str(mw))
         _loaded_matchers[self.name] = mw
         return mw

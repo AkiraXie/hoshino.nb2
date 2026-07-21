@@ -10,6 +10,8 @@ Uses the session-scoped ``_nonebot_bootstrap`` fixture from conftest.py.
 
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -20,6 +22,8 @@ from nonebot.adapters.milky.config import ClientInfo
 from nonebot.adapters.milky.event import FriendMessageEvent as MilkyFriendMessageEvent
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.event import GroupMessageReactionEvent
+from nonebot.adapters.milky.utils import clean_params
+from PIL import Image as PILImage
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -32,6 +36,11 @@ def _next_seq() -> int:
     global _seq
     _seq += 1
     return _seq
+
+
+def _loaded_module(name: str) -> Any:
+    """Return a plugin module loaded by the session-scoped bootstrap fixture."""
+    return sys.modules[name]
 
 
 def _make_bot() -> MilkyBot:
@@ -169,6 +178,7 @@ def _stub_all_api(
     *,
     referenced_text: str = "stubbed",
     referenced_sender_id: int = 42,
+    referenced_segments: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Capture the registered adapter's Milky HTTP boundary.
 
@@ -177,6 +187,8 @@ def _stub_all_api(
     """
 
     calls: list[dict[str, Any]] = []
+    if referenced_segments is None:
+        referenced_segments = [{"type": "text", "data": {"text": referenced_text}}]
 
     async def _fake_call(
         self: MilkyAdapter,
@@ -184,7 +196,7 @@ def _stub_all_api(
         action: str,
         params: dict | None = None,
     ) -> dict[str, Any]:
-        p = dict(params or {})
+        p = clean_params(dict(params or {}))
         calls.append({"action": action, "params": p})
         if action in ("send_group_message", "send_private_message"):
             return {"message_seq": _next_seq(), "time": 1}
@@ -218,7 +230,7 @@ def _stub_all_api(
                     "message_seq": p.get("message_seq", 0),
                     "sender_id": referenced_sender_id,
                     "time": 1,
-                    "segments": [{"type": "text", "data": {"text": referenced_text}}],
+                    "segments": referenced_segments,
                     "group": {
                         "group_id": p.get("peer_id", 0),
                         "group_name": "test group",
@@ -250,18 +262,15 @@ def _stub_all_api(
     # Stub outbound HTTP so handlers never open live connections.
     async def _fake_post(url: str, **kwargs: Any) -> Any:
         del url, kwargs
-        return type(
-            "Response",
-            (),
-            {
-                "status_code": 200,
-                "text": "[]",
-                "content": b"{}",
-                "json": [],
-            },
-        )()
+        return SimpleNamespace(
+            status_code=200,
+            text="[]",
+            content=b"{}",
+            json=[],
+            ok=True,
+        )
 
-    from hoshino.util import aiohttpx
+    aiohttpx = _loaded_module("hoshino.util").aiohttpx
 
     monkeypatch.setattr(aiohttpx, "post", _fake_post)
     monkeypatch.setattr(aiohttpx, "get", _fake_post)
@@ -271,8 +280,7 @@ def _stub_all_api(
 
 
 def _enable_svc(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
-    from hoshino.service import _loaded_services
-
+    _loaded_services = _loaded_module("hoshino.core.service")._loaded_services
     svc = _loaded_services.get(name)
     if svc is not None:
         monkeypatch.setattr(
@@ -318,13 +326,9 @@ class TestBasePlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls)
-        assert len(send) == 1
-        p = send[0]["params"]
-        assert p["group_id"] == 123456
-        msg = p["message"]
-        types = [seg.get("type") for seg in msg]
-        assert "text" in types
+        message = _assert_one_send(calls)
+        expected = str(_loaded_module("hoshino.core.config").config.zai)
+        assert message == [{"type": "text", "data": {"text": expected}}]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_zai_no_mention_no_response(self, monkeypatch):
@@ -384,10 +388,33 @@ class TestBasePlugins:
         assert "群123456服务一览" in text
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_ls_group_superuser_reports_joined_groups(self, monkeypatch):
+        """ls: the group subcommand uses the adapter-neutral send path."""
+        bot = _make_bot()
+        event = _at_bot_msg(" ls.group", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        assert [call["action"] for call in calls] == [
+            "get_group_list",
+            "send_group_message",
+        ]
+        assert calls[0]["params"] == {"no_cache": False}
+        assert calls[1]["params"] == {
+            "group_id": 123456,
+            "message": [
+                {
+                    "type": "text",
+                    "data": {"text": "| 群号 | 群名 | 共1个群\n123456 test group"},
+                }
+            ],
+        }
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_check_cookies_superuser_mention_reports_empty(self, monkeypatch):
         """cookies: native superuser command reports deterministic empty state."""
-        import hoshino.base.cookies as cookies_module
-
+        cookies_module = _loaded_module("hoshino.base.cookies")
         monkeypatch.setattr(cookies_module, "check_all_cookies", lambda: {})
         bot = _make_bot()
         event = _at_bot_msg(" check_cookies all", sender_id=_superuser_id())
@@ -413,7 +440,7 @@ class TestBasePlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_broadcast_superuser_sends_to_joined_group(self, monkeypatch):
         """broadcast: superuser command sends to every adapter-reported group."""
-        import hoshino.base.broadcast as broadcast_module
+        broadcast_module = _loaded_module("hoshino.base.broadcast")
 
         async def no_sleep(delay: float) -> None:
             assert delay == 0.5
@@ -433,6 +460,81 @@ class TestBasePlugins:
         assert calls[1]["params"]["group_id"] == 123456
         assert calls[1]["params"]["message"][0]["data"]["text"] == "hello"
         assert "投递成功1个群" in calls[2]["params"]["message"][0]["data"]["text"]
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_image_reaction_notice_saves_referenced_image(self, monkeypatch):
+        """image: a Milky reaction retrieves and saves a trusted image."""
+        image_module = _loaded_module("hoshino.base.image")
+        captured: dict[str, Any] = {}
+
+        async def fake_save_images(segments, **kwargs):
+            captured["segments"] = list(segments)
+            captured.update(kwargs)
+            return len(segments)
+
+        monkeypatch.setattr(image_module, "_save_images", fake_save_images)
+        notice = _make_reaction_notice(face_id="66")
+        calls = _stub_all_api(
+            monkeypatch,
+            referenced_sender_id=_superuser_id(),
+            referenced_segments=[
+                {
+                    "type": "image",
+                    "data": {
+                        "resource_id": "image-resource",
+                        "temp_url": "https://example.com/image.jpg",
+                        "width": 100,
+                        "height": 100,
+                        "sub_type": "normal",
+                    },
+                }
+            ],
+        )
+
+        await _make_bot().handle_event(notice)
+
+        assert calls == [
+            {
+                "action": "get_message",
+                "params": {
+                    "message_scene": "group",
+                    "peer_id": 123456,
+                    "message_seq": 7001,
+                },
+            }
+        ]
+        assert captured["message_id"] == 7001
+        assert captured["session_id"] == f"group_123456_{_superuser_id()}"
+        assert captured["group_id"] == 123456
+        assert captured["is_fav"] is True
+        assert len(captured["segments"]) == 1
+        assert captured["segments"][0].url == "https://example.com/image.jpg"
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_image_short_delete_alias_remains_available(
+        self, monkeypatch, tmp_path
+    ):
+        """image: the whitespace-qualified ``st`` alias still deletes a file."""
+        image_module = _loaded_module("hoshino.base.image")
+        image_dir = tmp_path / "images"
+        favourite_dir = tmp_path / "favourites"
+        image_dir.mkdir()
+        favourite_dir.mkdir()
+        image_path = image_dir / "example.jpg"
+        image_path.write_bytes(b"image")
+        monkeypatch.setattr(image_module, "img_dir", image_dir)
+        monkeypatch.setattr(image_module, "fav_dir", favourite_dir)
+        bot = _make_bot()
+        event = _at_bot_msg(" st example.jpg", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        assert not image_path.exists()
+        message = _assert_one_send(calls)
+        assert message == [
+            {"type": "text", "data": {"text": "删除图片example.jpg成功"}}
+        ]
 
 
 # ===================================================================
@@ -484,9 +586,8 @@ class TestEntertainmentPlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls)
-        assert len(send) == 1
-        assert send[0]["params"]["group_id"] == 123456
+        message = _assert_one_send(calls)
+        assert message[0]["data"]["text"].startswith("本次掷骰结果为: ")
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_dice_rejects_nonsense(self, monkeypatch):
@@ -499,8 +600,7 @@ class TestEntertainmentPlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_bihua_enabled_sends_image(self, monkeypatch):
         """bihua: enabled service resolves a configured image."""
-        import hoshino.modules.entertainment.bihua as bihua_module
-
+        bihua_module = _loaded_module("hoshino.modules.entertainment.bihua")
         monkeypatch.setattr(bihua_module, "bihuas", {"test": ".png"})
         _enable_svc(monkeypatch, "bihua")
         bot = _make_bot()
@@ -509,21 +609,26 @@ class TestEntertainmentPlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls)
-        assert len(send) == 1
-        assert send[0]["params"]["group_id"] == 123456
-        assert send[0]["params"]["message"][0]["type"] == "image"
+        message = _assert_one_send(calls)
+        assert message == [
+            {
+                "type": "image",
+                "data": {
+                    "uri": "https://bihua.bleatingsheep.org/meme/test.png",
+                    "summary": None,
+                    "sub_type": "normal",
+                },
+            }
+        ]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_coser_enabled_mention_sends_image(self, monkeypatch):
         """coser: enabled mention command uses its stubbed external API."""
-        import hoshino.modules.entertainment.coser as coser_module
+        coser_module = _loaded_module("hoshino.modules.entertainment.coser")
 
         async def fake_get(url: str) -> Any:
             del url
-            return type(
-                "Response", (), {"json": {"text": "https://example.com/coser.jpg"}}
-            )()
+            return SimpleNamespace(json={"text": "https://example.com/coser.jpg"})
 
         _enable_svc(monkeypatch, "coser")
         bot = _make_bot()
@@ -533,10 +638,17 @@ class TestEntertainmentPlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls)
-        assert len(send) == 1
-        assert send[0]["params"]["group_id"] == 123456
-        assert send[0]["params"]["message"][0]["type"] == "image"
+        message = _assert_one_send(calls)
+        assert message == [
+            {
+                "type": "image",
+                "data": {
+                    "uri": "https://example.com/coser.jpg",
+                    "summary": None,
+                    "sub_type": "normal",
+                },
+            }
+        ]
 
 
 # ===================================================================
@@ -554,9 +666,10 @@ class TestInteractivePlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls)
-        assert len(send) == 1
-        assert send[0]["params"]["group_id"] == 123456
+        message = _assert_one_send(calls)
+        text = message[0]["data"]["text"]
+        assert text.startswith("您的选项是:\n1. A\n2. B\n")
+        assert "建议您选择:" in text
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_chooseone_private_responds(self, monkeypatch):
@@ -578,15 +691,12 @@ class TestInteractivePlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_foods_enabled_text_image(self, monkeypatch, tmp_path):
         """foods: enabled → text + image segments."""
-        import hoshino.modules.interactive.foods as foods_mod
-
+        foods_mod = _loaded_module("hoshino.modules.interactive.foods")
         # Ensure at least one food image exists (module was loaded at
         # session scope and foods list was already computed).
         foods_dir = tmp_path / "images"
         foods_dir.mkdir()
-        from PIL import Image
-
-        Image.new("RGB", (1, 1)).save(foods_dir / "test.png")
+        PILImage.new("RGB", (1, 1)).save(foods_dir / "test.png")
         monkeypatch.setattr(foods_mod, "foods", [foods_dir / "test.png"])
         _enable_svc(monkeypatch, "foods")
         bot = _make_bot()
@@ -595,14 +705,53 @@ class TestInteractivePlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls)
-        assert len(send) == 1
-        p = send[0]["params"]
-        assert p["group_id"] == 123456
-        msg = p["message"]
-        types = [seg.get("type") for seg in msg]
-        assert "text" in types
-        assert "image" in types
+        message = _assert_one_send(calls)
+        texts = [seg["data"]["text"] for seg in message if seg["type"] == "text"]
+        images = [seg["data"]["uri"] for seg in message if seg["type"] == "image"]
+        assert texts[-1].endswith("今天吃test吧! \n")
+        assert len(images) == 1
+        assert images[0].startswith("base64://")
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_emojimix_enabled_text_sends_image(self, monkeypatch):
+        """emojimix: two supported emoji dispatch through native on_message."""
+        _enable_svc(monkeypatch, "emojimix")
+        bot = _make_bot()
+        event = _make_group_msg("😀😃")
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert message == [
+            {
+                "type": "image",
+                "data": {
+                    "uri": (
+                        "https://www.gstatic.com/android/keyboard/emojikitchen/"
+                        "20210521/u1f600/u1f600_u1f603.png"
+                    ),
+                    "summary": None,
+                    "sub_type": "normal",
+                },
+            }
+        ]
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_steam_enabled_list_responds(self, monkeypatch):
+        """steam: its full command is not consumed by the ``st`` image alias."""
+        steam_module = _loaded_module("hoshino.modules.interactive.steam")
+        monkeypatch.setattr(steam_module, "sub", {"subscribes": {}})
+        monkeypatch.setattr(steam_module, "playing_state", {})
+        _enable_svc(monkeypatch, "steam")
+        bot = _make_bot()
+        event = _make_group_msg("steam订阅列表")
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert message == [{"type": "text", "data": {"text": "======steam======\n"}}]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_qa_group_list_responds(self, monkeypatch):
@@ -661,8 +810,7 @@ class TestInformationPlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_weibo_reaction_notice_uses_cached_post(self, monkeypatch):
         """weibo: Milky reaction notice fetches the message and saves cached post."""
-        import hoshino.modules.information.weibo.resolve as weibo_resolve
-
+        weibo_resolve = _loaded_module("hoshino.modules.information.weibo.resolve")
         notice = _make_reaction_notice()
         calls = _stub_all_api(
             monkeypatch,
@@ -687,12 +835,16 @@ class TestInformationPlugins:
 
         await _make_bot().handle_event(notice)
 
-        message_calls = [call for call in calls if call["action"] == "get_message"]
-        assert len(message_calls) == 1
-        message_params = message_calls[0]["params"]
-        assert message_params["message_scene"] == "group"
-        assert message_params["peer_id"] == 123456
-        assert message_params["message_seq"] == 7001
+        assert calls == [
+            {
+                "action": "get_message",
+                "params": {
+                    "message_scene": "group",
+                    "peer_id": 123456,
+                    "message_seq": 7001,
+                },
+            }
+        ]
         assert appended == [("123", "abc")]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -743,6 +895,30 @@ class TestInformationPlugins:
         text = send[0]["params"]["message"][0]["data"]["text"]
         assert text.startswith("本群没有")
         assert "直播订阅" in text
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_resolve_bv_dispatches_stubbed_video(self, monkeypatch):
+        """resolve: a BV identifier reaches the resolver and sends its result."""
+        resolve_module = _loaded_module("hoshino.modules.information.resolve")
+        util_module = _loaded_module("hoshino.util")
+
+        async def fake_resolve(name: str, url: str, matched: Any) -> bool:
+            assert name == "bv"
+            assert url == "BV1Q541167Qg"
+            assert matched.group(0) == url
+            await util_module.send("resolved video")
+            return True
+
+        monkeypatch.setattr(resolve_module, "resolve_bilibili", fake_resolve)
+        _enable_svc(monkeypatch, "resolve")
+        bot = _make_bot()
+        event = _make_group_msg("BV1Q541167Qg")
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert message == [{"type": "text", "data": {"text": "resolved video"}}]
 
 
 # ===================================================================

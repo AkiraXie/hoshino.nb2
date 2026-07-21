@@ -6,6 +6,11 @@ covered message case builds a Milky `message_receive` event, calls
 asserts the emitted action and payload. A module is not counted as covered by
 an import, matcher-rule-only test, or a default-disabled service boundary.
 
+The runtime plugin-manager inventory currently contains 27 Hoshino modules
+with 91 matchers. Every one of those modules has a representative row below;
+the two additional lifecycle-only modules are listed with their dedicated
+cross-adapter tests.
+
 ## Message Plugins
 
 | Module | Representative entry | Status | Behavioral test |
@@ -14,9 +19,9 @@ an import, matcher-rule-only test, or a default-disabled service boundary.
 | `base.broadcast` | `bc` superuser command | covered | `TestBasePlugins.test_broadcast_superuser_sends_to_joined_group` |
 | `base.cookies` | `check_cookies` superuser command | covered | `TestBasePlugins.test_check_cookies_superuser_mention_reports_empty` |
 | `base.help` | `help` Alconna command | covered | `TestBasePlugins.test_help_command_responds` |
-| `base.image` | keyword and reaction notice paths | lifecycle covered separately | `nb-tests/test_milky_adapter.py::test_image_reaction_business_rule_is_adapter_neutral`; no Milky notice dispatch fixture yet |
+| `base.image` | short delete command and reaction notice | covered | `TestBasePlugins.test_image_short_delete_alias_remains_available`, `test_image_reaction_notice_saves_referenced_image` |
 | `base.listenmeta` | bot-connect hook | lifecycle covered separately | `nb-tests/test_plugin_event_lifecycle.py::test_listenmeta_bot_connect_notifies_superusers_on_both_adapters` |
-| `base.ls` | superuser `ls` command group | not yet covered | needs a real Milky superuser command event |
+| `base.ls` | superuser `ls.group` command | covered | `TestBasePlugins.test_ls_group_superuser_reports_joined_groups` |
 | `base.service_manage` | `lssv` ADMIN + mention | covered | `TestBasePlugins.test_lssv_superuser_mention_reports_services` |
 | `base.test` | `testmatchers` superuser command | covered | `TestBasePlugins.test_testmatchers_superuser_mention_responds` |
 | `base.zai` | mention command | covered | `TestBasePlugins.test_zai_at_mention_zai_text` |
@@ -28,15 +33,15 @@ an import, matcher-rule-only test, or a default-disabled service boundary.
 | `entertainment.dice` | regex match and negative input | covered | `TestEntertainmentPlugins.test_dice_regex_responds` |
 | `information.bilireq` | enabled list command | covered | `TestInformationPlugins.test_bilireq_enabled_empty_list_responds` |
 | `information.pushlive` | enabled list command | covered | `TestInformationPlugins.test_pushlive_enabled_empty_list_responds` |
-| `information.resolve` | URL message resolver | rule covered separately | `nb-tests/test_plugin_event_lifecycle.py::test_resolve_rule_recognizes_bilibili_links_on_both_adapters`; full Milky dispatch remains uncovered |
+| `information.resolve` | BV message resolver | covered | `TestInformationPlugins.test_resolve_bv_dispatches_stubbed_video` |
 | `information.weibo` | enabled list command and cached reaction notice | covered | `TestInformationPlugins.test_weibo_enabled_empty_list_responds`, `test_weibo_reaction_notice_uses_cached_post` |
 | `interactive.QA` | group question list | covered | `TestInteractivePlugins.test_qa_group_list_responds` |
 | `interactive.alisten` | enabled missing-config response | covered | `TestInteractivePlugins.test_alisten_enabled_missing_config_responds` |
 | `interactive.chooseone` | group and friend commands | covered | `TestInteractivePlugins.test_chooseone_alconna_responds`, `test_chooseone_private_responds` |
-| `interactive.emojimix` | two-emoji message | not yet covered | needs a Milky segment fixture that satisfies `EventMessage` and `PlainText` together |
+| `interactive.emojimix` | enabled two-emoji message | covered | `TestInteractivePlugins.test_emojimix_enabled_text_sends_image` |
 | `interactive.foods` | enabled text and image output | covered | `TestInteractivePlugins.test_foods_enabled_text_image` |
 | `interactive.qbitorrent` | enabled missing-config response | covered | `TestInteractivePlugins.test_qbitorrent_enabled_missing_config_responds` |
-| `interactive.steam` | list command | not yet covered | current synthetic Alconna event does not enter the matcher; needs a valid Milky command fixture |
+| `interactive.steam` | enabled list command | covered | `TestInteractivePlugins.test_steam_enabled_list_responds` |
 | `tools.b64` | enabled group and friend commands | covered | `TestToolsPlugins.test_b64_enabled_encrypt_text`, `test_b64_enabled_encrypt_private_text` |
 | `tools.nbnhhsh` | regex group, negative, and friend cases | covered | `TestToolsPlugins.test_nbnhhsh_regex_matches_stubbed`, `test_nbnhhsh_private_responds` |
 
@@ -50,3 +55,6 @@ an import, matcher-rule-only test, or a default-disabled service boundary.
   failed import or patch fails the test instead of allowing live traffic.
 - Services with `enable_on_default=False` are explicitly enabled by a scoped
   monkeypatch in positive behavior cases.
+- Wildcard services use native NoneBot message matchers, so `resolve`, `QA`,
+  and `emojimix` evaluate their own rules independently instead of sharing an
+  Alconna wildcard parser result.

@@ -1,8 +1,10 @@
-from hoshino.util import sucmds
 from nonebot.adapters import Bot
-from hoshino.service import Service, MatcherWrapper
+
+from hoshino.command import UniMessage
 from hoshino.platform import get_group_list
 from hoshino.platform.depends import PlainText
+from hoshino.service import MatcherWrapper, Service
+from hoshino.util import sucmds
 
 
 async def ls_group(bot: Bot):
@@ -10,7 +12,7 @@ async def ls_group(bot: Bot):
     msg = ["{group_id} {group_name}".format_map(g) for g in gl]
     msg = "\n".join(msg)
     msg = f"| 群号 | 群名 | 共{len(gl)}个群\n" + msg
-    await bot.send(msg)
+    await UniMessage.text(msg).send()
 
 
 async def ls_friend(bot: Bot):
