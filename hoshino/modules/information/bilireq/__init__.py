@@ -1,7 +1,12 @@
 import asyncio
+import random
 import time
-from hoshino.core.hooks import on_post_startup
+
+from pytz import timezone
+from sqlalchemy import select
+
 from hoshino.command import UniMessage
+from hoshino.core.hooks import on_post_startup
 from hoshino.platform import (
     dump_target,
     group_target,
@@ -9,19 +14,19 @@ from hoshino.platform import (
     send_to_target,
 )
 from hoshino.platform.depends import GroupID, PlainText
-import random
 from hoshino.util import send_group_segments, send_segments
+
+from ..utils import PostQueue, UIDManager
 from .utils import (
     BiliBiliDynamic,
-    DynamicDB as db,
+    Session,
     get_dynamic,
     get_new_dynamic,
-    Session,
     sv,
 )
-from ..utils import PostQueue, UIDManager
-from pytz import timezone
-from sqlalchemy import select
+from .utils import (
+    DynamicDB as db,
+)
 
 # 使用统一的组件
 dyn_queue = PostQueue[BiliBiliDynamic]()
@@ -31,7 +36,9 @@ tz = timezone("Asia/Shanghai")
 
 
 add_dynamic_cmd = sv.on_command(
-    "添加动态", aliases=("订阅动态", "新增动态", "动态订阅", "adddyn")
+    "添加动态",
+    aliases=("订阅动态", "新增动态", "动态订阅", "adddyn"),
+    compact=False,
 )
 
 

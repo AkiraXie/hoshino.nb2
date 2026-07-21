@@ -544,9 +544,9 @@ class TestBasePlugins:
 
 class TestDevelopPlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_say_alconna_responds(self, monkeypatch):
+    async def test_say_command_uses_only_the_compact_parsed_argument(self, monkeypatch):
         bot = _make_bot()
-        event = _make_group_msg("say hi")
+        event = _make_group_msg("sayhi")
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)
@@ -556,8 +556,8 @@ class TestDevelopPlugins:
         p = send[0]["params"]
         assert p["group_id"] == 123456
         msg = p["message"]
-        texts = " ".join(seg["data"]["text"] for seg in msg if seg["type"] == "text")
-        assert "hi" in texts
+        texts = [seg["data"]["text"] for seg in msg if seg["type"] == "text"]
+        assert texts == ["hi"]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_server_info_superuser_responds(self, monkeypatch):
@@ -604,7 +604,7 @@ class TestEntertainmentPlugins:
         monkeypatch.setattr(bihua_module, "bihuas", {"test": ".png"})
         _enable_svc(monkeypatch, "bihua")
         bot = _make_bot()
-        event = _make_group_msg("bihua test")
+        event = _make_group_msg("bihuatest")
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)
@@ -658,10 +658,10 @@ class TestEntertainmentPlugins:
 
 class TestInteractivePlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_chooseone_alconna_responds(self, monkeypatch):
-        """chooseone: sv.on_alconna(选择 A还是B) — handler needs '还是'."""
+    async def test_chooseone_command_responds(self, monkeypatch):
+        """chooseone: sv.on_command(选择 A还是B) — handler needs '还是'."""
         bot = _make_bot()
-        event = _make_group_msg("选择 A还是B")
+        event = _make_group_msg("选择A还是B")
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)
@@ -865,10 +865,10 @@ class TestInformationPlugins:
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_bilireq_enabled_empty_list_responds(self, monkeypatch):
-        """bilireq: enabled service reports an empty subscription list."""
+        """bilireq: a longer alias is not consumed as a compact add command."""
         _enable_svc(monkeypatch, "bilireq")
         bot = _make_bot()
-        event = _make_group_msg("本群动态订阅")
+        event = _make_group_msg("订阅动态列表")
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)
@@ -931,7 +931,7 @@ class TestToolsPlugins:
     async def test_b64_enabled_encrypt_text(self, monkeypatch):
         _enable_svc(monkeypatch, "b64")
         bot = _make_bot()
-        event = _make_group_msg("b64加密 hello")
+        event = _make_group_msg("b64加密hello")
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)

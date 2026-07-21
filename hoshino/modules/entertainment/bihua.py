@@ -1,18 +1,20 @@
-from hoshino.service import Service
-from hoshino.command import Alconna, Args, UniMessage
-from hoshino.core.schedule import scheduled_job
-from hoshino.util import aiohttpx
-from urllib.parse import quote
 import random
 from json import loads
+from urllib.parse import quote
+
+from hoshino.command import UniMessage
+from hoshino.core.schedule import scheduled_job
+from hoshino.service import Service
+from hoshino.util import aiohttpx
+
 sv = Service("bihua", visible=False, enable_on_default=False)
 
 bihuas = dict()
 configurl = "https://bihua.bleatingsheep.org/meme-data.json"
 prefix = "https://bihua.bleatingsheep.org/meme/"
-m = sv.on_alconna(Alconna("bihua", Args["text", str]), aliases=("b话", "壁画"), block=True)
-r = sv.on_alconna(Alconna("随机壁画"), aliases=("随机bihua", "随机b话"), block=True)
-s = sv.on_alconna(Alconna("搜索壁画", Args["text", str]), aliases=("searchbihua", "搜索b话"), block=True)
+m = sv.on_command("bihua", aliases=("b话", "壁画"), block=True)
+r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=True)
+s = sv.on_command("搜索壁画", aliases=("searchbihua", "搜索b话"), block=True)
 
 
 @scheduled_job("interval", seconds=240, id="bihua_config", jitter=5)
@@ -27,7 +29,7 @@ async def fetch_bihua_config():
             dic = loads(content)
             images = dic.get("images", [])
             for image in images:
-                line:str = image.get("path", "")
+                line: str = image.get("path", "")
                 line = line.removeprefix("meme/")
                 for ext in [".jpg", ".png", ".jpeg"]:
                     if line.endswith(ext):

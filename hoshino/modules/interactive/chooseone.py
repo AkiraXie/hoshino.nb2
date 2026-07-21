@@ -1,9 +1,10 @@
-from hoshino.service import Service
-from hoshino.command import Alconna, Args, UniMessage
 import random
 
+from hoshino.command import UniMessage
+from hoshino.service import Service
+
 sv = Service("chooseone")
-co = sv.on_alconna(Alconna("选择", Args["text", str]), only_group=False, priority=2)
+co = sv.on_command("选择", only_group=False, priority=2)
 
 
 @co.handle()

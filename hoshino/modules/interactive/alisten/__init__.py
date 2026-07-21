@@ -1,9 +1,19 @@
+from nonebot.params import Depends
 from sqlalchemy import select
-from .util import AlistenConfig, get_config, get_client, AlistenClient, sv, Session, update_client
-from hoshino.platform.permission import ADMIN
+
 from hoshino import hsn_nickname
 from hoshino.platform.depends import GroupID, GroupMemberName, PlainText
-from nonebot.params import Depends
+from hoshino.platform.permission import ADMIN
+
+from .util import (
+    AlistenClient,
+    AlistenConfig,
+    Session,
+    get_client,
+    get_config,
+    sv,
+    update_client,
+)
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)
 configshow = sv.on_command(
@@ -61,15 +71,19 @@ async def _(config: AlistenConfig | None = Depends(get_config)):
     )
 
 
-pickmusic = sv.on_command("点歌", aliases={"pickmusic"}, force_whitespace=True)
+pickmusic = sv.on_command("点歌", aliases={"pickmusic"}, compact=False)
 pickmusicid = sv.on_command(
-    "id点歌", aliases={"idpickmusic", "ID点歌", "Id点歌"}, force_whitespace=True
+    "id点歌", aliases={"idpickmusic", "ID点歌", "Id点歌"}, compact=False
 )
 houseuser = sv.on_command(
     "听歌房用户", aliases={"alistenusers", "听歌房成员", "谁在听歌"}
 )
 playlistcmd = sv.on_command(
-    "播放列表", aliases={"alistenplaylist", "听歌房歌曲",}
+    "播放列表",
+    aliases={
+        "alistenplaylist",
+        "听歌房歌曲",
+    },
 )
 
 
@@ -95,7 +109,7 @@ async def _(
         print(resp)
         msg = "点歌成功！歌曲已加入播放列表"
         msg += f"\n歌曲：{resp.name}"
-        msg += f"\n歌手：{resp.artist}" if resp.artist!='unknown' else ""
+        msg += f"\n歌手：{resp.artist}" if resp.artist != "unknown" else ""
         source_name = {
             "wy": "网易云音乐",
             "qq": "QQ音乐",
@@ -168,6 +182,6 @@ async def _(client: AlistenClient | None = Depends(get_client)):
         msg += f"{i}. {item.name}-{item.artist} \n"
     current = await client.current_music()
     if current and current.name:
-        m =  f"\n正在播放：{current.name}-{current.artist} \n"
+        m = f"\n正在播放：{current.name}-{current.artist} \n"
         msg = m + msg
     await playlistcmd.finish(msg.strip(), call_header=True)

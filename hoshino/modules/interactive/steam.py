@@ -7,7 +7,7 @@ from lxml import etree
 from nonebot.adapters import Bot
 
 from hoshino import db_dir
-from hoshino.command import Alconna, Args, MsgTarget, UniMessage
+from hoshino.command import MsgTarget, UniMessage
 from hoshino.core.schedule import scheduled_job
 from hoshino.platform import group_target, send_to_target
 from hoshino.platform.permission import ADMIN
@@ -37,10 +37,10 @@ async def format_id(id: str) -> str:
         return xml.xpath("/profile/steamID64")[0].text
 
 
-adds = sv.on_alconna(Alconna("添加steam订阅", Args["account", str]), permission=ADMIN)
-dels = sv.on_alconna(Alconna("取消steam订阅", Args["account", str]), permission=ADMIN)
-looks = sv.on_alconna(
-    Alconna("steam订阅列表"),
+adds = sv.on_command("添加steam订阅", permission=ADMIN)
+dels = sv.on_command("取消steam订阅", permission=ADMIN)
+looks = sv.on_command(
+    "steam订阅列表",
     aliases=(
         "查看本群steam",
         "本群steam订阅",
@@ -50,8 +50,8 @@ looks = sv.on_alconna(
         "kksteam",
     ),
 )
-look = sv.on_alconna(
-    Alconna("查询steam账号", Args["account", str]),
+look = sv.on_command(
+    "查询steam账号",
     permission=ADMIN,
     aliases=("查看steam", "查看steam订阅"),
 )
@@ -62,7 +62,8 @@ def _group_id(target) -> int:
 
 
 @adds.handle()
-async def _(target: MsgTarget, account: str):
+async def _(target: MsgTarget, text: str):
+    account = text
     group_id = _group_id(target)
     try:
         rsp = await get_account_status(account)
@@ -82,7 +83,8 @@ async def _(target: MsgTarget, account: str):
 
 
 @dels.handle()
-async def _(target: MsgTarget, account: str):
+async def _(target: MsgTarget, text: str):
+    account = text
     group_id = _group_id(target)
     try:
         await del_steam_ids(account, group_id)
@@ -107,7 +109,8 @@ async def _(target: MsgTarget):
 
 
 @look.handle()
-async def _(account: str):
+async def _(text: str):
+    account = text
     rsp = await get_account_status(account)
     if rsp["personaname"] == "":
         await UniMessage.text("查询失败！").send()

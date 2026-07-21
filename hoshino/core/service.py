@@ -18,7 +18,12 @@ from nonebot.plugin import (
     on_request,
 )
 from nonebot.rule import to_me
-from nonebot_plugin_alconna import Alconna, Args, CommandMeta, on_alconna
+from nonebot_plugin_alconna import (
+    Alconna,
+    Args,
+    CommandMeta,
+    on_alconna,
+)
 
 from hoshino import service_dir as _service_dir
 from hoshino.core.hooks import run_preprocessor
@@ -326,23 +331,20 @@ class Service:
 
     def on_command(
         self,
-        name: str,
+        name: str | Alconna,
         only_to_me: bool = False,
         aliases: set | list | tuple | str | None = None,
         only_group: bool = True,
         permission: Permission = NORMAL,
-        force_whitespace: bool | None = None,
         meta: CommandMeta | None = None,
+        compact: bool = True,
         **kwargs,
     ):
+        command_meta = meta if meta is not None else CommandMeta(compact=compact)
         if isinstance(name, Alconna):
             alc = name
         else:
-            alc = (
-                Alconna(name, Args["text?", str], meta=meta)
-                if meta
-                else Alconna(name, Args["text?", str])
-            )
+            alc = Alconna(name, Args["text?", str], meta=command_meta)
         alc_aliases: set[str] | tuple[str, ...] | None = None
         if aliases:
             if isinstance(aliases, str):
@@ -355,6 +357,8 @@ class Service:
             only_group=only_group,
             permission=permission,
             aliases=alc_aliases,
+            meta=command_meta,
+            compact=compact,
             **kwargs,
         )
 
@@ -366,8 +370,16 @@ class Service:
         only_group: bool = True,
         permission: Permission = NORMAL,
         aliases: set[str] | tuple[str, ...] | None = None,
+        compact: bool = True,
+        meta: CommandMeta | None = None,
         **kwargs,
     ):
+        command_meta = meta if meta is not None else CommandMeta(compact=compact)
+        if isinstance(command, Alconna):
+            if command_meta is not command.meta:
+                command += command_meta
+        else:
+            command = Alconna(command, meta=command_meta)
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())

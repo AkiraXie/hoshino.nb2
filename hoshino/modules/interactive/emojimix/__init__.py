@@ -1,18 +1,20 @@
 ## Thanks to github.com/FloatTech/ZeroBot-Plugin/plugin/emojimix
 
-from hoshino.service import Service
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
-from hoshino.util import aiohttpx
+
+from hoshino.command import UniMessage
 from hoshino.core.permission import SUPERUSER
-from hoshino.command import Alconna, UniMessage
 from hoshino.platform.depends import EventMessage, PlainText, RawMessage
+from hoshino.service import Service
+from hoshino.util import aiohttpx
+
 from .data import emojis, qqface
 
 sv = Service("emojimix", visible=False, enable_on_default=False)
 
 bed = "https://www.gstatic.com/android/keyboard/emojikitchen/%s/u%s/u%s_u%s.png"
-testemoji = sv.on_alconna(Alconna("testemoji"), permission=SUPERUSER)
+testemoji = sv.on_command("testemoji", permission=SUPERUSER)
 
 
 def multichar_ord(s: str) -> str:

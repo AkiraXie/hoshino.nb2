@@ -1,11 +1,12 @@
 import base64
+
+from hoshino.command import UniMessage
 from hoshino.service import Service
-from hoshino.command import Alconna, Args, UniMessage
 
 sv = Service("b64", enable_on_default=False)
 
-encrypt = sv.on_alconna(Alconna("b64加密", Args["text", str]), only_group=False)
-decrypt = sv.on_alconna(Alconna("b64", Args["text", str]), aliases=("b64解密",), only_group=False)
+encrypt = sv.on_command("b64加密", only_group=False)
+decrypt = sv.on_command("b64", aliases=("b64解密",), only_group=False, compact=False)
 
 
 @encrypt.handle()
