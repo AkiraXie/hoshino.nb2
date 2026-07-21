@@ -19,6 +19,7 @@ from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.config import ClientInfo
 from nonebot.adapters.milky.event import FriendMessageEvent as MilkyFriendMessageEvent
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
+from nonebot.adapters.milky.event import GroupMessageReactionEvent
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -122,6 +123,31 @@ def _make_friend_msg(text: str, **kwargs: Any) -> MilkyFriendMessageEvent:
     return event
 
 
+def _make_reaction_notice(
+    *,
+    message_seq: int = 7001,
+    face_id: str = "319",
+) -> GroupMessageReactionEvent:
+    adapter = get_adapters()[MilkyAdapter.get_name()]
+    event = adapter.json_to_event(
+        {
+            "event_type": "group_message_reaction",
+            "time": 1,
+            "self_id": 10000,
+            "data": {
+                "group_id": 123456,
+                "user_id": _superuser_id(),
+                "message_seq": message_seq,
+                "face_id": face_id,
+                "reaction_type": "face",
+                "is_add": True,
+            },
+        }
+    )
+    assert isinstance(event, GroupMessageReactionEvent)
+    return event
+
+
 def _at_bot_msg(text: str, **kw) -> MilkyGroupMessageEvent:
     return _make_group_msg(
         "",
@@ -140,6 +166,9 @@ def _superuser_id() -> int:
 
 def _stub_all_api(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    referenced_text: str = "stubbed",
+    referenced_sender_id: int = 42,
 ) -> list[dict[str, Any]]:
     """Capture the registered adapter's Milky HTTP boundary.
 
@@ -183,16 +212,35 @@ def _stub_all_api(
             return "https://example.com/temp/resource"
         if action == "get_message":
             return {
-                "message_scene": "group",
-                "peer_id": p.get("peer_id", 0),
-                "message_seq": p.get("message_seq", 0),
-                "sender_id": 42,
-                "time": 1,
-                "segments": [{"type": "text", "data": {"text": "stubbed"}}],
-                "sender": {"user_id": 42, "nickname": "T", "card": "T"},
+                "message": {
+                    "message_scene": "group",
+                    "peer_id": p.get("peer_id", 0),
+                    "message_seq": p.get("message_seq", 0),
+                    "sender_id": referenced_sender_id,
+                    "time": 1,
+                    "segments": [{"type": "text", "data": {"text": referenced_text}}],
+                    "group": {
+                        "group_id": p.get("peer_id", 0),
+                        "group_name": "test group",
+                        "member_count": 2,
+                        "max_member_count": 100,
+                    },
+                    "group_member": {
+                        "user_id": referenced_sender_id,
+                        "nickname": "TestUser",
+                        "sex": "unknown",
+                        "group_id": p.get("peer_id", 0),
+                        "card": "TestCard",
+                        "title": "",
+                        "level": 1,
+                        "role": "member",
+                        "join_time": 1,
+                        "last_sent_time": 1,
+                    },
+                }
             }
         if action == "get_forwarded_messages":
-            return []
+            return {"messages": [], "next_message_seq": 0}
         if action == "get_group_member_list":
             return []
         return {}
@@ -610,6 +658,43 @@ class TestInteractivePlugins:
 
 
 class TestInformationPlugins:
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_weibo_reaction_notice_uses_cached_post(self, monkeypatch):
+        """weibo: Milky reaction notice fetches the message and saves cached post."""
+        import hoshino.modules.information.weibo.resolve as weibo_resolve
+
+        notice = _make_reaction_notice()
+        calls = _stub_all_api(
+            monkeypatch,
+            referenced_text="https://weibo.com/123/abc",
+            referenced_sender_id=_superuser_id(),
+        )
+        _enable_svc(monkeypatch, "weibo")
+        appended: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            weibo_resolve, "get_cached_weibo_uid_id", lambda _: "123_abc"
+        )
+        monkeypatch.setattr(
+            weibo_resolve,
+            "append_fav",
+            lambda uid, post_id: appended.append((uid, post_id)) or True,
+        )
+
+        async def fake_send_to_superuser(message: str) -> None:
+            assert "微博收藏新增" in message
+
+        monkeypatch.setattr(weibo_resolve, "send_to_superuser", fake_send_to_superuser)
+
+        await _make_bot().handle_event(notice)
+
+        message_calls = [call for call in calls if call["action"] == "get_message"]
+        assert len(message_calls) == 1
+        message_params = message_calls[0]["params"]
+        assert message_params["message_scene"] == "group"
+        assert message_params["peer_id"] == 123456
+        assert message_params["message_seq"] == 7001
+        assert appended == [("123", "abc")]
+
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_weibo_enabled_empty_list_responds(self, monkeypatch):
         """weibo: enabled service reports an empty subscription list."""

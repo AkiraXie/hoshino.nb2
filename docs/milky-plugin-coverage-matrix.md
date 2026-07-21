@@ -29,7 +29,7 @@ an import, matcher-rule-only test, or a default-disabled service boundary.
 | `information.bilireq` | enabled list command | covered | `TestInformationPlugins.test_bilireq_enabled_empty_list_responds` |
 | `information.pushlive` | enabled list command | covered | `TestInformationPlugins.test_pushlive_enabled_empty_list_responds` |
 | `information.resolve` | URL message resolver | rule covered separately | `nb-tests/test_plugin_event_lifecycle.py::test_resolve_rule_recognizes_bilibili_links_on_both_adapters`; full Milky dispatch remains uncovered |
-| `information.weibo` | enabled list command and reaction notice | partially covered | `TestInformationPlugins.test_weibo_enabled_empty_list_responds`; reaction business rule is in `test_milky_adapter.py` |
+| `information.weibo` | enabled list command and cached reaction notice | covered | `TestInformationPlugins.test_weibo_enabled_empty_list_responds`, `test_weibo_reaction_notice_uses_cached_post` |
 | `interactive.QA` | group question list | covered | `TestInteractivePlugins.test_qa_group_list_responds` |
 | `interactive.alisten` | enabled missing-config response | covered | `TestInteractivePlugins.test_alisten_enabled_missing_config_responds` |
 | `interactive.chooseone` | group and friend commands | covered | `TestInteractivePlugins.test_chooseone_alconna_responds`, `test_chooseone_private_responds` |
