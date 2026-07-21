@@ -10,6 +10,7 @@ from hoshino import db_dir
 from hoshino.command import MsgTarget, UniMessage
 from hoshino.core.schedule import scheduled_job
 from hoshino.platform import group_target, send_to_target
+from hoshino.platform.depends import ParamText
 from hoshino.platform.permission import ADMIN
 from hoshino.service import Service
 from hoshino.util import aiohttpx
@@ -62,7 +63,7 @@ def _group_id(target) -> int:
 
 
 @adds.handle()
-async def _(target: MsgTarget, text: str):
+async def _(target: MsgTarget, text: str = ParamText()):
     account = text
     group_id = _group_id(target)
     try:
@@ -83,7 +84,7 @@ async def _(target: MsgTarget, text: str):
 
 
 @dels.handle()
-async def _(target: MsgTarget, text: str):
+async def _(target: MsgTarget, text: str = ParamText()):
     account = text
     group_id = _group_id(target)
     try:
@@ -109,7 +110,7 @@ async def _(target: MsgTarget):
 
 
 @look.handle()
-async def _(text: str):
+async def _(text: str = ParamText()):
     account = text
     rsp = await get_account_status(account)
     if rsp["personaname"] == "":

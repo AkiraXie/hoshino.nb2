@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from arclet.alconna import Arparma
 from nonebot.adapters import Bot, Event
 from nonebot.params import Depends
+from nonebot_plugin_alconna import AlconnaMatches
+from nonebot_plugin_alconna.uniseg import UniMessage
 from nonebot_plugin_uninfo import get_session
 
 from hoshino.platform.event import (
@@ -38,6 +41,26 @@ def SenderID() -> int | None:
 def PlainText() -> str:
     async def _(event: Event) -> str:
         return get_plaintext(event)
+
+    return Depends(_)
+
+
+def ParamMessage(default: UniMessage | None = None) -> UniMessage:
+    """Inject the complete ``Service.on_command`` argument message."""
+
+    async def _(matches: Arparma = AlconnaMatches()) -> UniMessage:
+        value = matches.all_matched_args.get("text")
+        return UniMessage(value) if value else default or UniMessage()
+
+    return Depends(_)
+
+
+def ParamText(default: str = "") -> str:
+    """Inject the complete plain-text argument after a service command."""
+
+    async def _(matches: Arparma = AlconnaMatches()) -> str:
+        value = matches.all_matched_args.get("text")
+        return UniMessage(value).extract_plain_text() if value else default
 
     return Depends(_)
 

@@ -8,7 +8,7 @@ from hoshino.platform import (
     dump_target,
     group_target,
 )
-from hoshino.platform.depends import GroupID, MessageID, PlainText
+from hoshino.platform.depends import GroupID, MessageID, ParamText
 from hoshino.core.permission import SUPERUSER
 from hoshino.platform.permission import ADMIN
 from hoshino.util import (
@@ -130,7 +130,7 @@ random_image_cmd = sv.on_command(
 
 @random_image_cmd.handle()
 async def weibo_random_image(
-    text: str = PlainText(),
+    text: str = ParamText(),
     message_id: int | None = MessageID(),
 ):
     path = weibo_img_dir
@@ -167,7 +167,7 @@ random_video_cmd = sv.on_command(
 
 @random_video_cmd.handle()
 async def weibo_random_video(
-    text: str = PlainText(),
+    text: str = ParamText(),
     message_id: int | None = MessageID(),
 ):
     path = weibo_video_dir
@@ -199,7 +199,7 @@ add_weibo_cmd = sv.on_command(
 
 
 @add_weibo_cmd.handle()
-async def add_subscription(gid: int | None = GroupID(), msg: str = PlainText()):
+async def add_subscription(gid: int | None = GroupID(), msg: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return
@@ -244,7 +244,7 @@ remove_weibo_cmd = sv.on_command(
 
 
 @remove_weibo_cmd.handle()
-async def remove_subscription(gid: int | None = GroupID(), uids: str = PlainText()):
+async def remove_subscription(gid: int | None = GroupID(), uids: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return
@@ -300,7 +300,7 @@ see_weibo_cmd = sv.on_command(
 
 
 @see_weibo_cmd.handle()
-async def see_weibo(gid: int | None = GroupID(), arg: str = PlainText()):
+async def see_weibo(gid: int | None = GroupID(), arg: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return
@@ -337,7 +337,7 @@ query_weibo_cmd = sv.on_command(
 
 
 @query_weibo_cmd.handle()
-async def query_weibo_user(arg: str = PlainText()):
+async def query_weibo_user(arg: str = ParamText()):
     arg = arg.strip()
     if arg.isdecimal():
         rows = list_subscriptions_by_uid(arg)

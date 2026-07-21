@@ -7,7 +7,7 @@ from hoshino.core.permission import SUPERUSER
 from hoshino import data_dir
 from hoshino.util import send_segments
 from hoshino.command import UniMessage, uni_text
-from hoshino.platform.depends import PlainText
+from hoshino.platform.depends import ParamText
 from hoshino.types import MessageLike
 
 from .sv import sv
@@ -184,7 +184,7 @@ random_favorite_cmd = sv.on_command(
 
 
 @random_favorite_cmd.handle()
-async def random_weibo_favorite(text: str = PlainText()):
+async def random_weibo_favorite(text: str = ParamText()):
     target_uid = text.strip() or None
     uid_ids = _list_favorite_uid_ids(target_uid)
     if not uid_ids:
@@ -216,7 +216,7 @@ search_favorite_cmd = sv.on_command(
 
 
 @search_favorite_cmd.handle()
-async def search_weibo_favorite(arg: str = PlainText()):
+async def search_weibo_favorite(arg: str = ParamText()):
     arg = arg.strip()
     if not arg:
         await UniMessage.text("用法: 搜索微博收藏 关键词\n或: 搜索微博收藏 UID 关键词").send()
@@ -250,7 +250,7 @@ show_favorite_cmd = sv.on_command(
 
 
 @show_favorite_cmd.handle()
-async def show_weibo_favorite(post_ref: str = PlainText()):
+async def show_weibo_favorite(post_ref: str = ParamText()):
     post_ref = post_ref.strip()
     if not post_ref:
         await UniMessage.text("用法: 查看微博收藏 ID\n或: 查看微博收藏 UID_ID").send()

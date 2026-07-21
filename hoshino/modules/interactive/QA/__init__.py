@@ -11,7 +11,7 @@ from hoshino.platform import (
     get_event_message,
     get_session_id,
 )
-from hoshino.platform.depends import GroupID, PlainText, SenderID
+from hoshino.platform.depends import GroupID, ParamMessage, ParamText, PlainText, SenderID
 from hoshino.core.config import config
 from hoshino.util.aiohttpx import get
 from PIL import Image
@@ -22,7 +22,10 @@ img_dir.mkdir(parents=True, exist_ok=True)
 
 
 async def _parse_answer(answer: str) -> UniMessage:
-    return await UniMessage.generate(message=answer)
+    try:
+        return UniMessage.load(answer)
+    except (KeyError, TypeError, ValueError):
+        return await UniMessage.generate(message=answer)
 
 
 async def _finish_answer(answer: str) -> None:
@@ -30,27 +33,54 @@ async def _finish_answer(answer: str) -> None:
     await ans.finish()
 
 
+def _split_question_and_answer(message: UniMessage) -> tuple[str, UniMessage] | None:
+    question_parts: list[str] = []
+    answer = UniMessage()
+    found_separator = False
+
+    for segment in message:
+        if not found_separator and segment.type == "text":
+            question, separator, remaining = segment.text.partition("你答")
+            question_parts.append(question)
+            if separator:
+                found_separator = True
+                if remaining:
+                    answer.append(UniMessage.text(remaining)[0])
+            continue
+        if found_separator:
+            answer.append(segment)
+        else:
+            question_parts.append(str(segment))
+
+    question = "".join(question_parts).lstrip()
+    if not found_separator or not question or not answer:
+        return None
+
+    if answer[0].type == "text":
+        answer[0].text = answer[0].text.lstrip()
+        if not answer[0].text:
+            answer.pop(0)
+    if not answer or answer.extract_plain_text() == question:
+        return None
+    return question, answer
+
+
 async def event_image_in_local(
     matcher: Matcher,
     event: Event,
+    msg: UniMessage = ParamMessage(),
     gid: int = GroupID(),
 ) -> tuple[str, str]:
-    msg = get_event_message(event).copy()
-    msgs = str(msg).split("你答", 1)
-    if len(msgs) != 2:
+    parsed = _split_question_and_answer(msg)
+    if parsed is None:
         await matcher.finish()
-    if len(msgs[0]) == 0 or len(msgs[1]) == 0:
-        await matcher.finish()
-    question, answer = msgs
-    question = question.lstrip()
-    answer = answer.lstrip()
-    if answer == question:
-        await matcher.finish()
+    question, answer_msg = parsed
     sid = get_session_id(event, "")
-    answer_msg = await _parse_answer(answer)
     for i, seg in enumerate(answer_msg):
         if seg.type == "image":
-            url = str(getattr(seg, "url", None) or seg.data.get("url", ""))
+            url = str(getattr(seg, "url", None) or "")
+            if not url:
+                continue
             url = url.replace("https://", "http://")
             img = await get(url, timeout=120, verify=False)
             im = Image.open(BytesIO(img.content))
@@ -66,7 +96,7 @@ async def event_image_in_local(
             f = img_dir / s
             f.write_bytes(img.content)
             answer_msg[i] = uni_image(f)
-    return (question, str(answer_msg))
+    return question, answer_msg.dump(json=True)
 
 
 set_qa_dep = Depends(event_image_in_local)
@@ -160,7 +190,7 @@ async def _(msg: tuple[str, str] = set_qa_dep, gid: int = GroupID(), uid: int = 
 
 
 @del_gqa.handle()
-async def _(text: str = PlainText(), gid: int = GroupID()):
+async def _(text: str = ParamText(), gid: int = GroupID()):
     lquestion = text.lower()
     with Session() as session:
         stmt = select(Question).where(
@@ -180,7 +210,7 @@ async def _(text: str = PlainText(), gid: int = GroupID()):
 
 
 @del_qa.handle()
-async def _(text: str = PlainText(), gid: int = GroupID(), uid: int = SenderID()):
+async def _(text: str = ParamText(), gid: int = GroupID(), uid: int = SenderID()):
     lquestion = text.lower()
     gid = gid or 0
     with Session() as session:

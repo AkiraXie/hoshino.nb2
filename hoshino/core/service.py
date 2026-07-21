@@ -8,6 +8,7 @@ from collections import defaultdict
 from typing import Callable, Iterable
 
 import nonebot
+from arclet.alconna import AllParam
 from nonebot.adapters import Bot, Event
 from nonebot.exception import FinishedException, PausedException, RejectedException
 from nonebot.matcher import Matcher, current_bot, current_event
@@ -178,6 +179,31 @@ def _load_service_data(service_name: str) -> dict:
         return data
 
 
+def _load_service_scopes(data: dict) -> tuple[set[str], set[str]]:
+    """Load platform-scoped service state, accepting pre-platform OB11 data."""
+
+    def scope_values(key: str) -> set[str]:
+        values = data.get(key, [])
+        return {str(value) for value in values} if isinstance(values, list) else set()
+
+    enable_scope = scope_values("enable_scope")
+    disable_scope = scope_values("disable_scope")
+
+    # Older service files used bare group IDs. Those deployments were OB11-only,
+    # so retain their state under the OB11 platform namespace. Explicit scoped
+    # values win when a file contains both schemas.
+    for group_id in data.get("enable_group", []):
+        scope_key = group_scope_key(group_id)
+        if scope_key not in disable_scope:
+            enable_scope.add(scope_key)
+    for group_id in data.get("disable_group", []):
+        scope_key = group_scope_key(group_id)
+        if scope_key not in enable_scope:
+            disable_scope.add(scope_key)
+
+    return enable_scope, disable_scope
+
+
 class Service:
     def __init__(
         self,
@@ -217,8 +243,7 @@ class Service:
         )
         _loaded_services[self.name] = self
         data = _load_service_data(self.name)
-        self.enable_scope = set(data.get("enable_scope", []))
-        self.disable_scope = set(data.get("disable_scope", []))
+        self.enable_scope, self.disable_scope = _load_service_scopes(data)
         self.logger = LoggerWrapper(self.name)
         self.matchers = []
 
@@ -340,7 +365,7 @@ class Service:
         if isinstance(name, Alconna):
             alc = name
         else:
-            alc = Alconna(name, Args["text?", str], meta=command_meta)
+            alc = Alconna(name, Args["text?", AllParam], meta=command_meta)
         alc_aliases: set[str] | tuple[str, ...] | None = None
         if aliases:
             if isinstance(aliases, str):

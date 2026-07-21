@@ -13,7 +13,7 @@ from hoshino.platform import (
     load_target_or_group,
     send_to_target,
 )
-from hoshino.platform.depends import GroupID, PlainText
+from hoshino.platform.depends import GroupID, ParamText
 from hoshino.util import send_group_segments, send_segments
 
 from ..utils import PostQueue, UIDManager
@@ -43,7 +43,7 @@ add_dynamic_cmd = sv.on_command(
 
 
 @add_dynamic_cmd.handle()
-async def _(gid: int | None = GroupID(), uid: str = PlainText()):
+async def _(gid: int | None = GroupID(), uid: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return
@@ -88,7 +88,7 @@ remove_dynamic_cmd = sv.on_command(
 
 
 @remove_dynamic_cmd.handle()
-async def _(gid: int | None = GroupID(), uid: str = PlainText()):
+async def _(gid: int | None = GroupID(), uid: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return
@@ -168,7 +168,7 @@ check_dynamic_cmd = sv.on_command(
 
 
 @check_dynamic_cmd.handle()
-async def _(gid: int | None = GroupID(), arg: str = PlainText()):
+async def _(gid: int | None = GroupID(), arg: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return

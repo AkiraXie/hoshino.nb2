@@ -13,7 +13,7 @@ from .utils import (
     format_size,
     QbtClient,
 )
-from hoshino.platform.depends import GroupID, PlainText
+from hoshino.platform.depends import GroupID, ParamText
 from hoshino.platform.permission import ADMIN
 from nonebot.params import Depends
 
@@ -34,7 +34,7 @@ completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归�
 
 
 @configset.handle()
-async def _(text: str = PlainText(), gid: int = GroupID()):
+async def _(text: str = ParamText(), gid: int = GroupID()):
     """配置qBittorrent连接信息"""
     msgs = text.strip().split()
     if len(msgs) not in (3, 4):
@@ -97,7 +97,7 @@ async def _(config: QbtConfig | None = Depends(get_config)):
 
 @add_torrent.handle()
 async def _(
-    text: str = PlainText(),
+    text: str = ParamText(),
     client: QbtClient | None = Depends(get_client),
 ):
     """添加种子下载"""
@@ -179,7 +179,7 @@ def _render_torrent_list(torrents: list[dict], max_show: int, title: str, catego
 
 @active_list.handle()
 async def _(
-    text: str = PlainText(),
+    text: str = ParamText(),
     client: QbtClient | None = Depends(get_client),
 ):
     if not client:
@@ -200,7 +200,7 @@ async def _(
 
 @completed_list.handle()
 async def _(
-    text: str = PlainText(),
+    text: str = ParamText(),
     client: QbtClient | None = Depends(get_client),
 ):
     if not client:

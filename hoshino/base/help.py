@@ -1,6 +1,7 @@
 """命令帮助系统 — 利用 Alconna 的 CommandMeta 和 get_help()"""
 
 from hoshino.command import CommandMeta, UniMessage
+from hoshino.platform.depends import ParamText
 from hoshino.platform.permission import ADMIN
 from hoshino.service import Service
 
@@ -16,8 +17,8 @@ sv = Service("help", enable_on_default=True, visible=False, manage_perm=ADMIN)
     ),
     only_group=False,
 )
-async def _(text: str | None = None):
-    if text is None:
+async def _(text: str = ParamText()):
+    if not text:
         # 列出所有服务
         lines = ["📋 可用服务列表："]
         services = Service.get_loaded_services()

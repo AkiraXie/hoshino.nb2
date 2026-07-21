@@ -452,17 +452,21 @@ class _MessageRenderer:
         head = post_message.text or ""
         if not post_message.screenshot and post_message.content:
             head += "\n" + post_message.content
+        tail = ""
         if post:
             tail = post._build_text_tail()
-            if tail:
-                head += "\n" + tail
 
         messages: list[MessageLike] = []
         if post_message.screenshot:
             screenshot = uni_image(post_message.screenshot)
+            if tail:
+                screenshot += uni_text("\n" + tail)
             messages.append(uni_text(head) + screenshot if head else screenshot)
-        elif head:
-            messages.append(uni_text(head))
+        else:
+            if tail:
+                head += "\n" + tail
+            if head:
+                messages.append(uni_text(head))
         messages.extend(self.build_image_messages(post_message.images))
         messages.extend(uni_video(video) for video in post_message.videos)
         return messages

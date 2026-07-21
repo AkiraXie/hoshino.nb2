@@ -2,7 +2,7 @@ from nonebot.params import Depends
 from sqlalchemy import select
 
 from hoshino import hsn_nickname
-from hoshino.platform.depends import GroupID, GroupMemberName, PlainText
+from hoshino.platform.depends import GroupID, GroupMemberName, ParamText
 from hoshino.platform.permission import ADMIN
 
 from .util import (
@@ -22,7 +22,7 @@ configshow = sv.on_command(
 
 
 @configset.handle()
-async def _(text: str = PlainText(), gid: int = GroupID()):
+async def _(text: str = ParamText(), gid: int = GroupID()):
     msgs = text.strip().split()
     if len(msgs) not in (3, 4):
         await configset.finish("请检查参数个数")
@@ -89,7 +89,7 @@ playlistcmd = sv.on_command(
 
 @pickmusic.handle()
 async def _(
-    text: str = PlainText(),
+    text: str = ParamText(),
     user_name: str = GroupMemberName(default=hsn_nickname),
     client: AlistenClient | None = Depends(get_client),
 ):
@@ -123,7 +123,7 @@ async def _(
 
 @pickmusicid.handle()
 async def _(
-    text: str = PlainText(),
+    text: str = ParamText(),
     user_name: str = GroupMemberName(default=hsn_nickname),
     client: AlistenClient | None = Depends(get_client),
 ):

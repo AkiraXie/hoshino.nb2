@@ -12,7 +12,7 @@ from hoshino.platform import (
     load_target_or_group,
     send_to_target,
 )
-from hoshino.platform.depends import GroupID, PlainText
+from hoshino.platform.depends import GroupID, ParamText
 
 from .bilibili import get_room_status as get_bilibili_room_status
 from .db import (
@@ -221,7 +221,7 @@ add_live_cmd = sv.on_command(
 @add_live_cmd.handle()
 async def cmd_add_live(
     gid: int | None = GroupID(),
-    msg: str = PlainText(),
+    msg: str = ParamText(),
 ):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
@@ -276,7 +276,7 @@ remove_live_cmd = sv.on_command(
 
 
 @remove_live_cmd.handle()
-async def cmd_remove_live(gid: int | None = GroupID(), args: str = PlainText()):
+async def cmd_remove_live(gid: int | None = GroupID(), args: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return
@@ -322,7 +322,7 @@ list_live_cmd = sv.on_command(
 
 
 @list_live_cmd.handle()
-async def cmd_list_live(gid: int | None = GroupID(), filter_text: str = PlainText()):
+async def cmd_list_live(gid: int | None = GroupID(), filter_text: str = ParamText()):
     if gid is None:
         await UniMessage.text("请在群聊中使用").send()
         return
@@ -383,7 +383,7 @@ check_live_cmd = sv.on_command(
 
 
 @check_live_cmd.handle()
-async def cmd_check_live(arg: str = PlainText()):
+async def cmd_check_live(arg: str = ParamText()):
     arg = arg.strip()
     if not arg:
         await UniMessage.text("用法: 直播状态 房间号[:平台]").send()

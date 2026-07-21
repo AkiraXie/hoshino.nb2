@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 from hoshino.command import UniMessage
 from hoshino.core.schedule import scheduled_job
+from hoshino.platform.depends import ParamText
 from hoshino.service import Service
 from hoshino.util import aiohttpx
 
@@ -54,7 +55,7 @@ async def _():
 
 
 @m.handle()
-async def _(text: str):
+async def _(text: str = ParamText()):
     msg = text
     if not msg:
         await m.finish()
@@ -84,7 +85,7 @@ async def _(text: str):
 
 
 @s.handle()
-async def _(text: str):
+async def _(text: str = ParamText()):
     msg = text
     if not msg:
         await s.finish()

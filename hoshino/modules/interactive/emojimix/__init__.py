@@ -5,7 +5,7 @@ from nonebot.typing import T_State
 
 from hoshino.command import UniMessage
 from hoshino.core.permission import SUPERUSER
-from hoshino.platform.depends import EventMessage, PlainText, RawMessage
+from hoshino.platform.depends import EventMessage, ParamText, PlainText, RawMessage
 from hoshino.service import Service
 from hoshino.util import aiohttpx
 
@@ -76,7 +76,7 @@ async def _(
     matcher: Matcher,
     raw_message: str = RawMessage(),
     event_message=EventMessage(""),
-    text: str = PlainText(),
+    text: str = ParamText(),
 ):
     msg = []
     msg.append(str(event_message))
