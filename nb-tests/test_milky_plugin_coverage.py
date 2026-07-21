@@ -47,6 +47,7 @@ def _make_message(
     scene: str = "group",
     group_id: int = 123456,
     sender_id: int = 42,
+    sender_role: str = "member",
     seq: int | None = None,
     segments: list[dict[str, Any]] | None = None,
 ) -> MilkyGroupMessageEvent | MilkyFriendMessageEvent:
@@ -82,7 +83,7 @@ def _make_message(
                             "card": "TestCard",
                             "title": "",
                             "level": 1,
-                            "role": "member",
+                            "role": sender_role,
                             "join_time": 1,
                             "last_sent_time": 1,
                         },
