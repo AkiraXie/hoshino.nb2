@@ -83,6 +83,32 @@ async def test_chooseone_regex_rule_accepts_group_messages_on_both_adapters(fact
     assert await co.matcher.rule(bot, event, {})
 
 
+def _native_regex_cases():
+    from hoshino.modules.entertainment import dice
+    from hoshino.modules.interactive import foods
+    from hoshino.modules.tools import nbnhhsh
+
+    return (
+        (dice.d, dice.sv, ".r1d6"),
+        (foods.food, foods.sv, "今天吃什么"),
+        (nbnhhsh.nbn, nbnhhsh.sv, "?nb"),
+    )
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+@pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
+@pytest.mark.parametrize("case_index", range(3))
+async def test_native_regex_rules_accept_group_messages_on_both_adapters(
+    factory, case_index, monkeypatch
+):
+    """Migrated plugin regexes evaluate complete messages on both adapters."""
+    matcher, service, text = _native_regex_cases()[case_index]
+    monkeypatch.setattr(service, "check_enabled", lambda _: True)
+    bot, event = factory(text, to_me=False)
+
+    assert await matcher.matcher.rule(bot, event, {})
+
+
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 @pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
 def test_lswb_accepts_adapter_messages_without_arguments(factory):

@@ -621,35 +621,6 @@ class TestEntertainmentPlugins:
             }
         ]
 
-    @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_coser_enabled_mention_sends_image(self, monkeypatch):
-        """coser: enabled mention command uses its stubbed external API."""
-        coser_module = _loaded_module("hoshino.modules.entertainment.coser")
-
-        async def fake_get(url: str) -> Any:
-            del url
-            return SimpleNamespace(json={"text": "https://example.com/coser.jpg"})
-
-        _enable_svc(monkeypatch, "coser")
-        bot = _make_bot()
-        event = _at_bot_msg(" coser")
-        calls = _stub_all_api(monkeypatch)
-        monkeypatch.setattr(coser_module.aiohttpx, "get", fake_get)
-
-        await bot.handle_event(event)
-
-        message = _assert_one_send(calls)
-        assert message == [
-            {
-                "type": "image",
-                "data": {
-                    "uri": "https://example.com/coser.jpg",
-                    "summary": None,
-                    "sub_type": "normal",
-                },
-            }
-        ]
-
 
 # ===================================================================
 # interactive

@@ -5,18 +5,14 @@ import json
 import os
 import re
 from collections import defaultdict
-from typing import Iterable
+from typing import Callable, Iterable
 
 import nonebot
 from nonebot.adapters import Bot, Event
 from nonebot.exception import FinishedException, PausedException, RejectedException
 from nonebot.matcher import Matcher, current_bot, current_event
 from nonebot.params import Depends
-from nonebot.plugin import (
-    on_endswith,
-    on_notice,
-    on_request,
-)
+from nonebot.plugin import on_notice, on_request
 from nonebot.rule import to_me
 from nonebot_plugin_alconna import (
     Alconna,
@@ -427,20 +423,54 @@ class Service:
         _loaded_matchers[self.name] = mw
         return mw
 
+    def _on_native_message(
+        self,
+        matcher_factory: Callable[..., type[Matcher]],
+        type_label: str,
+        command: str = "",
+        *,
+        matcher_args: tuple[object, ...] = (),
+        only_to_me: bool = False,
+        only_group: bool = True,
+        permission: Permission = NORMAL,
+        **kwargs,
+    ) -> "MatcherWrapper":
+        kwargs["permission"] = permission
+        rule = self.check_service(only_to_me, only_group)
+        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
+        matcher = matcher_factory(*matcher_args, **kwargs)
+        matcher.__hoshino_info__ = {
+            "service": self.name,
+            "type": type_label,
+            "command": command,
+            "only_group": only_group,
+        }
+        description = f"<Matcher from Service {self.name}, type={type_label}"
+        if command:
+            description += f", command={command}"
+        self.matchers.append(f"{description}>")
+        mw = MatcherWrapper(self.name, matcher)
+        _loaded_matchers[self.name] = mw
+        return mw
+
     def on_startswith(
         self,
         msg: str,
         only_to_me: bool = False,
         only_group: bool = True,
         permission: Permission = NORMAL,
+        ignorecase: bool = False,
         **kwargs,
     ):
-        return self._on_alconna_delegate(
-            re.compile(rf"{re.escape(msg)}.*"),
+        return self._on_native_message(
+            nonebot.on_startswith,
             "Message.startswith",
+            msg,
+            matcher_args=(msg,),
             only_to_me=only_to_me,
             only_group=only_group,
             permission=permission,
+            ignorecase=ignorecase,
             **kwargs,
         )
 
@@ -450,16 +480,20 @@ class Service:
         only_to_me: bool = False,
         only_group: bool = True,
         permission: Permission = NORMAL,
+        ignorecase: bool = False,
         **kwargs,
     ) -> "MatcherWrapper":
-        # on_endswith 保留原生 — Alconna 按空格分词，无法匹配后缀
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        mw = MatcherWrapper(self.name, on_endswith(msg, **kwargs))
-        self.matchers.append(str(mw))
-        _loaded_matchers[self.name] = mw
-        return mw
+        return self._on_native_message(
+            nonebot.on_endswith,
+            "Message.endswith",
+            msg,
+            matcher_args=(msg,),
+            only_to_me=only_to_me,
+            only_group=only_group,
+            permission=permission,
+            ignorecase=ignorecase,
+            **kwargs,
+        )
 
     def on_keyword(
         self,
@@ -492,7 +526,7 @@ class Service:
     def on_fullmatch(
         self,
         keywords: set | list | tuple | str | None,
-        normal: bool = True,
+        ignorecase: bool = False,
         only_to_me: bool = False,
         only_group: bool = True,
         permission: Permission = NORMAL,
@@ -506,13 +540,16 @@ class Service:
                 permission=permission,
                 **kwargs,
             )
-        pattern = "|".join(re.escape(k) for k in sorted(kw_set))
-        return self._on_alconna_delegate(
-            re.compile(rf"^({pattern})$" if normal else rf"^({pattern})$"),
+        messages = tuple(sorted(kw_set))
+        return self._on_native_message(
+            nonebot.on_fullmatch,
             "Message.fullmatch",
+            "|".join(messages),
+            matcher_args=(messages,),
             only_to_me=only_to_me,
             only_group=only_group,
             permission=permission,
+            ignorecase=ignorecase,
             **kwargs,
         )
 
@@ -520,22 +557,20 @@ class Service:
         self,
         pattern: str,
         flags: int | re.RegexFlag = 0,
-        normal: bool = True,
-        full_match: bool = True,
         only_to_me: bool = False,
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
     ):
-        compiled = re.compile(pattern, flags)
-        if full_match and not compiled.pattern.startswith("^"):
-            compiled = re.compile(rf"^{pattern}", flags)
-        return self._on_alconna_delegate(
-            compiled,
+        return self._on_native_message(
+            nonebot.on_regex,
             "Message.regex",
+            pattern,
+            matcher_args=(pattern,),
             only_to_me=only_to_me,
             only_group=only_group,
             permission=permission,
+            flags=flags,
             **kwargs,
         )
 
@@ -547,22 +582,14 @@ class Service:
         log: bool = False,
         **kwargs,
     ):
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        matcher = nonebot.on_message(**kwargs)
-        matcher.__hoshino_info__ = {
-            "service": self.name,
-            "type": "Message.message",
-            "command": "",
-            "only_group": only_group,
-        }
-        self.matchers.append(
-            f"<Matcher from Service {self.name}, type=Message.message>"
+        return self._on_native_message(
+            nonebot.on_message,
+            "Message.message",
+            only_to_me=only_to_me,
+            only_group=only_group,
+            permission=permission,
+            **kwargs,
         )
-        mw = MatcherWrapper(self.name, matcher)
-        _loaded_matchers[self.name] = mw
-        return mw
 
     def on_notice(
         self, rule: Rule = Rule(), only_group: bool = True, permission=NORMAL, **kwargs

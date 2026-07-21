@@ -1,6 +1,9 @@
 import random
+import re
 
-from hoshino.command import AlcResult, UniMessage
+from nonebot.params import RegexMatched
+
+from hoshino.command import UniMessage
 from hoshino.service import Service
 
 sv = Service("dice", visible=False)
@@ -8,8 +11,7 @@ d = sv.on_regex(r".r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?")
 
 
 @d.handle()
-async def _(result: AlcResult):
-    match_obj = result.result.header_match.result
+async def _(match_obj: re.Match[str] = RegexMatched()):
     rd = random.SystemRandom()
     num = match_obj.group(1)
     mx = match_obj.group(2)

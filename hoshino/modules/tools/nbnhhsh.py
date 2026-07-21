@@ -1,4 +1,4 @@
-from hoshino.command import AlcResult, UniMessage
+from hoshino.command import UniMessage
 from hoshino.platform.depends import PlainText
 from hoshino.service import Service
 from hoshino.util import aiohttpx
@@ -8,7 +8,7 @@ nbn = sv.on_regex(r"^[\?\？]{1,2} ?([a-z0-9]+)$", only_group=False)
 
 
 @nbn.handle()
-async def _(result: AlcResult, text: str = PlainText()):
+async def _(text: str = PlainText()):
     text = text.lstrip("?？").strip()
     if not text:
         return

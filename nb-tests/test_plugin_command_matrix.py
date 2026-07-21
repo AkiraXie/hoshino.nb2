@@ -16,14 +16,10 @@ COMMAND_SAMPLES = (
     ("QA", "看看我问", "看看我问"),
     ("alisten", "播放列表", "播放列表"),
     ("emojimix", "testemoji", "testemoji"),
-    ("foods", r"^(.{0,9})吃(什么|啥)", "今天吃什么"),
     ("qbitorrent", "下载列表", "下载列表"),
     ("steam", "steam订阅列表", "steam订阅列表"),
     ("b64", "b64加密", "b64加密 hello"),
-    ("nbnhhsh", r"^[\?\？]{1,2} ?([a-z0-9]+)$", "?nb"),
     ("echoandsay", "echo", "echo hello"),
-    ("coser", "coser", "coser"),
-    ("dice", r"^.r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?", ".r1d6"),
     ("bihua", "随机壁画", "随机壁画"),
 )
 

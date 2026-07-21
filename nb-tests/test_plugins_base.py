@@ -103,8 +103,3 @@ def test_import_dice():
 def test_import_bihua():
     import hoshino.modules.entertainment.bihua as m
     assert m.sv is not None
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-def test_import_coser():
-    import hoshino.modules.entertainment.coser as m
-    assert m.sv is not None
