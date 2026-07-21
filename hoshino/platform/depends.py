@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from nonebot.adapters import Bot, Event
@@ -71,40 +72,45 @@ def MessageID() -> int | None:
     return Depends(_)
 
 
-def LightAppJsonPayload():
-    """Unified DI — extract JSON/light_app payload from OB11 or Milky message.
+def get_light_app_json_payload(event: Event) -> dict[str, Any] | None:
+    """Return the first valid mini-program JSON object in an adapter message."""
 
-    Returns the parsed ``dict`` from the first matching segment,
+    message = get_event_message(event)
+    if message is None:
+        return None
+    for segment in message:
+        segment_type = getattr(segment, "type", None)
+        if segment_type not in {"json", "light_app"}:
+            continue
+        data = getattr(segment, "data", None)
+        if not isinstance(data, dict):
+            continue
+        field = "json_payload" if segment_type == "light_app" else "data"
+        payload = data.get(field)
+        if not isinstance(payload, str):
+            continue
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            return None
+        return decoded if isinstance(decoded, dict) else None
+    return None
+
+
+def LightAPPJsonPayload() -> Any:
+    """Inject JSON from legacy ``json`` or Milky ``light_app`` segments.
+
+    Returns the parsed JSON object from the first matching segment,
     or ``None`` when no light_app/json mini-program segment is present.
 
-    OB11  messages use ``type="json"``  → ``s.data["data"]`` (JSON string).
-    Milky messages use ``type="light_app"`` → ``s.data["json_payload"]`` (JSON string).
+    Legacy adapters use ``type="json"`` and ``data["data"]``. Milky uses
+    ``type="light_app"`` and ``data["json_payload"]``.
     """
 
-    async def _(event: Event) -> dict | None:
-        import json as _json
+    return Depends(get_light_app_json_payload)
 
-        msg = get_event_message(event)
-        if msg is None:
-            return None
-        for seg in msg:
-            stype = getattr(seg, "type", None)
-            if stype not in ("json", "light_app"):
-                continue
-            data = getattr(seg, "data", None)
-            if not isinstance(data, dict):
-                continue
-            # Milky: s.data["json_payload"], OB11: s.data["data"]
-            raw = data.get("json_payload") or data.get("data")
-            if not raw:
-                continue
-            try:
-                return _json.loads(raw)
-            except (_json.JSONDecodeError, TypeError):
-                return None
-        return None
 
-    return Depends(_)
+LightAppJsonPayload = LightAPPJsonPayload
 
 
 def GroupMemberName(default: str = "") -> str:

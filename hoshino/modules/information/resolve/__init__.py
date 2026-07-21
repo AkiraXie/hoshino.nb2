@@ -1,16 +1,18 @@
 # Thanks to https://github.com/fllesser/nonebot-plugin-resolver2
+import re
+from typing import Any
+
 from nonebot.adapters import Bot, Event
 from nonebot.typing import T_State
-from .bilidata import (
-    resolve_bilibili,
-)
-from hoshino.platform.depends import GroupID
-from .sv import sv
-from .xiaohongshu import resolve_xiaohongshu
-from json import loads
-import re
-from .weibo import resolve_weibo
+
+from hoshino.platform import LightAPPJsonPayload
+from hoshino.platform.depends import GroupID, get_light_app_json_payload
+
+from .bilidata import resolve_bilibili
 from .douyin import resolve_douyin
+from .sv import sv
+from .weibo import resolve_weibo
+from .xiaohongshu import resolve_xiaohongshu
 
 urlmaps = {
     "detail_1": "qqdocurl",
@@ -40,23 +42,26 @@ regexs = {
 }
 
 
-async def check_json_or_text(ev: Event, state: T_State) -> bool:
+async def check_json_or_text(
+    ev: Event,
+    state: T_State,
+    light_app_payload: dict[str, Any] | None = LightAPPJsonPayload(),
+) -> bool:
     url = None
-    jsonFlag = False
-    for s in ev.get_message():
-        if s.type == "json":
-            data = loads(s.data.get("data", "{}"))
-            meta = data.get("meta")
-            if meta:
-                for k, v in urlmaps.items():
-                    if k in meta:
-                        url = meta[k].get(v)
-                        if url:
-                            for old, new in replacements.items():
-                                url = url.replace(old, new)
-                            jsonFlag = True
-                            break
-    url = ev.get_plaintext() if not jsonFlag else url
+    payload = (
+        light_app_payload
+        if isinstance(light_app_payload, dict)
+        else get_light_app_json_payload(ev)
+    )
+    if payload and (meta := payload.get("meta")):
+        for name, field in urlmaps.items():
+            if not isinstance(item := meta.get(name), dict):
+                continue
+            if url := item.get(field):
+                for old, new in replacements.items():
+                    url = url.replace(old, new)
+                break
+    url = ev.get_plaintext() if not url else url
     if not url:
         return False
     url = url.strip()

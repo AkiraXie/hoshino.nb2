@@ -1,6 +1,6 @@
 """Platform abstraction — OB11-shaped helpers + generic send/target"""
 
-from .depends import LightAppJsonPayload
+from .depends import LightAPPJsonPayload, LightAppJsonPayload
 from .bot import (
     get_group_list,
     get_group_member_info,
@@ -57,6 +57,7 @@ from .target import (
 )
 
 __all__ = [
+    "LightAPPJsonPayload",
     "LightAppJsonPayload",
     "MessageLike",
     "ReactionInfo",
