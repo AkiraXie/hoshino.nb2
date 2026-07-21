@@ -132,6 +132,11 @@ def _at_bot_msg(text: str, **kw) -> MilkyGroupMessageEvent:
     )
 
 
+def _superuser_id() -> int:
+    adapter = get_adapters()[MilkyAdapter.get_name()]
+    return int(next(iter(adapter.config.superusers)))
+
+
 def _stub_all_api(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[dict[str, Any]]:
@@ -163,7 +168,16 @@ def _stub_all_api(
                 "join_time": 1,
             }
         if action == "get_group_list":
-            return []
+            return {
+                "groups": [
+                    {
+                        "group_id": 123456,
+                        "group_name": "test group",
+                        "member_count": 2,
+                        "max_member_count": 100,
+                    }
+                ]
+            }
         if action == "get_resource_temp_url":
             return "https://example.com/temp/resource"
         if action == "get_message":
@@ -220,7 +234,24 @@ def _enable_svc(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
 
 
 def _send_calls(calls, action="send_group_message"):
-    return [c for c in calls if c["action"] == action]
+    send_calls = [call for call in calls if call["action"] == action]
+    assert calls == send_calls
+    return send_calls
+
+
+def _assert_one_send(
+    calls: list[dict[str, Any]],
+    *,
+    action: str = "send_group_message",
+    target_key: str = "group_id",
+    target_id: int = 123456,
+) -> list[dict[str, Any]]:
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["action"] == action
+    params = call["params"]
+    assert params[target_key] == target_id
+    return params["message"]
 
 
 # ===================================================================
@@ -285,6 +316,75 @@ class TestBasePlugins:
         # no @mention → to_me() fails → no response
         assert _send_calls(calls) == []
 
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_lssv_superuser_mention_reports_services(self, monkeypatch):
+        """service_manage: ADMIN mention command reaches the Milky HTTP API."""
+        bot = _make_bot()
+        event = _at_bot_msg(" lssv 123456", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        assert [call["action"] for call in calls] == [
+            "get_group_list",
+            "send_group_message",
+        ]
+        assert calls[0]["params"] == {"no_cache": False}
+        message = calls[1]["params"]["message"]
+        text = message[0]["data"]["text"]
+        assert "群123456服务一览" in text
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_check_cookies_superuser_mention_reports_empty(self, monkeypatch):
+        """cookies: native superuser command reports deterministic empty state."""
+        import hoshino.base.cookies as cookies_module
+
+        monkeypatch.setattr(cookies_module, "check_all_cookies", lambda: {})
+        bot = _make_bot()
+        event = _at_bot_msg(" check_cookies all", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert message[0]["data"]["text"] == "没有可用的cookies"
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_testmatchers_superuser_mention_responds(self, monkeypatch):
+        """test: native diagnostic command traverses the real send boundary."""
+        bot = _make_bot()
+        event = _at_bot_msg(" testmatchers", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert "Matcher" in message[0]["data"]["text"]
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_broadcast_superuser_sends_to_joined_group(self, monkeypatch):
+        """broadcast: superuser command sends to every adapter-reported group."""
+        import hoshino.base.broadcast as broadcast_module
+
+        async def no_sleep(delay: float) -> None:
+            assert delay == 0.5
+
+        monkeypatch.setattr(broadcast_module, "sleep", no_sleep)
+        bot = _make_bot()
+        event = _at_bot_msg(" bc hello", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        assert [call["action"] for call in calls] == [
+            "get_group_list",
+            "send_group_message",
+            "send_group_message",
+        ]
+        assert calls[1]["params"]["group_id"] == 123456
+        assert calls[1]["params"]["message"][0]["data"]["text"] == "hello"
+        assert "投递成功1个群" in calls[2]["params"]["message"][0]["data"]["text"]
+
 
 # ===================================================================
 # develop
@@ -307,6 +407,18 @@ class TestDevelopPlugins:
         msg = p["message"]
         texts = " ".join(seg["data"]["text"] for seg in msg if seg["type"] == "text")
         assert "hi" in texts
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_server_info_superuser_responds(self, monkeypatch):
+        """server_info: native superuser command sends its status report."""
+        bot = _make_bot()
+        event = _at_bot_msg(" 状态", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert "服务CPU使用" in message[0]["data"]["text"]
 
 
 # ===================================================================
@@ -406,9 +518,13 @@ class TestInteractivePlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls, "send_private_message")
-        assert len(send) == 1
-        assert send[0]["params"]["user_id"] == 42
+        message = _assert_one_send(
+            calls,
+            action="send_private_message",
+            target_key="user_id",
+            target_id=42,
+        )
+        assert "您的选项是" in message[0]["data"]["text"]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_foods_enabled_text_image(self, monkeypatch, tmp_path):
@@ -584,6 +700,24 @@ class TestToolsPlugins:
         assert any("hello" in text for text in texts)
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_b64_enabled_encrypt_private_text(self, monkeypatch):
+        """b64: only_group=False private command sends a private reply."""
+        _enable_svc(monkeypatch, "b64")
+        bot = _make_bot()
+        event = _make_friend_msg("b64加密 hello")
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(
+            calls,
+            action="send_private_message",
+            target_key="user_id",
+            target_id=42,
+        )
+        assert message[0]["data"]["text"] == "aGVsbG8="
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_nbnhhsh_regex_matches_stubbed(self, monkeypatch):
         """nbnhhsh: ??word — external API stubbed, check dispatch."""
         bot = _make_bot()
@@ -616,8 +750,25 @@ class TestToolsPlugins:
 
         await bot.handle_event(event)
 
-        send = _send_calls(calls, "send_private_message")
-        assert len(send) == 1
-        assert send[0]["params"]["user_id"] == 42
-        text = send[0]["params"]["message"][0]["data"]["text"]
+        message = _assert_one_send(
+            calls,
+            action="send_private_message",
+            target_key="user_id",
+            target_id=42,
+        )
+        text = message[0]["data"]["text"]
         assert text == "abc: 没有结果"
+
+
+class TestBlackPlugin:
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_black_superuser_starts_interactive_prompt(self, monkeypatch):
+        """black: superuser command enters its real multi-step matcher flow."""
+        bot = _make_bot()
+        event = _at_bot_msg(" 拉黑", sender_id=_superuser_id())
+        calls = _stub_all_api(monkeypatch)
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert "请输入要拉黑的id" in message[0]["data"]["text"]

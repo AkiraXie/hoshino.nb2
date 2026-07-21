@@ -10,7 +10,7 @@ bc = sucmd("bc", aliases={"广播", "broadcast"})
 
 @bc.handle()
 async def _(bot: Bot, msg=EventMessage()):
-    gids = list(gdic["group_id"] for gdic in await get_group_list(bot))
+    gids = [group["group_id"] for group in await get_group_list(bot)]
     count = 0
     for gid in gids:
         await sleep(0.5)
