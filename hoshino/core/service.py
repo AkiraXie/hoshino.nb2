@@ -609,7 +609,7 @@ async def log_matcherwrapper(matcher: Matcher):
         if sv is not None:
             sv.logger.info(f"Event will be handled by <lc>{label}</>")
             yield
-            sv.logger.info(f"Event was completed handling by <lc>{label}</>")
+            sv.logger.info(f"Event was completed by <lc>{label}</>")
             return
     yield
 
