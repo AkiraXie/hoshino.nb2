@@ -71,6 +71,42 @@ def MessageID() -> int | None:
     return Depends(_)
 
 
+def LightAppJsonPayload():
+    """Unified DI — extract JSON/light_app payload from OB11 or Milky message.
+
+    Returns the parsed ``dict`` from the first matching segment,
+    or ``None`` when no light_app/json mini-program segment is present.
+
+    OB11  messages use ``type="json"``  → ``s.data["data"]`` (JSON string).
+    Milky messages use ``type="light_app"`` → ``s.data["json_payload"]`` (JSON string).
+    """
+
+    async def _(event: Event) -> dict | None:
+        import json as _json
+
+        msg = get_event_message(event)
+        if msg is None:
+            return None
+        for seg in msg:
+            stype = getattr(seg, "type", None)
+            if stype not in ("json", "light_app"):
+                continue
+            data = getattr(seg, "data", None)
+            if not isinstance(data, dict):
+                continue
+            # Milky: s.data["json_payload"], OB11: s.data["data"]
+            raw = data.get("json_payload") or data.get("data")
+            if not raw:
+                continue
+            try:
+                return _json.loads(raw)
+            except (_json.JSONDecodeError, TypeError):
+                return None
+        return None
+
+    return Depends(_)
+
+
 def GroupMemberName(default: str = "") -> str:
     async def _(bot: Bot, event: Event) -> str:
         session = await get_session(bot, event)
