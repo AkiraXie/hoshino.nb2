@@ -658,24 +658,36 @@ class TestEntertainmentPlugins:
 
 class TestInteractivePlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_chooseone_command_responds(self, monkeypatch):
-        """chooseone: sv.on_command(选择 A还是B) — handler needs '还是'."""
+    @pytest.mark.parametrize(
+        ("prompt", "choices"),
+        (
+            ("选择A还是B", ("A", "B")),
+            ("选咖啡还是茶", ("咖啡", "茶")),
+            ("选择a or b", ("a", "b")),
+            ("choose apple or orange", ("apple", "orange")),
+            ("选A还是B还是C", ("A", "B", "C")),
+        ),
+    )
+    async def test_chooseone_regex_responds(self, monkeypatch, prompt, choices):
+        """chooseone parses natural Chinese and English choice phrases."""
         bot = _make_bot()
-        event = _make_group_msg("选择A还是B")
+        event = _make_group_msg(prompt)
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)
 
         message = _assert_one_send(calls)
         text = message[0]["data"]["text"]
-        assert text.startswith("您的选项是:\n1. A\n2. B\n")
-        assert "建议您选择:" in text
+        assert text.startswith("让我看看选什么好呢：\n")
+        for index, choice in enumerate(choices, start=1):
+            assert f"{index}. {choice}" in text
+        assert "最终选择" in text
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_chooseone_private_responds(self, monkeypatch):
         """chooseone: only_group=False — friend event sends a private reply."""
         bot = _make_bot()
-        event = _make_friend_msg("选择 A还是B")
+        event = _make_friend_msg("choose a or b")
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)
@@ -686,7 +698,9 @@ class TestInteractivePlugins:
             target_key="user_id",
             target_id=42,
         )
-        assert "您的选项是" in message[0]["data"]["text"]
+        assert message[0]["data"]["text"].startswith(
+            "让我看看选什么好呢：\n1. a\n2. b\n"
+        )
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_foods_enabled_text_image(self, monkeypatch, tmp_path):

@@ -1,38 +1,34 @@
-import re
 import random
+import re
 
-from hoshino.command import AlconnaResult, UniMessage
+from nonebot.params import RegexMatched
+from nonebot.rule import regex
+
+from hoshino.command import UniMessage
 from hoshino.service import Service
 
 sv = Service("chooseone")
 
-# 匹配：选A还是B / 选择A还是B / choose A or B / 选A or B
-# 更通顺的语义：支持"选"、"选择"、"choose"、"pick"等前缀
+CHOICE_PATTERN = (
+    r"^(?:选(?:择|一下|一个|一)?|choose|pick)\s*"
+    r".+?\s*(?:还是|\s+or\s+)\s*"
+    r".+[?？]?$"
+)
+PREFIX = re.compile(r"^(?:选(?:择|一下|一个|一)?|choose|pick)\s*", re.IGNORECASE)
 SEPARATORS = re.compile(r"\s*还是\s*|\s+or\s+", re.IGNORECASE)
 
-co = sv.on_regex(
-    r"(?:选(?:择|一下|一个|一)?|choose|pick)\s*"
-    r".+?\s*(?:还是|\s+or\s+)\s*"
-    r".+[?？]?$",
-    flags=re.IGNORECASE,
+co = sv.on_message(
+    rule=regex(CHOICE_PATTERN, flags=re.IGNORECASE),
     only_group=False,
     priority=2,
 )
 
 
 @co.handle()
-async def _(result: AlconnaResult):
+async def _(match_result: re.Match[str] = RegexMatched()):
     rng = random.SystemRandom()
-    match_result = result.result.header_match.result
     text = match_result.group(0).strip().rstrip("?").rstrip("？")
-
-    # Strip leading prefix (选/选择/choose/pick)
-    text = re.sub(
-        r"^(?:选(?:择|一下|一个|一)?\s*|(?:choose|pick)\s*)",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
+    text = PREFIX.sub("", text, count=1)
 
     parts = SEPARATORS.split(text)
     choices = [p.strip() for p in parts if p.strip()]
@@ -45,7 +41,7 @@ async def _(result: AlconnaResult):
     msgs.extend(idchoices)
 
     if rng.randint(0, 1000) <= 66:
-        msgs.append("中大奖了，最终选择： \"我全都要\"")
+        msgs.append('中大奖了，最终选择： "我全都要"')
     else:
         final = rng.randint(0, len(choices) - 1)
         msgs.append(f"最终选择: {choices[final]}")

@@ -19,7 +19,6 @@ COMMAND_SAMPLES = (
     ("foods", r"^(.{0,9})吃(什么|啥)", "今天吃什么"),
     ("qbitorrent", "下载列表", "下载列表"),
     ("steam", "steam订阅列表", "steam订阅列表"),
-    ("chooseone", "选择", "选择 红还是蓝"),
     ("b64", "b64加密", "b64加密 hello"),
     ("nbnhhsh", r"^[\?\？]{1,2} ?([a-z0-9]+)$", "?nb"),
     ("echoandsay", "echo", "echo hello"),

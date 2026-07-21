@@ -74,6 +74,17 @@ async def test_lssv_matcher_rule_accepts_group_messages_on_both_adapters(factory
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 @pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
+async def test_chooseone_regex_rule_accepts_group_messages_on_both_adapters(factory):
+    """Natural-language choices reach the native regex rule on both adapters."""
+    from hoshino.modules.interactive.chooseone import co
+
+    bot, event = factory("choose apple or orange", to_me=False)
+
+    assert await co.matcher.rule(bot, event, {})
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+@pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
 def test_lswb_accepts_adapter_messages_without_arguments(factory):
     """Legacy no-argument Weibo aliases parse from both adapter message types."""
     command = command_manager.get_command("微博订阅")
