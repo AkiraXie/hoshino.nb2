@@ -4,6 +4,13 @@ import pytest
 from test_command_adapters import _ob11_group_message
 
 
+def test_matcher_wrapper_is_separate_from_service():
+    from hoshino.service import MatcherWrapper, Service
+
+    assert MatcherWrapper.__module__ == "hoshino.core.matcher"
+    assert not hasattr(Service, "broadcast")
+
+
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_service_message_factories_match_complete_native_messages():
     from hoshino.service import MatcherWrapper, Service

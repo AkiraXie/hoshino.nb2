@@ -59,7 +59,8 @@ def _prepare_response(plugin, monkeypatch):
         return "没有可用的cookies", None
     if plugin == "ls":
         expected = ["该bot注册的matcher_wrapper如下:"]
-        expected.extend(ls.MatcherWrapper.get_loaded_matchers())
+        for service in ls.Service.get_loaded_services().values():
+            expected.extend(service.matchers)
         return "\n".join(expected), "finish"
     if plugin == "zai":
         monkeypatch.setattr(zai.config, "zai", "test-zai")

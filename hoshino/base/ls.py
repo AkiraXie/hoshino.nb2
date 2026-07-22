@@ -3,7 +3,7 @@ from nonebot.adapters import Bot
 from hoshino.command import UniMessage
 from hoshino.platform import get_group_list
 from hoshino.platform.depends import PlainText
-from hoshino.service import MatcherWrapper, Service
+from hoshino.service import Service
 from hoshino.util import sucmds
 
 
@@ -39,7 +39,7 @@ async def _(svname: str = PlainText()):
 
 @cmd_am.handle()
 async def showall():
-    mws = MatcherWrapper.get_loaded_matchers()
     msg = ["该bot注册的matcher_wrapper如下:"]
-    msg.extend(mws)
+    for service in Service.get_loaded_services().values():
+        msg.extend(service.matchers)
     await cmd_am.finish("\n".join(msg))

@@ -1,27 +1,38 @@
-from nonebot.log import logger, default_format
 import os
 import sys
+
+from nonebot.log import default_format, logger
+
 from hoshino.core.config import config
 
 
+_HOSHINO_MATCHER_MODULE = "module=hoshino.core.service"
+
+
+def _is_redundant_matcher_log(record: dict) -> bool:
+    """Return whether NoneBot is duplicating Hoshino's matcher lifecycle log."""
+    if record["name"].split(".", 1)[0] != "nonebot":
+        return False
+
+    message = record["message"]
+    if _HOSHINO_MATCHER_MODULE not in message:
+        return False
+
+    return message.startswith("Event will be handled by ") or message.endswith(
+        " running complete"
+    )
+
+
 class Filter:
-    """改自 ``nonebot.log.Filter``"""
+    """Apply the configured level and remove duplicate matcher lifecycle logs."""
 
     def __init__(self) -> None:
         self.level = "DEBUG"
 
     def __call__(self, record: dict):
-        record["name"] = record["name"].split(".")[0]
+        record["name"] = record["name"].split(".", 1)[0]
         levelno = logger.level(self.level).no
-        if "Succeeded to load plugin" in record["message"]:
-            return record["level"].no >= levelno
-        # Lazy import: hoshino.service imports logger during module initialization.
-        from hoshino.core.service import _loaded_matchers
-        nologmatchers = map(str, _loaded_matchers.keys())
-        nologflag = all(
-            nologmatcher not in record["message"] for nologmatcher in nologmatchers
-        )
-        return record["level"].no >= levelno and nologflag
+        return record["level"].no >= levelno and not _is_redundant_matcher_log(record)
 
 
 _configured = False
