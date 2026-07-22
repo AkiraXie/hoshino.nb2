@@ -23,8 +23,9 @@ adapter 事件模型泄漏。
 检查它是否只使用公共 `platform`/`command` facade，并通过 Telegram 事件分发与发送测试。
 
 通常可跨平台的能力包括 Alconna/native message matcher、平台 scope 的 Service 开关、
-Uninfo 身份/权限、UniMessage 文本和媒体发送，以及 Target 持久化。以下能力需要显式降级
-或平台专用实现：全群/好友枚举、reaction、原生 constructed forward 和直接 OB11 Bot API。
+Uninfo 身份/权限、UniMessage 文本和媒体发送、Target 持久化，以及公共 `Reaction()` /
+`ReactedMessage()` normalization。以下能力需要显式降级或平台专用实现：全群/好友枚举、
+原生 constructed forward 和直接 OB11 Bot API。
 
 ## 平台限制
 
@@ -32,5 +33,9 @@ Uninfo 身份/权限、UniMessage 文本和媒体发送，以及 Target 持久�
 - uninfo 对 Telegram 的 `query_scenes/query_users/query_members` 也未实现；其短期缓存不能替代全 chat 枚举。
 - Telegram 没有 OB11/Milky 的 constructed forward node 语义；
   `send_group_forward()` / `send_private_forward()` 会按节点顺序逐条发送内容。
+- Telegram reaction update 不包含原消息正文，Bot API 也没有按 message ID 取回消息的接口；
+  `ReactedMessage()` 因此返回 `None`。需要跨聊天转发时使用 `forward_reacted_message()`，它会调用
+  Telegram 原生 `forwardMessage`，不依赖本地消息映射、原消息缓存或 reaction 幂等数据库。
+  机器人向用户私聊前，用户必须先向机器人发送消息或 `/start`。
 - Telegram admin/owner 权限通过 `get_chat_member` 在线查询；API 查询失败时权限检查返回 false。
 - `upload_group_file()` 在 Telegram 映射为 `sendDocument`。

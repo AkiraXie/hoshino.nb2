@@ -13,6 +13,7 @@ data
 logs
 static
 hoshino/service_config
+agent-plan-report/
 .DS_Store
 
 

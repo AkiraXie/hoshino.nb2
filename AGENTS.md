@@ -13,6 +13,13 @@
 - 不执行生产操作，不使用真实机器人凭据或生产群聊做测试，不提交 `.env.prod` 中的秘密。
 - 除非用户明确要求，不主动提交、推送或重写 Git 历史。
 
+协作计划与报告：
+
+- Agent 生成的 plan、调查报告和执行报告统一落在 `agent-plan-report/`。
+- `agent-plan-report/` 已加入 `.gitignore`，其中不得写入 token、cookie、密码或其他秘密；
+  只记录脱敏后的键名、数量、路径、命令结果和验证结论。
+- plan 阶段不应修改业务代码；用户确认后再按 plan 执行，并在同一目录补充执行结果和未覆盖风险。
+
 专题文档位于 `agent-flow/`：
 
 - `architecture.md`：分层与 adapter 隔离边界
