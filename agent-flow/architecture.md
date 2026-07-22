@@ -1,5 +1,7 @@
 # hoshino.nb2 架构文档
 
+插件开发示例和 API 用法见 `docs/plugin-development.md`。
+
 ## 分层边界
 
 ```
@@ -78,18 +80,14 @@ hoshino/
 │   └── __init__.py        # Alconna, Args, UniMsg, UniMessage, ...
 ├── core/                  # 核心基础设施
 │   ├── service.py
+│   ├── matcher.py
 │   ├── hooks.py
 │   ├── config.py
 │   ├── log.py
 │   ├── permission.py
 │   ├── rule.py
 │   └── schedule.py
-├── service.py             # → compat re-export（过渡期）
-├── hooks.py               # → compat re-export（过渡期）
-├── config.py              # → compat re-export（过渡期）
-├── permission.py          # → compat re-export（过渡期）
-├── log.py                 # → compat re-export（过渡期）
-├── schedule.py            # → compat re-export（过渡期）
+├── service.py             # Service/MatcherWrapper 兼容出口
 ├── types.py               # 纯 NoneBot 类型，零 OneBot
 ├── modules/               # 业务插件
 ├── base/                  # 内置服务
@@ -122,16 +120,17 @@ hoshino/
 
 ### 允许的特殊例外
 
-- `hoshino/bootstrap.py` — Bot.send() monkey-patch 需要 OneBot Bot 类型
+- `hoshino/bootstrap.py` — 注册 adapter 和 OB11 扩展事件
+- `hoshino/platform/ob11/bootstrap.py` — OB11 `Bot.send()` legacy patch
 - `hoshino/base/image.py` — legacy OB11 Message 输出路径（reaction 已走公共 DI）
 - `hoshino/base/test.py` — 测试代码
 
 ## 验证脚本
 
 ```bash
-# OneBot 泄漏检查 — 只允许 platform/ob11 + bootstrap.py
+# OneBot 泄漏检查 — adapter 类型应限制在 platform/ob11 和明确的 legacy 例外
 rg "nonebot\.adapters\.onebot" hoshino/ --glob '*.py' -l \
-  | grep -v "platform/ob11" | grep -v "bootstrap.py" | grep -v "base/image.py" \
+  | grep -v "platform/ob11" | grep -v "base/image.py" \
   | grep -v "base/test.py"
 
 # 旧入口淘汰进度

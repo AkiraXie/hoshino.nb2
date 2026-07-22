@@ -40,10 +40,10 @@ Use a deterministic fake HTTP response for every API the handler reaches.
 Never use live QQNT credentials, network calls, or a production endpoint in
 the test suite. Keep API payload assertions free of tokens and other secrets.
 
-## Coverage Matrix
+## Case Selection
 
-Create one or two representative behavioral cases for every loaded plugin that
-registers a matcher. Select the entry that best represents the plugin:
+Create representative behavioral cases for the changed plugin entries. Select
+the entry that best represents each changed behavior:
 
 | Entry type | Required assertion |
 | --- | --- |
@@ -96,8 +96,7 @@ Alconna's message cache cannot make one test reuse another test's input.
 
 Before a batch is ready for review:
 
-1. Every matcher-bearing plugin has one or two real entry tests, listed in the
-   test module or an accompanying coverage table.
+1. Every changed matcher-bearing plugin has representative real entry tests.
 2. Each test uses `MilkyBot.handle_event()` and reaches a stubbed Milky API or
    documents a deliberate no-response boundary.
 3. No test imports production `.env.prod`, uses real access tokens, or sends

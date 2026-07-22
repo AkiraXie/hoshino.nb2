@@ -17,39 +17,14 @@ Telegram 事件、消息和 Bot API 位于 `hoshino/platform/telegram/`。跨平
 OneBot V11、Telegram 与 Milky fetcher。业务 handler 仍优先使用公共 DI，以避免
 adapter 事件模型泄漏。
 
-## 当前兼容性
+## 兼容性判断
 
-以下统计按 30 个 Hoshino plugin entrypoint 计算。结论基于 import/API 边界审计和 Telegram 事件、Target、scope、UniMessage smoke；未使用真实 Telegram token 做在线 API 测试。
+不要维护按插件计数的静态兼容矩阵；插件和测试会持续变化。判断某个插件是否兼容时，
+检查它是否只使用公共 `platform`/`command` facade，并通过 Telegram 事件分发与发送测试。
 
-### 可直接使用（21）
-
-- `black`, `cookies`, `help`, `zai`
-- `utils`, `bilireq`, `pushlive`, `resolve`
-- `alisten`, `chooseone`, `emojimix`, `foods`, `QA`, `qbitorrent`, `steam`
-- `b64`, `nbnhhsh`
-- `echoandsay`
-- `bihua`, `coser`, `dice`
-
-订阅类插件通过 `telegram:<chat_id>` service scope 恢复定时推送；目标消息由 UniMessage Telegram exporter 发送。
-
-### 部分可用（6）
-
-| Plugin | Telegram 可用部分 | 限制 |
-|---|---|---|
-| `listenmeta` | 生命周期通知机制 | `superusers` 是跨 adapter 的全局 ID 列表，需自行配置 Telegram chat/user ID |
-| `ls` | matcher/service 列表 | Telegram Bot API 不能枚举全部群聊或好友 |
-| `service_manage` | 当前 Telegram 群内 enable/disable/lssv | 私聊中跨群管理依赖群列表，不可用 |
-| `weibo` | 命令、订阅、定时推送 | reaction 收藏支持 OB11/Milky；Telegram 无对应映射 |
-| `healthchecker` | Bot 存活检查 | 无法用群列表 API 验证 Telegram chat 权限 |
-| `server_info` | `状态` 命令 | 上线主动通知受全局 `superusers` ID 限制 |
-
-### OB11-only（3）
-
-| Plugin | 原因 |
-|---|---|
-| `broadcast` | 依赖枚举机器人加入的全部群，Telegram Bot API 不提供该能力 |
-| `image` | 依赖 OB11 Message/MessageSegment 和自定义 reaction 事件 |
-| `test` | 直接测试 OB11 forward message API |
+通常可跨平台的能力包括 Alconna/native message matcher、平台 scope 的 Service 开关、
+Uninfo 身份/权限、UniMessage 文本和媒体发送，以及 Target 持久化。以下能力需要显式降级
+或平台专用实现：全群/好友枚举、reaction、原生 constructed forward 和直接 OB11 Bot API。
 
 ## 平台限制
 

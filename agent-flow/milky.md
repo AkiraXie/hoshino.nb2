@@ -87,9 +87,9 @@ constructed forward 在 OB11 与 Milky 上导出为原生合并转发；Telegram
 5. Milky 的消息 ID 是会话内序列号。只持久化 `message_id` 而丢弃群/会话 ID 的业务
    记录无法保证跨群唯一，持久化时应同时保存 Target 或 `group_id`。
 
-## 验证范围
+## 验证要求
 
-NoneBug 覆盖 Milky 消息 accessor、native/Alconna 命令规则、Uninfo 身份与管理员权限、
-Milky referenced-message 获取，以及 OB11 两类 reaction 与 Milky reaction 进入同一业务
-规则。测试使用协议模型和 API mock，没有连接真实 QQNT/Milky 协议端；上线前仍需验证
-鉴权、WebSocket/webhook 连通、媒体临时 URL 和真实 forward payload。
+不要在本文维护测试数量或插件覆盖状态。Milky 行为测试必须通过真实 event model、
+`bot.handle_event()` 和被 stub 的 adapter HTTP 边界，具体要求见
+`agent-flow/milky-plugin-test-protocol.md`。测试不连接真实 QQNT/Milky 协议端；上线前仍需
+人工验证鉴权、WebSocket/webhook 连通、媒体临时 URL 和真实 forward payload。

@@ -1,20 +1,203 @@
-# hoshino.nb2
+# Hoshino.nb2
 
-**这是Ice-cirno的HoshinoBot迁移至nonebot2平台的实验性作品，为本人学习练手所写，会有很多不符合生产规范的，也不够优雅的代码，请海涵。**
+Hoshino.nb2 是基于 [NoneBot2](https://github.com/nonebot/nonebot2) 的 HoshinoBot
+迁移与重构项目。项目保留 HoshinoBot 的 Service 与插件组织方式，并通过统一的平台层支持
+OneBot V11、Milky 和 Telegram。
 
-## 怎么用？
-1. 装依赖
-2. 复制 service_config_sample 到 service_config, 然后自己改配置
-3. 复制 env.prod.example 到 env.example
-4. python run.py
+项目当前包含机器人主体、跨平台消息与事件抽象、订阅/内容推送插件，以及一个独立的微博
+图片浏览 Web 应用。
 
-项目会同时注册 OneBot V11、Telegram 和 Milky adapter。Telegram token 通过
-`telegram_bots=[{"token":"..."}]` 配置；Milky 协议端通过 `milky_clients`
-或 `milky_webhook` 配置。平台边界与兼容性见
-[`docs/telegram.md`](docs/telegram.md) 和 [`docs/milky.md`](docs/milky.md)。
+## 主要能力
+
+- 同时注册 OneBot V11、Milky 和 Telegram adapter
+- 基于 Service 的群聊/会话级功能开关和权限管理
+- Alconna 命令、NoneBot native matcher 和统一 `MatcherWrapper`
+- 基于 UniMessage 的跨平台文本、图片、视频和合并转发
+- 基于 Uninfo 的身份、群成员信息和权限查询
+- 统一的 Target、reaction 和被回应消息抽象
+- APScheduler 定时任务与订阅推送
+- NoneBug/pytest 跨适配器行为测试
+
+## 项目结构
+
+```text
+run.py                     NoneBot 初始化、adapter 和插件加载入口
+hoshino/bootstrap.py       数据目录、OB11 扩展、日志和 hook 初始化
+hoshino/core/              Service、MatcherWrapper、配置、权限、hook 和调度
+hoshino/command/           Alconna、UniMessage 等命令 facade
+hoshino/platform/          adapter-neutral 事件、DI、消息、Target 和 Bot API
+hoshino/platform/ob11/     OneBot V11 隔离实现
+hoshino/platform/milky/    Milky 隔离实现
+hoshino/platform/telegram/ Telegram 隔离实现
+hoshino/content/           内容推送模型与队列
+hoshino/base/              始终加载的内置服务
+hoshino/modules/           按配置加载的业务插件
+hoshino/service_config/    各 Service 的业务配置
+nb-tests/                  NoneBug、跨适配器和插件行为测试
+.tests/                    legacy 与微博专项测试
+agent-flow/                架构、插件和 adapter 专题文档
+weibo_image_web/           FastAPI + React/Vite 微博图片浏览应用
+```
+
+详细的分层和 import 边界见 [架构文档](agent-flow/architecture.md)。
+
+## 环境要求
+
+- Python 3.10 或更高版本
+- [uv](https://docs.astral.sh/uv/)
+- 至少一个可用的机器人协议端或 Telegram Bot token
+- Node.js 与 npm，仅在开发 `weibo_image_web` 前端时需要
+
+## 安装
+
+```bash
+git clone https://github.com/AkiraXie/hoshino.nb2.git
+cd hoshino.nb2
+uv sync
+cp .env.prod.example .env.prod
+```
+
+编辑 `.env.prod`，至少确认以下配置：
+
+```ini
+host=0.0.0.0
+port=9223
+debug=false
+
+superusers=[]
+nickname=[]
+modules=["information","interactive","develop","tools","entertainment"]
+
+DRIVER=~fastapi+~httpx+~websockets
+```
+
+`.env.prod` 可能包含 token、access token 等敏感数据，不要提交到版本控制。
+
+## 配置 Adapter
+
+### OneBot V11
+
+项目注册 OneBot V11 adapter，可连接 Lagrange、LLOneBot 等兼容实现。请在协议端配置与
+NoneBot driver 对应的 WebSocket 连接和 access token。具体连接方式取决于所使用的协议端。
+
+### Milky
+
+正向连接示例：
+
+```ini
+milky_clients=[{"host":"127.0.0.1","port":3000,"access_token":"","secure":false}]
+```
+
+也可以配置 `milky_webhook` 接收反向事件。协议端需要实现 Milky 1.2 API；配置和平台限制
+见 [Milky 文档](agent-flow/milky.md)。
+
+### Telegram
+
+```ini
+telegram_bots=[{"token":"123456:ABC...","is_webhook":false}]
+# telegram_proxy="http://127.0.0.1:7890"
+```
+
+`is_webhook=false` 使用 polling。Telegram 的群列表、reaction 和合并转发能力与 QQ adapter
+不同，详见 [Telegram 文档](agent-flow/telegram.md)。
+
+## 运行
+
+```bash
+uv run python run.py
+```
+
+也可以使用项目提供的命令入口：
+
+```bash
+uv run hoshino
+```
+
+启动时会先加载 APScheduler、Alconna 和 Uninfo，再初始化 Hoshino 并加载
+`hoshino/base/` 与 `.env.prod` 中 `modules` 指定的业务分类。
+
+日志输出到 stdout，同时写入：
+
+```text
+logs/info/hsnYYYYMMDD.log
+logs/error/hsnYYYYMMDD_error.log
+```
+
+## 开发插件
+
+新插件放在 `hoshino/modules/<category>/`，业务代码应使用公共平台 API，不要直接依赖某个
+adapter 的事件、消息或 Bot 类型。
+
+```python
+from hoshino.command import Alconna, Args, UniMessage
+from hoshino.core.service import Service
+from hoshino.platform.depends import GroupID
+
+sv = Service("hello")
+
+
+@sv.on_alconna(Alconna("hello", Args["name?", str]))
+async def _(name: str | None, group_id: int | None = GroupID()):
+    text = f"Hello, {name}" if name else f"Hello from {group_id}"
+    await UniMessage.text(text).send()
+```
+
+完整的命令、DI、权限、消息、reaction 和数据库启动规范见
+[插件开发指南](docs/plugin-development.md)。
+
+## 测试与检查
+
+```bash
+# NoneBot、跨适配器和插件行为测试
+uv run pytest nb-tests -q
+
+# legacy 与微博业务专项测试
+uv run pytest .tests -q
+
+# 静态检查和格式检查
+uv run ruff check .
+uv run ruff format --check .
+git diff --check
+```
+
+Milky 插件测试需要经过真实事件模型、`bot.handle_event()` 和被 stub 的 HTTP/API 边界，
+具体要求见 [Milky 插件测试协议](agent-flow/milky-plugin-test-protocol.md)。测试不得连接生产
+协议端或使用真实凭据。
+
+## 微博图片 Web 应用
+
+`weibo_image_web` 是独立的 FastAPI + React/Vite 应用，用于浏览 Hoshino 保存的微博内容。
+
+```bash
+# 安装前端依赖
+npm --prefix weibo_image_web/frontend ci
+
+# 构建前端并启动 Vite 与 FastAPI
+bash weibo_image_web/start_dev.sh
+
+# 停止后端进程
+bash weibo_image_web/stop_dev.sh
+```
+
+脚本默认启动 Vite 开发服务 `3002` 端口和 FastAPI `9999` 端口。
+
+## Agent 与贡献者
+
+自动化编码 Agent 在读取或修改仓库前必须先阅读根目录的
+[AGENTS.md](AGENTS.md)。该文件定义项目结构、启动顺序、包管理、代码风格、平台隔离、
+测试要求和交付检查。`agent-flow/` 只保留需要按任务深入阅读的专题资料。
+
+人工贡献者也建议遵守同一套约束，尤其是 adapter 隔离、UniMessage 消息构造和真实事件
+分发测试要求。
+
+## License
+
+本项目使用 [GNU General Public License v3.0](LICENSE)。
 
 ## 特别感谢
 
-- [Ice-Cirno / HoshinoBot](https://github.com/Ice-Cirno/HoshinoBot)
-- [nonebot / nonebot2](https://github.com/nonebot/nonebot2)
-- [Mrs4s / go-cqhttp](https://github.com/Mrs4s/go-cqhttp)
+- [NoneBot2](https://github.com/nonebot/nonebot2)：机器人框架与插件生态
+- [HoshinoBot](https://github.com/Ice-Cirno/HoshinoBot)：本项目的原始设计与功能基础
+- [go-cqhttp](https://github.com/Mrs4s/go-cqhttp)：OneBot QQ 机器人实现与早期生态基础
+- [LLOneBot](https://github.com/LLOneBot/LLOneBot)：基于 QQNT 的 OneBot 实现
+- [Lagrange.Core](https://github.com/LagrangeDev/Lagrange.Core)：现代 QQ 协议实现
