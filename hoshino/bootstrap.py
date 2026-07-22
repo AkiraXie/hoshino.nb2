@@ -7,6 +7,8 @@ from hoshino.core.config import config as _config
 from hoshino.platform.ob11.bootstrap import apply_patches
 from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent, GroupReactionEvent
 from hoshino.platform.ob11.types import Adapter as OB11Adapter
+from hoshino.platform.telegram.bootstrap import apply_patches as apply_telegram_patches
+from hoshino.platform.telegram.types import Adapter as TelegramAdapter
 
 
 def bootstrap() -> None:
@@ -25,6 +27,9 @@ def bootstrap() -> None:
         apply_patches()
         OB11Adapter.add_custom_model(GroupReactionEvent)
         OB11Adapter.add_custom_model(GroupMsgEmojiLikeEvent)
+
+    if TelegramAdapter.get_name() in nonebot.get_adapters():
+        apply_telegram_patches()
 
     # 4. 配置日志
     # Lazy import: hoshino.log imports hoshino.service state used by bootstrap patches.

@@ -92,7 +92,9 @@ def get_plaintext(event: Event, default: str = "") -> str:
     extract = getattr(message, "extract_plain_text", None)
     if callable(extract):
         return extract()
-    return str(getattr(message, "text", None) or getattr(message, "caption", None) or message)
+    return str(
+        getattr(message, "text", None) or getattr(message, "caption", None) or message
+    )
 
 
 def get_session_id(event: Event, default: str | None = None) -> str | None:

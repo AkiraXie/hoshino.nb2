@@ -14,10 +14,12 @@ from nonebot.adapters.telegram.event import (
     PrivateMessageEvent as PrivateMessageEvent,
     RequestEvent as RequestEvent,
 )
+from hoshino.platform.telegram.events import (
+    MessageReactionEvent as MessageReactionEvent,
+)
 
 TelegramAdapter = Adapter
 TelegramBot = Bot
 TelegramEvent = Event
 TelegramMessage = Message
 TelegramMessageSegment = MessageSegment
-

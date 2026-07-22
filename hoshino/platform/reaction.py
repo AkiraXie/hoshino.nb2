@@ -16,6 +16,9 @@ from hoshino.platform.milky.types import Event as MilkyEvent
 from hoshino.platform.models import ReactionInfo, RetrievedMessage
 from hoshino.platform.ob11 import reaction as ob11_reaction
 from hoshino.platform.ob11.types import Bot as OB11Bot
+from hoshino.platform.telegram import reaction as telegram_reaction
+from hoshino.platform.telegram.types import Bot as TelegramBot
+from hoshino.platform.telegram.types import MessageReactionEvent
 
 
 def get_reaction_info(event: Event) -> ReactionInfo | None:
@@ -23,6 +26,8 @@ def get_reaction_info(event: Event) -> ReactionInfo | None:
 
     if isinstance(event, MilkyEvent):
         return milky_reaction.get_reaction_info(event)
+    if isinstance(event, MessageReactionEvent):
+        return telegram_reaction.get_reaction_info(event)
     return ob11_reaction.get_reaction_info(event)
 
 
@@ -53,6 +58,11 @@ async def _get_reacted_message(
         return await milky_reaction.get_reacted_message(bot, reaction)
     if isinstance(bot, OB11Bot):
         return await ob11_reaction.get_reacted_message(bot, reaction)
+    if isinstance(bot, TelegramBot):
+        # Telegram reaction updates contain no message body and Bot API has
+        # no get-message endpoint. Consumers needing forwarding use the
+        # native forward facade with ReactionInfo instead.
+        return None
     return None
 
 

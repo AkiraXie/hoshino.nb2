@@ -60,18 +60,22 @@ def _iter_to_set(words: set | list | tuple | str | None) -> set:
 
 
 def _save_service_data(service: "Service"):
-    data_file = os.path.join(_service_dir, f"{service.name}.json")
-    with open(data_file, "w", encoding="utf8") as f:
-        json.dump(
+    _service_dir.mkdir(parents=True, exist_ok=True)
+    data_file = _service_dir / f"{service.name}.json"
+    temporary = data_file.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(
             {
                 "name": service.name,
-                "enable_scope": list(service.enable_scope),
-                "disable_scope": list(service.disable_scope),
+                "enable_scope": sorted(service.enable_scope),
+                "disable_scope": sorted(service.disable_scope),
             },
-            f,
             ensure_ascii=False,
             indent=2,
-        )
+        ),
+        encoding="utf8",
+    )
+    temporary.replace(data_file)
 
 
 def _load_service_data(service_name: str) -> dict:

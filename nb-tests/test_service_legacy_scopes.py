@@ -40,3 +40,22 @@ def test_explicit_scopes_override_conflicting_legacy_groups():
 
     assert enable_scope == {"ob11:10002"}
     assert disable_scope == {"ob11:10001"}
+
+
+def test_telegram_service_scope_survives_reload(tmp_path, monkeypatch):
+    import hoshino.core.service as service_module
+
+    service_name = "telegram_scope_persistence_test"
+    scope_key = "telegram:-100123456"
+    monkeypatch.setattr(service_module, "_service_dir", tmp_path)
+    try:
+        service = service_module.Service(service_name, enable_on_default=False)
+        service.set_enable(scope_key)
+        service_module._loaded_services.pop(service_name)
+
+        reloaded = service_module.Service(service_name, enable_on_default=False)
+
+        assert reloaded.check_enabled(scope_key)
+        assert not (tmp_path / f"{service_name}.json.tmp").exists()
+    finally:
+        service_module._loaded_services.pop(service_name, None)

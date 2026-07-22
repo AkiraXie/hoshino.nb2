@@ -19,6 +19,7 @@ from hoshino.platform.telegram.types import (
     Event as Event,
     Message as Message,
     MessageSegment as MessageSegment,
+    MessageReactionEvent as MessageReactionEvent,
 )
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "Event",
     "Message",
     "MessageSegment",
+    "MessageReactionEvent",
     "get_chat_id",
     "get_event_message",
     "get_group_id",

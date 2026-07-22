@@ -20,14 +20,23 @@ from hoshino.platform import (
     send_private_forward,
     send_to_event,
     send_to_target,
+    superuser_ids_for_bot,
 )
 
 
 async def send_to_superuser(message: MessageLike = "") -> None:
-    bot: Bot = nonebot.get_bot()
-    for superuser in bot.config.superusers:
-        await asyncio.sleep(0.5)
-        await send_to_target(bot, private_target(superuser), message)
+    bots = list(nonebot.get_bots().values())
+    if not bots:
+        bots = [nonebot.get_bot()]
+    sent: set[tuple[str, str]] = set()
+    for bot in bots:
+        for superuser in superuser_ids_for_bot(bot):
+            key = (bot.self_id, superuser)
+            if key in sent:
+                continue
+            sent.add(key)
+            await asyncio.sleep(0.5)
+            await send_to_target(bot, private_target(superuser), message)
 
 
 async def send(

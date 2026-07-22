@@ -170,7 +170,13 @@ def _at_bot_msg(text: str, **kw) -> MilkyGroupMessageEvent:
 
 def _superuser_id() -> int:
     adapter = get_adapters()[MilkyAdapter.get_name()]
-    return int(next(iter(adapter.config.superusers)))
+    for value in adapter.config.superusers:
+        text = str(value)
+        if text.startswith("milky:"):
+            return int(text.removeprefix("milky:"))
+        if ":" not in text:
+            return int(text)
+    raise AssertionError("No Milky superuser is configured for the test")
 
 
 def _stub_all_api(
@@ -726,7 +732,7 @@ class TestInteractivePlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_steam_enabled_list_responds(self, monkeypatch):
         """steam: its full command is not consumed by the ``st`` image alias."""
-        steam_module = _loaded_module("hoshino.modules.interactive.steam")
+        steam_module = _loaded_module("hoshino.modules.info-x.steam")
         monkeypatch.setattr(steam_module, "sub", {"subscribes": {}})
         monkeypatch.setattr(steam_module, "playing_state", {})
         _enable_svc(monkeypatch, "steam")
@@ -744,7 +750,7 @@ class TestInteractivePlugins:
         self, monkeypatch
     ):
         """steam: the scheduled poll is inert when no API key is configured."""
-        steam_module = _loaded_module("hoshino.modules.interactive.steam")
+        steam_module = _loaded_module("hoshino.modules.info-x.steam")
         monkeypatch.setattr(steam_module.sv, "get_config", lambda: {})
 
         async def unexpected_update(*args, **kwargs):
@@ -753,6 +759,57 @@ class TestInteractivePlugins:
         monkeypatch.setattr(steam_module, "update_game_status", unexpected_update)
 
         await steam_module.check_steam_status()
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_x_add_admin_dispatches_and_persists_target(self, monkeypatch):
+        """x: an admin command reaches its handler and stores Milky scope."""
+        x_module = _loaded_module("hoshino.modules.info-x.x")
+        captured: dict[str, Any] = {}
+
+        async def fake_add_subscription(**kwargs):
+            captured.update(kwargs)
+            return True
+
+        async def fake_add_account(username):
+            captured["managed_username"] = username
+
+        monkeypatch.setattr(x_module.store, "add_subscription", fake_add_subscription)
+        monkeypatch.setattr(x_module.runtime, "add_account", fake_add_account)
+        _enable_svc(monkeypatch, "x")
+        bot = _make_bot()
+        event = _make_group_msg("xadd Alice", sender_id=424242, sender_role="admin")
+        calls = _stub_all_api(monkeypatch)
+        # Assert both gates explicitly before exercising the full dispatch path.
+        assert await x_module.x_add.matcher.permission(bot, event)
+        assert await x_module.x_add.matcher.rule(bot, event, {})
+
+        await bot.handle_event(event)
+
+        message = _assert_one_send(calls)
+        assert message[0]["data"]["text"] == "已添加 @alice"
+        assert captured["scope_key"] == "milky:123456"
+        assert captured["platform"] == "milky"
+        assert captured["group_id"] == 123456
+        assert captured["managed_username"] == "alice"
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_x_add_member_is_denied_before_handler(self, monkeypatch):
+        """x: a regular member cannot mutate subscriptions."""
+        x_module = _loaded_module("hoshino.modules.info-x.x")
+
+        async def unexpected_add(**kwargs):
+            pytest.fail("permission denial must prevent subscription writes")
+
+        monkeypatch.setattr(x_module.store, "add_subscription", unexpected_add)
+        _enable_svc(monkeypatch, "x")
+        bot = _make_bot()
+        event = _make_group_msg("xadd Alice", sender_id=424243, sender_role="member")
+        calls = _stub_all_api(monkeypatch)
+        assert not await x_module.x_add.matcher.permission(bot, event)
+
+        await bot.handle_event(event)
+
+        assert calls == []
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_qa_group_list_responds(self, monkeypatch):

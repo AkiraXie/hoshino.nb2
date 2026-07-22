@@ -8,6 +8,7 @@ from nonebot.compat import type_validate_python
 from nonebot_plugin_alconna.uniseg import UniMessage
 
 from hoshino.platform.models import ReactionInfo, RetrievedMessage
+from hoshino.platform.superuser import is_superuser
 from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent, GroupReactionEvent
 from hoshino.platform.ob11.types import Adapter, Bot, Event, Message
 
@@ -77,10 +78,9 @@ async def get_reacted_message(
                     UniMessage.of(_message(content), adapter=Adapter.get_name())
                 )
 
-    superusers = {str(user_id) for user_id in bot.config.superusers}
     return RetrievedMessage(
         sender_id=sender_id,
         content=UniMessage.of(message, adapter=Adapter.get_name()),
         forwarded=tuple(forwarded),
-        trusted_sender=sender_id == bot.self_id or sender_id in superusers,
+        trusted_sender=sender_id == bot.self_id or is_superuser(bot, sender_id),
     )

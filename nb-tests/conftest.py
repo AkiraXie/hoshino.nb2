@@ -32,5 +32,7 @@ def _nonebot_bootstrap():
     nonebot.load_plugins("hoshino/base")
     for cat in ("information", "interactive", "tools", "develop", "entertainment"):
         nonebot.load_plugins(f"hoshino/modules/{cat}")
+    # info-x is intentionally opt-in in production; load it explicitly for tests.
+    nonebot.load_plugins("hoshino/modules/info-x")
     yield
     # No teardown needed — tests are read-only

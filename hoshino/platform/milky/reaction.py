@@ -10,6 +10,7 @@ from hoshino.platform.milky.types import (
     GroupMessageReactionEvent,
 )
 from hoshino.platform.models import ReactionInfo, RetrievedMessage
+from hoshino.platform.superuser import is_superuser
 
 
 def get_reaction_info(event: object) -> ReactionInfo | None:
@@ -52,12 +53,11 @@ async def get_reacted_message(
             )
 
     sender_id = str(response.sender_id)
-    superusers = {str(user_id) for user_id in bot.config.superusers}
     return RetrievedMessage(
         sender_id=sender_id,
         content=UniMessage.of(message, adapter=Adapter.get_name()),
         forwarded=tuple(forwarded),
-        trusted_sender=sender_id == bot.self_id or sender_id in superusers,
+        trusted_sender=sender_id == bot.self_id or is_superuser(bot, sender_id),
     )
 
 

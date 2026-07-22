@@ -24,6 +24,7 @@ from .event import (
     is_message_event,
     is_private_event,
 )
+from .forward import forward_reacted_message
 from .message import (
     MessageLike,
     Target,
@@ -39,6 +40,12 @@ from .message import (
     video_segment,
 )
 from .models import ReactionInfo, RetrievedMessage
+from .superuser import (
+    adapter_superuser_prefix,
+    is_superuser,
+    superuser_ids_for_bot,
+    superuser_key,
+)
 from .reaction import (
     ReactedMessage,
     Reaction,
@@ -65,11 +72,14 @@ __all__ = [
     "MessageLike",
     "ReactionInfo",
     "RetrievedMessage",
+    "adapter_superuser_prefix",
+    "is_superuser",
     "Target",
     "UniMessage",
     "custom_node_segment",
     "dump_target",
     "event_scope_key",
+    "forward_reacted_message",
     "get_event_message",
     "get_event_value",
     "get_forwarded_messages",
@@ -104,6 +114,8 @@ __all__ = [
     "send_to_event",
     "send_to_event_or_fallback",
     "send_to_target",
+    "superuser_ids_for_bot",
+    "superuser_key",
     "target_from_event",
     "target_scope_key",
     "text_message",
