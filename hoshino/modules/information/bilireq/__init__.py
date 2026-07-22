@@ -14,7 +14,7 @@ from hoshino.platform import (
     send_to_target,
 )
 from hoshino.platform.depends import GroupID, ParamText
-from hoshino.util import send_group_segments, send_segments
+from hoshino.util.message import send_group_segments, send_segments
 
 from ..utils import PostQueue, UIDManager
 from .utils import (

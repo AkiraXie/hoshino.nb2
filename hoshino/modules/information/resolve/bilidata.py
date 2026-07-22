@@ -1,11 +1,13 @@
 import asyncio
 from hoshino.command import uni_image, uni_text
 from hoshino.types import MessageLike
-from hoshino.util import aiohttpx, get_cookies, send_segments, send
+from hoshino.util import aiohttpx
+from hoshino.util.cookies import get_cookies
+from hoshino.util.message import send, send_segments
 from time import strftime, localtime
 import re
 from ..bilireq.utils import BiliBiliDynamic
-from hoshino.util import get_redirect
+from hoshino.util.network import get_redirect
 from .sv import sv
 
 bili_headers = {

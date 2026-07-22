@@ -493,7 +493,8 @@ class TestBasePlugins:
 
         await _make_bot().handle_event(notice)
 
-        assert calls == [
+        message_calls = [call for call in calls if call["action"] == "get_message"]
+        assert message_calls == [
             {
                 "action": "get_message",
                 "params": {
@@ -878,20 +879,19 @@ class TestInformationPlugins:
         assert len(send) == 1
         assert send[0]["params"]["group_id"] == 123456
         text = send[0]["params"]["message"][0]["data"]["text"]
-        assert text.startswith("本群没有")
-        assert "直播订阅" in text
+        assert text == "本群没有订阅直播间"
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_resolve_bv_dispatches_stubbed_video(self, monkeypatch):
         """resolve: a BV identifier reaches the resolver and sends its result."""
         resolve_module = _loaded_module("hoshino.modules.information.resolve")
-        util_module = _loaded_module("hoshino.util")
+        message_utils = _loaded_module("hoshino.util.message")
 
         async def fake_resolve(name: str, url: str, matched: Any) -> bool:
             assert name == "bv"
             assert url == "BV1Q541167Qg"
             assert matched.group(0) == url
-            await util_module.send("resolved video")
+            await message_utils.send("resolved video")
             return True
 
         monkeypatch.setattr(resolve_module, "resolve_bilibili", fake_resolve)

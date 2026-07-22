@@ -13,6 +13,7 @@ from nonebot.plugin import on_keyword, on_notice
 from nonebot.rule import KeywordsRule, Rule
 from nonebot.typing import T_State
 from nonebot_plugin_alconna.uniseg import Image as UniImage
+from nonebot_plugin_alconna.uniseg import UniMessage
 from nonebot_plugin_alconna.uniseg import Video as UniVideo
 from PIL import Image
 
@@ -25,26 +26,27 @@ from hoshino.platform import (
     RetrievedMessage,
     get_group_id,
     get_message_id,
+    get_media_download_headers,
+    get_media_url,
     get_plaintext,
     get_session_id,
-    image_segment,
     reaction_event_rule,
 )
-from hoshino.platform.ob11.types import OneBotV11Message
-from hoshino.util import (
-    __SU_IMGLIST,
-    __SU_VIDEOLIST,
-    aiohttpx,
-    finish,
+from hoshino.util import aiohttpx
+from hoshino.util.command import sucmd, sumsg
+from hoshino.util.media import (
+    SUPERUSER_IMAGE_LIST,
+    SUPERUSER_VIDEO_LIST,
     get_event_image_segments,
     random_image_or_video_by_path,
     save_img,
     save_video,
+)
+from hoshino.util.message import (
+    finish,
     send,
     send_segments,
     send_to_superuser,
-    sucmd,
-    sumsg,
 )
 
 
@@ -71,7 +73,7 @@ async def reaction_img_rule(
     ]
     if not images:
         return False
-    state[__SU_IMGLIST] = images
+    state[SUPERUSER_IMAGE_LIST] = images
     state["__IMG_FAV"] = reaction.face_id == "66"
     return True
 
@@ -99,20 +101,8 @@ async def reaction_video_rule(
     ]
     if not videos:
         return False
-    state[__SU_VIDEOLIST] = videos
+    state[SUPERUSER_VIDEO_LIST] = videos
     return True
-
-
-def _media_url(segment: Any) -> str | None:
-    if url := getattr(segment, "url", None):
-        return str(url)
-    data = getattr(segment, "data", {})
-    if not isinstance(data, dict):
-        return None
-    for key in ("url", "file", "temp_url", "uri"):
-        if value := data.get(key):
-            return str(value)
-    return None
 
 
 def _media_filename(segment: Any, default: str) -> str:
@@ -128,6 +118,7 @@ def _media_filename(segment: Any, default: str) -> str:
 async def _save_images(
     segments: Sequence[Any],
     *,
+    bot: Bot,
     message_id: int,
     session_id: str,
     group_id: int | None,
@@ -136,7 +127,7 @@ async def _save_images(
     tasks = []
     dirname = str(group_id) if group_id is not None else "private"
     for index, segment in enumerate(segments):
-        if not (url := _media_url(segment)):
+        if not (url := await get_media_url(bot, segment)):
             continue
         default = f"{message_id}_{session_id}_{index}.jpg"
         filename = Path(dirname, _media_filename(segment, default))
@@ -158,12 +149,13 @@ async def _save_images(
 async def _save_videos(
     segments: Sequence[Any],
     *,
+    bot: Bot,
     message_id: int,
     session_id: str,
 ) -> int:
     tasks = []
     for index, segment in enumerate(segments):
-        if not (url := _media_url(segment)):
+        if not (url := await get_media_url(bot, segment)):
             continue
         default = f"{message_id}_{session_id}_{index}.mp4"
         filename = _media_filename(segment, default)
@@ -199,11 +191,13 @@ svvideo_notice = on_notice(
     & KeywordsRule("sim", "存图", "saveimg", "ctu", "fav", "fim"),
 ).handle()
 async def save_img_cmd(
+    bot: Bot,
     event: Event,
     state: T_State,
 ):
     await _save_images(
-        state.get(__SU_IMGLIST, []),
+        state.get(SUPERUSER_IMAGE_LIST, []),
+        bot=bot,
         message_id=int(get_message_id(event, 0)),
         session_id=get_session_id(event, "unknown") or "unknown",
         group_id=get_group_id(event),
@@ -216,13 +210,15 @@ async def save_img_cmd(
 
 @svimg_notice.handle()
 async def save_reaction_img_cmd(
+    bot: Bot,
     state: T_State,
     reaction: ReactionInfo | None = Reaction(),
 ):
     if reaction is None:
         return
     await _save_images(
-        state.get(__SU_IMGLIST, []),
+        state.get(SUPERUSER_IMAGE_LIST, []),
+        bot=bot,
         message_id=reaction.message_id,
         session_id=f"group_{reaction.group_id}_{reaction.user_id}",
         group_id=reaction.group_id,
@@ -232,13 +228,15 @@ async def save_reaction_img_cmd(
 
 @svvideo_notice.handle()
 async def save_vi_cmd(
+    bot: Bot,
     state: T_State,
     reaction: ReactionInfo | None = Reaction(),
 ):
     if reaction is None:
         return
     await _save_videos(
-        state.get(__SU_VIDEOLIST, []),
+        state.get(SUPERUSER_VIDEO_LIST, []),
+        bot=bot,
         message_id=reaction.message_id,
         session_id=f"group_{reaction.group_id}_{reaction.user_id}",
     )
@@ -296,7 +294,7 @@ async def show_img_cmd(
         if os.path.exists(path):
             with open(path, "rb") as f:
                 img = f.read()
-                await send(image_segment(img))
+                await send(UniMessage.image(raw=img))
         else:
             await send(f"图片{name}不存在")
 
@@ -377,11 +375,11 @@ timg = on_keyword(
 
 @timg.handle()
 async def toimg_cmd(bot: Bot, state: T_State):
-    segs = state[__SU_IMGLIST]
-    res = []
+    segs = state[SUPERUSER_IMAGE_LIST]
+    result = UniMessage()
     for seg in segs:
-        url = _media_url(seg)
-        headers = {
+        url = await get_media_url(bot, seg)
+        default_headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -389,26 +387,10 @@ async def toimg_cmd(bot: Bot, state: T_State):
             ),
         }
         if url:
-            url = url.replace("https://", "http://")
             try:
                 url = URL(url)
-                domain = url.host
-                try:
-                    if "vip.qq.com" in domain:
-                        domain = "vip.qq.com"
-                        ck = await bot.get_cookies(domain=domain)
-                        ck = ck.get("cookies")
-                        if ck:
-                            headers = {
-                                "User-Agent": (
-                                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                                    "Chrome/58.0.3029.110 Safari/537.3"
-                                ),
-                                "cookies": ck,
-                            }
-                except Exception as e:
-                    logger.exception(f"获取 cookies 失败: {e}")
+                platform_headers = await get_media_download_headers(bot, str(url))
+                headers = default_headers | platform_headers
                 resp = await aiohttpx.get(
                     url, verify=False, follow_redirects=True, headers=headers
                 )
@@ -416,11 +398,11 @@ async def toimg_cmd(bot: Bot, state: T_State):
                     img = resp.content
                     im = Image.open(BytesIO(img))
                     im.close()
-                    res.append(image_segment(img))
+                    result += UniMessage.image(raw=img)
             except Exception:
                 logger.exception(f"获取图片失败: {url}")
                 continue
-    if res:
-        await finish(OneBotV11Message(res))
+    if result:
+        await finish(result)
     else:
         await timg.finish("获取图片失败")

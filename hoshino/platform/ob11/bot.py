@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from urllib.parse import urlparse
 
 from nonebot.adapters import Bot
 
 from hoshino.platform.ob11.types import Message, MessageSegment
+
+
+async def get_media_download_headers(bot: Bot, url: str) -> dict[str, str]:
+    domain = urlparse(url).hostname
+    if not domain or not domain.endswith("vip.qq.com"):
+        return {}
+    response = await bot.get_cookies(domain="vip.qq.com")
+    cookies = response.get("cookies") if isinstance(response, dict) else None
+    return {"Cookie": str(cookies)} if cookies else {}
+
+
+async def get_media_url(bot: Bot, media) -> str | None:
+    if url := getattr(media, "url", None):
+        return str(url)
+    data = getattr(media, "data", None)
+    if isinstance(data, dict):
+        for key in ("url", "file", "temp_url", "uri"):
+            if value := data.get(key):
+                return str(value)
+    return None
 
 
 async def get_group_list(bot: Bot) -> list[dict]:

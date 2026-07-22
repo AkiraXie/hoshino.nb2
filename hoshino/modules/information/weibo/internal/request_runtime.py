@@ -5,12 +5,10 @@ from datetime import datetime
 from time import time
 
 
-from hoshino.util import (
-    aiohttpx,
-    get_cookies,
-    get_redirect,
-    send_to_superuser,
-)
+from hoshino.util import aiohttpx
+from hoshino.util.cookies import get_cookies
+from hoshino.util.message import send_to_superuser
+from hoshino.util.network import get_redirect
 
 from ..post import WeiboPost
 from ..sv import sv

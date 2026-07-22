@@ -1,12 +1,11 @@
-from hoshino.util import (
-    sucmd,
-    finish,
+from hoshino.util.command import sucmd
+from hoshino.util.cookies import (
     save_cookies,
-    send,
     check_all_cookies,
     check_cookies,
     delete_cookies,
 )
+from hoshino.util.message import finish, send
 from hoshino.platform.depends import PlainText
 from simplejson import loads
 

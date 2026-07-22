@@ -4,7 +4,7 @@ from hoshino.command import UniMessage
 from hoshino.platform import get_group_list
 from hoshino.platform.depends import PlainText
 from hoshino.service import Service
-from hoshino.util import sucmds
+from hoshino.util.command import sucmds
 
 
 async def ls_group(bot: Bot):

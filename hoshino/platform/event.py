@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot.adapters import Event
+from nonebot.adapters import Bot, Event
 
 from hoshino.platform.milky import event as milky_event
 from hoshino.platform.milky.types import Event as MilkyEvent
@@ -61,3 +61,8 @@ def is_group_event(event: Event) -> bool:
 
 def is_private_event(event: Event) -> bool:
     return _backend(event).is_private_event(event)
+
+
+async def get_forwarded_messages(bot: Bot, event: Event) -> list[Any]:
+    getter = getattr(_backend(event), "get_forwarded_messages", None)
+    return await getter(bot, event) if getter else []

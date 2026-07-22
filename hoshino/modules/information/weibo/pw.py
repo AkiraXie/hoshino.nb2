@@ -9,7 +9,7 @@ from hoshino.util.playwrights import (
     mobile_context_params,
     context_params,
 )
-from hoshino.util import get_cookies
+from hoshino.util.cookies import get_cookies
 from nonebot.log import logger
 from hoshino.core.config import config
 

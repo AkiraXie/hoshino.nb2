@@ -10,11 +10,14 @@ from hoshino.command import (
 )
 from hoshino.platform import upload_group_file
 from hoshino.types import MessageLike
-from hoshino.util import aiohttpx, get_cookies, save_video_by_path, send_segments
+from hoshino.util import aiohttpx
+from hoshino.util.cookies import get_cookies
+from hoshino.util.media import save_video_by_path
+from hoshino.util.message import send_segments
 import re
 from urllib.parse import parse_qs, urlparse
 from functools import partial
-from hoshino.util import get_redirect
+from hoshino.util.network import get_redirect
 from .sv import sv
 
 xhs_headers = {

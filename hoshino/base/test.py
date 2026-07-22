@@ -6,7 +6,7 @@ from hoshino.platform import send_group_forward, send_private_forward
 from hoshino.platform.depends import GroupID, SenderID
 from hoshino.platform.ob11.event import get_event
 from hoshino.platform.ob11.types import Event
-from hoshino.util import get_bot_list, sucmd
+from hoshino.util.command import get_bot_list, sucmd
 
 test1 = sucmd("testgetbot", True)
 test2 = sucmd("testmatchers", True)

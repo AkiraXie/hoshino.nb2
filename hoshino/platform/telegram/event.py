@@ -132,3 +132,22 @@ def is_private_event(event: Event) -> bool:
     if chat is not None and hasattr(chat, "type"):
         return chat.type == "private"
     return False
+
+
+async def get_forwarded_messages(bot, event: Event) -> list[Any]:
+    origin_fields = (
+        "forward_origin",
+        "forward_from",
+        "forward_from_chat",
+        "forward_sender_name",
+        "forward_date",
+    )
+    sources = (event, getattr(event, "message", None))
+    if any(
+        source is not None
+        and any(getattr(source, field, None) is not None for field in origin_fields)
+        for source in sources
+    ):
+        current = get_event_message(event)
+        return [current] if current is not None else []
+    return []

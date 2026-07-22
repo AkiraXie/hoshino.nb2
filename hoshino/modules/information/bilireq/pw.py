@@ -5,7 +5,7 @@ from hoshino.util.playwrights import (
     mobile_context_params,
     bili_mobilejs,
 )
-from hoshino.util import get_cookies
+from hoshino.util.cookies import get_cookies
 from nonebot.log import logger
 
 

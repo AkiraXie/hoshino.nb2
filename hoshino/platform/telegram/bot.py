@@ -3,8 +3,29 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urljoin
 
 from hoshino.platform.telegram.types import Bot, Message, MessageSegment
+
+
+async def get_media_download_headers(bot: Bot, url: str) -> dict[str, str]:
+    return {}
+
+
+async def get_media_url(bot: Bot, media) -> str | None:
+    if url := getattr(media, "url", None):
+        return str(url)
+    file_id = getattr(media, "id", None)
+    if file_id is None:
+        data = getattr(media, "data", None)
+        file_id = data.get("file") if isinstance(data, dict) else None
+    if not file_id:
+        return None
+    file = await bot.get_file(file_id=str(file_id))
+    if not file.file_path:
+        return None
+    base_url = f"{bot.bot_config.api_server.rstrip('/')}/"
+    return urljoin(base_url, f"file/bot{bot.bot_config.token}/{file.file_path}")
 
 
 async def get_group_list(bot: Bot) -> list[dict[str, Any]]:
@@ -66,4 +87,3 @@ async def upload_chat_file(
     file: str,
 ):
     return await bot.send_document(chat_id=chat_id, document=file, caption=name)
-

@@ -11,7 +11,7 @@ from hoshino.platform import (
     RetrievedMessage,
     reaction_event_rule,
 )
-from hoshino.util import send_to_superuser
+from hoshino.util.message import send_to_superuser
 
 from .fav import append_fav
 from .internal.post_runtime import get_cached_weibo_uid_id

@@ -10,11 +10,19 @@ from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
 from hoshino.platform.milky.bot import get_group_list as milky_get_group_list
 from hoshino.platform.milky.bot import (
+    get_media_download_headers as milky_get_media_download_headers,
+)
+from hoshino.platform.milky.bot import get_media_url as milky_get_media_url
+from hoshino.platform.milky.bot import (
     get_group_member_info as milky_get_group_member_info,
 )
 from hoshino.platform.milky.bot import upload_group_file as milky_upload_group_file
 from hoshino.platform.milky.types import Bot as MilkyBot
 from hoshino.platform.ob11.bot import get_group_list as ob11_get_group_list
+from hoshino.platform.ob11.bot import (
+    get_media_download_headers as ob11_get_media_download_headers,
+)
+from hoshino.platform.ob11.bot import get_media_url as ob11_get_media_url
 from hoshino.platform.ob11.bot import (
     get_group_member_info as ob11_get_group_member_info,
 )
@@ -22,6 +30,10 @@ from hoshino.platform.ob11.bot import upload_group_file as ob11_upload_group_fil
 from hoshino.platform.telegram.bot import (
     get_group_list as telegram_get_group_list,
 )
+from hoshino.platform.telegram.bot import (
+    get_media_download_headers as telegram_get_media_download_headers,
+)
+from hoshino.platform.telegram.bot import get_media_url as telegram_get_media_url
 from hoshino.platform.telegram.bot import (
     get_group_member_info as telegram_get_group_member_info,
 )
@@ -35,6 +47,22 @@ async def get_group_list(bot: Bot) -> list[dict[str, Any]]:
     if isinstance(bot, TelegramBot):
         return await telegram_get_group_list(bot)
     return await ob11_get_group_list(bot)
+
+
+async def get_media_download_headers(bot: Bot, url: str) -> dict[str, str]:
+    if isinstance(bot, MilkyBot):
+        return await milky_get_media_download_headers(bot, url)
+    if isinstance(bot, TelegramBot):
+        return await telegram_get_media_download_headers(bot, url)
+    return await ob11_get_media_download_headers(bot, url)
+
+
+async def get_media_url(bot: Bot, media: Any) -> str | None:
+    if isinstance(bot, MilkyBot):
+        return await milky_get_media_url(bot, media)
+    if isinstance(bot, TelegramBot):
+        return await telegram_get_media_url(bot, media)
+    return await ob11_get_media_url(bot, media)
 
 
 async def get_group_member_info(

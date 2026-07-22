@@ -1,6 +1,7 @@
 import asyncio
 import time
-from hoshino.util import sucmd, send_to_superuser
+from hoshino.util.command import sucmd
+from hoshino.util.message import send_to_superuser
 from nonebot.adapters import Bot
 from hoshino.core.hooks import on_bot_connect
 from asyncio import all_tasks

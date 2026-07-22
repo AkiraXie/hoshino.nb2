@@ -21,10 +21,8 @@ from hoshino.command import (
 )
 from hoshino.service import Service
 from hoshino.types import MessageLike
-from hoshino.util import (
-    aiohttpx,
-    get_cookies_with_ts,
-)
+from hoshino.util import aiohttpx
+from hoshino.util.cookies import get_cookies_with_ts
 from .pw import get_bili_dynamic_screenshot
 
 from ..utils import Post, PostMessage

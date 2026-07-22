@@ -5,6 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from nonebot.adapters import Event
+from nonebot.compat import type_validate_python
+
+from hoshino.platform.ob11.types import Bot, Message
+
+
+def _forward_content(node: Any) -> Any:
+    if not isinstance(node, dict):
+        return node
+    return node.get("content") or node.get("data", {}).get("content")
 
 
 def get_event_value(event: Event, name: str, default: Any = None) -> Any:
@@ -76,3 +85,27 @@ def is_group_event(event: Event) -> bool:
 
 def is_private_event(event: Event) -> bool:
     return get_group_id(event) is None and get_user_id(event) is not None
+
+
+async def get_forwarded_messages(bot: Bot, event: Event) -> list[Message]:
+    async def expand(message: Message) -> list[Message]:
+        result = []
+        for segment in message:
+            if segment.type != "forward" or not (
+                forward_id := segment.data.get("id")
+            ):
+                continue
+            response = await bot.get_forward_msg(id=forward_id)
+            for node in response.get("messages") or response.get("message") or []:
+                if content := _forward_content(node):
+                    content_message = type_validate_python(Message, content)
+                    result.append(content_message)
+                    result.extend(await expand(content_message))
+        return result
+
+    forwarded = []
+    for message in (get_event_message(event), get_reply_message(event)):
+        if not message:
+            continue
+        forwarded.extend(await expand(message))
+    return forwarded

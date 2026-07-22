@@ -3,13 +3,10 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import Any, List
 import re
-from hoshino.util import (
-    aiohttpx,
-    get_redirect,
-    save_img_by_path,
-    save_video_by_path,
-    send_segments,
-)
+from hoshino.util import aiohttpx
+from hoshino.util.media import save_img_by_path, save_video_by_path
+from hoshino.util.message import send_segments
+from hoshino.util.network import get_redirect
 from hoshino import data_dir
 from ..utils import Post as BasePost, PostMessage, clean_filename
 from .sv import sv

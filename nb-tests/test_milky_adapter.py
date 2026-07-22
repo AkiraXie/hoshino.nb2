@@ -379,7 +379,7 @@ async def test_milky_reaction_reaches_image_matcher_rule(
     monkeypatch: pytest.MonkeyPatch,
 ):
     from hoshino.base.image import svimg_notice
-    from hoshino.util import __SU_IMGLIST
+    from hoshino.util.media import SUPERUSER_IMAGE_LIST
 
     async def fake_get_message(
         self,
@@ -416,7 +416,7 @@ async def test_milky_reaction_reaches_image_matcher_rule(
     state: dict[str, Any] = {}
 
     assert await svimg_notice.rule(bot, event, state)
-    assert state[__SU_IMGLIST][0].url == "https://example.com/image.jpg"
+    assert state[SUPERUSER_IMAGE_LIST][0].url == "https://example.com/image.jpg"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -474,7 +474,7 @@ async def test_reacted_message_di_preserves_ob11_fetch(
 async def test_image_reaction_business_rule_is_adapter_neutral(event):
     from hoshino.base.image import reaction_img_rule
     from hoshino.platform import RetrievedMessage, get_reaction_info
-    from hoshino.util import __SU_IMGLIST
+    from hoshino.util.media import SUPERUSER_IMAGE_LIST
 
     reaction = get_reaction_info(event)
     assert reaction is not None
@@ -489,7 +489,7 @@ async def test_image_reaction_business_rule_is_adapter_neutral(event):
         reaction=reaction,
         reacted_message=message,
     )
-    assert state[__SU_IMGLIST][0].url == "https://example.com/image.jpg"
+    assert state[SUPERUSER_IMAGE_LIST][0].url == "https://example.com/image.jpg"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

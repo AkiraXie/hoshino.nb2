@@ -5,7 +5,7 @@ from nonebot.adapters import Bot
 
 from hoshino.platform import get_group_list, group_target, send_to_target
 from hoshino.platform.depends import EventMessage
-from hoshino.util import sucmd
+from hoshino.util.command import sucmd
 
 bc = sucmd("bc", aliases={"广播", "broadcast"})
 

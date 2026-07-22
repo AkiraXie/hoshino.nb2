@@ -2,7 +2,7 @@ from ..weibo.request import (
     parse_mapp_weibo,
     parse_weibo_with_id,
 )
-from hoshino.util import send_segments,send
+from hoshino.util.message import send, send_segments
 from .sv import sv
 
 async def resolve_weibo(name: str, url: str, bid: str = None) -> bool:

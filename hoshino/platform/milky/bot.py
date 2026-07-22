@@ -9,6 +9,21 @@ from nonebot.compat import model_dump
 from hoshino.platform.milky.types import Bot
 
 
+async def get_media_download_headers(bot: Bot, url: str) -> dict[str, str]:
+    return {}
+
+
+async def get_media_url(bot: Bot, media) -> str | None:
+    if url := getattr(media, "url", None):
+        return str(url)
+    data = getattr(media, "data", None)
+    if isinstance(data, dict):
+        for key in ("temp_url", "uri", "url"):
+            if value := data.get(key):
+                return str(value)
+    return None
+
+
 async def get_group_list(bot: Bot) -> list[dict[str, Any]]:
     return [model_dump(group) for group in await bot.get_group_list()]
 

@@ -116,8 +116,35 @@ def is_private_event(event: Event) -> bool:
     )
 
 
+async def _expand_forward_segments(bot, message) -> list[Any]:
+    forwarded = []
+    for segment in message or []:
+        if segment.type != "forward":
+            continue
+        if messages := segment.data.get("messages"):
+            for node in messages:
+                content = getattr(node, "segments", None)
+                if content is not None:
+                    forwarded.append(content)
+                    forwarded.extend(await _expand_forward_segments(bot, content))
+        elif forward_id := segment.data.get("forward_id"):
+            for node in await bot.get_forwarded_messages(forward_id=forward_id):
+                content = node.message
+                forwarded.append(content)
+                forwarded.extend(await _expand_forward_segments(bot, content))
+    return forwarded
+
+
+async def get_forwarded_messages(bot, event: Event) -> list[Any]:
+    forwarded = []
+    for message in (get_event_message(event), get_reply_message(event)):
+        forwarded.extend(await _expand_forward_segments(bot, message))
+    return forwarded
+
+
 __all__ = [
     "get_event_message",
+    "get_forwarded_messages",
     "get_event_value",
     "get_group_id",
     "get_message_id",

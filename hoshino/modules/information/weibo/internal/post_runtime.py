@@ -16,11 +16,8 @@ from hoshino.platform import (
     send_to_target,
 )
 from hoshino.types import MessageLike
-from hoshino.util import (
-    save_img_by_path,
-    save_video_by_path,
-    send_group_segments,
-)
+from hoshino.util.media import save_img_by_path, save_video_by_path
+from hoshino.util.message import send_group_segments
 
 from ..pw import (
     get_mapp_weibo_screenshot,

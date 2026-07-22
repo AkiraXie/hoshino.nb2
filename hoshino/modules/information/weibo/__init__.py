@@ -11,10 +11,8 @@ from hoshino.platform import (
 from hoshino.platform.depends import GroupID, MessageID, ParamText
 from hoshino.core.permission import SUPERUSER
 from hoshino.platform.permission import ADMIN
-from hoshino.util import (
-    send_segments,
-    random_image_or_video_by_path,
-)
+from hoshino.util.media import random_image_or_video_by_path
+from hoshino.util.message import send_segments
 from .db import (
     add_or_update_subscription,
     get_group_config,
