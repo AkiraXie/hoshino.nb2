@@ -740,6 +740,21 @@ class TestInteractivePlugins:
         assert message == [{"type": "text", "data": {"text": "======steam======\n"}}]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
+    async def test_steam_schedule_without_api_key_returns_before_update(
+        self, monkeypatch
+    ):
+        """steam: the scheduled poll is inert when no API key is configured."""
+        steam_module = _loaded_module("hoshino.modules.interactive.steam")
+        monkeypatch.setattr(steam_module.sv, "get_config", lambda: {})
+
+        async def unexpected_update(*args, **kwargs):
+            pytest.fail("update_game_status must not run without a Steam API key")
+
+        monkeypatch.setattr(steam_module, "update_game_status", unexpected_update)
+
+        await steam_module.check_steam_status()
+
+    @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_qa_group_list_responds(self, monkeypatch):
         """QA: a group can list its saved questions through the real matcher."""
         bot = _make_bot()

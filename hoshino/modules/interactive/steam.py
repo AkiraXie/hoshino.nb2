@@ -24,9 +24,12 @@ if not subscribe_file.exists():
 with subscribe_file.open(mode="r") as f:
     f = f.read()
     sub = json.loads(f)
-cfg = sv.get_config()
-
 playing_state = {}
+
+
+def get_steam_api_key() -> str | None:
+    key = sv.get_config().get("key")
+    return str(key) if key else None
 
 
 async def format_id(id: str) -> str:
@@ -124,8 +127,11 @@ async def _(text: str = ParamText()):
 
 
 async def get_account_status(id) -> dict:
+    key = get_steam_api_key()
+    if key is None:
+        return {"personaname": "", "gameextrainfo": ""}
     id = await format_id(id)
-    params = {"key": cfg["key"], "format": "json", "steamids": id}
+    params = {"key": key, "format": "json", "steamids": id}
     try:
         resp = await aiohttpx.get(
             "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/",
@@ -145,11 +151,11 @@ async def get_account_status(id) -> dict:
     }
 
 
-async def update_game_status() -> None:
-    if not sub["subscribes"]:
+async def update_game_status(api_key: str | None = None) -> None:
+    if not sub["subscribes"] or not (api_key := api_key or get_steam_api_key()):
         return
     params = {
-        "key": cfg["key"],
+        "key": api_key,
         "format": "json",
         "steamids": ",".join(sub["subscribes"].keys()),
     }
@@ -198,11 +204,14 @@ async def del_steam_ids(steam_id, group):
 
 @scheduled_job("cron", minute="*/2", id="推送steam", jitter=10)
 async def check_steam_status():
+    api_key = get_steam_api_key()
+    if api_key is None:
+        return
     if not playing_state:
-        await update_game_status()
+        await update_game_status(api_key)
         return
     old_state = playing_state.copy()
-    await update_game_status()
+    await update_game_status(api_key)
     await sleep(0.5)
     for key, val in playing_state.items():
         if val["gameextrainfo"] != old_state[key]["gameextrainfo"]:
