@@ -88,17 +88,39 @@ sv = Service(
 | `manage_perm` | 谁能管理 Service，可用 `ADMIN`、`OWNER`、`SUPERUSER` |
 | `enable_on_default` | 没有显式 scope 状态时是否启用 |
 | `visible` | 是否出现在服务列表和帮助信息中 |
+| `config_type` | 可选的配置结构类型，通常是带默认值的 dataclass |
 
 Service 开关按 adapter scope 保存到 `data/service/<name>.json`。业务代码不要自行维护裸群号
 开关；使用 Service 自动注入的 rule，或者使用 `event_scope_key()` / `target_scope_key()`。
 
-每个 Service 可在 `hoshino/service_config/<name>.json` 保存业务配置：
+每个 Service 可在 `hoshino/service_config/<name>.json` 保存业务配置。新插件推荐绑定
+一个带默认值的 dataclass；Service 初始化时会生成默认 JSON，之后 `get_config()` 直接返回
+这个类型：
+
+```python
+from dataclasses import dataclass
+
+from hoshino.core.service import Service
+
+
+@dataclass(frozen=True, slots=True)
+class WeatherConfig:
+    api_key: str = ""
+    timeout_seconds: float = 10.0
+
+
+sv = Service("weather", config_type=WeatherConfig)
+config = sv.get_config()
+```
+
+未绑定 `config_type` 的旧 Service 仍返回字典：
 
 ```python
 config = sv.get_config()
 ```
 
-无文件或读取失败时返回空字典。敏感凭据优先放环境变量，不要提交到配置 JSON。
+无文件或读取失败时返回空字典。绑定结构类型后，JSON 格式或字段类型错误会抛出带文件路径的
+配置错误。敏感凭据优先放环境变量，不要提交到配置 JSON。
 
 ## 5. 注册命令与 Matcher
 

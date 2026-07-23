@@ -6,7 +6,7 @@ import pytest
 from nonebot.matcher import matchers
 from nonebot.rule import TrieRule
 
-from test_command_adapters import _ob11_group_message, _telegram_group_message
+from adapter_events import ob11_group_message, telegram_group_message
 
 
 def _matcher_for_handler(handler):
@@ -14,7 +14,9 @@ def _matcher_for_handler(handler):
         for matcher in matcher_group:
             if any(dependent.call is handler for dependent in matcher.handlers):
                 return matcher
-    raise AssertionError(f"No matcher registered for {handler.__module__}.{handler.__name__}")
+    raise AssertionError(
+        f"No matcher registered for {handler.__module__}.{handler.__name__}"
+    )
 
 
 async def _native_command_rule_matches(matcher, bot, event) -> bool:
@@ -24,7 +26,7 @@ async def _native_command_rule_matches(matcher, bot, event) -> bool:
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
+@pytest.mark.parametrize("factory", (ob11_group_message, telegram_group_message))
 async def test_image_delete_command_rule_accepts_both_adapters(factory):
     """Image management's native command reaches its matcher rule on both adapters."""
     from hoshino.base.image import delete_img_cmd
@@ -35,7 +37,7 @@ async def test_image_delete_command_rule_accepts_both_adapters(factory):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
+@pytest.mark.parametrize("factory", (ob11_group_message, telegram_group_message))
 async def test_resolve_rule_recognizes_bilibili_links_on_both_adapters(factory):
     """Resolver message-rule routing works for native messages from both adapters."""
     from hoshino.modules.information.resolve import check_json_or_text
@@ -47,7 +49,7 @@ async def test_resolve_rule_recognizes_bilibili_links_on_both_adapters(factory):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
+@pytest.mark.parametrize("factory", (ob11_group_message, telegram_group_message))
 async def test_listenmeta_bot_connect_notifies_superusers_on_both_adapters(
     factory, monkeypatch
 ):
@@ -73,7 +75,7 @@ async def test_listenmeta_bot_connect_notifies_superusers_on_both_adapters(
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
+@pytest.mark.parametrize("factory", (ob11_group_message, telegram_group_message))
 async def test_healthcheck_reports_adapter_bot_connectivity(factory, monkeypatch):
     """The health endpoint verifies group-list access through the platform wrapper."""
     from hoshino.modules.develop import healthchecker
@@ -83,7 +85,9 @@ async def test_healthcheck_reports_adapter_bot_connectivity(factory, monkeypatch
         return []
 
     expected_bot, _event = factory("ignored", to_me=False)
-    monkeypatch.setattr(healthchecker.nonebot, "get_bot", lambda _bot_id=None: expected_bot)
+    monkeypatch.setattr(
+        healthchecker.nonebot, "get_bot", lambda _bot_id=None: expected_bot
+    )
     monkeypatch.setattr(healthchecker, "get_group_list", fake_group_list)
 
     response = await healthchecker.bot_check("10000")

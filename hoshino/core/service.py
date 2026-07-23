@@ -4,7 +4,9 @@ import json
 import os
 import re
 from collections import defaultdict
-from typing import Callable
+from dataclasses import asdict, is_dataclass
+from pathlib import Path
+from typing import Any, Callable, Generic, TypeVar, cast
 
 import nonebot
 from arclet.alconna import AllParam
@@ -12,6 +14,7 @@ from nonebot.adapters import Bot, Event
 from nonebot.matcher import Matcher
 from nonebot.plugin import on_notice, on_request
 from nonebot.rule import to_me
+from pydantic import TypeAdapter, ValidationError
 from nonebot_plugin_alconna import (
     Alconna,
     Args,
@@ -39,7 +42,9 @@ from hoshino.platform import (
 from hoshino.platform.permission import ADMIN, NORMAL, OWNER
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
-_loaded_services: dict[str, "Service"] = {}
+ConfigT = TypeVar("ConfigT")
+_loaded_services: dict[str, "Service[Any]"] = {}
+_service_config_dir = Path(__file__).resolve().parent.parent / "service_config"
 
 
 def _iter_to_set(words: set | list | tuple | str | None) -> set:
@@ -59,7 +64,7 @@ def _iter_to_set(words: set | list | tuple | str | None) -> set:
     return res
 
 
-def _save_service_data(service: "Service"):
+def _save_service_data(service: "Service[Any]"):
     _service_dir.mkdir(parents=True, exist_ok=True)
     data_file = _service_dir / f"{service.name}.json"
     temporary = data_file.with_suffix(".json.tmp")
@@ -112,13 +117,28 @@ def _load_service_scopes(data: dict) -> tuple[set[str], set[str]]:
     return enable_scope, disable_scope
 
 
-class Service:
+def _service_config_file(service_name: str) -> Path:
+    return _service_config_dir / f"{service_name}.json"
+
+
+def _config_to_json_data(config: object) -> object:
+    if is_dataclass(config):
+        return asdict(config)
+    if hasattr(config, "model_dump"):
+        return config.model_dump()  # type: ignore[no-any-return, attr-defined]
+    if hasattr(config, "__dict__"):
+        return vars(config)
+    return config
+
+
+class Service(Generic[ConfigT]):
     def __init__(
         self,
         name: str,
         manage_perm: Permission = ADMIN,
         enable_on_default: bool = True,
         visible: bool = True,
+        config_type: type[ConfigT] | None = None,
     ):
         """
         Descrption:  定义一个服务
@@ -146,17 +166,19 @@ class Service:
         self.manage_perm = manage_perm
         self.enable_on_default = enable_on_default
         self.visible = visible
+        self.config_type = config_type
         assert self.name not in _loaded_services, (
             f'Service name "{self.name}" already exist!'
         )
-        _loaded_services[self.name] = self
         data = _load_service_data(self.name)
         self.enable_scope, self.disable_scope = _load_service_scopes(data)
         self.logger = LoggerWrapper(self.name)
         self.matchers = []
+        self._ensure_default_config()
+        _loaded_services[self.name] = self
 
     @staticmethod
-    def get_loaded_services() -> dict[str, "Service"]:
+    def get_loaded_services() -> dict[str, "Service[Any]"]:
         return _loaded_services
 
     def set_enable(self, scope_key: str):
@@ -198,16 +220,47 @@ class Service:
                 gl[g].append(bot)
         return gl
 
-    def get_config(self) -> dict:
-        """读取服务配置 JSON → dict。无配置时返回空 dict。"""
-        filename = os.path.join(
-            _service_dir.parent, "service_config", f"{self.name}.json"
+    def _ensure_default_config(self) -> None:
+        if self.config_type is None:
+            return
+        filename = _service_config_file(self.name)
+        if filename.exists():
+            return
+        default_config = self.config_type()
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        temporary = filename.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(
+                _config_to_json_data(default_config),
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf8",
         )
+        temporary.replace(filename)
+
+    def get_config(self) -> ConfigT:
+        """读取服务配置。绑定 config_type 时返回该类型，否则返回 dict。"""
+        filename = _service_config_file(self.name)
         try:
             with open(filename, encoding="utf8") as f:
-                return json.load(f)
-        except (Exception, FileNotFoundError):
-            return dict()
+                raw_config = json.load(f)
+        except FileNotFoundError:
+            if self.config_type is None:
+                return cast(ConfigT, {})
+            self._ensure_default_config()
+            return self.config_type()
+        except json.JSONDecodeError as exc:
+            if self.config_type is None:
+                return cast(ConfigT, {})
+            raise ValueError(f"Invalid JSON in service config {filename}") from exc
+
+        if self.config_type is None:
+            return cast(ConfigT, raw_config if isinstance(raw_config, dict) else {})
+        try:
+            return TypeAdapter(self.config_type).validate_python(raw_config)
+        except ValidationError as exc:
+            raise ValueError(f"Invalid service config {filename}") from exc
 
     def check_enabled(self, scope_key: str) -> bool:
         if scope_key in self.enable_scope:

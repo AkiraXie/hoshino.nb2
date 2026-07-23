@@ -3,7 +3,7 @@
 import pytest
 from nonebug import App
 
-from test_command_adapters import _ob11_group_message, _telegram_group_message
+from adapter_events import ob11_group_message, telegram_group_message
 
 
 def _native_commands():
@@ -34,7 +34,9 @@ def _matcher_for_handler(handler):
         for matcher in matcher_group:
             if any(dependent.call is handler for dependent in matcher.handlers):
                 return matcher
-    raise AssertionError(f"No matcher registered for {handler.__module__}.{handler.__name__}")
+    raise AssertionError(
+        f"No matcher registered for {handler.__module__}.{handler.__name__}"
+    )
 
 
 def _fake_bot(ctx, bot):
@@ -66,6 +68,7 @@ def _prepare_response(plugin, monkeypatch):
         monkeypatch.setattr(zai.config, "zai", "test-zai")
         return "test-zai", "finish"
     if plugin == "broadcast":
+
         async def empty_group_list(_bot):
             return []
 
@@ -75,6 +78,7 @@ def _prepare_response(plugin, monkeypatch):
         monkeypatch.setattr(test, "get_bot_list", lambda: ["test-bot"])
         return "['test-bot']", "finish"
     if plugin == "server_info":
+
         async def fake_stat():
             return "test status"
 
@@ -84,7 +88,7 @@ def _prepare_response(plugin, monkeypatch):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.parametrize("factory", (_ob11_group_message, _telegram_group_message))
+@pytest.mark.parametrize("factory", (ob11_group_message, telegram_group_message))
 @pytest.mark.parametrize("case_index", range(7))
 async def test_native_command_rule_accepts_both_adapters(
     app: App, factory, case_index, monkeypatch
@@ -99,9 +103,7 @@ async def test_native_command_rule_accepts_both_adapters(
         ctx.should_ignore_permission(matcher)
         ctx.should_pass_rule(matcher)
         send_kwargs = (
-            {"call_header": False, "at_sender": False}
-            if plugin == "cookies"
-            else {}
+            {"call_header": False, "at_sender": False} if plugin == "cookies" else {}
         )
         ctx.should_call_send(event, response, bot=bot, **send_kwargs)
         if action == "reject":

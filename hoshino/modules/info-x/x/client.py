@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+
 from twscrape import API, NoAccountError, gather
 from twscrape.models import Tweet
 from twscrape.utils import parse_cookies
 
 from hoshino import db_dir
+
+from .sv import sv
 
 
 USER_LOOKUP_ENDPOINT = "UserByScreenName"
@@ -36,24 +38,21 @@ class XUpstreamError(RuntimeError):
 
 
 class XClient:
-    def __init__(
-        self,
-        cookies: dict[str, str],
-        *,
-        proxy: str | None = None,
-        db_path: Path | None = None,
-    ) -> None:
+    def __init__(self, cookies: dict[str, str]) -> None:
         self.cookies = cookies
-        self.proxy = proxy
-        self.db_path = db_path or (db_dir / "x_twscrape.db")
         self.api: API | None = None
 
     async def __aenter__(self) -> "XClient":
         cookie_header = "; ".join(
             f"{key}={value}" for key, value in self.cookies.items()
         )
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.api = API(str(self.db_path), proxy=self.proxy, raise_when_no_account=True)
+        db_path = db_dir / "x_twscrape.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.api = API(
+            str(db_path),
+            proxy=sv.get_config().proxy,
+            raise_when_no_account=True,
+        )
         account = await self.api.pool.get_account("hoshino-x")
         parsed = parse_cookies(cookie_header)
         if account is None:

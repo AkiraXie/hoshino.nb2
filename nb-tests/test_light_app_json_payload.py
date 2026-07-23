@@ -12,7 +12,7 @@ from nonebot.adapters.onebot.v11 import Message as OB11Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OB11MessageSegment
 
 from hoshino.platform.depends import get_light_app_json_payload
-from test_command_adapters import _ob11_group_message
+from adapter_events import ob11_group_message
 
 
 def _mini_program_payload(url: str) -> dict[str, Any]:
@@ -64,7 +64,7 @@ def _milky_light_app_event(payload: dict[str, Any]):
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_light_app_json_payload_reads_legacy_ob11_json_segment():
     payload = _mini_program_payload("https://b23.tv/legacy")
-    _bot, event = _ob11_group_message("", to_me=False)
+    _bot, event = ob11_group_message("", to_me=False)
     message = OB11Message(OB11MessageSegment.json(json.dumps(payload)))
     event.message = message
     event.original_message = message
@@ -89,6 +89,6 @@ async def test_light_app_json_payload_reads_milky_light_app_segment():
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_light_app_json_payload_ignores_plain_text():
-    _bot, event = _ob11_group_message("https://b23.tv/plain", to_me=False)
+    _bot, event = ob11_group_message("https://b23.tv/plain", to_me=False)
 
     assert get_light_app_json_payload(event) is None

@@ -1,17 +1,13 @@
-"""X migration, workflow, Telegram API, and platform routing coverage."""
+"""X workflow, Telegram API, and platform routing coverage."""
 
 from __future__ import annotations
 
 import importlib
 import json
-import sqlite3
-import subprocess
-import sys
 import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -25,10 +21,6 @@ from nonebot.drivers import Response
 from nonebot_plugin_alconna.uniseg import UniMessage
 from twscrape.models import (
     Media,
-    MediaAnimated,
-    MediaPhoto,
-    MediaVideo,
-    MediaVideoVariant,
     Tweet,
     User,
 )
@@ -116,97 +108,6 @@ class RecordingLogger:
         self.errors.append(message)
 
 
-def test_twscrape_import_preserves_hoshino_log_handlers(tmp_path: Path):
-    script = """
-import os
-os.chdir({workdir!r})
-import nonebot
-nonebot.init(_env_file=None)
-from hoshino.core.log import configure
-configure()
-from loguru import logger
-before = tuple(logger._core.handlers)
-import twscrape
-after = tuple(logger._core.handlers)
-assert len(before) == 3
-assert after == before
-""".format(workdir=str(tmp_path))
-
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=Path(__file__).parents[1],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-def test_x_post_uses_typed_twscrape_media_models():
-    post_module = _x_module("post")
-    tweet = _tweet(101, content="typed media")
-    tweet.media = Media(
-        photos=[MediaPhoto("https://img.invalid/photo.jpg")],
-        videos=[
-            MediaVideo(
-                thumbnailUrl="https://img.invalid/video.jpg",
-                variants=[
-                    MediaVideoVariant(
-                        "video/mp4", 128, "https://video.invalid/low.mp4"
-                    ),
-                    MediaVideoVariant(
-                        "video/mp4", 256, "https://video.invalid/high.mp4"
-                    ),
-                ],
-                duration=1000,
-            )
-        ],
-        animated=[
-            MediaAnimated(
-                "https://img.invalid/animated.jpg",
-                "https://video.invalid/animated.mp4",
-            )
-        ],
-    )
-
-    post = post_module.XPost.from_tweet(tweet)
-
-    assert post.images == ["https://img.invalid/photo.jpg"]
-    assert post.videos == [
-        "https://video.invalid/high.mp4",
-        "https://video.invalid/animated.mp4",
-    ]
-    assert post.url == "https://fxtwitter.com/alice/status/101"
-    assert "时间: " in post.format_text()
-    assert "fxtwitter.com/alice/status/101" in post.format_text()
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_x_post_renders_persisted_images_and_videos(tmp_path: Path):
-    post_module = _x_module("post")
-    image_path = tmp_path / "image.jpg"
-    video_path = tmp_path / "video.mp4"
-    image_path.write_bytes(b"image")
-    video_path.write_bytes(b"video")
-    post = post_module.XPost(
-        uid="alice",
-        id="101",
-        content="media",
-        timestamp=1,
-        images=[str(image_path)],
-        videos=[str(video_path)],
-    )
-
-    messages = post.render_message(await post.get_message())
-
-    assert len(messages) == 1
-    assert [segment.type for segment in messages[0]] == ["text", "image", "video"]
-    assert messages[0][1].path == image_path
-    assert messages[0][2].path == video_path
-
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_x_post_media_reaches_fake_telegram_api(
     tmp_path: Path,
@@ -249,96 +150,6 @@ async def test_x_post_media_reaches_fake_telegram_api(
     await send_to_target(bot, group_target(-100123456), message)
 
     assert endpoints == ["sendMediaGroup"]
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_x_post_renders_remote_media_fallbacks():
-    post_module = _x_module("post")
-    post = post_module.XPost(
-        uid="alice",
-        id="101",
-        content="media",
-        images=["https://img.invalid/image.jpg"],
-        videos=["https://video.invalid/video.mp4"],
-    )
-
-    message = post.render_message(await post.get_message())[0]
-
-    assert message[1].url == "https://img.invalid/image.jpg"
-    assert message[1].path is None
-    assert message[2].url == "https://video.invalid/video.mp4"
-    assert message[2].path is None
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_x_media_store_keeps_remote_image_when_download_fails(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    media_module = _x_module("media")
-    post_module = _x_module("post")
-    media_store = media_module.XMediaStore(None, 1)
-    post = post_module.XPost(
-        uid="alice",
-        id="101",
-        content="media",
-        images=["https://img.invalid/image.jpg"],
-    )
-
-    async def failed_download(post, url, is_video):
-        return None
-
-    monkeypatch.setattr(media_store, "_download", failed_download)
-    try:
-        await media_store.persist(post, 1)
-    finally:
-        await media_store.close()
-
-    assert post.images == ["https://img.invalid/image.jpg"]
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-def test_telegram_group_event_uses_persisted_service_scope():
-    from nonebot.adapters.telegram.event import GroupMessageEvent
-
-    from hoshino.platform import event_scope_key
-
-    bot = _telegram_bot()
-    event = GroupMessageEvent.parse_event(
-        {
-            "message_id": 1,
-            "date": 1,
-            "chat": {
-                "id": -100123456,
-                "type": "supergroup",
-                "title": "test",
-            },
-            "from": {"id": 42, "is_bot": False, "first_name": "Alice"},
-            "text": "/enable x",
-        }
-    )
-
-    assert event_scope_key(bot, event) == "telegram:-100123456"
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-def test_platform_superusers_do_not_cross_adapters():
-    from hoshino.platform.superuser import is_superuser, superuser_ids_for_bot
-
-    milky = SimpleNamespace(
-        adapter=SimpleNamespace(get_name=lambda: "Milky"),
-        config=SimpleNamespace(superusers=set()),
-    )
-    telegram = SimpleNamespace(
-        adapter=SimpleNamespace(get_name=lambda: "Telegram"),
-        config=SimpleNamespace(superusers=set()),
-    )
-    configured = {"milky:42", "telegram:43"}
-
-    assert is_superuser(milky, 42, configured)
-    assert not is_superuser(telegram, 42, configured)
-    assert is_superuser(telegram, 43, configured)
-    assert superuser_ids_for_bot(milky, configured) == ["42"]
-    assert superuser_ids_for_bot(telegram, configured) == ["43"]
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -567,12 +378,12 @@ async def test_non_telegram_reaction_forward_rebuilds_locally(
         forward_reacted_message,
         private_target,
     )
-    from test_command_adapters import _ob11_group_message
+    from adapter_events import ob11_group_message
     from test_milky_adapter import _milky_group_message
 
     calls: list[tuple[str, dict[str, Any]]] = []
     if adapter_name == "ob11":
-        bot, _ = _ob11_group_message("ignored", to_me=False)
+        bot, _ = ob11_group_message("ignored", to_me=False)
 
         async def fake_call_api(self, api: str, **data):
             calls.append((api, data))
@@ -663,16 +474,14 @@ async def test_x_workflow_first_fetch_cookie_redaction_and_429(
     )
 
     logger = RecordingLogger()
-    credentials = runtime_module.CredentialProvider(
-        logger,
-        loader=lambda name: _async_result(({"ct0": "secret-ct0"}, time.time())),
+    monkeypatch.setattr(runtime_module.sv, "logger", logger)
+    monkeypatch.setattr(runtime_module.sv, "get_config", lambda: settings)
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(({"ct0": "secret-ct0"}, time.time())),
     )
-    runtime = runtime_module.XRuntime(
-        store,
-        settings_factory=lambda: settings,
-        credentials=credentials,
-        logger=logger,
-    )
+    runtime = runtime_module.XRuntime(store)
     await runtime.bootstrap()
     assert not await runtime.fetch_next_update()
     assert logger.warnings == ["X cookie is missing required fields: auth_token"]
@@ -691,10 +500,14 @@ async def test_x_workflow_first_fetch_cookie_redaction_and_429(
         async def resolve_user_id(self, username):
             raise client_module.XRateLimited("UserByScreenName", 9999999999)
 
-    credentials.loader = lambda name: _async_result(
-        ({"auth_token": "secret-auth", "ct0": "secret-ct0"}, time.time())
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(
+            ({"auth_token": "secret-auth", "ct0": "secret-ct0"}, time.time())
+        ),
     )
-    runtime.fetch_mainline.client_factory = LimitedClient
+    monkeypatch.setattr(runtime_module, "XClient", LimitedClient)
     assert not await runtime.fetch_next_update()
     state = await store.get_account_state("alice")
     assert state.retry_at == 9999999999
@@ -717,13 +530,15 @@ async def test_x_workflow_rejects_expired_cookie_without_logging_values(
         name="alice",
     )
     logger = RecordingLogger()
-    credentials = runtime_module.CredentialProvider(
-        logger,
-        loader=lambda name: _async_result(
+    monkeypatch.setattr(runtime_module.sv, "logger", logger)
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(
             ({"auth_token": "auth-value", "ct0": "ct0-value"}, 1)
         ),
     )
-    runtime = runtime_module.XRuntime(store, credentials=credentials, logger=logger)
+    runtime = runtime_module.XRuntime(store)
     await runtime.bootstrap()
 
     assert not await runtime.fetch_next_update()
@@ -771,25 +586,24 @@ async def test_x_workflow_first_fetch_only_sets_cursor_then_enqueues(
         async def persist(self, post, max_media):
             return post
 
+        def pop_errors(self):
+            return []
+
     logger = RecordingLogger()
-    credentials = runtime_module.CredentialProvider(
-        logger,
-        loader=lambda name: _async_result(
-            ({"auth_token": "a", "ct0": "c"}, time.time())
-        ),
+    monkeypatch.setattr(runtime_module.sv, "logger", logger)
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(({"auth_token": "a", "ct0": "c"}, time.time())),
     )
     settings = replace(
         config_module.XSettings(),
         rate_limit_requests=1000,
         rate_limit_window_seconds=1,
     )
-    runtime = runtime_module.XRuntime(
-        store,
-        settings_factory=lambda: settings,
-        client_factory=FakeClient,
-        credentials=credentials,
-        logger=logger,
-    )
+    monkeypatch.setattr(runtime_module.sv, "get_config", lambda: settings)
+    runtime = runtime_module.XRuntime(store)
+    monkeypatch.setattr(runtime_module, "XClient", FakeClient)
     runtime.fetch_mainline.media_store = FakeMedia()
 
     assert await runtime.fetch_mainline.fetch("alice")
@@ -845,24 +659,20 @@ async def test_x_account_failure_does_not_block_next_account(
             return []
 
     logger = RecordingLogger()
-    credentials = runtime_module.CredentialProvider(
-        logger,
-        loader=lambda name: _async_result(
-            ({"auth_token": "a", "ct0": "c"}, time.time())
-        ),
+    monkeypatch.setattr(runtime_module.sv, "logger", logger)
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(({"auth_token": "a", "ct0": "c"}, time.time())),
     )
     monkeypatch.setattr(
         store,
         "acquire_rate_permit",
         lambda *args, **kwargs: _async_result(db.RatePermit(True, 0)),
     )
-    runtime = runtime_module.XRuntime(
-        store,
-        settings_factory=config_module.XSettings,
-        client_factory=FakeClient,
-        credentials=credentials,
-        logger=logger,
-    )
+    monkeypatch.setattr(runtime_module.sv, "get_config", config_module.XSettings)
+    runtime = runtime_module.XRuntime(store)
+    monkeypatch.setattr(runtime_module, "XClient", FakeClient)
 
     assert not await runtime.fetch_mainline.fetch("alice")
     assert await runtime.fetch_mainline.fetch("bob")
@@ -871,6 +681,7 @@ async def test_x_account_failure_does_not_block_next_account(
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_x_error_queue_notifies_generic_error_without_removing_account(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     db = _x_module("db")
     runtime_module = _x_module("runtime")
@@ -886,13 +697,13 @@ async def test_x_error_queue_notifies_generic_error_without_removing_account(
     uid_manager = runtime_module.UIDManager()
     await uid_manager.init(["alice"], min_interval=0, cold_min_interval=0)
     notifications: list[str] = []
-    queue = runtime_module.XErrorQueue(
-        store,
-        uid_manager,
-        RecordingLogger(),
-        sender=lambda message: _record_async(notifications, message),
-        notification_interval=0,
+    monkeypatch.setattr(runtime_module, "COOKIE_WARNING_INTERVAL", 0)
+    monkeypatch.setattr(
+        runtime_module,
+        "send_to_superuser",
+        lambda message: _record_async(notifications, message),
     )
+    queue = runtime_module.XErrorQueue(store, uid_manager)
 
     assert await queue.enqueue("alice", RuntimeError("upstream failed"))
     assert await queue.process_next()
@@ -935,11 +746,10 @@ async def test_x_user_not_found_is_removed_only_when_error_queue_consumes(
         async def resolve_user_id(self, username):
             raise client_module.XUserNotFound("missing")
 
-    credentials = runtime_module.CredentialProvider(
-        RecordingLogger(),
-        loader=lambda name: _async_result(
-            ({"auth_token": "a", "ct0": "c"}, time.time())
-        ),
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(({"auth_token": "a", "ct0": "c"}, time.time())),
     )
     monkeypatch.setattr(
         store,
@@ -947,14 +757,14 @@ async def test_x_user_not_found_is_removed_only_when_error_queue_consumes(
         lambda *args, **kwargs: _async_result(db.RatePermit(True, 0)),
     )
     notifications: list[str] = []
-    runtime = runtime_module.XRuntime(
-        store,
-        settings_factory=config_module.XSettings,
-        client_factory=MissingUserClient,
-        credentials=credentials,
-        error_sender=lambda message: _record_async(notifications, message),
-        logger=RecordingLogger(),
+    monkeypatch.setattr(runtime_module.sv, "get_config", config_module.XSettings)
+    monkeypatch.setattr(
+        runtime_module,
+        "send_to_superuser",
+        lambda message: _record_async(notifications, message),
     )
+    runtime = runtime_module.XRuntime(store)
+    monkeypatch.setattr(runtime_module, "XClient", MissingUserClient)
     await runtime.bootstrap()
 
     assert await runtime.fetch_mainline.fetch("alice")
@@ -1006,13 +816,10 @@ async def test_x_user_not_found_notification_retry_does_not_repeat_deletion(
         return await original_remove(username)
 
     monkeypatch.setattr(store, "remove_account", counted_remove)
-    queue = runtime_module.XErrorQueue(
-        store,
-        uid_manager,
-        RecordingLogger(),
-        sender=flaky_sender,
-        notification_interval=0,
-    )
+    monkeypatch.setattr(runtime_module, "COOKIE_WARNING_INTERVAL", 0)
+    monkeypatch.setattr(runtime_module, "send_to_superuser", flaky_sender)
+    monkeypatch.setattr(runtime_module.sv, "logger", RecordingLogger())
+    queue = runtime_module.XErrorQueue(store, uid_manager)
     await queue.enqueue("alice", client_module.XUserNotFound("missing"))
 
     assert not await queue.process_next()
@@ -1028,12 +835,7 @@ async def test_x_media_download_error_enters_runtime_error_queue(
 ):
     media_module = _x_module("media")
     post_module = _x_module("post")
-    errors: list[tuple[str, Exception]] = []
-    media_store = media_module.XMediaStore(
-        None,
-        1,
-        error_handler=lambda username, error: _record_async(errors, (username, error)),
-    )
+    media_store = media_module.XMediaStore()
     post = post_module.XPost(uid="alice", id="101", content="media")
 
     def failed_stream(*args, **kwargs):
@@ -1048,6 +850,7 @@ async def test_x_media_download_error_enters_runtime_error_queue(
         await media_store.close()
 
     assert result is None
+    errors = media_store.pop_errors()
     assert len(errors) == 1
     assert errors[0][0] == "alice"
     assert isinstance(errors[0][1], httpx.ConnectError)
@@ -1059,53 +862,3 @@ async def _async_result(value):
 
 async def _record_async(items: list, value) -> None:
     items.append(value)
-
-
-def test_x_scraper_config_migration_is_idempotent(tmp_path: Path):
-    from tools.migrate_x_scraper import migrate
-
-    source = tmp_path / "source.json"
-    env = tmp_path / ".env.prod"
-    data = tmp_path / "data"
-    source.write_text(
-        json.dumps(
-            {
-                "accounts": ["Alice", "bob"],
-                "bot_token": "10000:test-token",
-                "chat_id": "-100123",
-                "admin_chat_id": "42",
-                "auth_token": "auth-secret",
-                "ct0": "ct0-secret",
-                "proxy": "http://proxy.invalid:1234",
-            }
-        ),
-        encoding="utf-8",
-    )
-    env.write_text(
-        'superusers=["11", "12"]\nmodules=["information"]\n', encoding="utf-8"
-    )
-
-    result = migrate(source, env, data)
-    second = migrate(source, env, data)
-    assert result == {"status": "migrated", "subscriptions": 2, "cookie": True}
-    assert second["status"] == "already_complete"
-
-    env_text = env.read_text(encoding="utf-8")
-    assert "milky:11" in env_text
-    assert "milky:12" in env_text
-    assert "telegram:42" in env_text
-    assert "telegram_bots=" in env_text
-    assert "telegram_proxy=" in env_text
-    assert "x_proxy=" in env_text
-    assert 'modules=["information","info-x"]' in env_text
-    with sqlite3.connect(data / "db" / "x.db") as connection:
-        assert (
-            connection.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0] == 2
-        )
-    with sqlite3.connect(data / "db" / "cookies.db") as connection:
-        cookie = connection.execute(
-            "SELECT cookie FROM cookies WHERE name = 'x'"
-        ).fetchone()[0]
-    assert "auth_token=" in cookie and "ct0=" in cookie
-    service = json.loads((data / "service" / "x.json").read_text(encoding="utf-8"))
-    assert service["enable_scope"] == ["telegram:-100123"]

@@ -13,7 +13,10 @@ from nonebot.adapters.onebot.v11 import Message as OB11Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OB11MessageSegment
 from nonebot.adapters.telegram import Bot as TelegramBot
 from nonebot_plugin_alconna.uniseg import UniMessage
-from test_command_adapters import _ob11_group_message, _telegram_group_message
+from adapter_events import (
+    ob11_group_message as _ob11_group_message,
+    telegram_group_message as _telegram_group_message,
+)
 from test_milky_adapter import _milky_group_message
 
 

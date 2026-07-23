@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -16,22 +15,16 @@ from .sv import sv
 
 
 MAX_VIDEO_BYTES = 45 * 1024 * 1024
-MediaErrorHandler = Callable[[str, Exception], Awaitable[None]]
 
 
 class XMediaStore:
-    def __init__(
-        self,
-        proxy: str | None,
-        timeout: float,
-        *,
-        error_handler: MediaErrorHandler | None = None,
-    ) -> None:
+    def __init__(self) -> None:
+        settings = sv.get_config()
         self.root = config.data_dir / "x"
-        self.error_handler = error_handler
+        self.errors: list[tuple[str, Exception]] = []
         self.client = httpx.AsyncClient(
-            proxy=_httpx_proxy(proxy),
-            timeout=timeout,
+            proxy=_httpx_proxy(settings.proxy),
+            timeout=settings.request_timeout_seconds,
             follow_redirects=True,
             trust_env=False,
             headers={"Referer": "https://x.com/", "User-Agent": "Mozilla/5.0"},
@@ -39,6 +32,10 @@ class XMediaStore:
 
     async def close(self) -> None:
         await self.client.aclose()
+
+    def pop_errors(self) -> list[tuple[str, Exception]]:
+        errors, self.errors = self.errors, []
+        return errors
 
     async def persist(self, post: XPost, max_media: int) -> XPost:
         posts = [post]
@@ -118,8 +115,7 @@ class XMediaStore:
                 f"X media download failed: post={post.id} type="
                 f"{'video' if is_video else 'image'} error={type(exc).__name__}"
             )
-            if self.error_handler is not None:
-                await self.error_handler(post.uid, exc)
+            self.errors.append((post.uid, exc))
             return None
 
 

@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import random
 import time
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Protocol
 
 import nonebot
 from nonebot.adapters import Bot
@@ -26,7 +24,7 @@ from .client import (
     XRateLimited,
     XUserNotFound,
 )
-from .config import XSettings, get_x_settings
+from .config import XSettings
 from .db import OutboxItem, XStore
 from .media import XMediaStore
 from .post import XPost
@@ -37,18 +35,6 @@ COOKIE_NAME = "x"
 REQUIRED_COOKIES = ("auth_token", "ct0")
 COOKIE_WARNING_INTERVAL = 1800.0
 COOKIE_MAX_AGE = 7 * 86400.0
-
-CookieLoader = Callable[[str], Awaitable[tuple[dict[str, str], float]]]
-ClientFactory = Callable[..., XClient]
-NotificationSender = Callable[[str], Awaitable[None]]
-
-
-class RuntimeLogger(Protocol):
-    def info(self, message: str) -> object: ...
-
-    def warning(self, message: str) -> object: ...
-
-    def error(self, message: str, exception: object = ...) -> object: ...
 
 
 class XCredentialError(RuntimeError):
@@ -77,16 +63,9 @@ class XErrorQueue:
         self,
         store: XStore,
         uid_manager: UIDManager,
-        logger: RuntimeLogger,
-        *,
-        sender: NotificationSender = send_to_superuser,
-        notification_interval: float = COOKIE_WARNING_INTERVAL,
     ) -> None:
         self.store = store
         self.uid_manager = uid_manager
-        self.logger = logger
-        self.sender = sender
-        self.notification_interval = notification_interval
         self.queue: asyncio.Queue[XErrorTask] = asyncio.Queue()
         self._pending: set[tuple[str, str]] = set()
         self._last_sent: dict[tuple[str, str], float] = {}
@@ -97,7 +76,7 @@ class XErrorQueue:
         now = time.time()
         if (
             key in self._pending
-            or now - self._last_sent.get(key, 0) < self.notification_interval
+            or now - self._last_sent.get(key, 0) < COOKIE_WARNING_INTERVAL
         ):
             return False
         self._pending.add(key)
@@ -112,13 +91,13 @@ class XErrorQueue:
         key = self._key(task)
         try:
             message = await self._process(task)
-            await self.sender(message)
+            await send_to_superuser(message)
         except asyncio.CancelledError:
             await self.queue.put(task)
             raise
         except Exception as exc:
             await self.queue.put(task)
-            self.logger.error(
+            sv.logger.error(
                 f"X error queue processing failed: {type(exc).__name__}",
                 exception=False,
             )
@@ -137,7 +116,7 @@ class XErrorQueue:
                     task.username
                 )
                 await self.uid_manager.remove_uid(task.username, lambda _: False)
-            self.logger.warning(
+            sv.logger.warning(
                 f"X account @{task.username} was not found; removed "
                 f"{task.deleted_subscriptions} subscription(s)"
             )
@@ -166,28 +145,17 @@ class XErrorQueue:
 class CredentialProvider:
     """Load and validate X cookies without exposing their values."""
 
-    def __init__(
-        self,
-        logger: RuntimeLogger,
-        *,
-        loader: CookieLoader = get_cookies_with_ts,
-        warning_interval: float = COOKIE_WARNING_INTERVAL,
-        max_age: float = COOKIE_MAX_AGE,
-    ) -> None:
-        self.logger = logger
-        self.loader = loader
-        self.warning_interval = warning_interval
-        self.max_age = max_age
+    def __init__(self) -> None:
         self._last_warning: tuple[tuple[str, ...], float] | None = None
 
     async def load(self, now: float | None = None) -> dict[str, str]:
         checked_at = time.time() if now is None else now
-        cookies, updated_at = await self.loader(COOKIE_NAME)
+        cookies, updated_at = await get_cookies_with_ts(COOKIE_NAME)
         missing = tuple(field for field in REQUIRED_COOKIES if not cookies.get(field))
         if missing:
             self._warn(missing, checked_at)
             raise XCookieMissing(missing)
-        if updated_at <= 0 or checked_at - updated_at > self.max_age:
+        if updated_at <= 0 or checked_at - updated_at > COOKIE_MAX_AGE:
             self._warn(("expired",), checked_at)
             raise XCookieExpired("X cookie is expired")
         self._last_warning = None
@@ -197,13 +165,13 @@ class CredentialProvider:
         if (
             self._last_warning is not None
             and self._last_warning[0] == state
-            and now - self._last_warning[1] < self.warning_interval
+            and now - self._last_warning[1] < COOKIE_WARNING_INTERVAL
         ):
             return
         if state == ("expired",):
-            self.logger.warning("X cookie is expired; polling is paused")
+            sv.logger.warning("X cookie is expired; polling is paused")
         else:
-            self.logger.warning(
+            sv.logger.warning(
                 f"X cookie is missing required fields: {', '.join(state)}"
             )
         self._last_warning = (state, now)
@@ -216,22 +184,15 @@ class FetchMainline:
         uid_manager: UIDManager,
         credentials: CredentialProvider,
         errors: XErrorQueue,
-        logger: RuntimeLogger,
-        *,
-        settings_factory: Callable[[], XSettings] = get_x_settings,
-        client_factory: ClientFactory = XClient,
     ) -> None:
         self.store = store
         self.uid_manager = uid_manager
         self.credentials = credentials
         self.errors = errors
-        self.logger = logger
-        self.settings_factory = settings_factory
-        self.client_factory = client_factory
         self.media_store: XMediaStore | None = None
 
     async def fetch(self, username: str) -> bool:
-        settings = self.settings_factory()
+        settings = sv.get_config()
         state = await self.store.get_account_state(username)
         now = time.time()
         if state.retry_at > now:
@@ -249,9 +210,7 @@ class FetchMainline:
         except XRateLimited as exc:
             await self.store.set_rate_cooldown(exc.endpoint, exc.retry_at)
             await self.store.defer_poll(username, exc.retry_at, type(exc).__name__)
-            self.logger.warning(
-                f"X rate limit reached for @{username} on {exc.endpoint}"
-            )
+            sv.logger.warning(f"X rate limit reached for @{username} on {exc.endpoint}")
             await self.errors.enqueue(username, exc)
             return False
         except XUserNotFound as exc:
@@ -268,9 +227,9 @@ class FetchMainline:
             )
             message = f"X polling failed for @{username}: {type(exc).__name__}"
             if isinstance(exc, XAuthenticationError):
-                self.logger.warning(message)
+                sv.logger.warning(message)
             else:
-                self.logger.error(message, exception=False)
+                sv.logger.error(message, exception=False)
             await self.errors.enqueue(username, exc)
             return False
 
@@ -288,7 +247,7 @@ class FetchMainline:
         cookies: dict[str, str],
         settings: XSettings,
     ) -> list[Tweet] | None:
-        async with self.client_factory(cookies, proxy=settings.proxy) as client:
+        async with XClient(cookies) as client:
             if user_id is None:
                 permit = await self.store.acquire_rate_permit(
                     USER_LOOKUP_ENDPOINT, settings.rate_interval
@@ -331,11 +290,13 @@ class FetchMainline:
         posts = [XPost.from_tweet(tweet) for tweet in tweets if tweet.id > cursor]
         posts.sort(key=lambda post: int(post.id))
         if posts:
-            media_store = self._media_store(settings)
+            media_store = self._media_store()
             for post in posts:
                 await media_store.persist(post, settings.max_media_per_tweet)
+                for username, error in media_store.pop_errors():
+                    await self.errors.enqueue(username, error)
             await self.store.enqueue_posts(username, posts)
-            self.logger.info(f"Fetched {len(posts)} X update(s) for @{username}")
+            sv.logger.info(f"Fetched {len(posts)} X update(s) for @{username}")
         else:
             await self.store.set_cursor(username, newest_id)
 
@@ -349,13 +310,9 @@ class FetchMainline:
         ):
             await self.uid_manager.mark_cold(username)
 
-    def _media_store(self, settings: XSettings) -> XMediaStore:
+    def _media_store(self) -> XMediaStore:
         if self.media_store is None:
-            self.media_store = XMediaStore(
-                settings.proxy,
-                settings.request_timeout_seconds,
-                error_handler=self.errors.enqueue,
-            )
+            self.media_store = XMediaStore()
         return self.media_store
 
     async def close(self) -> None:
@@ -386,19 +343,12 @@ class DispatchMainline:
     def __init__(
         self,
         store: XStore,
-        queue: PostQueue[OutboxItem],
-        executor: DeliveryExecutor,
         errors: XErrorQueue,
-        logger: RuntimeLogger,
-        *,
-        settings_factory: Callable[[], XSettings] = get_x_settings,
     ) -> None:
         self.store = store
-        self.queue = queue
-        self.executor = executor
         self.errors = errors
-        self.logger = logger
-        self.settings_factory = settings_factory
+        self.queue = PostQueue[OutboxItem]()
+        self.executor = DeliveryExecutor()
 
     async def dispatch_due(self, limit: int = 10) -> int:
         for item in await self.store.due_outbox(limit):
@@ -410,7 +360,7 @@ class DispatchMainline:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                settings = self.settings_factory()
+                settings = sv.get_config()
                 retry_at = time.time() + retry_delay(
                     item.attempts,
                     settings.delivery_retry_base_seconds,
@@ -419,7 +369,7 @@ class DispatchMainline:
                 await self.store.mark_failed(
                     item.id, retry_at, f"{type(exc).__name__}: {exc}"
                 )
-                self.logger.error(
+                sv.logger.error(
                     f"X delivery failed for outbox {item.id}: {type(exc).__name__}",
                     exception=False,
                 )
@@ -433,39 +383,18 @@ class DispatchMainline:
 
 
 class XRuntime:
-    def __init__(
-        self,
-        store: XStore,
-        *,
-        settings_factory: Callable[[], XSettings] = get_x_settings,
-        client_factory: ClientFactory = XClient,
-        credentials: CredentialProvider | None = None,
-        error_sender: NotificationSender = send_to_superuser,
-        logger: RuntimeLogger = sv.logger,
-    ) -> None:
+    def __init__(self, store: XStore) -> None:
         self.store = store
-        self.settings_factory = settings_factory
         self.uid_manager = UIDManager()
-        self.dispatch_queue = PostQueue[OutboxItem]()
-        self.credentials = credentials or CredentialProvider(logger)
-        self.errors = XErrorQueue(store, self.uid_manager, logger, sender=error_sender)
+        self.credentials = CredentialProvider()
+        self.errors = XErrorQueue(store, self.uid_manager)
         self.fetch_mainline = FetchMainline(
             store,
             self.uid_manager,
             self.credentials,
             self.errors,
-            logger,
-            settings_factory=settings_factory,
-            client_factory=client_factory,
         )
-        self.dispatch_mainline = DispatchMainline(
-            store,
-            self.dispatch_queue,
-            DeliveryExecutor(),
-            self.errors,
-            logger,
-            settings_factory=settings_factory,
-        )
+        self.dispatch_mainline = DispatchMainline(store, self.errors)
 
     async def bootstrap(self) -> None:
         await self.store.initialize()
@@ -475,7 +404,7 @@ class XRuntime:
         await self.fetch_mainline.close()
 
     async def refresh_accounts(self) -> None:
-        settings = self.settings_factory()
+        settings = sv.get_config()
         await self.uid_manager.init(
             await self.store.usernames(),
             settings.hot_interval_seconds,
