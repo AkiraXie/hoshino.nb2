@@ -19,8 +19,6 @@ from hoshino.types import MessageLike
 @dataclass
 class XPost(Post):
     likes: int = 0
-    retweets: int = 0
-    replies: int = 0
 
     @classmethod
     def from_tweet(cls, tweet: Tweet) -> "XPost":
@@ -40,9 +38,7 @@ class XPost(Post):
             url=f"https://fxtwitter.com/{author}/status/{tweet.id}",
             nickname=tweet.user.displayname or author,
             repost=cls.from_tweet(source) if source is not None else None,
-            likes=tweet.likeCount,
-            retweets=tweet.retweetCount,
-            replies=tweet.replyCount,
+            likes=tweet.likeCount
         )
 
     @override
@@ -77,23 +73,16 @@ class XPost(Post):
         return "https://x.com/"
 
     def format_text(self) -> str:
-        parts = [f"{self.nickname} (@{self.uid})", self.content]
-        if self.repost is not None:
-            parts.extend(
-                [
-                    "------------",
-                    f"转发/引用 @{self.repost.uid}",
-                    self.repost.content,
-                ]
-            )
+        parts = [f"👤 {self.nickname} (@{self.uid})", self.content]
         parts.extend(
             [
-                f"时间: {datetime.fromtimestamp(self.timestamp).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"喜欢: {self.likes}  转发: {self.retweets}  回复: {self.replies}",
-                self.url,
+                "------------",
+                f"📅 {datetime.fromtimestamp(self.timestamp).strftime('%Y-%m-%d %H:%M:%S')}",
+                f"❤️ {self.likes}",
+                f"🔗 {self.url}",
             ]
         )
-        return "\n".join(part for part in parts if part)
+        return "\n".join(parts)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
