@@ -43,6 +43,7 @@ from .models import ReactionInfo, RetrievedMessage
 from .superuser import (
     adapter_superuser_prefix,
     is_superuser,
+    send_to_superuser,
     superuser_ids_for_bot,
     superuser_key,
 )
@@ -74,6 +75,7 @@ __all__ = [
     "RetrievedMessage",
     "adapter_superuser_prefix",
     "is_superuser",
+    "send_to_superuser",
     "Target",
     "UniMessage",
     "custom_node_segment",

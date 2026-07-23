@@ -21,6 +21,35 @@ from test_milky_adapter import _milky_group_message
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_send_to_superuser_uses_explicit_bot(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from hoshino.platform import message as platform_message
+    from hoshino.platform import superuser as platform_superuser
+
+    sent: list[tuple[Any, Any, Any]] = []
+
+    async def capture_send(bot, target, message):
+        sent.append((bot, target, message))
+
+    async def no_delay(_seconds: float) -> None:
+        pass
+
+    monkeypatch.setattr(platform_superuser, "superuser_ids_for_bot", lambda bot: ["42"])
+    monkeypatch.setattr(platform_superuser.asyncio, "sleep", no_delay)
+    monkeypatch.setattr(platform_message, "send_to_target", capture_send)
+    bot, _ = _milky_group_message("ignored", to_me=False)
+
+    await platform_superuser.send_to_superuser(bot, "notice")
+
+    assert len(sent) == 1
+    assert sent[0][0] is bot
+    assert sent[0][1].id == "42"
+    assert sent[0][1].private
+    assert sent[0][2] == "notice"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_legacy_ob11_image_sends_through_milky_exporter(
     monkeypatch: pytest.MonkeyPatch,
 ):
