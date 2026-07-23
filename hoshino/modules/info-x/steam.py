@@ -189,7 +189,7 @@ async def handle_lookup(text: str = ParamText()) -> None:
 
 async def get_account_status(account: str) -> dict[str, str]:
     key = get_steam_api_key()
-    if key is None:
+    if not key:
         return {"personaname": "", "gameextrainfo": ""}
     steam_id = await format_id(account)
     response = await aiohttpx.get(
