@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
 
-import nonebot
 from nonebot.adapters import Bot
 from nonebot.matcher import current_bot, current_event, current_matcher
 
@@ -15,28 +13,11 @@ from hoshino.platform import (
     get_group_id,
     get_user_id,
     group_target,
-    private_target,
     send_group_forward,
     send_private_forward,
     send_to_event,
     send_to_target,
-    superuser_ids_for_bot,
 )
-
-
-async def send_to_superuser(message: MessageLike = "") -> None:
-    bots = list(nonebot.get_bots().values())
-    if not bots:
-        bots = [nonebot.get_bot()]
-    sent: set[tuple[str, str]] = set()
-    for bot in bots:
-        for superuser in superuser_ids_for_bot(bot):
-            key = (bot.self_id, superuser)
-            if key in sent:
-                continue
-            sent.add(key)
-            await asyncio.sleep(0.5)
-            await send_to_target(bot, private_target(superuser), message)
 
 
 async def send(
@@ -139,5 +120,4 @@ __all__ = [
     "send",
     "send_group_segments",
     "send_segments",
-    "send_to_superuser",
 ]

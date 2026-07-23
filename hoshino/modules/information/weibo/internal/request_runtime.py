@@ -4,10 +4,11 @@ import re
 from datetime import datetime
 from time import time
 
+import nonebot
 
+from hoshino.platform import send_to_superuser
 from hoshino.util import aiohttpx
 from hoshino.util.cookies import get_cookies
-from hoshino.util.message import send_to_superuser
 from hoshino.util.network import get_redirect
 
 from ..post import WeiboPost
@@ -681,7 +682,11 @@ class WeiboRequestRuntime:
         await uid_manager.remove_uid(target, lambda uid: uid_has_any_subscription(uid))
         message = f"微博账号不存在，已自动删除订阅: UID {target}, 共 {deleted_count} 条"
         sv.logger.warning(message)
-        await send_to_superuser(message)
+        bots = list(nonebot.get_bots().values())
+        if not bots:
+            bots = [nonebot.get_bot()]
+        for bot in bots:
+            await send_to_superuser(bot, message)
 
     async def _confirm_missing_target(self, target: str) -> bool:
         cookies = await self.get_weibocookies()

@@ -12,9 +12,13 @@ from nonebot.adapters import Bot
 from twscrape.models import Tweet
 
 from hoshino.content import PostQueue, UIDManager
-from hoshino.platform import load_target, platform_key, send_to_target
+from hoshino.platform import (
+    load_target,
+    platform_key,
+    send_to_superuser,
+    send_to_target,
+)
 from hoshino.util.cookies import get_cookies_with_ts
-from hoshino.util.message import send_to_superuser
 
 from .client import (
     USER_LOOKUP_ENDPOINT,
@@ -91,7 +95,11 @@ class XErrorQueue:
         key = self._key(task)
         try:
             message = await self._process(task)
-            await send_to_superuser(message)
+            bots = list(nonebot.get_bots().values())
+            if not bots:
+                bots = [nonebot.get_bot()]
+            for bot in bots:
+                await send_to_superuser(bot, message)
         except asyncio.CancelledError:
             await self.queue.put(task)
             raise

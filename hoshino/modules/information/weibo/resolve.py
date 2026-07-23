@@ -1,5 +1,6 @@
 import re
 
+from nonebot.adapters import Bot
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
@@ -10,8 +11,8 @@ from hoshino.platform import (
     ReactionInfo,
     RetrievedMessage,
     reaction_event_rule,
+    send_to_superuser,
 )
-from hoshino.util.message import send_to_superuser
 
 from .fav import append_fav
 from .internal.post_runtime import get_cached_weibo_uid_id
@@ -61,7 +62,7 @@ svpost_notice = sv.on_notice(
 
 
 @svpost_notice.handle()
-async def handle_weibo_reaction(state: T_State):
+async def handle_weibo_reaction(bot: Bot, state: T_State):
     if not (name := state.get("__weibo_name")):
         return
     if not (matched := state.get("__weibo_matched")):
@@ -76,7 +77,7 @@ async def handle_weibo_reaction(state: T_State):
         if appended:
             sv.logger.info(f"Added weibo to fav by cache: {uid} {id}")
             await send_to_superuser(
-                f"微博收藏新增: UID {uid} ID {id} URL {url} (from cache)"
+                bot, f"微博收藏新增: UID {uid} ID {id} URL {url} (from cache)"
             )
 
     else:
@@ -100,7 +101,7 @@ async def handle_weibo_reaction(state: T_State):
                 if appended:
                     sv.logger.info(f"Added weibo to fav: {post.uid} {post.id}")
                     await send_to_superuser(
-                        f"微博收藏新增: UID {post.uid} ID {post.id} URL {post.url}"
+                        bot, f"微博收藏新增: UID {post.uid} ID {post.id} URL {post.url}"
                     )
             else:
                 sv.logger.error(f"Failed to parse weibo URL: {url}")

@@ -31,6 +31,7 @@ from hoshino.platform import (
     get_plaintext,
     get_session_id,
     reaction_event_rule,
+    send_to_superuser,
 )
 from hoshino.util import aiohttpx
 from hoshino.util.command import sucmd, sumsg
@@ -46,7 +47,6 @@ from hoshino.util.message import (
     finish,
     send,
     send_segments,
-    send_to_superuser,
 )
 
 
@@ -142,7 +142,7 @@ async def _save_images(
         elif result:
             saved += 1
     if saved:
-        await send_to_superuser(f"成功保存{saved}张图片")
+        await send_to_superuser(bot, f"成功保存{saved}张图片")
     return saved
 
 
@@ -167,7 +167,7 @@ async def _save_videos(
             logger.error(f"保存视频失败: {result}")
         elif result:
             saved += 1
-    await send_to_superuser(f"成功保存{saved}视频" if saved else "保存视频失败")
+    await send_to_superuser(bot, f"成功保存{saved}视频" if saved else "保存视频失败")
     return saved
 
 

@@ -697,11 +697,15 @@ async def test_x_error_queue_notifies_generic_error_without_removing_account(
     uid_manager = runtime_module.UIDManager()
     await uid_manager.init(["alice"], min_interval=0, cold_min_interval=0)
     notifications: list[str] = []
+    bot = object()
+    monkeypatch.setattr(runtime_module.nonebot, "get_bots", lambda: {"bot": bot})
     monkeypatch.setattr(runtime_module, "COOKIE_WARNING_INTERVAL", 0)
     monkeypatch.setattr(
         runtime_module,
         "send_to_superuser",
-        lambda message: _record_async(notifications, message),
+        lambda actual_bot, message: _record_async(
+            notifications, message if actual_bot is bot else "wrong bot"
+        ),
     )
     queue = runtime_module.XErrorQueue(store, uid_manager)
 
@@ -757,11 +761,15 @@ async def test_x_user_not_found_is_removed_only_when_error_queue_consumes(
         lambda *args, **kwargs: _async_result(db.RatePermit(True, 0)),
     )
     notifications: list[str] = []
+    bot = object()
+    monkeypatch.setattr(runtime_module.nonebot, "get_bots", lambda: {"bot": bot})
     monkeypatch.setattr(runtime_module.sv, "get_config", config_module.XSettings)
     monkeypatch.setattr(
         runtime_module,
         "send_to_superuser",
-        lambda message: _record_async(notifications, message),
+        lambda actual_bot, message: _record_async(
+            notifications, message if actual_bot is bot else "wrong bot"
+        ),
     )
     runtime = runtime_module.XRuntime(store)
     monkeypatch.setattr(runtime_module, "XClient", MissingUserClient)
@@ -799,9 +807,12 @@ async def test_x_user_not_found_notification_retry_does_not_repeat_deletion(
     await uid_manager.init(["alice"], min_interval=0, cold_min_interval=0)
     sent: list[str] = []
     attempts = 0
+    bot = object()
+    monkeypatch.setattr(runtime_module.nonebot, "get_bots", lambda: {"bot": bot})
 
-    async def flaky_sender(message: str) -> None:
+    async def flaky_sender(actual_bot, message: str) -> None:
         nonlocal attempts
+        assert actual_bot is bot
         attempts += 1
         if attempts == 1:
             raise RuntimeError("notification failed")

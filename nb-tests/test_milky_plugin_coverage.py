@@ -886,12 +886,15 @@ class TestInformationPlugins:
             lambda uid, post_id: appended.append((uid, post_id)) or True,
         )
 
-        async def fake_send_to_superuser(message: str) -> None:
+        bot = _make_bot()
+
+        async def fake_send_to_superuser(actual_bot, message: str) -> None:
+            assert actual_bot is bot
             assert "微博收藏新增" in message
 
         monkeypatch.setattr(weibo_resolve, "send_to_superuser", fake_send_to_superuser)
 
-        await _make_bot().handle_event(notice)
+        await bot.handle_event(notice)
 
         assert calls == [
             {

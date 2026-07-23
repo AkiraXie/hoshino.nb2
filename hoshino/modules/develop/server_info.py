@@ -1,7 +1,7 @@
 import asyncio
 import time
 from hoshino.util.command import sucmd
-from hoshino.util.message import send_to_superuser
+from hoshino.platform import send_to_superuser
 from nonebot.adapters import Bot
 from hoshino.core.hooks import on_bot_connect
 from asyncio import all_tasks
@@ -80,4 +80,4 @@ async def _():
 
 @on_bot_connect
 async def _(bot: Bot):
-    await send_to_superuser(await get_stat())
+    await send_to_superuser(bot, await get_stat())
