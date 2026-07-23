@@ -1,4 +1,4 @@
-from io import BytesIO
+from json import JSONDecodeError
 from nonebot.typing import T_State
 from nonebot.params import Depends
 from .data import Question, Session
@@ -6,26 +6,19 @@ from hoshino.platform.permission import ADMIN
 from hoshino.service import Service
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
-from hoshino.command import UniMessage, uni_image
+from hoshino.command import UniMessage
 from hoshino.platform import (
     get_event_message,
-    get_session_id,
 )
 from hoshino.platform.depends import GroupID, ParamMessage, ParamText, PlainText, SenderID
-from hoshino.core.config import config
-from hoshino.util.aiohttpx import get
-from PIL import Image
 from sqlalchemy import select
-
-img_dir = config.static_dir / "img" / "QA"
-img_dir.mkdir(parents=True, exist_ok=True)
 
 
 async def _parse_answer(answer: str) -> UniMessage:
     try:
         return UniMessage.load(answer)
-    except (KeyError, TypeError, ValueError):
-        return await UniMessage.generate(message=answer)
+    except (KeyError, TypeError, ValueError, JSONDecodeError):
+        return UniMessage.text(answer)
 
 
 async def _finish_answer(answer: str) -> None:
@@ -41,6 +34,8 @@ def _split_question_and_answer(message: UniMessage) -> tuple[str, UniMessage] | 
     for segment in message:
         if not found_separator and segment.type == "text":
             question, separator, remaining = segment.text.partition("你答")
+            if not separator:
+                question, separator, remaining = segment.text.partition("答")
             question_parts.append(question)
             if separator:
                 found_separator = True
@@ -65,48 +60,25 @@ def _split_question_and_answer(message: UniMessage) -> tuple[str, UniMessage] | 
     return question, answer
 
 
-async def event_image_in_local(
+async def parse_qa(
     matcher: Matcher,
-    event: Event,
     msg: UniMessage = ParamMessage(),
-    gid: int = GroupID(),
 ) -> tuple[str, str]:
     parsed = _split_question_and_answer(msg)
     if parsed is None:
         await matcher.finish()
     question, answer_msg = parsed
-    sid = get_session_id(event, "")
-    for i, seg in enumerate(answer_msg):
-        if seg.type == "image":
-            url = str(getattr(seg, "url", None) or "")
-            if not url:
-                continue
-            url = url.replace("https://", "http://")
-            img = await get(url, timeout=120, verify=False)
-            im = Image.open(BytesIO(img.content))
-            fmt = im.get_format_mimetype()
-            ext = ""
-            if fmt == "image/webp":
-                ext = ".webp"
-            elif fmt == "image/jpeg":
-                ext = ".jpg"
-            elif fmt == "image/png":
-                ext = ".png"
-            s = "{}-{}{}".format(sid, (url.split("/")[-2]).split("-")[-1], ext)
-            f = img_dir / s
-            f.write_bytes(img.content)
-            answer_msg[i] = uni_image(f)
     return question, answer_msg.dump(json=True)
 
 
-set_qa_dep = Depends(event_image_in_local)
+set_qa_dep = Depends(parse_qa)
 
 
 async def answer_qa_rule(
+    state:T_State,
     gid: int = GroupID(),
     uid: int = SenderID(),
     text: str = PlainText(),
-    state: T_State | None = None,
 ) -> bool:
     gid = gid or 0
     question = text.lower()
@@ -126,10 +98,8 @@ async def answer_qa_rule(
             )
             answer = session.execute(stmt).scalar_one_or_none()
 
-        if answer and state is not None:
+        if answer :
             state["answer"] = answer.answer
-            return True
-        elif answer:
             return True
         else:
             return False
@@ -301,7 +271,7 @@ async def _(gid: int = GroupID()):
 
 @ans.handle()
 async def _(state: T_State):
-    if answer := state["answer"]:
+    if answer := state.get("answer"):
         await _finish_answer(answer)
 
 
