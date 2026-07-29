@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import random
 import time
 from dataclasses import dataclass
 
@@ -12,6 +11,7 @@ from nonebot.adapters import Bot
 from twscrape.models import Tweet
 
 from hoshino.content import PostQueue, UIDManager
+from hoshino.content.dispatch import retry_delay
 from hoshino.platform import (
     load_target,
     platform_key,
@@ -301,6 +301,7 @@ class FetchMainline:
             media_store = self._media_store()
             for post in posts:
                 await media_store.persist(post, settings.max_media_per_tweet)
+                await media_store.write_metadata(post)
                 for username, error in media_store.pop_errors():
                     await self.errors.enqueue(username, error)
             await self.store.enqueue_posts(username, posts)
@@ -327,6 +328,41 @@ class FetchMainline:
         if self.media_store is not None:
             await self.media_store.close()
             self.media_store = None
+
+
+# Platform API rejections that can never succeed on retry, matched against the
+# lower-cased ActionFailed reason. Network timeouts, rate limits ("Too Many
+# Requests") and 5xx responses deliberately do NOT match — those stay transient.
+_PERMANENT_DELIVERY_ERROR_MARKERS = (
+    # Content the platform refuses outright, no matter when we retry it.
+    "is too long",
+    "message text is empty",
+    "can't parse entities",
+    # The target is gone for good, or the bot can no longer post there.
+    "chat not found",
+    "user not found",
+    "bot was kicked",
+    "bot is not a member",
+    "not a member of the group",
+    "chat was deleted",
+    "group is deactivated",
+    "user is deactivated",
+    "not enough rights",
+    "have no rights",
+)
+
+
+def is_permanent_delivery_error(exc: Exception) -> bool:
+    """Return True when a delivery error can never succeed and must not retry.
+
+    Only adapter API rejections (``ActionFailed``, matched by class name so this
+    stays adapter-neutral) carry a definitive server-side reason; anything else
+    (timeouts, connection errors, disabled service) is treated as transient.
+    """
+    if type(exc).__name__ != "ActionFailed":
+        return False
+    reason = str(exc).lower()
+    return any(marker in reason for marker in _PERMANENT_DELIVERY_ERROR_MARKERS)
 
 
 class DeliveryExecutor:
@@ -368,26 +404,46 @@ class DispatchMainline:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                settings = sv.get_config()
-                retry_at = time.time() + retry_delay(
-                    item.attempts,
-                    settings.delivery_retry_base_seconds,
-                    settings.delivery_retry_max_seconds,
-                )
-                await self.store.mark_failed(
-                    item.id, retry_at, f"{type(exc).__name__}: {exc}"
-                )
-                sv.logger.error(
-                    f"X delivery failed for outbox {item.id}: {type(exc).__name__}",
-                    exception=False,
-                )
-                await self.errors.enqueue(item.post.uid, exc)
+                await self._handle_failure(item, exc)
             else:
                 await self.store.mark_sent(item.id)
                 sent += 1
             finally:
                 self.queue.remove(item)
         return sent
+
+    async def _handle_failure(self, item: OutboxItem, exc: Exception) -> None:
+        settings = sv.get_config()
+        error_text = f"{type(exc).__name__}: {exc}"
+        attempt_number = item.attempts + 1
+        if is_permanent_delivery_error(exc):
+            # The platform will never accept this item; stop immediately instead
+            # of burning retries (and superuser notifications) forever.
+            await self.store.mark_dead(item.id, error_text)
+            sv.logger.error(
+                f"X delivery gave up on outbox {item.id} "
+                f"(permanent error): {error_text}",
+                exception=False,
+            )
+        elif attempt_number >= settings.delivery_max_attempts:
+            await self.store.mark_dead(item.id, error_text)
+            sv.logger.error(
+                f"X delivery gave up on outbox {item.id} "
+                f"after {attempt_number} attempts: {error_text}",
+                exception=False,
+            )
+        else:
+            retry_at = time.time() + retry_delay(
+                item.attempts,
+                settings.delivery_retry_base_seconds,
+                settings.delivery_retry_max_seconds,
+            )
+            await self.store.mark_failed(item.id, retry_at, error_text)
+            sv.logger.error(
+                f"X delivery failed for outbox {item.id}: {type(exc).__name__}",
+                exception=False,
+            )
+        await self.errors.enqueue(item.post.uid, exc)
 
 
 class XRuntime:
@@ -438,13 +494,6 @@ class XRuntime:
         return await self.dispatch_mainline.dispatch_due(limit)
 
 
-def retry_delay(attempts: int, base: float, maximum: float) -> float:
-    base = max(1.0, base)
-    maximum = max(base, maximum)
-    delay = min(maximum, base * (2 ** min(max(0, attempts), 10)))
-    return delay + random.uniform(0, min(delay * 0.2, 30.0))
-
-
 store = XStore()
 runtime = XRuntime(store)
 
@@ -461,6 +510,7 @@ __all__ = [
     "XCookieExpired",
     "XCookieMissing",
     "XRuntime",
+    "is_permanent_delivery_error",
     "runtime",
     "store",
 ]

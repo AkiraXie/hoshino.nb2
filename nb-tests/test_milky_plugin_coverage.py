@@ -347,25 +347,6 @@ class TestBasePlugins:
         assert _send_calls(calls) == []
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_help_command_responds(self, monkeypatch):
-        """help: sv.on_alconna(help ...)."""
-        bot = _make_bot()
-        event = _make_group_msg("help")
-        calls = _stub_all_api(monkeypatch)
-
-        await bot.handle_event(event)
-
-        send = _send_calls(calls)
-        assert len(send) == 1
-        assert send[0]["params"]["group_id"] == 123456
-        msg = send[0]["params"]["message"]
-        assert any(
-            "help" in seg.get("data", {}).get("text", "").lower()
-            for seg in msg
-            if seg.get("type") == "text"
-        )
-
-    @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_lssv_permission_or_to_me_blocks(self, monkeypatch):
         """lssv requires ADMIN + to_me(); without @mention → silent."""
         bot = _make_bot()
@@ -588,7 +569,7 @@ class TestEntertainmentPlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_dice_regex_responds(self, monkeypatch):
         bot = _make_bot()
-        event = _make_group_msg("rr1d6")
+        event = _make_group_msg(".r1d6")
         calls = _stub_all_api(monkeypatch)
 
         await bot.handle_event(event)

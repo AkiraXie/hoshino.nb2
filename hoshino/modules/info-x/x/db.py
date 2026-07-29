@@ -114,13 +114,26 @@ class XStore:
         return await self._transaction(operation)
 
     async def remove_subscription(self, scope_key: str, username: str) -> bool:
-        result = await self._transaction(
-            lambda conn: conn.execute(
+        normalized = _username(username)
+
+        def operation(conn: sqlite3.Connection) -> bool:
+            deleted = conn.execute(
                 "DELETE FROM subscriptions WHERE scope_key = ? AND username = ?",
-                (scope_key, _username(username)),
+                (scope_key, normalized),
             ).rowcount
-        )
-        return bool(result)
+            if deleted:
+                # Keep the per-account invariant: once no subscription references
+                # the username anymore, all of its derived state must go too, so an
+                # orphaned outbox item cannot keep being delivered (and erroring).
+                remaining = conn.execute(
+                    "SELECT 1 FROM subscriptions WHERE username = ? LIMIT 1",
+                    (normalized,),
+                ).fetchone()
+                if remaining is None:
+                    self._purge_account_state(conn, normalized)
+            return deleted > 0
+
+        return await self._transaction(operation)
 
     async def remove_account(self, username: str) -> int:
         normalized = _username(username)
@@ -129,12 +142,16 @@ class XStore:
             deleted = conn.execute(
                 "DELETE FROM subscriptions WHERE username = ?", (normalized,)
             ).rowcount
-            conn.execute("DELETE FROM outbox WHERE username = ?", (normalized,))
-            conn.execute("DELETE FROM fetch_state WHERE username = ?", (normalized,))
-            conn.execute("DELETE FROM account_state WHERE username = ?", (normalized,))
+            self._purge_account_state(conn, normalized)
             return max(0, deleted)
 
         return await self._transaction(operation)
+
+    @staticmethod
+    def _purge_account_state(conn: sqlite3.Connection, username: str) -> None:
+        conn.execute("DELETE FROM outbox WHERE username = ?", (username,))
+        conn.execute("DELETE FROM fetch_state WHERE username = ?", (username,))
+        conn.execute("DELETE FROM account_state WHERE username = ?", (username,))
 
     async def subscriptions_for_scope(self, scope_key: str) -> list[Subscription]:
         return await self._subscriptions("WHERE scope_key = ?", (scope_key,))
@@ -297,6 +314,13 @@ class XStore:
             WHERE id = ?
             """,
             (retry_at, error[:1000], outbox_id),
+        )
+
+    async def mark_dead(self, outbox_id: int, error: str) -> None:
+        """Permanently give up on an outbox item so it is never dispatched again."""
+        await self._execute(
+            "UPDATE outbox SET status = 'failed', last_error = ? WHERE id = ?",
+            (error[:1000], outbox_id),
         )
 
     async def acquire_rate_permit(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -66,6 +67,47 @@ class XMediaStore:
         post.images = merged_images
         post.videos = merged_videos
         return post
+
+    async def write_metadata(self, post: XPost) -> None:
+        """Write message.json alongside persisted media for structured archive."""
+        post_dir = self.root / post.uid / post.id
+        metadata_path = post_dir / "message.json"
+        if metadata_path.exists():
+            return
+
+        repost_data = None
+        if isinstance(post.repost, XPost):
+            repost_data = {
+                "uid": post.repost.uid,
+                "id": post.repost.id,
+                "content": post.repost.content,
+                "nickname": post.repost.nickname,
+                "url": post.repost.url,
+            }
+
+        # Store relative filenames for images/videos
+        image_names = [Path(p).name for p in post.images if not p.startswith("http")]
+        video_names = [Path(p).name for p in post.videos if not p.startswith("http")]
+
+        metadata = {
+            "uid": post.uid,
+            "id": post.id,
+            "content": post.content,
+            "nickname": post.nickname,
+            "timestamp": post.timestamp,
+            "url": post.url,
+            "likes": post.likes,
+            "images": image_names,
+            "videos": video_names,
+            "repost": repost_data,
+        }
+
+        await asyncio.to_thread(post_dir.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            metadata_path.write_text,
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     async def _persist_urls(
         self,

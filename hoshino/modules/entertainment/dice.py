@@ -7,7 +7,7 @@ from hoshino.command import UniMessage
 from hoshino.service import Service
 
 sv = Service("dice", visible=False)
-d = sv.on_regex(r".r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?")
+d = sv.on_regex(r"\.r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?")
 
 
 @d.handle()

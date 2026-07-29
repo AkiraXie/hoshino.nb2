@@ -18,6 +18,8 @@ def _backend(event: Event):
         return milky_event
     return telegram_event if isinstance(event, TelegramEvent) else ob11_event
 
+def get_event(event: Event) -> str:
+    return str(event.model_dump_json())
 
 def get_event_value(event: Event, name: str, default: Any = None) -> Any:
     return _backend(event).get_event_value(event, name, default)

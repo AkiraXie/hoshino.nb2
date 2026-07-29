@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nonebot.adapters import Event
+from nonebot.adapters.onebot.v11 import Event
 from nonebot.compat import type_validate_python
 
 from hoshino.platform.ob11.types import Bot, Message
@@ -26,7 +26,7 @@ def get_event_value(event: Event, name: str, default: Any = None) -> Any:
 
 
 def get_event(event: Event) -> str:
-    return str(getattr(event, "__dict__", {}))
+    return str(event.model_dump_json())
 
 
 def get_group_id(event: Event, default: int | None = None) -> int | None:

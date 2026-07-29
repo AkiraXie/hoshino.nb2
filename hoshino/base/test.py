@@ -1,17 +1,17 @@
 from nonebot.adapters import Bot
 from nonebot.matcher import matchers
+from nonebot.adapters import Event
 
 from hoshino.command import UniMessage
 from hoshino.platform import send_group_forward, send_private_forward
 from hoshino.platform.depends import GroupID, SenderID
-from hoshino.platform.ob11.event import get_event
-from hoshino.platform.ob11.types import Event
+from hoshino.platform.event import get_event
 from hoshino.util.command import get_bot_list, sucmd
 
 test1 = sucmd("testgetbot", True)
 test2 = sucmd("testmatchers", True)
 test3 = sucmd("testevent", True)
-test4 = sucmd("forward")
+test4 = sucmd("testforward")
 
 
 def get_matchers() -> list:
@@ -19,18 +19,19 @@ def get_matchers() -> list:
 
 
 @test1.handle()
-async def _(bot: Bot):
+async def _():
     await test1.finish(str(get_bot_list()))
 
 
 @test2.handle()
-async def _(bot: Bot):
+async def _():
     await test2.finish(str(get_matchers()))
 
 
 @test3.handle()
-async def _(bot: Bot, event: Event):
-    await test3.finish(get_event(event))
+async def _(event: Event):
+    res= get_event(event) 
+    await test3.finish(res)
 
 
 @test4.handle()

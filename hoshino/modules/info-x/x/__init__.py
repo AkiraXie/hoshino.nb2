@@ -7,7 +7,9 @@ import re
 from nonebot.adapters import Bot
 
 from hoshino.command import MsgTarget, UniMessage
-from hoshino.core.hooks import on_serial_startup, on_shutdown
+import asyncio
+
+from hoshino.core.hooks import on_post_startup, on_serial_startup, on_shutdown
 from hoshino.core.schedule import scheduled_job
 from hoshino.platform import dump_target, platform_key, target_scope_key
 from hoshino.platform.depends import ParamText
@@ -104,13 +106,22 @@ async def poll_x() -> None:
     await runtime.fetch_next_update()
 
 
-@scheduled_job("interval", seconds=2, jitter=0.2, id="发送X更新")
-async def deliver_x() -> None:
-    await runtime.dispatch_pending()
+async def _x_dispatch_worker() -> None:
+    while True:
+        try:
+            sent = await runtime.dispatch_pending()
+        except Exception:
+            sv.logger.exception("X dispatch worker error")
+            sent = 0
+        await asyncio.sleep(0 if sent else 0.5)
+
+
+@on_post_startup
+async def start_x_dispatch_worker() -> None:
+    asyncio.create_task(_x_dispatch_worker())
 
 
 __all__ = [
-    "deliver_x",
     "handle_x_add",
     "handle_x_list",
     "handle_x_remove",

@@ -38,7 +38,7 @@ class XPost(Post):
             url=f"https://fxtwitter.com/{author}/status/{tweet.id}",
             nickname=tweet.user.displayname or author,
             repost=cls.from_tweet(source) if source is not None else None,
-            likes=tweet.likeCount
+            likes=tweet.likeCount,
         )
 
     @override
@@ -53,20 +53,28 @@ class XPost(Post):
 
     @override
     def render_message(self, post_message: PostMessage) -> list[MessageLike]:
-        message = UniMessage.text(post_message.text)
-        for image in post_message.images:
-            message += (
-                UniMessage.image(path=image)
-                if isinstance(image, Path)
-                else UniMessage.image(url=image)
-            )
-        for video in post_message.videos:
-            message += (
-                UniMessage.video(path=video)
-                if isinstance(video, Path)
-                else UniMessage.video(url=video)
-            )
-        return [message]
+        # Text is sent as its own message, never as a media caption: Telegram
+        # caps captions at 1024 chars, so a long post attached to an image used
+        # to fail delivery forever with "message caption is too long".
+        messages: list[MessageLike] = []
+        if post_message.text:
+            messages.append(UniMessage.text(post_message.text))
+        if post_message.images or post_message.videos:
+            media = UniMessage()
+            for image in post_message.images:
+                media += (
+                    UniMessage.image(path=image)
+                    if isinstance(image, Path)
+                    else UniMessage.image(url=image)
+                )
+            for video in post_message.videos:
+                media += (
+                    UniMessage.video(path=video)
+                    if isinstance(video, Path)
+                    else UniMessage.video(url=video)
+                )
+            messages.append(media)
+        return messages
 
     @override
     def get_referer(self) -> str:

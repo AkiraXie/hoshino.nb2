@@ -106,6 +106,26 @@ class WeiboPost(Post):
 
     user_avatar_image: str = ""
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "WeiboPost":
+        """Reconstruct a WeiboPost from a serialized dict (outbox payload)."""
+        repost_data = data.get("repost")
+        repost = cls.from_dict(repost_data) if isinstance(repost_data, dict) else None
+        return cls(
+            uid=data.get("uid", ""),
+            id=data.get("id", ""),
+            content=data.get("content", ""),
+            title=data.get("title", ""),
+            images=list(data.get("images", [])),
+            videos=list(data.get("videos", [])),
+            timestamp=float(data.get("timestamp", 0)),
+            url=data.get("url", ""),
+            nickname=data.get("nickname", ""),
+            description=data.get("description", ""),
+            repost=repost,
+            user_avatar_image=data.get("user_avatar_image", ""),
+        )
+
     @override
     def get_referer(self) -> str:
         return "https://weibo.com"
@@ -187,9 +207,7 @@ class WeiboPost(Post):
         )
 
     @override
-    def render_message(
-        self, post_message: PostMessage
-    ) -> list[MessageLike]:
+    def render_message(self, post_message: PostMessage) -> list[MessageLike]:
         return render_messages(post_message, post=self)
 
     async def send(

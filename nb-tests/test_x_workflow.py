@@ -134,22 +134,25 @@ async def test_x_post_media_reaches_fake_telegram_api(
     async def fake_request(request):
         endpoint = str(request.url).rsplit("/", 1)[-1]
         endpoints.append(endpoint)
+        result = (
+            [_telegram_message(9), _telegram_message(10)]
+            if endpoint == "sendMediaGroup"
+            else _telegram_message(8)
+        )
         return Response(
             200,
-            content=json.dumps(
-                {
-                    "ok": True,
-                    "result": [_telegram_message(9), _telegram_message(10)],
-                }
-            ).encode(),
+            content=json.dumps({"ok": True, "result": result}).encode(),
         )
 
     monkeypatch.setattr(bot.adapter, "request", fake_request)
-    message = post.render_message(await post.get_message())[0]
+    messages = post.render_message(await post.get_message())
 
-    await send_to_target(bot, group_target(-100123456), message)
+    for message in messages:
+        await send_to_target(bot, group_target(-100123456), message)
 
-    assert endpoints == ["sendMediaGroup"]
+    # Text goes out as its own message; media follows as a media group, so a long
+    # caption can never exceed Telegram's limit.
+    assert endpoints == ["sendMessage", "sendMediaGroup"]
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -586,6 +589,9 @@ async def test_x_workflow_first_fetch_only_sets_cursor_then_enqueues(
         async def persist(self, post, max_media):
             return post
 
+        async def write_metadata(self, post):
+            pass
+
         def pop_errors(self):
             return []
 
@@ -865,6 +871,147 @@ async def test_x_media_download_error_enters_runtime_error_queue(
     assert len(errors) == 1
     assert errors[0][0] == "alice"
     assert isinstance(errors[0][1], httpx.ConnectError)
+
+
+def _outbox_statuses(path: Path) -> dict[int, str]:
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    rows = conn.execute("SELECT id, status FROM outbox").fetchall()
+    conn.close()
+    return {int(row[0]): row[1] for row in rows}
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+def test_is_permanent_delivery_error_classification():
+    from nonebot.adapters.telegram.exception import ActionFailed
+
+    permanent = _x_module("runtime").is_permanent_delivery_error
+
+    assert permanent(ActionFailed("Bad Request: message caption is too long"))
+    assert permanent(ActionFailed("Bad Request: message is too long"))
+    assert permanent(ActionFailed("Bad Request: chat not found"))
+    assert permanent(ActionFailed("Forbidden: bot was kicked from the group chat"))
+    # Transient conditions must keep retrying.
+    assert not permanent(ActionFailed("Too Many Requests: retry after 30"))
+    assert not permanent(ActionFailed("Internal Server Error"))
+    # Non-API errors are never classified as permanent.
+    assert not permanent(RuntimeError("message caption is too long"))
+
+
+async def _seed_outbox(db, post_module, tmp_path: Path, username: str = "alice"):
+    store = db.XStore(tmp_path / "x.db")
+    await store.add_subscription(
+        scope_key="telegram:-1",
+        platform="telegram",
+        group_id=-1,
+        target_data="{}",
+        username=username,
+        name=username,
+    )
+    await store.enqueue_posts(
+        username, [post_module.XPost(uid=username, id="101", content="")]
+    )
+    return store
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_delivery_permanent_error_dead_letters_immediately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from nonebot.adapters.telegram.exception import ActionFailed
+
+    config_module = _x_module("config")
+    db = _x_module("db")
+    post_module = _x_module("post")
+    runtime_module = _x_module("runtime")
+    store = await _seed_outbox(db, post_module, tmp_path)
+    monkeypatch.setattr(runtime_module.sv, "get_config", config_module.XSettings)
+    monkeypatch.setattr(runtime_module.sv, "logger", RecordingLogger())
+    runtime = runtime_module.XRuntime(store)
+
+    async def boom(item):
+        raise ActionFailed("Bad Request: message caption is too long")
+
+    monkeypatch.setattr(runtime.dispatch_mainline.executor, "send", boom)
+    monkeypatch.setattr(runtime.errors, "enqueue", lambda *a, **k: _async_result(False))
+
+    await runtime.dispatch_mainline.dispatch_due()
+
+    assert _outbox_statuses(tmp_path / "x.db") == {1: "failed"}
+    assert await store.due_outbox() == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_delivery_transient_error_dead_letters_after_max_attempts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import sqlite3
+
+    config_module = _x_module("config")
+    db = _x_module("db")
+    post_module = _x_module("post")
+    runtime_module = _x_module("runtime")
+    store = await _seed_outbox(db, post_module, tmp_path)
+    settings = replace(config_module.XSettings(), delivery_max_attempts=2)
+    monkeypatch.setattr(runtime_module.sv, "get_config", lambda: settings)
+    monkeypatch.setattr(runtime_module.sv, "logger", RecordingLogger())
+    runtime = runtime_module.XRuntime(store)
+
+    async def boom(item):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(runtime.dispatch_mainline.executor, "send", boom)
+    monkeypatch.setattr(runtime.errors, "enqueue", lambda *a, **k: _async_result(False))
+
+    # Attempt 1 fails transiently and is rescheduled, still pending.
+    await runtime.dispatch_mainline.dispatch_due()
+    assert _outbox_statuses(tmp_path / "x.db") == {1: "pending"}
+
+    # Make it due again; attempt 2 hits the max and is dead-lettered.
+    conn = sqlite3.connect(tmp_path / "x.db")
+    conn.execute("UPDATE outbox SET next_attempt_at = 0")
+    conn.commit()
+    conn.close()
+    await runtime.dispatch_mainline.dispatch_due()
+    assert _outbox_statuses(tmp_path / "x.db") == {1: "failed"}
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_remove_subscription_purges_state_only_when_last_scope_gone(
+    tmp_path: Path,
+):
+    db = _x_module("db")
+    post_module = _x_module("post")
+    store = db.XStore(tmp_path / "x.db")
+    for scope_key in ("telegram:-1", "milky:2"):
+        await store.add_subscription(
+            scope_key=scope_key,
+            platform=scope_key.split(":", 1)[0],
+            group_id=int(scope_key.split(":", 1)[1]),
+            target_data="{}",
+            username="alice",
+            name="alice",
+        )
+    await store.enqueue_posts(
+        "alice", [post_module.XPost(uid="alice", id="101", content="")]
+    )
+    await store.get_account_state("alice")
+    await store.set_cursor("alice", 101)
+
+    # Another scope still subscribes: state must be preserved.
+    assert await store.remove_subscription("telegram:-1", "alice")
+    assert await store.usernames() == ["alice"]
+    assert len(await store.due_outbox()) == 2
+    assert (await store.get_account_state("alice")).username == "alice"
+    assert await store.get_cursor("alice") == 101
+
+    # Last subscription removed: everything for the account must be empty.
+    assert await store.remove_subscription("milky:2", "alice")
+    assert await store.usernames() == []
+    assert await store.due_outbox() == []
+    assert await store.get_cursor("alice") is None
+    assert (await store.get_account_state("alice")).user_id is None
 
 
 async def _async_result(value):

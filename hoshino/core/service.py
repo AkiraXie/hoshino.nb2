@@ -174,6 +174,7 @@ class Service(Generic[ConfigT]):
         self.enable_scope, self.disable_scope = _load_service_scopes(data)
         self.logger = LoggerWrapper(self.name)
         self.matchers = []
+        self._enable_groups_cache: dict[int, list[Bot]] | None = None
         self._ensure_default_config()
         _loaded_services[self.name] = self
 
@@ -184,14 +185,18 @@ class Service(Generic[ConfigT]):
     def set_enable(self, scope_key: str):
         self.enable_scope.add(scope_key)
         self.disable_scope.discard(scope_key)
+        self._enable_groups_cache = None
         _save_service_data(self)
 
     def set_disable(self, scope_key: str):
         self.enable_scope.discard(scope_key)
         self.disable_scope.add(scope_key)
+        self._enable_groups_cache = None
         _save_service_data(self)
 
     async def get_enable_groups(self) -> dict[int, list[Bot]]:
+        if self._enable_groups_cache is not None:
+            return self._enable_groups_cache
         gl = defaultdict(list)
         for bot in nonebot.get_bots().values():
             platform = platform_key(bot)
@@ -218,7 +223,8 @@ class Service(Generic[ConfigT]):
                 }
             for g in sgl:
                 gl[g].append(bot)
-        return gl
+        self._enable_groups_cache = dict(gl)
+        return self._enable_groups_cache
 
     def _ensure_default_config(self) -> None:
         if self.config_type is None:
