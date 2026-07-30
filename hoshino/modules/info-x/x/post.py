@@ -35,7 +35,7 @@ class XPost(Post):
             images=images,
             videos=videos,
             timestamp=date.timestamp(),
-            url=f"https://fxtwitter.com/{author}/status/{tweet.id}",
+            url=f"https://fixupx.com/{author}/status/{tweet.id}",
             nickname=tweet.user.displayname or author,
             repost=cls.from_tweet(source) if source is not None else None,
             likes=tweet.likeCount,
