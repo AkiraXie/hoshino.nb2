@@ -16,6 +16,9 @@ from hoshino.content import Post, PostMessage
 from hoshino.types import MessageLike
 
 
+CAPTION_LIMIT = 1024
+
+
 @dataclass
 class XPost(Post):
     likes: int = 0
@@ -53,13 +56,16 @@ class XPost(Post):
 
     @override
     def render_message(self, post_message: PostMessage) -> list[MessageLike]:
-        # Text is sent as its own message, never as a media caption: Telegram
-        # caps captions at 1024 chars, so a long post attached to an image used
-        # to fail delivery forever with "message caption is too long".
+        # Media and text go out together (media first, so it renders above the
+        # text). Only when the text exceeds the caption limit is it split into
+        # its own message: Telegram refuses media captions over 1024 chars, so
+        # a long post attached to media would otherwise fail delivery forever.
+        text = post_message.text
+        has_media = bool(post_message.images or post_message.videos)
+        split_text = has_media and len(text) > CAPTION_LIMIT
+
         messages: list[MessageLike] = []
-        if post_message.text:
-            messages.append(UniMessage.text(post_message.text))
-        if post_message.images or post_message.videos:
+        if has_media:
             media = UniMessage()
             for image in post_message.images:
                 media += (
@@ -73,7 +79,11 @@ class XPost(Post):
                     if isinstance(video, Path)
                     else UniMessage.video(url=video)
                 )
+            if text and not split_text:
+                media += UniMessage.text(text)
             messages.append(media)
+        if text and (split_text or not has_media):
+            messages.append(UniMessage.text(text))
         return messages
 
     @override
@@ -81,12 +91,12 @@ class XPost(Post):
         return "https://x.com/"
 
     def format_text(self) -> str:
-        parts = [f"👤 {self.nickname} (@{self.uid})", self.content]
+        parts = [self.content]
         parts.extend(
             [
                 "------------",
+                f"👤 {self.nickname} (@{self.uid})",
                 f"📅 {datetime.fromtimestamp(self.timestamp).strftime('%Y-%m-%d %H:%M:%S')}",
-                f"❤️ {self.likes}",
                 f"🔗 {self.url}",
             ]
         )

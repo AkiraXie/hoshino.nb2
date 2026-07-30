@@ -39,16 +39,26 @@ class XMediaStore:
         return errors
 
     async def persist(self, post: XPost, max_media: int) -> XPost:
-        posts = [post]
+        # The original tweet owns its media, so process the repost first: shared
+        # media lands in the original's directory (root/<orig_uid>/<orig_id>/).
+        # Together with the exists-check in _download, every later retweet of the
+        # same original reuses that single file instead of saving another copy.
+        chain: list[XPost] = []
         if isinstance(post.repost, XPost):
-            posts.append(post.repost)
+            chain.append(post.repost)
+        chain.append(post)
         remaining = max(0, max_media)
         merged_images: list[str] = []
         merged_videos: list[str] = []
-        for current in posts:
-            image_urls = current.images[:remaining]
+        # A retweet/quote re-carries the source tweet's media, so the same URL
+        # appears on both the post and its repost. Deduplicate by the source URL
+        # up front; the per-post download paths differ (they embed the post id),
+        # so comparing downloaded paths would miss these dupes.
+        seen_urls: set[str] = set()
+        for current in chain:
+            image_urls = _take_unseen(current.images, seen_urls, remaining)
             remaining -= len(image_urls)
-            video_urls = current.videos[:remaining]
+            video_urls = _take_unseen(current.videos, seen_urls, remaining)
             remaining -= len(video_urls)
             current.images = await self._persist_urls(
                 current, image_urls, is_video=False, keep_remote=True
@@ -56,12 +66,8 @@ class XMediaStore:
             current.videos = await self._persist_urls(
                 current, video_urls, is_video=True, keep_remote=False
             )
-            merged_images.extend(
-                path for path in current.images if path not in merged_images
-            )
-            merged_videos.extend(
-                path for path in current.videos if path not in merged_videos
-            )
+            merged_images.extend(current.images)
+            merged_videos.extend(current.videos)
             if remaining <= 0:
                 break
         post.images = merged_images
@@ -159,6 +165,16 @@ class XMediaStore:
             )
             self.errors.append((post.uid, exc))
             return None
+
+
+def _take_unseen(urls: list[str], seen: set[str], limit: int) -> list[str]:
+    taken: list[str] = []
+    for url in urls:
+        if len(taken) >= limit or url in seen:
+            continue
+        seen.add(url)
+        taken.append(url)
+    return taken
 
 
 def _httpx_proxy(proxy: str | None) -> str | None:

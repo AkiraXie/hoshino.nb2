@@ -150,9 +150,279 @@ async def test_x_post_media_reaches_fake_telegram_api(
     for message in messages:
         await send_to_target(bot, group_target(-100123456), message)
 
-    # Text goes out as its own message; media follows as a media group, so a long
-    # caption can never exceed Telegram's limit.
-    assert endpoints == ["sendMessage", "sendMediaGroup"]
+    # Short text rides along as the media caption, so a single media group is
+    # sent (media first, text above/below it in one bubble).
+    assert endpoints == ["sendMediaGroup"]
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_render_message_combines_media_and_text():
+    post_module = _x_module("post")
+    post = post_module.XPost(
+        uid="alice",
+        id="101",
+        content="caption",
+        timestamp=1,
+        images=["https://pbs.twimg.com/a.jpg"],
+    )
+    messages = post.render_message(await post.get_message())
+
+    # Short text is combined with the media (image first, then text caption).
+    assert len(messages) == 1
+    assert messages[0][0].type == "image"
+    assert messages[0][1].type == "text"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_render_message_splits_text_over_caption_limit():
+    post_module = _x_module("post")
+    post = post_module.XPost(
+        uid="alice",
+        id="102",
+        content="x" * (post_module.CAPTION_LIMIT + 1),
+        timestamp=1,
+        images=["https://pbs.twimg.com/a.jpg"],
+    )
+    messages = post.render_message(await post.get_message())
+
+    # Over-long text cannot be a caption, so media and text are split.
+    assert len(messages) == 2
+    assert messages[0][0].type == "image"
+    assert messages[1][0].type == "text"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+def test_x_username_accepts_profile_urls():
+    parse = importlib.import_module("hoshino.modules.info-x.x")._username
+    assert parse("alice") == "alice"
+    assert parse("@Alice") == "alice"
+    assert parse("x.com/alice") == "alice"
+    assert parse("https://x.com/alice") == "alice"
+    assert parse("http://x.com/alice") == "alice"
+    assert parse("https://x.com/alice/status/12345") == "alice"
+    assert parse("https://twitter.com/alice") == "alice"
+    assert parse("https://x.com/") is None
+    assert parse("not a user name") is None
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+def test_x_list_id_parsing():
+    parse = importlib.import_module("hoshino.modules.info-x.x")._list_id
+    assert parse("1234567890") == 1234567890
+    assert parse("https://x.com/i/lists/1234567890") == 1234567890
+    assert parse("x.com/i/lists/1234567890") == 1234567890
+    assert parse("https://twitter.com/i/lists/42") == 42
+    # Slug URLs cannot be resolved by twscrape.
+    assert parse("x.com/alice/lists/my-list") is None
+    assert parse("not-a-list") is None
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_outbox_dedupes_same_tweet_across_user_and_list(tmp_path: Path):
+    db = _x_module("db")
+    post_module = _x_module("post")
+    store = db.XStore(tmp_path / "x.db")
+    # Group A subscribes to user alice AND list 555; group B only to list 555.
+    await store.add_subscription(
+        scope_key="telegram:-1",
+        platform="telegram",
+        group_id=-1,
+        target_data="{}",
+        username="alice",
+        name="alice",
+    )
+    await store.add_list_subscription(
+        scope_key="telegram:-1",
+        platform="telegram",
+        group_id=-1,
+        target_data="{}",
+        list_id=555,
+        name="555",
+    )
+    await store.add_list_subscription(
+        scope_key="milky:2",
+        platform="milky",
+        group_id=2,
+        target_data="{}",
+        list_id=555,
+        name="555",
+    )
+    post = post_module.XPost(uid="alice", id="101", content="hello")
+
+    # The same tweet arrives via the user feed and then the list feed.
+    await store.enqueue_posts("alice", [post])
+    await store.enqueue_list_posts(555, [post])
+
+    due = await store.due_outbox()
+    # Group A receives the tweet once (not twice), group B receives it once.
+    assert sorted(item.scope_key for item in due) == ["milky:2", "telegram:-1"]
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_list_subscription_lifecycle_and_purge(tmp_path: Path):
+    db = _x_module("db")
+    post_module = _x_module("post")
+    store = db.XStore(tmp_path / "x.db")
+    source = db.list_source_key(555)
+    for scope_key, platform, group_id in (
+        ("telegram:-1", "telegram", -1),
+        ("milky:2", "milky", 2),
+    ):
+        await store.add_list_subscription(
+            scope_key=scope_key,
+            platform=platform,
+            group_id=group_id,
+            target_data="{}",
+            list_id=555,
+            name="555",
+        )
+    await store.enqueue_list_posts(
+        555, [post_module.XPost(uid="alice", id="101", content="")]
+    )
+    await store.set_cursor(source, 101)
+
+    assert await store.list_source_keys() == ["list:555"]
+    assert await store.get_cursor(source) == 101
+
+    # One scope remains: list state is preserved.
+    assert await store.remove_list_subscription("telegram:-1", 555)
+    assert await store.list_source_keys() == ["list:555"]
+    assert await store.get_cursor(source) == 101
+
+    # Last scope removed: cursor and outbox are purged.
+    assert await store.remove_list_subscription("milky:2", 555)
+    assert await store.list_source_keys() == []
+    assert await store.get_cursor(source) is None
+    assert await store.due_outbox() == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_list_fetch_first_sets_cursor_then_enqueues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config_module = _x_module("config")
+    db = _x_module("db")
+    runtime_module = _x_module("runtime")
+    store = db.XStore(tmp_path / "x.db")
+    await store.add_list_subscription(
+        scope_key="telegram:-1",
+        platform="telegram",
+        group_id=-1,
+        target_data="{}",
+        list_id=555,
+        name="555",
+    )
+    source = db.list_source_key(555)
+    tweets = [_tweet(100)]
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def fetch_list_recent(self, list_id, limit):
+            assert list_id == 555
+            return list(tweets)
+
+    class FakeMedia:
+        async def persist(self, post, max_media):
+            return post
+
+        async def write_metadata(self, post):
+            pass
+
+        def pop_errors(self):
+            return []
+
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(({"auth_token": "a", "ct0": "c"}, time.time())),
+    )
+    settings = replace(
+        config_module.XSettings(),
+        rate_limit_requests=1000,
+        rate_limit_window_seconds=1,
+    )
+    monkeypatch.setattr(runtime_module.sv, "get_config", lambda: settings)
+    runtime = runtime_module.XRuntime(store)
+    monkeypatch.setattr(runtime_module, "XClient", FakeClient)
+    runtime.fetch_mainline.media_store = FakeMedia()
+    await runtime.bootstrap()
+
+    assert await runtime.fetch_mainline.fetch(source)
+    assert await store.get_cursor(source) == 100
+    assert await store.due_outbox() == []
+
+    tweets.append(_tweet(101, content="new"))
+    monkeypatch.setattr(
+        store,
+        "acquire_rate_permit",
+        lambda *args, **kwargs: _async_result(db.RatePermit(True, 0)),
+    )
+    assert await runtime.fetch_mainline.fetch(source)
+    due = await store.due_outbox()
+    assert [item.post.id for item in due] == ["101"]
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_list_fetch_rate_limit_defers_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    client_module = _x_module("client")
+    config_module = _x_module("config")
+    db = _x_module("db")
+    runtime_module = _x_module("runtime")
+    store = db.XStore(tmp_path / "x.db")
+    await store.add_list_subscription(
+        scope_key="telegram:-1",
+        platform="telegram",
+        group_id=-1,
+        target_data="{}",
+        list_id=555,
+        name="555",
+    )
+    source = db.list_source_key(555)
+    settings = replace(
+        config_module.XSettings(),
+        rate_limit_requests=1000,
+        rate_limit_window_seconds=1,
+    )
+    monkeypatch.setattr(runtime_module.sv, "get_config", lambda: settings)
+    monkeypatch.setattr(runtime_module.sv, "logger", RecordingLogger())
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(({"auth_token": "a", "ct0": "c"}, time.time())),
+    )
+
+    class LimitedClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def fetch_list_recent(self, list_id, limit):
+            raise client_module.XRateLimited(
+                client_module.LIST_TWEETS_ENDPOINT, 9999999999
+            )
+
+    monkeypatch.setattr(runtime_module, "XClient", LimitedClient)
+    runtime = runtime_module.XRuntime(store)
+    await runtime.bootstrap()
+
+    assert not await runtime.fetch_mainline.fetch(source)
+    state = await store.get_account_state(source)
+    assert state.retry_at == 9999999999
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -548,6 +818,144 @@ async def test_x_workflow_rejects_expired_cookie_without_logging_values(
     assert logger.warnings == ["X cookie is expired; polling is paused"]
     assert "auth-value" not in logger.warnings[0]
     assert "ct0-value" not in logger.warnings[0]
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_expired_cookie_notifies_once_and_skips_until_changed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    config_module = _x_module("config")
+    db = _x_module("db")
+    runtime_module = _x_module("runtime")
+    store = db.XStore(tmp_path / "x.db")
+    await store.add_subscription(
+        scope_key="telegram:-1",
+        platform="telegram",
+        group_id=-1,
+        target_data="{}",
+        username="alice",
+        name="alice",
+    )
+    logger = RecordingLogger()
+    monkeypatch.setattr(runtime_module.sv, "logger", logger)
+    monkeypatch.setattr(runtime_module.sv, "get_config", config_module.XSettings)
+
+    current: dict[str, Any] = {
+        "cookies": ({"auth_token": "a", "ct0": "c"}, 1)  # far older than max age
+    }
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(current["cookies"]),
+    )
+    network_calls = 0
+
+    class CountingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            nonlocal network_calls
+            network_calls += 1
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def resolve_user_id(self, username):
+            return 1
+
+        async def fetch_recent(self, user_id, limit):
+            return []
+
+    monkeypatch.setattr(runtime_module, "XClient", CountingClient)
+    runtime = runtime_module.XRuntime(store)
+    await runtime.bootstrap()
+
+    # First encounter: warn once, no network request is made.
+    assert not await runtime.fetch_mainline.fetch("alice")
+    assert logger.warnings == ["X cookie is expired; polling is paused"]
+    assert network_calls == 0
+
+    # Same expired cookie: silent skip, still no warning and no network.
+    assert not await runtime.fetch_mainline.fetch("alice")
+    assert logger.warnings == ["X cookie is expired; polling is paused"]
+    assert network_calls == 0
+
+    # The user replaces the cookie: polling resumes against the network.
+    current["cookies"] = ({"auth_token": "new", "ct0": "new"}, time.time())
+    monkeypatch.setattr(
+        store,
+        "acquire_rate_permit",
+        lambda *args, **kwargs: _async_result(db.RatePermit(True, 0)),
+    )
+    assert await runtime.fetch_mainline.fetch("alice")
+    assert network_calls == 1
+    assert logger.warnings == ["X cookie is expired; polling is paused"]
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_x_auth_error_marks_cookie_expired_and_skips(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client_module = _x_module("client")
+    config_module = _x_module("config")
+    db = _x_module("db")
+    runtime_module = _x_module("runtime")
+    store = db.XStore(tmp_path / "x.db")
+    await store.add_subscription(
+        scope_key="telegram:-1",
+        platform="telegram",
+        group_id=-1,
+        target_data="{}",
+        username="alice",
+        name="alice",
+    )
+    logger = RecordingLogger()
+    monkeypatch.setattr(runtime_module.sv, "logger", logger)
+    monkeypatch.setattr(runtime_module.sv, "get_config", config_module.XSettings)
+    monkeypatch.setattr(
+        runtime_module,
+        "get_cookies_with_ts",
+        lambda name: _async_result(({"auth_token": "a", "ct0": "c"}, time.time())),
+    )
+    monkeypatch.setattr(
+        store,
+        "acquire_rate_permit",
+        lambda *args, **kwargs: _async_result(db.RatePermit(True, 0)),
+    )
+    calls = 0
+
+    class AuthFailClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            nonlocal calls
+            calls += 1
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def resolve_user_id(self, username):
+            raise client_module.XAuthenticationError("unauthorized")
+
+    monkeypatch.setattr(runtime_module, "XClient", AuthFailClient)
+    runtime = runtime_module.XRuntime(store)
+    await runtime.bootstrap()
+
+    # Fresh-by-age cookie fails authentication: warn once and record it.
+    assert not await runtime.fetch_mainline.fetch("alice")
+    assert logger.warnings == ["X cookie is expired; polling is paused"]
+    assert calls == 1
+
+    # The recorded cookie is skipped before any network call.
+    assert not await runtime.fetch_mainline.fetch("alice")
+    assert logger.warnings == ["X cookie is expired; polling is paused"]
+    assert calls == 1
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

@@ -149,3 +149,118 @@ async def test_write_metadata_filters_http_urls(
         assert data["videos"] == []
     finally:
         await media_store.close()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_persist_dedupes_media_shared_with_repost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A retweet re-carries the source media; the same URL must be kept once."""
+    media_module = _x_module("media")
+    post_module = _x_module("post")
+
+    media_store = media_module.XMediaStore()
+    monkeypatch.setattr(media_store, "root", tmp_path)
+    downloads: list[tuple[str, str]] = []
+
+    async def fake_download(post, url, is_video):
+        downloads.append((post.id, url))
+        return tmp_path / post.uid / post.id / Path(url).name
+
+    monkeypatch.setattr(media_store, "_download", fake_download)
+    try:
+        repost = post_module.XPost(
+            uid="bob",
+            id="100",
+            content="original",
+            images=[
+                "https://pbs.twimg.com/a.jpg",
+                "https://pbs.twimg.com/b.jpg",
+            ],
+        )
+        post = post_module.XPost(
+            uid="alice",
+            id="201",
+            content="retweet",
+            images=["https://pbs.twimg.com/a.jpg"],
+            repost=repost,
+        )
+        result = await media_store.persist(post, max_media=10)
+    finally:
+        await media_store.close()
+
+    downloaded_urls = [url for _, url in downloads]
+    assert downloaded_urls.count("https://pbs.twimg.com/a.jpg") == 1
+    assert sorted(downloaded_urls) == [
+        "https://pbs.twimg.com/a.jpg",
+        "https://pbs.twimg.com/b.jpg",
+    ]
+    assert len(result.images) == 2
+    assert {Path(path).name for path in result.images} == {"a.jpg", "b.jpg"}
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_persist_saves_original_media_once_across_retweets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """No matter how many retweets, the original media is downloaded once."""
+    media_module = _x_module("media")
+    post_module = _x_module("post")
+
+    media_store = media_module.XMediaStore()
+    monkeypatch.setattr(media_store, "root", tmp_path)
+    stream_calls: list[str] = []
+
+    class FakeResponse:
+        def __init__(self, data: bytes) -> None:
+            self.headers = {"content-length": str(len(data))}
+            self._data = data
+
+        def raise_for_status(self) -> None:
+            pass
+
+        async def aiter_bytes(self):
+            yield self._data
+
+    class FakeStream:
+        def __init__(self, data: bytes) -> None:
+            self._data = data
+
+        async def __aenter__(self):
+            return FakeResponse(self._data)
+
+        async def __aexit__(self, *args):
+            return None
+
+    def fake_stream(method, url, **kwargs):
+        stream_calls.append(url)
+        return FakeStream(b"img-bytes")
+
+    monkeypatch.setattr(media_store.client, "stream", fake_stream)
+
+    def retweet(tweet_id: str) -> "post_module.XPost":
+        original = post_module.XPost(
+            uid="bob",
+            id="100",
+            content="original",
+            images=["https://pbs.twimg.com/a.jpg"],
+        )
+        return post_module.XPost(
+            uid="alice",
+            id=tweet_id,
+            content="retweet",
+            images=["https://pbs.twimg.com/a.jpg"],
+            repost=original,
+        )
+
+    try:
+        first = await media_store.persist(retweet("201"), max_media=10)
+        second = await media_store.persist(retweet("202"), max_media=10)
+    finally:
+        await media_store.close()
+
+    saved = tmp_path / "bob" / "100" / "a.jpg"
+    assert stream_calls == ["https://pbs.twimg.com/a.jpg"]
+    assert saved.exists()
+    assert first.images == [str(saved)]
+    assert second.images == [str(saved)]

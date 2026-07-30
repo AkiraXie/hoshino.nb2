@@ -17,6 +17,23 @@ from .post import XPost
 
 T = TypeVar("T")
 
+LIST_SOURCE_PREFIX = "list:"
+
+
+def list_source_key(list_id: int) -> str:
+    """Source key used to route a list through the user-oriented fetch machinery."""
+    return f"{LIST_SOURCE_PREFIX}{int(list_id)}"
+
+
+def parse_list_source_key(source: str) -> int | None:
+    """Return the list id if ``source`` is a list source key, else None."""
+    if not source.startswith(LIST_SOURCE_PREFIX):
+        return None
+    try:
+        return int(source[len(LIST_SOURCE_PREFIX) :])
+    except ValueError:
+        return None
+
 
 @dataclass(frozen=True, slots=True)
 class Subscription:
@@ -25,6 +42,16 @@ class Subscription:
     group_id: int
     target_data: str
     username: str
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ListSubscription:
+    scope_key: str
+    platform: str
+    group_id: int
+    target_data: str
+    list_id: int
     name: str
 
 
@@ -153,6 +180,116 @@ class XStore:
         conn.execute("DELETE FROM fetch_state WHERE username = ?", (username,))
         conn.execute("DELETE FROM account_state WHERE username = ?", (username,))
 
+    async def add_list_subscription(
+        self,
+        *,
+        scope_key: str,
+        platform: str,
+        group_id: int,
+        target_data: str,
+        list_id: int,
+        name: str,
+        cursor: int | None = None,
+    ) -> bool:
+        source = list_source_key(list_id)
+
+        def operation(conn: sqlite3.Connection) -> bool:
+            result = conn.execute(
+                """
+                INSERT OR IGNORE INTO list_subscriptions(
+                    scope_key, platform, group_id, target_data, list_id, name, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    scope_key,
+                    platform,
+                    group_id,
+                    target_data,
+                    int(list_id),
+                    name,
+                    time.time(),
+                ),
+            )
+            conn.execute(
+                "INSERT INTO account_state(username) VALUES (?) ON CONFLICT(username) DO NOTHING",
+                (source,),
+            )
+            if cursor is not None:
+                self._upsert_cursor(conn, source, cursor)
+            return result.rowcount > 0
+
+        return await self._transaction(operation)
+
+    async def remove_list_subscription(self, scope_key: str, list_id: int) -> bool:
+        source = list_source_key(list_id)
+
+        def operation(conn: sqlite3.Connection) -> bool:
+            deleted = conn.execute(
+                "DELETE FROM list_subscriptions WHERE scope_key = ? AND list_id = ?",
+                (scope_key, int(list_id)),
+            ).rowcount
+            if deleted:
+                remaining = conn.execute(
+                    "SELECT 1 FROM list_subscriptions WHERE list_id = ? LIMIT 1",
+                    (int(list_id),),
+                ).fetchone()
+                if remaining is None:
+                    self._purge_account_state(conn, source)
+            return deleted > 0
+
+        return await self._transaction(operation)
+
+    async def remove_list_account(self, list_id: int) -> int:
+        source = list_source_key(list_id)
+
+        def operation(conn: sqlite3.Connection) -> int:
+            deleted = conn.execute(
+                "DELETE FROM list_subscriptions WHERE list_id = ?", (int(list_id),)
+            ).rowcount
+            self._purge_account_state(conn, source)
+            return max(0, deleted)
+
+        return await self._transaction(operation)
+
+    async def list_subscriptions_for_scope(
+        self, scope_key: str
+    ) -> list[ListSubscription]:
+        return await self._list_subscriptions("WHERE scope_key = ?", (scope_key,))
+
+    async def list_subscriptions_for_list(self, list_id: int) -> list[ListSubscription]:
+        return await self._list_subscriptions("WHERE list_id = ?", (int(list_id),))
+
+    async def list_source_keys(self) -> list[str]:
+        return await self._read(
+            lambda conn: [
+                list_source_key(int(row[0]))
+                for row in conn.execute(
+                    "SELECT DISTINCT list_id FROM list_subscriptions ORDER BY list_id"
+                ).fetchall()
+            ]
+        )
+
+    async def _list_subscriptions(
+        self, clause: str, params: tuple[Any, ...]
+    ) -> list[ListSubscription]:
+        def operation(conn: sqlite3.Connection) -> list[ListSubscription]:
+            rows = conn.execute(
+                f"SELECT * FROM list_subscriptions {clause} ORDER BY list_id", params
+            ).fetchall()
+            return [
+                ListSubscription(
+                    scope_key=str(row["scope_key"]),
+                    platform=str(row["platform"]),
+                    group_id=int(row["group_id"]),
+                    target_data=str(row["target_data"]),
+                    list_id=int(row["list_id"]),
+                    name=str(row["name"]),
+                )
+                for row in rows
+            ]
+
+        return await self._read(operation)
+
     async def subscriptions_for_scope(self, scope_key: str) -> list[Subscription]:
         return await self._subscriptions("WHERE scope_key = ?", (scope_key,))
 
@@ -269,6 +406,47 @@ class XStore:
                     )
                     inserted += max(0, result.rowcount)
             self._upsert_cursor(conn, normalized, max(int(post.id) for post in posts))
+            return inserted
+
+        return await self._transaction(operation)
+
+    async def enqueue_list_posts(self, list_id: int, posts: list[XPost]) -> int:
+        source = list_source_key(list_id)
+        if not posts:
+            return 0
+
+        def operation(conn: sqlite3.Connection) -> int:
+            subscriptions = conn.execute(
+                "SELECT * FROM list_subscriptions WHERE list_id = ?", (int(list_id),)
+            ).fetchall()
+            inserted = 0
+            now = time.time()
+            for post in posts:
+                payload = json.dumps(post.to_dict(), ensure_ascii=False)
+                for subscription in subscriptions:
+                    # UNIQUE(scope_key, tweet_id) makes this a precise no-op when
+                    # the same tweet already reached the group via another source.
+                    result = conn.execute(
+                        """
+                        INSERT OR IGNORE INTO outbox(
+                            scope_key, platform, group_id, target_data, username,
+                            tweet_id, payload, status, attempts, next_attempt_at, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
+                        """,
+                        (
+                            subscription["scope_key"],
+                            subscription["platform"],
+                            subscription["group_id"],
+                            subscription["target_data"],
+                            source,
+                            post.id,
+                            payload,
+                            now,
+                            now,
+                        ),
+                    )
+                    inserted += max(0, result.rowcount)
+            self._upsert_cursor(conn, source, max(int(post.id) for post in posts))
             return inserted
 
         return await self._transaction(operation)
@@ -475,8 +653,39 @@ class XStore:
                     created_at REAL NOT NULL,
                     PRIMARY KEY(platform, group_id, message_id, actor_id)
                 );
+                CREATE TABLE IF NOT EXISTS list_subscriptions (
+                    scope_key TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    group_id INTEGER NOT NULL,
+                    target_data TEXT NOT NULL,
+                    list_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY(scope_key, list_id)
+                );
                 """
             )
+            self._ensure_outbox_scope_tweet_index(conn)
+
+    @staticmethod
+    def _ensure_outbox_scope_tweet_index(conn: sqlite3.Connection) -> None:
+        # Precise dispatch: a group receives a given tweet at most once, no
+        # matter how many subscriptions (user and/or list) matched it.
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type = 'index' AND name = 'outbox_scope_tweet_idx'"
+        ).fetchone()
+        if exists is not None:
+            return
+        # One-time migration: collapse any pre-existing rows sharing
+        # (scope_key, tweet_id) so the unique index can be created.
+        conn.execute(
+            "DELETE FROM outbox WHERE id NOT IN "
+            "(SELECT MIN(id) FROM outbox GROUP BY scope_key, tweet_id)"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX outbox_scope_tweet_idx ON outbox(scope_key, tweet_id)"
+        )
 
     def _transaction_sync(self, operation: Callable[[sqlite3.Connection], T]) -> T:
         with self._connect() as conn:
@@ -521,8 +730,12 @@ def _first_int(row: sqlite3.Row | None) -> int | None:
 
 __all__ = [
     "AccountState",
+    "LIST_SOURCE_PREFIX",
+    "ListSubscription",
     "OutboxItem",
     "RatePermit",
     "Subscription",
     "XStore",
+    "list_source_key",
+    "parse_list_source_key",
 ]

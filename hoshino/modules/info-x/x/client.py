@@ -16,6 +16,7 @@ from .sv import sv
 
 USER_LOOKUP_ENDPOINT = "UserByScreenName"
 USER_TWEETS_ENDPOINT = "UserTweets"
+LIST_TWEETS_ENDPOINT = "ListLatestTweetsTimeline"
 
 
 class XRateLimited(RuntimeError):
@@ -93,6 +94,18 @@ class XClient:
         tweets.sort(key=lambda tweet: int(tweet.id))
         return tweets[: max(1, limit)]
 
+    async def fetch_list_recent(self, list_id: int, limit: int) -> list[Tweet]:
+        api = self._require_api()
+        try:
+            tweets = await gather(api.list_timeline(int(list_id), limit=max(1, limit)))
+        except SystemExit as exc:
+            raise XUpstreamError("twscrape aborted list request") from exc
+        except Exception as exc:
+            await self._translate_error(exc, LIST_TWEETS_ENDPOINT)
+            raise AssertionError("unreachable") from exc
+        tweets.sort(key=lambda tweet: int(tweet.id))
+        return tweets[: max(1, limit)]
+
     async def _translate_error(self, exc: Exception, endpoint: str) -> None:
         if not isinstance(exc, NoAccountError):
             raise exc
@@ -120,6 +133,7 @@ class XClient:
 
 
 __all__ = [
+    "LIST_TWEETS_ENDPOINT",
     "USER_LOOKUP_ENDPOINT",
     "USER_TWEETS_ENDPOINT",
     "XAuthenticationError",
