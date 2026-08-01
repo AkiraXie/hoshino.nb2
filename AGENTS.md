@@ -84,20 +84,29 @@ uv remove <package>
 前端和 Web 应用：
 
 ```bash
-# 安装前端依赖
+# 安装前端依赖（微博 / X 站点）
 npm --prefix weibo_image_web/frontend ci
+npm --prefix x_image_web/frontend ci
 
-# 前端开发服务器
-npm --prefix weibo_image_web/frontend run dev -- --host 0.0.0.0 --port 3002
+# 前端开发服务器（微博 3001 / X 3003）
+npm --prefix weibo_image_web/frontend run dev -- --host 0.0.0.0 --port 3001
+npm --prefix x_image_web/frontend run dev -- --host 0.0.0.0 --port 3003
 
 # TypeScript 检查并构建前端
 npm --prefix weibo_image_web/frontend run build
+npm --prefix x_image_web/frontend run build
 
-# 构建前端并启动 Vite 与 FastAPI
+# 统一后端入口（x 默认 9997 / weibo 默认 9998，支持 --host/--port/--reload）
+uv run python -m image_web x
+uv run python -m image_web weibo
+
+# 一键构建前端并启动 Vite 与后端
 bash weibo_image_web/start_dev.sh
+bash x_image_web/start_dev.sh
 
 # 停止脚本管理的后端进程
 bash weibo_image_web/stop_dev.sh
+bash x_image_web/stop_dev.sh
 ```
 
 不要混用 `pip install` 与 `uv`，也不要手工修改 `package-lock.json`。Python 依赖改动应同时
@@ -282,11 +291,26 @@ Milky 消息行为测试必须：
 
 ## 9. Web 应用
 
-`weibo_image_web/server.py` 提供 FastAPI API 和构建后前端，默认端口 9999；Vite 开发服务
-由脚本使用 3002。前端位于 `weibo_image_web/frontend/`，使用 React 19、TypeScript、
-Vite 6 和 Tailwind CSS 4。
+图片浏览站点后端统一在 `image_web/` 包中，按 provider 划分：`image_web/x/`（X/Twitter，
+数据源 `data/db/x.db`）与 `image_web/weibo/`（微博，数据源 `data/weibomsgs/`）。共享基础
+设施（环境解析、收藏写入、CORS/缓存中间件、SPA 挂载、分页、生命周期）位于
+`image_web/common/`；provider 在 `image_web/registry.py` 登记。每个 provider 暴露
+`create_app()` 与模块级 `app`，对应前端分别在 `x_image_web/frontend/` 与
+`weibo_image_web/frontend/`（React 19、TypeScript、Vite 6、Tailwind CSS 4）。
+
+统一启动入口：
+
+```bash
+uv run python -m image_web x        # X 站点后端，默认 9997
+uv run python -m image_web weibo    # 微博站点后端，默认 9998
+# 支持 --host / --port / --reload
+```
+
+端口约定：x 后端 9997 / 前端 dev 3003；weibo 后端 9998 / 前端 dev 3001。
 
 - 后端修改至少做 import/启动探针和相关 API 请求验证。
+- 新增 provider：新建 `image_web/<name>/server.py`（暴露 `create_app()` 与模块级 `app`），
+  并在 `image_web/registry.py` 登记一行。
 - 前端修改必须通过 TypeScript/Vite build。
 - UI 变更使用 Playwright 检查真实页面、控制台错误、关键交互和响应式布局。
 - 远程开发时浏览器访问使用机器实际 IP；先用 `ip addr` 确认，不要把浏览器 URL 写死为

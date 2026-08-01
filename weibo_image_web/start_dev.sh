@@ -54,7 +54,7 @@ echo $! > "$VITE_PID_FILE"
 echo "vite dev server started: pid=$(cat "$VITE_PID_FILE") port=3001"
 
 # ── 启动后端 ─────────────────────────────────────────
-nohup sh -c "cd '$ROOT_DIR' && uv run python weibo_image_web/server.py" \
+nohup sh -c "cd '$ROOT_DIR' && uv run python -m image_web weibo" \
   > "$LOG_DIR/server.log" 2>&1 &
 echo $! > "$PID_FILE"
 echo "server started: pid=$(cat "$PID_FILE") port=9998"

@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0a0e1a;
+  --color-bg-secondary: #111827;
+  --color-bg-card: #1a2332;
+  --color-bg-elevated: #1f2b3d;
+  --color-border: #2a3a52;
+  --color-border-light: #374a66;
+  --color-text-primary: #e8edf5;
+  --color-text-secondary: #8b9dc3;
+  --color-text-muted: #5a6f8f;
+  --color-accent: #3b82f6;
+  --color-accent-light: #60a5fa;
+  --color-accent-dark: #2563eb;
+  --color-accent-glow: rgba(59, 130, 246, 0.15);
+  --color-frost: #1e3a5f;
+  --color-ice: #93c5fd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-light);
+}
+
+/* Masonry gap */
+.masonry-grid {
+  display: flex;
+  margin-left: -16px;
+  width: auto;
+}
+.masonry-column {
+  padding-left: 16px;
+  background-clip: padding-box;
+}
+
+/* Image loading shimmer */
+.img-loading {
+  background: linear-gradient(
+    110deg,
+    var(--color-bg-card) 8%,
+    var(--color-bg-elevated) 18%,
+    var(--color-bg-card) 33%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Fade in for images */
+.img-fade {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.img-fade.loaded {
+  opacity: 1;
+}

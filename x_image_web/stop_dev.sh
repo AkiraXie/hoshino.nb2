@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Stop weibo-image-web dev servers (backend + Vite, including child process trees).
+# 停止 x-image-web 开发服务器（后端 + Vite，含子进程树）
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PID_DIR="$ROOT_DIR/weibo_image_web/run"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_DIR="$SCRIPT_DIR/.pids"
 
 proc_cmd() {
   tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null || true
 }
 
-# Print pid and all of its descendants (depth-first).
+# 打印 pid 及其所有后代进程（深度优先）
 collect_tree() {
   local pid="$1"
   echo "$pid"
@@ -23,13 +23,13 @@ stop_one() {
   local name="$1" keyword="$2"
   local pidfile="$PID_DIR/$name.pid"
   if [ ! -f "$pidfile" ]; then
-    echo "$name: no pid file, skipping"
+    echo "$name: 无 pid 文件，跳过"
     return 0
   fi
   local pid
   pid="$(cat "$pidfile")"
   if ! kill -0 "$pid" 2>/dev/null; then
-    echo "$name: not running (stale pid=$pid)"
+    echo "$name: 未在运行 (stale pid=$pid)"
     rm -f "$pidfile"
     return 0
   fi
@@ -38,13 +38,13 @@ stop_one() {
   case "$cmd" in
     *"$keyword"*) ;;
     *)
-      echo "$name: pid=$pid does not look like ours ($cmd), skipping"
+      echo "$name: pid=$pid 不属于本项目 ($cmd)，跳过"
       rm -f "$pidfile"
       return 0
       ;;
   esac
 
-  echo "$name: stopping process tree (pid=$pid)..."
+  echo "$name: 停止进程树 (pid=$pid)..."
   local pids
   pids="$(collect_tree "$pid")"
   # shellcheck disable=SC2086
@@ -57,14 +57,14 @@ stop_one() {
   done
 
   if kill -0 "$pid" 2>/dev/null; then
-    echo "$name: force killing tree (pid=$pid)"
+    echo "$name: 强制结束进程树 (pid=$pid)"
     pids="$(collect_tree "$pid")"
     # shellcheck disable=SC2086
     kill -9 $pids 2>/dev/null || true
   fi
 
   rm -f "$pidfile"
-  echo "$name: stopped"
+  echo "$name: 已停止"
 }
 
 stop_one server "image_web"
