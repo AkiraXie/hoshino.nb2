@@ -92,7 +92,7 @@ class XClient:
             await self._translate_error(exc, USER_TWEETS_ENDPOINT)
             raise AssertionError("unreachable") from exc
         tweets.sort(key=lambda tweet: int(tweet.id))
-        return tweets[: max(1, limit)]
+        return tweets[-max(1, limit) :]
 
     async def fetch_list_recent(self, list_id: int, limit: int) -> list[Tweet]:
         api = self._require_api()
@@ -104,7 +104,7 @@ class XClient:
             await self._translate_error(exc, LIST_TWEETS_ENDPOINT)
             raise AssertionError("unreachable") from exc
         tweets.sort(key=lambda tweet: int(tweet.id))
-        return tweets[: max(1, limit)]
+        return tweets[-max(1, limit) :]
 
     async def _translate_error(self, exc: Exception, endpoint: str) -> None:
         if not isinstance(exc, NoAccountError):

@@ -287,7 +287,7 @@ class FetchMainline:
                 if not permit.allowed:
                     return None
                 return await asyncio.wait_for(
-                    client.fetch_list_recent(list_id, settings.max_tweets_per_account),
+                    client.fetch_list_recent(list_id, settings.list_max_tweets),
                     timeout=settings.request_timeout_seconds,
                 )
             if user_id is None:
@@ -509,15 +509,25 @@ class XRuntime:
 
     async def refresh_accounts(self) -> None:
         settings = sv.get_config()
-        sources = [*await self.store.usernames(), *await self.store.list_source_keys()]
+        usernames = await self.store.usernames()
+        list_keys = await self.store.list_source_keys()
+        sources = [*usernames, *list_keys]
         await self.uid_manager.init(
             sources,
             settings.hot_interval_seconds,
             settings.cold_interval_seconds,
         )
+        for key in list_keys:
+            self.uid_manager.set_hot_interval(key, settings.list_hot_interval_seconds)
 
     async def add_account(self, source: str) -> None:
-        await self.uid_manager.add_uid(source.lower())
+        source = source.lower()
+        await self.uid_manager.add_uid(source)
+        if parse_list_source_key(source) is not None:
+            settings = sv.get_config()
+            self.uid_manager.set_hot_interval(
+                source, settings.list_hot_interval_seconds
+            )
 
     async def fetch_next_update(self) -> bool:
         source = await self.uid_manager.get_next_uid()

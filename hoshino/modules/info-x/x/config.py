@@ -9,9 +9,11 @@ from dataclasses import dataclass
 class XSettings:
     proxy: str | None = None
     max_tweets_per_account: int = 10
+    list_max_tweets: int = 30
     max_media_per_tweet: int = 10
     poll_tick_seconds: float = 20.0
     hot_interval_seconds: int = 180
+    list_hot_interval_seconds: int = 30
     cold_interval_seconds: int = 1800
     cold_after_seconds: int = 86400
     request_timeout_seconds: float = 30.0

@@ -12,6 +12,7 @@ try:
 except ImportError:
     from typing_extensions import Self
 
+
 class Queueable(Protocol):
     def get_id(self) -> str: ...
 
@@ -132,8 +133,11 @@ class UIDManager:
         self._last_fetch_times: dict[str, float] = {}
         self._min_interval = 180
         self._cold_min_interval = 1800
+        self._hot_overrides: dict[str, int] = {}
 
-    async def init(self, uids: list[str],min_interval: int = 180, cold_min_interval: int = 1800):
+    async def init(
+        self, uids: list[str], min_interval: int = 180, cold_min_interval: int = 1800
+    ):
         """从UID列表初始化管理器"""
         async with self._lock:
             self._uids = set(uids)
@@ -145,6 +149,9 @@ class UIDManager:
                 uid: ts
                 for uid, ts in self._last_fetch_times.items()
                 if uid in self._uids
+            }
+            self._hot_overrides = {
+                uid: iv for uid, iv in self._hot_overrides.items() if uid in self._uids
             }
             # 清空队列并重新填充
             while not self._uid_queue.empty():
@@ -175,6 +182,11 @@ class UIDManager:
                     self._uids.remove(uid_str)
                     self._processing_uids.discard(uid_str)
                     self._cold_uids.discard(uid_str)
+                    self._hot_overrides.pop(uid_str, None)
+
+    def set_hot_interval(self, uid: str, interval: int):
+        """为指定 UID 设置独立的热轮询间隔"""
+        self._hot_overrides[str(uid)] = interval
 
     async def mark_cold(self, uid: str):
         """标记 UID 为冷却状态"""
@@ -193,9 +205,10 @@ class UIDManager:
         """检查UID是否需要抓取"""
         current_time = time.time()
         last_time = self._last_fetch_times.get(uid, 0)
-        min_interval = (
-            self._cold_min_interval if uid in self._cold_uids else self._min_interval
-        )
+        if uid in self._cold_uids:
+            min_interval = self._cold_min_interval
+        else:
+            min_interval = self._hot_overrides.get(uid, self._min_interval)
         return current_time - last_time >= min_interval
 
     def _update_fetch_time(self, uid: str):
