@@ -1,4 +1,9 @@
-"""Weibo Image Web - 微博瀑布流图片浏览站点"""
+"""Weibo Image Web provider —— 微博瀑布流图片浏览站点（奶油风）。
+
+数据源为 ``data/weibomsgs/`` 目录树（``uid/post_id/message.json`` + images/videos），
+索引支持增量刷新与磁盘缓存。额外提供 tags、blacklist、删除（移入回收站）等能力。
+前端位于 ``weibo_image_web/frontend``。
+"""
 
 import asyncio
 import json
@@ -7,37 +12,26 @@ import re
 import shutil
 import threading
 from collections import Counter
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
 
+from image_web.common.env import read_env_data_dir
+from image_web.common.favorites import FavoritesStore, register_favorite_mutations
+from image_web.common.jsonstore import load_json, save_json
+from image_web.common.lifecycle import build_lifespan
+from image_web.common.middleware import add_cache_headers_middleware, setup_cors
+from image_web.common.pagination import paginate
+from image_web.common.spa import mount_frontend
+
 BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
+PROJECT_ROOT = BASE_DIR.parent.parent
 
-
-def _read_env_data_dir() -> Path:
-    """从 .env.prod 读取 data 配置项，返回绝对路径。"""
-    env_file = PROJECT_ROOT / ".env.prod"
-    if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            if key.strip() == "data":
-                p = Path(value.strip())
-                return p if p.is_absolute() else PROJECT_ROOT / p
-    return PROJECT_ROOT / "data"
-
-
-DATA_DIR = _read_env_data_dir()
+DATA_DIR = read_env_data_dir(PROJECT_ROOT)
 WEIBO_MSG_DIR = DATA_DIR / "weibomsgs"
 THUMB_DIR = DATA_DIR / "thumbnails"
 TRASH_DIR = DATA_DIR / "weibomsgs_trash"
@@ -45,7 +39,9 @@ FAV_JSON = DATA_DIR / "weibofavorite.json"
 TAGS_JSON = DATA_DIR / "weibotags.json"
 BLACKLIST_JSON = DATA_DIR / "weiboblacklist.json"
 INDEX_CACHE = DATA_DIR / "index_cache.json"
-FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
+FRONTEND_DIST = PROJECT_ROOT / "weibo_image_web" / "frontend" / "dist"
+
+AUTO_REFRESH_INTERVAL = 30 * 60  # seconds
 
 posts_index: list[dict] = []
 uid_nickname_map: dict[str, str] = {}
@@ -54,30 +50,10 @@ _post_mtimes: dict[str, float] = {}
 # uid_dir mtime snapshot, detect which uid dirs changed
 _uid_dir_mtimes: dict[str, float] = {}
 _build_lock = threading.RLock()
-_fav_lock: asyncio.Lock | None = None
-_tags_lock: asyncio.Lock | None = None
-_blacklist_lock: asyncio.Lock | None = None
+_tags_lock = asyncio.Lock()
+_blacklist_lock = asyncio.Lock()
 
-
-def _get_fav_lock() -> asyncio.Lock:
-    global _fav_lock
-    if _fav_lock is None:
-        _fav_lock = asyncio.Lock()
-    return _fav_lock
-
-
-def _get_tags_lock() -> asyncio.Lock:
-    global _tags_lock
-    if _tags_lock is None:
-        _tags_lock = asyncio.Lock()
-    return _tags_lock
-
-
-def _get_blacklist_lock() -> asyncio.Lock:
-    global _blacklist_lock
-    if _blacklist_lock is None:
-        _blacklist_lock = asyncio.Lock()
-    return _blacklist_lock
+_fav_store = FavoritesStore(FAV_JSON)
 
 
 # ── helpers ──────────────────────────────────────────────
@@ -115,64 +91,28 @@ def _generate_thumbnails(uid: str, post_id: str, source_path: Path) -> bool:
         return False
 
 
-def _load_favs() -> dict[str, list[str]]:
-    if not FAV_JSON.exists():
-        return {}
-    try:
-        data = json.loads(FAV_JSON.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return {
-        str(uid): [str(pid) for pid in ids]
-        for uid, ids in data.items()
-        if isinstance(ids, list)
-    }
-
-
-def _save_favs(favs: dict[str, list[str]]) -> None:
-    FAV_JSON.write_text(
-        json.dumps(favs, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-
-
 def _load_blacklist() -> list[str]:
     """Load blacklisted UIDs."""
-    if not BLACKLIST_JSON.exists():
-        return []
-    try:
-        data = json.loads(BLACKLIST_JSON.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
+    data = load_json(BLACKLIST_JSON, [])
     if not isinstance(data, list):
         return []
     return [str(uid) for uid in data]
 
 
 def _save_blacklist(uids: list[str]) -> None:
-    BLACKLIST_JSON.write_text(
-        json.dumps(uids, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    save_json(BLACKLIST_JSON, uids)
 
 
 def _load_tags() -> dict[str, dict[str, list[str]]]:
     """Load tags: {tag_name: {uid: [post_ids]}}"""
-    if not TAGS_JSON.exists():
-        return {}
-    try:
-        data = json.loads(TAGS_JSON.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    data = load_json(TAGS_JSON, {})
     if not isinstance(data, dict):
         return {}
     return data
 
 
 def _save_tags(tags: dict[str, dict[str, list[str]]]) -> None:
-    TAGS_JSON.write_text(
-        json.dumps(tags, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    save_json(TAGS_JSON, tags)
 
 
 def _scan_post(uid: str, post_dir: Path) -> dict:
@@ -187,13 +127,9 @@ def _scan_post(uid: str, post_dir: Path) -> dict:
             pass
 
     images_dir = post_dir / "images"
-    image_count = (
-        len(list(images_dir.glob("*.jpg"))) if images_dir.is_dir() else 0
-    )
+    image_count = len(list(images_dir.glob("*.jpg"))) if images_dir.is_dir() else 0
     videos_dir = post_dir / "videos"
-    video_count = (
-        len(list(videos_dir.glob("*.mp4"))) if videos_dir.is_dir() else 0
-    )
+    video_count = len(list(videos_dir.glob("*.mp4"))) if videos_dir.is_dir() else 0
 
     text = str(meta.get("text") or "")
     content = str(meta.get("content") or "")
@@ -248,9 +184,7 @@ def _save_index_cache() -> None:
         "post_mtimes": _post_mtimes,
         "uid_dir_mtimes": _uid_dir_mtimes,
     }
-    INDEX_CACHE.write_text(
-        json.dumps(data, ensure_ascii=False), encoding="utf-8"
-    )
+    INDEX_CACHE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
 def _build_index_full() -> None:
@@ -330,8 +264,11 @@ def _build_index_incremental() -> int:
         for uid in removed_uids:
             _uid_dir_mtimes.pop(uid, None)
             uid_nickname_map.pop(uid, None)
-        _post_mtimes = {k: v for k, v in _post_mtimes.items()
-                        if k.split("_", 1)[0] not in removed_uids}
+        _post_mtimes = {
+            k: v
+            for k, v in _post_mtimes.items()
+            if k.split("_", 1)[0] not in removed_uids
+        }
         changes += 1
 
     # 3. Find uid dirs with changed mtime (new posts added/removed inside)
@@ -361,9 +298,7 @@ def _build_index_incremental() -> int:
 
         # Previously indexed posts for this uid
         old_post_ids = {
-            k.split("_", 1)[1]
-            for k in _post_mtimes
-            if k.startswith(f"{uid}_")
+            k.split("_", 1)[1] for k in _post_mtimes if k.startswith(f"{uid}_")
         }
 
         # Removed posts
@@ -371,8 +306,7 @@ def _build_index_incremental() -> int:
         if removed_ids:
             remove_keys = {f"{uid}_{pid}" for pid in removed_ids}
             posts_index = [
-                p for p in posts_index
-                if f"{p['uid']}_{p['id']}" not in remove_keys
+                p for p in posts_index if f"{p['uid']}_{p['id']}" not in remove_keys
             ]
             for pid in removed_ids:
                 _post_mtimes.pop(f"{uid}_{pid}", None)
@@ -434,18 +368,6 @@ def _build_index() -> None:
             _build_index_incremental()
 
 
-# ── app ──────────────────────────────────────────────────
-
-
-AUTO_REFRESH_INTERVAL = 30 * 60  # seconds
-
-
-async def _auto_refresh_loop():
-    while True:
-        await asyncio.sleep(AUTO_REFRESH_INTERVAL)
-        await asyncio.to_thread(_build_index)
-
-
 def _generate_all_missing_thumbnails() -> int:
     """Generate missing thumbnails for all indexed posts. Returns count of generated."""
     generated = 0
@@ -463,39 +385,11 @@ def _generate_all_missing_thumbnails() -> int:
     return generated
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    await asyncio.to_thread(_build_index)
-    task = asyncio.create_task(_auto_refresh_loop())
+async def _startup_thumbnails() -> None:
     asyncio.create_task(asyncio.to_thread(_generate_all_missing_thumbnails))
-    yield
-    task.cancel()
-
-
-app = FastAPI(title="Weibo Image Web", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.middleware("http")
-async def add_cache_headers(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/media/"):
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    return response
 
 
 # ── models ───────────────────────────────────────────────
-
-
-class FavBody(BaseModel):
-    uid: str
-    id: str
 
 
 class TagBody(BaseModel):
@@ -510,8 +404,10 @@ class BlacklistBody(BaseModel):
 
 # ── API routes ───────────────────────────────────────────
 
+router = APIRouter()
 
-@app.get("/api/posts")
+
+@router.get("/api/posts")
 async def api_list_posts(
     page: int = 1, size: int = 20, uid: str = "", q: str = "", date: str = ""
 ):
@@ -541,20 +437,17 @@ async def api_list_posts(
         else:  # older
             ts_min = 0
             ts_max = (today_start - timedelta(days=1)).timestamp()
-        results = [
-            p for p in results if ts_min <= (p.get("timestamp") or 0) < ts_max
-        ]
-    total = len(results)
-    start = (page - 1) * size
+        results = [p for p in results if ts_min <= (p.get("timestamp") or 0) < ts_max]
+    total, page_items = paginate(results, page, size)
     return {
         "total": total,
         "page": page,
         "size": size,
-        "items": results[start : start + size],
+        "items": page_items,
     }
 
 
-@app.get("/api/posts/{uid}/{post_id}")
+@router.get("/api/posts/{uid}/{post_id}")
 async def api_get_post(uid: str, post_id: str):
     entry = next(
         (p for p in posts_index if p["uid"] == uid and p["id"] == post_id), None
@@ -582,23 +475,21 @@ async def api_get_post(uid: str, post_id: str):
         else []
     )
     screenshot = (
-        f"/media/{uid}/{post_id}/screenshot.jpg"
-        if entry["has_screenshot"]
-        else None
+        f"/media/{uid}/{post_id}/screenshot.jpg" if entry["has_screenshot"] else None
     )
     return {**entry, "images": images, "videos": videos, "screenshot": screenshot}
 
 
-@app.get("/api/uids")
+@router.get("/api/uids")
 async def api_list_uids():
     blacklist = set(_load_blacklist())
     return {uid: nick for uid, nick in uid_nickname_map.items() if uid not in blacklist}
 
 
-@app.get("/api/uid-stats")
+@router.get("/api/uid-stats")
 async def api_uid_stats():
     """Per-uid statistics: total images, favorited post count."""
-    favs = _load_favs()
+    favs = _fav_store.load()
     blacklist = set(_load_blacklist())
     stats: dict[str, dict] = {}
     for entry in posts_index:
@@ -616,7 +507,7 @@ async def api_uid_stats():
     return stats
 
 
-@app.get("/api/stats/top-uids")
+@router.get("/api/stats/top-uids")
 async def api_top_uids(limit: int = 5, preview: int = 4, date: str = ""):
     """Top N most active UIDs with preview posts."""
     blacklist = set(_load_blacklist())
@@ -650,74 +541,53 @@ async def api_top_uids(limit: int = 5, preview: int = 4, date: str = ""):
     return result
 
 
-@app.get("/api/favorites")
+# ── Favorites (读取接口；写入接口由 common 注册) ──────────
+
+
+@router.get("/api/favorites")
 async def api_list_favorites(page: int = 1, size: int = 20):
-    favs = _load_favs()
+    favs = _fav_store.load()
     blacklist = set(_load_blacklist())
     fav_set = {f"{uid}_{pid}" for uid, ids in favs.items() for pid in ids}
-    fav_posts = [p for p in posts_index if f"{p['uid']}_{p['id']}" in fav_set and p["uid"] not in blacklist]
-    total = len(fav_posts)
-    start = (page - 1) * size
+    fav_posts = [
+        p
+        for p in posts_index
+        if f"{p['uid']}_{p['id']}" in fav_set and p["uid"] not in blacklist
+    ]
+    total, page_items = paginate(fav_posts, page, size)
     return {
         "total": total,
         "page": page,
         "size": size,
-        "items": fav_posts[start : start + size],
+        "items": page_items,
     }
 
 
-@app.get("/api/favorites/ids")
+@router.get("/api/favorites/ids")
 async def api_favorite_ids():
-    favs = _load_favs()
+    favs = _fav_store.load()
     blacklist = set(_load_blacklist())
-    return [f"{uid}_{pid}" for uid, ids in favs.items() if uid not in blacklist for pid in ids]
-
-
-@app.post("/api/favorites")
-async def api_add_favorite(body: FavBody):
-    async with _get_fav_lock():
-        favs = _load_favs()
-        ids = favs.get(body.uid, [])
-        if body.id in ids:
-            return {"ok": True}
-        ids.append(body.id)
-        favs[body.uid] = ids
-        _save_favs(favs)
-    return {"ok": True}
-
-
-@app.delete("/api/favorites/{uid}/{post_id}")
-async def api_remove_favorite(uid: str, post_id: str):
-    async with _get_fav_lock():
-        favs = _load_favs()
-        ids = favs.get(uid, [])
-        if post_id not in ids:
-            raise HTTPException(404, "Not in favorites")
-        ids.remove(post_id)
-        if ids:
-            favs[uid] = ids
-        else:
-            favs.pop(uid, None)
-        _save_favs(favs)
-    return {"ok": True}
+    return [
+        f"{uid}_{pid}"
+        for uid, ids in favs.items()
+        if uid not in blacklist
+        for pid in ids
+    ]
 
 
 # ── Blacklist API ────────────────────────────────────────
 
 
-@app.get("/api/blacklist")
+@router.get("/api/blacklist")
 async def api_list_blacklist():
     """Return blacklisted UIDs with nicknames."""
     uids = _load_blacklist()
-    return [
-        {"uid": uid, "nickname": uid_nickname_map.get(uid, uid)}
-        for uid in uids
-    ]
+    return [{"uid": uid, "nickname": uid_nickname_map.get(uid, uid)} for uid in uids]
 
 
-@app.post("/api/blacklist")
+@router.post("/api/blacklist")
 async def api_add_blacklist(body: BlacklistBody):
-    async with _get_blacklist_lock():
+    async with _blacklist_lock:
         bl = _load_blacklist()
         if body.uid not in bl:
             bl.append(body.uid)
@@ -725,9 +595,9 @@ async def api_add_blacklist(body: BlacklistBody):
     return {"ok": True}
 
 
-@app.delete("/api/blacklist/{uid}")
+@router.delete("/api/blacklist/{uid}")
 async def api_remove_blacklist(uid: str):
-    async with _get_blacklist_lock():
+    async with _blacklist_lock:
         bl = _load_blacklist()
         if uid not in bl:
             raise HTTPException(404, "Not in blacklist")
@@ -739,7 +609,7 @@ async def api_remove_blacklist(uid: str):
 # ── Tags API ─────────────────────────────────────────────
 
 
-@app.get("/api/tags")
+@router.get("/api/tags")
 async def api_list_tags():
     """Return all tags with post counts."""
     tags = _load_tags()
@@ -751,7 +621,7 @@ async def api_list_tags():
     return result
 
 
-@app.get("/api/tags/post-map")
+@router.get("/api/tags/post-map")
 async def api_tags_post_map():
     """Return mapping: {uid_postid: [tag1, tag2, ...]} for all tagged posts."""
     tags = _load_tags()
@@ -764,25 +634,28 @@ async def api_tags_post_map():
     return result
 
 
-@app.get("/api/tags/{tag}")
+@router.get("/api/tags/{tag}")
 async def api_tag_posts(tag: str, page: int = 1, size: int = 20):
     """Return posts for a specific tag, paginated."""
     tags = _load_tags()
     uid_map = tags.get(tag, {})
     tag_set = {f"{uid}_{pid}" for uid, ids in uid_map.items() for pid in ids}
     blacklist = set(_load_blacklist())
-    tag_posts = [p for p in posts_index if f"{p['uid']}_{p['id']}" in tag_set and p["uid"] not in blacklist]
-    total = len(tag_posts)
-    start = (page - 1) * size
+    tag_posts = [
+        p
+        for p in posts_index
+        if f"{p['uid']}_{p['id']}" in tag_set and p["uid"] not in blacklist
+    ]
+    total, page_items = paginate(tag_posts, page, size)
     return {
         "total": total,
         "page": page,
         "size": size,
-        "items": tag_posts[start : start + size],
+        "items": page_items,
     }
 
 
-@app.get("/api/posts/{uid}/{post_id}/tags")
+@router.get("/api/posts/{uid}/{post_id}/tags")
 async def api_post_tags(uid: str, post_id: str):
     """Return tags for a specific post."""
     tags = _load_tags()
@@ -794,13 +667,13 @@ async def api_post_tags(uid: str, post_id: str):
     return result
 
 
-@app.post("/api/tags")
+@router.post("/api/tags")
 async def api_add_tag(body: TagBody):
     """Add a tag to a post."""
     tag = body.tag.strip()
     if not tag:
         raise HTTPException(400, "Tag cannot be empty")
-    async with _get_tags_lock():
+    async with _tags_lock:
         tags = _load_tags()
         uid_map = tags.setdefault(tag, {})
         ids = uid_map.get(body.uid, [])
@@ -811,10 +684,10 @@ async def api_add_tag(body: TagBody):
     return {"ok": True}
 
 
-@app.delete("/api/tags/{tag}/{uid}/{post_id}")
+@router.delete("/api/tags/{tag}/{uid}/{post_id}")
 async def api_remove_tag(tag: str, uid: str, post_id: str):
     """Remove a tag from a post."""
-    async with _get_tags_lock():
+    async with _tags_lock:
         tags = _load_tags()
         uid_map = tags.get(tag, {})
         ids = uid_map.get(uid, [])
@@ -833,10 +706,10 @@ async def api_remove_tag(tag: str, uid: str, post_id: str):
     return {"ok": True}
 
 
-@app.delete("/api/tags/{tag}")
+@router.delete("/api/tags/{tag}")
 async def api_delete_tag(tag: str):
     """Delete an entire tag."""
-    async with _get_tags_lock():
+    async with _tags_lock:
         tags = _load_tags()
         if tag not in tags:
             raise HTTPException(404, "Tag not found")
@@ -845,7 +718,7 @@ async def api_delete_tag(tag: str):
     return {"ok": True}
 
 
-@app.delete("/api/posts/{uid}/{post_id}")
+@router.delete("/api/posts/{uid}/{post_id}")
 async def api_delete_post(uid: str, post_id: str):
     """Move a post directory to trash and remove from index / favorites."""
     if not re.fullmatch(r"[\w]+", uid) or not re.fullmatch(r"[\w]+", post_id):
@@ -867,20 +740,22 @@ async def api_delete_post(uid: str, post_id: str):
 
     # Remove from in-memory index and mtime cache
     global posts_index
-    posts_index = [p for p in posts_index if not (p["uid"] == uid and p["id"] == post_id)]
+    posts_index = [
+        p for p in posts_index if not (p["uid"] == uid and p["id"] == post_id)
+    ]
     _post_mtimes.pop(f"{uid}_{post_id}", None)
 
     # Remove from favorites if present
-    async with _get_fav_lock():
-        favs = _load_favs()
+    async with _fav_store.lock:
+        favs = _fav_store.load()
         if uid in favs and post_id in favs[uid]:
             favs[uid].remove(post_id)
             if not favs[uid]:
                 favs.pop(uid)
-            _save_favs(favs)
+            _fav_store.save(favs)
 
     # Remove from all tags if present
-    async with _get_tags_lock():
+    async with _tags_lock:
         tags = _load_tags()
         changed = False
         for tag_name in list(tags.keys()):
@@ -898,7 +773,7 @@ async def api_delete_post(uid: str, post_id: str):
     return {"ok": True}
 
 
-@app.post("/api/refresh")
+@router.post("/api/refresh")
 async def api_refresh(full: bool = False):
     if full:
         await asyncio.to_thread(_build_index_full)
@@ -907,37 +782,33 @@ async def api_refresh(full: bool = False):
     return {"ok": True, "count": len(posts_index)}
 
 
-# ── static files ─────────────────────────────────────────
+# ── app factory ──────────────────────────────────────────
 
-THUMB_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/media/thumbnails", StaticFiles(directory=str(THUMB_DIR)), name="media-thumbnails")
-app.mount("/media", StaticFiles(directory=str(WEIBO_MSG_DIR)), name="media")
 
-if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "assets").is_dir():
-    app.mount(
-        "/assets",
-        StaticFiles(directory=str(FRONTEND_DIST / "assets")),
-        name="frontend-assets",
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="Weibo Image Web",
+        lifespan=build_lifespan(
+            _build_index, AUTO_REFRESH_INTERVAL, on_startup=_startup_thumbnails
+        ),
     )
+    setup_cors(app)
+    add_cache_headers_middleware(app, max_age=31536000, immutable=True)
+
+    app.include_router(router)
+    register_favorite_mutations(app, _fav_store)
+
+    THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/media/thumbnails",
+        StaticFiles(directory=str(THUMB_DIR)),
+        name="media-thumbnails",
+    )
+    if WEIBO_MSG_DIR.is_dir():
+        app.mount("/media", StaticFiles(directory=str(WEIBO_MSG_DIR)), name="media")
+
+    mount_frontend(app, FRONTEND_DIST)
+    return app
 
 
-@app.get("/{path:path}")
-async def serve_spa(path: str):
-    if not FRONTEND_DIST.is_dir():
-        raise HTTPException(404, "Frontend not built. Run: cd frontend && npm run build")
-    if ".." in path:
-        raise HTTPException(400)
-    file = (FRONTEND_DIST / path).resolve()
-    dist_resolved = FRONTEND_DIST.resolve()
-    if file.is_file() and str(file).startswith(str(dist_resolved)):
-        return FileResponse(file)
-    index = dist_resolved / "index.html"
-    if index.is_file():
-        return FileResponse(index)
-    raise HTTPException(404)
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=9998)
+app = create_app()

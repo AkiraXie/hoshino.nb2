@@ -14,8 +14,8 @@ if [ -f "$PID_DIR/server.pid" ] && kill -0 "$(cat "$PID_DIR/server.pid")" 2>/dev
     echo "后端已在运行 (PID $(cat "$PID_DIR/server.pid"))"
 else
     echo "启动后端 (port 9997)..."
-    cd "$SCRIPT_DIR"
-    nohup uv run uvicorn server:app --host 0.0.0.0 --port 9997 --reload \
+    cd "$PROJECT_ROOT"
+    nohup uv run python -m image_web x --port 9997 --reload \
         > "$PID_DIR/server.log" 2>&1 &
     echo $! > "$PID_DIR/server.pid"
     echo "后端已启动 (PID $!)"
@@ -33,6 +33,6 @@ else
 fi
 
 echo ""
-echo "前端: http://$(hostname -I | awk '{print $1}'):3003"
-echo "后端: http://$(hostname -I | awk '{print $1}'):9997"
+echo "前端: http://$(hostname | awk '{print $1}'):3003"
+echo "后端: http://$(hostname | awk '{print $1}'):9997"
 echo "停止: bash $SCRIPT_DIR/stop_dev.sh"

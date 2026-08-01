@@ -36,7 +36,9 @@ hoshino/service_config/    各 Service 的业务配置
 nb-tests/                  NoneBug、跨适配器和插件行为测试
 .tests/                    legacy 与微博专项测试
 agent-flow/                架构、插件和 adapter 专题文档
-weibo_image_web/           FastAPI + React/Vite 微博图片浏览应用
+image_web/                 图片浏览站点后端（共享基础 + x/weibo provider）
+weibo_image_web/           微博站点前端与启停脚本
+x_image_web/               X 站点前端与启停脚本
 ```
 
 详细的分层和 import 边界见 [架构文档](agent-flow/architecture.md)。
@@ -46,7 +48,7 @@ weibo_image_web/           FastAPI + React/Vite 微博图片浏览应用
 - Python 3.10 或更高版本
 - [uv](https://docs.astral.sh/uv/)
 - 至少一个可用的机器人协议端或 Telegram Bot token
-- Node.js 与 npm，仅在开发 `weibo_image_web` 前端时需要
+- Node.js 与 npm，仅在开发图片浏览站点前端时需要
 
 ## 安装
 
@@ -164,22 +166,28 @@ Milky 插件测试需要经过真实事件模型、`bot.handle_event()` 和被 s
 具体要求见 [Milky 插件测试协议](agent-flow/milky-plugin-test-protocol.md)。测试不得连接生产
 协议端或使用真实凭据。
 
-## 微博图片 Web 应用
+## 图片浏览 Web 应用
 
-`weibo_image_web` 是独立的 FastAPI + React/Vite 应用，用于浏览 Hoshino 保存的微博内容。
+仓库包含两个独立的 FastAPI + React/Vite 图片浏览站点。后端统一在 `image_web/` 包中按
+provider 划分（共享基础设施在 `image_web/common/`），前端分别位于
+`weibo_image_web/frontend` 和 `x_image_web/frontend`：
+
+- **微博站点**（`weibo` provider）：浏览 Hoshino 保存的微博内容，后端默认 `9998`，前端 dev `3001`。
+- **X 站点**（`x` provider）：浏览 X/Twitter 内容，后端默认 `9997`，前端 dev `3003`。
 
 ```bash
+# 统一后端入口（支持 --host / --port / --reload）
+uv run python -m image_web weibo
+uv run python -m image_web x
+
 # 安装前端依赖
 npm --prefix weibo_image_web/frontend ci
+npm --prefix x_image_web/frontend ci
 
-# 构建前端并启动 Vite 与 FastAPI
+# 一键构建前端并启动 Vite 与后端；停止用对应 stop_dev.sh
 bash weibo_image_web/start_dev.sh
-
-# 停止后端进程
-bash weibo_image_web/stop_dev.sh
+bash x_image_web/start_dev.sh
 ```
-
-脚本默认启动 Vite 开发服务 `3002` 端口和 FastAPI `9999` 端口。
 
 ## Agent 与贡献者
 

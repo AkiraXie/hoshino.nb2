@@ -1,61 +1,50 @@
-"""X Image Web - X/Twitter 瀑布流图片浏览站点（冷蓝色调）"""
+"""X Image Web provider —— X/Twitter 瀑布流图片浏览站点（冷蓝色调）。
+
+数据源为 ``data/db/x.db`` 的 outbox（已发送帖子）与 ``data/x/`` 本地媒体；远程图片经
+``/media/proxy`` 代理缓存。前端位于 ``x_image_web/frontend``。
+"""
 
 import asyncio
+import hashlib
 import json
 import sqlite3
 import threading
 from collections import Counter
-from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from pydantic import BaseModel
+
+from image_web.common.env import read_env_data_dir
+from image_web.common.favorites import FavoritesStore, register_favorite_mutations
+from image_web.common.lifecycle import build_lifespan
+from image_web.common.middleware import add_cache_headers_middleware, setup_cors
+from image_web.common.pagination import paginate
+from image_web.common.spa import mount_frontend
 
 BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
+PROJECT_ROOT = BASE_DIR.parent.parent
 
-
-def _read_env_data_dir() -> Path:
-    """从 .env.prod 读取 data 配置项，返回绝对路径。"""
-    env_file = PROJECT_ROOT / ".env.prod"
-    if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            if key.strip() == "data":
-                p = Path(value.strip())
-                return p if p.is_absolute() else PROJECT_ROOT / p
-    return PROJECT_ROOT / "data"
-
-
-DATA_DIR = _read_env_data_dir()
+DATA_DIR = read_env_data_dir(PROJECT_ROOT)
 X_DB_PATH = DATA_DIR / "db" / "x.db"
 X_MEDIA_DIR = DATA_DIR / "x"
 THUMB_DIR = DATA_DIR / "x_thumbnails"
 MEDIA_CACHE_DIR = DATA_DIR / "x_media_cache"
-FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
-
 FAV_JSON = DATA_DIR / "x_favorite.json"
+FRONTEND_DIST = PROJECT_ROOT / "x_image_web" / "frontend" / "dist"
+
+AUTO_REFRESH_INTERVAL = 5 * 60  # seconds
 
 posts_index: list[dict] = []
 uid_nickname_map: dict[str, str] = {}
 _build_lock = threading.RLock()
-_fav_lock: asyncio.Lock | None = None
 _http_client: httpx.AsyncClient | None = None
 
-
-def _get_fav_lock() -> asyncio.Lock:
-    global _fav_lock
-    if _fav_lock is None:
-        _fav_lock = asyncio.Lock()
-    return _fav_lock
+_fav_store = FavoritesStore(FAV_JSON)
 
 
 def _get_http_client() -> httpx.AsyncClient:
@@ -69,29 +58,14 @@ def _get_http_client() -> httpx.AsyncClient:
     return _http_client
 
 
+async def _shutdown_client() -> None:
+    global _http_client
+    if _http_client:
+        await _http_client.aclose()
+        _http_client = None
+
+
 # ── helpers ──────────────────────────────────────────────
-
-
-def _load_favs() -> dict[str, list[str]]:
-    if not FAV_JSON.exists():
-        return {}
-    try:
-        data = json.loads(FAV_JSON.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return {
-        str(uid): [str(pid) for pid in ids]
-        for uid, ids in data.items()
-        if isinstance(ids, list)
-    }
-
-
-def _save_favs(favs: dict[str, list[str]]) -> None:
-    FAV_JSON.write_text(
-        json.dumps(favs, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
 
 
 def _rewrite_media_path(path: str) -> str:
@@ -203,6 +177,20 @@ def _build_index() -> None:
         uid_nickname_map = umap
 
 
+def _url_suffix(url: str) -> str:
+    """Extract file suffix from URL."""
+    path = urlparse(url).path.lower()
+    for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
+        if path.endswith(ext):
+            return ext
+    return ".jpg"
+
+
+def _url_cache_key(url: str) -> str:
+    """Generate a safe filename from a URL."""
+    return hashlib.sha256(url.encode()).hexdigest()[:32] + _url_suffix(url)
+
+
 def _generate_thumbnail(uid: str, post_id: str, image_url: str) -> str | None:
     """Download and cache a thumbnail for a remote image. Returns local path or None."""
     thumb_dir = THUMB_DIR / uid / post_id
@@ -232,77 +220,27 @@ def _generate_thumbnail(uid: str, post_id: str, image_url: str) -> str | None:
     return None
 
 
-def _url_cache_key(url: str) -> str:
-    """Generate a safe filename from a URL."""
-    import hashlib
-
-    return hashlib.sha256(url.encode()).hexdigest()[:32] + _url_suffix(url)
-
-
-def _url_suffix(url: str) -> str:
-    """Extract file suffix from URL."""
-    from urllib.parse import urlparse
-
-    path = urlparse(url).path.lower()
-    for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp"):
-        if path.endswith(ext):
-            return ext
-    return ".jpg"
-
-
-# ── app ──────────────────────────────────────────────────
-
-AUTO_REFRESH_INTERVAL = 5 * 60  # seconds
-
-
-async def _auto_refresh_loop():
-    while True:
-        await asyncio.sleep(AUTO_REFRESH_INTERVAL)
-        await asyncio.to_thread(_build_index)
-
-
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    await asyncio.to_thread(_build_index)
-    task = asyncio.create_task(_auto_refresh_loop())
-    yield
-    task.cancel()
-    global _http_client
-    if _http_client:
-        await _http_client.aclose()
-        _http_client = None
-
-
-app = FastAPI(title="X Image Web", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.middleware("http")
-async def add_cache_headers(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/media/"):
-        response.headers["Cache-Control"] = "public, max-age=86400"
-    return response
-
-
-# ── models ───────────────────────────────────────────────
-
-
-class FavBody(BaseModel):
-    uid: str
-    id: str
+def _summary(p: dict) -> dict:
+    return {
+        "uid": p["uid"],
+        "id": p["id"],
+        "content": p["content"],
+        "nickname": p["nickname"],
+        "timestamp": p["timestamp"],
+        "url": p["url"],
+        "likes": p["likes"],
+        "image_count": p["image_count"],
+        "video_count": p["video_count"],
+        "cover": p["cover"],
+    }
 
 
 # ── API routes ───────────────────────────────────────────
 
+router = APIRouter()
 
-@app.get("/api/posts")
+
+@router.get("/api/posts")
 async def api_list_posts(page: int = 1, size: int = 20, uid: str = "", q: str = ""):
     await asyncio.to_thread(_build_index)
     results = list(posts_index)
@@ -316,30 +254,16 @@ async def api_list_posts(page: int = 1, size: int = 20, uid: str = "", q: str = 
             if needle in (p.get("content") or "").lower()
             or needle in (p.get("nickname") or "").lower()
         ]
-    total = len(results)
-    start = (page - 1) * size
-    # Strip full images/videos list from summary
+    total, page_items = paginate(results, page, size)
     items = []
-    for p in results[start : start + size]:
-        items.append(
-            {
-                "uid": p["uid"],
-                "id": p["id"],
-                "content": p["content"],
-                "nickname": p["nickname"],
-                "timestamp": p["timestamp"],
-                "url": p["url"],
-                "likes": p["likes"],
-                "image_count": p["image_count"],
-                "video_count": p["video_count"],
-                "cover": p["cover"],
-                "repost": p.get("repost"),
-            }
-        )
+    for p in page_items:
+        item = _summary(p)
+        item["repost"] = p.get("repost")
+        items.append(item)
     return {"total": total, "page": page, "size": size, "items": items}
 
 
-@app.get("/api/posts/{uid}/{post_id}")
+@router.get("/api/posts/{uid}/{post_id}")
 async def api_get_post(uid: str, post_id: str):
     entry = next(
         (p for p in posts_index if p["uid"] == uid and p["id"] == post_id), None
@@ -349,33 +273,18 @@ async def api_get_post(uid: str, post_id: str):
     return entry
 
 
-@app.get("/api/uids")
+@router.get("/api/uids")
 async def api_list_uids():
     return uid_nickname_map
 
 
-@app.get("/api/stats/top-uids")
+@router.get("/api/stats/top-uids")
 async def api_top_uids(limit: int = 5, preview: int = 4):
     uid_counts = Counter(p["uid"] for p in posts_index)
     top = uid_counts.most_common(limit)
     result = []
     for uid, count in top:
-        posts = [
-            {
-                "uid": p["uid"],
-                "id": p["id"],
-                "content": p["content"],
-                "nickname": p["nickname"],
-                "timestamp": p["timestamp"],
-                "url": p["url"],
-                "likes": p["likes"],
-                "image_count": p["image_count"],
-                "video_count": p["video_count"],
-                "cover": p["cover"],
-            }
-            for p in posts_index
-            if p["uid"] == uid
-        ][:preview]
+        posts = [_summary(p) for p in posts_index if p["uid"] == uid][:preview]
         result.append(
             {
                 "uid": uid,
@@ -387,73 +296,29 @@ async def api_top_uids(limit: int = 5, preview: int = 4):
     return result
 
 
-# ── Favorites API ────────────────────────────────────────
+# ── Favorites (读取接口；写入接口由 common 注册) ──────────
 
 
-@app.get("/api/favorites")
+@router.get("/api/favorites")
 async def api_list_favorites(page: int = 1, size: int = 20):
-    favs = _load_favs()
+    favs = _fav_store.load()
     fav_set = {f"{uid}_{pid}" for uid, ids in favs.items() for pid in ids}
     fav_posts = [p for p in posts_index if f"{p['uid']}_{p['id']}" in fav_set]
-    total = len(fav_posts)
-    start = (page - 1) * size
-    items = [
-        {
-            "uid": p["uid"],
-            "id": p["id"],
-            "content": p["content"],
-            "nickname": p["nickname"],
-            "timestamp": p["timestamp"],
-            "url": p["url"],
-            "likes": p["likes"],
-            "image_count": p["image_count"],
-            "video_count": p["video_count"],
-            "cover": p["cover"],
-        }
-        for p in fav_posts[start : start + size]
-    ]
+    total, page_items = paginate(fav_posts, page, size)
+    items = [_summary(p) for p in page_items]
     return {"total": total, "page": page, "size": size, "items": items}
 
 
-@app.get("/api/favorites/ids")
+@router.get("/api/favorites/ids")
 async def api_favorite_ids():
-    favs = _load_favs()
+    favs = _fav_store.load()
     return [f"{uid}_{pid}" for uid, ids in favs.items() for pid in ids]
-
-
-@app.post("/api/favorites")
-async def api_add_favorite(body: FavBody):
-    async with _get_fav_lock():
-        favs = _load_favs()
-        ids = favs.get(body.uid, [])
-        if body.id in ids:
-            return {"ok": True}
-        ids.append(body.id)
-        favs[body.uid] = ids
-        _save_favs(favs)
-    return {"ok": True}
-
-
-@app.delete("/api/favorites/{uid}/{post_id}")
-async def api_remove_favorite(uid: str, post_id: str):
-    async with _get_fav_lock():
-        favs = _load_favs()
-        ids = favs.get(uid, [])
-        if post_id not in ids:
-            raise HTTPException(404, "Not in favorites")
-        ids.remove(post_id)
-        if ids:
-            favs[uid] = ids
-        else:
-            favs.pop(uid, None)
-        _save_favs(favs)
-    return {"ok": True}
 
 
 # ── Media proxy ──────────────────────────────────────────
 
 
-@app.get("/media/proxy")
+@router.get("/media/proxy")
 async def media_proxy(url: str):
     """Proxy remote images to avoid CORS/hotlink issues and enable caching."""
     if not url.startswith(("http://", "https://")):
@@ -485,48 +350,37 @@ async def media_proxy(url: str):
     return Response(content=resp.content, media_type=content_type)
 
 
-@app.post("/api/refresh")
+@router.post("/api/refresh")
 async def api_refresh():
     await asyncio.to_thread(_build_index)
     return {"ok": True, "count": len(posts_index)}
 
 
-# ── static files ─────────────────────────────────────────
+# ── app factory ──────────────────────────────────────────
 
-THUMB_DIR.mkdir(parents=True, exist_ok=True)
-MEDIA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-# Serve local X media (downloaded images/videos under data/x/)
-if X_MEDIA_DIR.is_dir():
-    app.mount("/media/x", StaticFiles(directory=str(X_MEDIA_DIR)), name="x-media")
-
-if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "assets").is_dir():
-    app.mount(
-        "/assets",
-        StaticFiles(directory=str(FRONTEND_DIST / "assets")),
-        name="frontend-assets",
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="X Image Web",
+        lifespan=build_lifespan(
+            _build_index, AUTO_REFRESH_INTERVAL, on_shutdown=_shutdown_client
+        ),
     )
+    setup_cors(app)
+    add_cache_headers_middleware(app, max_age=86400)
+
+    app.include_router(router)
+    register_favorite_mutations(app, _fav_store)
+
+    THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    MEDIA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Serve local X media (downloaded images/videos under data/x/)
+    if X_MEDIA_DIR.is_dir():
+        app.mount("/media/x", StaticFiles(directory=str(X_MEDIA_DIR)), name="x-media")
+
+    mount_frontend(app, FRONTEND_DIST)
+    return app
 
 
-@app.get("/{path:path}")
-async def serve_spa(path: str):
-    if not FRONTEND_DIST.is_dir():
-        raise HTTPException(
-            404, "Frontend not built. Run: cd frontend && npm run build"
-        )
-    if ".." in path:
-        raise HTTPException(400)
-    file = (FRONTEND_DIST / path).resolve()
-    dist_resolved = FRONTEND_DIST.resolve()
-    if file.is_file() and str(file).startswith(str(dist_resolved)):
-        return FileResponse(file)
-    index = dist_resolved / "index.html"
-    if index.is_file():
-        return FileResponse(index)
-    raise HTTPException(404)
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=9997)
+app = create_app()
