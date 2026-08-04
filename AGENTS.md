@@ -119,7 +119,7 @@ bash weibo_image_web/stop_dev.sh
 NoneBot 插件加载，否则其 matcher 可能无法正常注册。
 
 常用配置项位于 `.env.prod`：`host`、`port`、`debug`、`superusers`、`nickname`、
-`modules`、`data`、`static`、Telegram/Milky 客户端和 APScheduler 配置。测试必须隔离本机
+`modules`、`data`、`static`（静态资源目录，默认可能为空；若启动报错缺少字体/图片，请手动下载资源至该目录或配置系统字体路径）、Telegram/Milky 客户端和 APScheduler 配置。测试必须隔离本机
 `.env.prod`；共享 NoneBug fixture 已在 `nb-tests/conftest.py` 中提供最小配置。
 
 运行时数据主要位于 `data/`：
