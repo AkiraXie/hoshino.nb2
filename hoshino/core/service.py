@@ -268,6 +268,29 @@ class Service(Generic[ConfigT]):
         except ValidationError as exc:
             raise ValueError(f"Invalid service config {filename}") from exc
 
+    def save_config(self, config: ConfigT) -> None:
+        """写回服务配置。
+
+        用现有 ``TypeAdapter`` 校验后，以与 ``_ensure_default_config`` 相同的
+        序列化格式原子写入 ``hoshino/service_config/<name>.json``。
+        """
+        if self.config_type is not None:
+            validated = TypeAdapter(self.config_type).validate_python(config)
+        else:
+            validated = config
+        filename = _service_config_file(self.name)
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        temporary = filename.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(
+                _config_to_json_data(validated),
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf8",
+        )
+        temporary.replace(filename)
+
     def check_enabled(self, scope_key: str) -> bool:
         if scope_key in self.enable_scope:
             return True

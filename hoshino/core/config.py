@@ -13,6 +13,7 @@ class HoshinoConfig(BaseConfig):
         "develop",
         "tools",
         "entertainment",
+        "ai",
     ]
     data: str = "data"
     static: str = "static"
