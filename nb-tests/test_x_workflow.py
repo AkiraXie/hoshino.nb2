@@ -1290,23 +1290,6 @@ def _outbox_statuses(path: Path) -> dict[int, str]:
     return {int(row[0]): row[1] for row in rows}
 
 
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-def test_is_permanent_delivery_error_classification():
-    from nonebot.adapters.telegram.exception import ActionFailed
-
-    permanent = _x_module("runtime").is_permanent_delivery_error
-
-    assert permanent(ActionFailed("Bad Request: message caption is too long"))
-    assert permanent(ActionFailed("Bad Request: message is too long"))
-    assert permanent(ActionFailed("Bad Request: chat not found"))
-    assert permanent(ActionFailed("Forbidden: bot was kicked from the group chat"))
-    # Transient conditions must keep retrying.
-    assert not permanent(ActionFailed("Too Many Requests: retry after 30"))
-    assert not permanent(ActionFailed("Internal Server Error"))
-    # Non-API errors are never classified as permanent.
-    assert not permanent(RuntimeError("message caption is too long"))
-
-
 async def _seed_outbox(db, post_module, tmp_path: Path, username: str = "alice"):
     store = db.XStore(tmp_path / "x.db")
     await store.add_subscription(
@@ -1329,12 +1312,10 @@ async def test_x_delivery_permanent_error_dead_letters_immediately(
 ):
     from nonebot.adapters.telegram.exception import ActionFailed
 
-    config_module = _x_module("config")
     db = _x_module("db")
     post_module = _x_module("post")
     runtime_module = _x_module("runtime")
     store = await _seed_outbox(db, post_module, tmp_path)
-    monkeypatch.setattr(runtime_module.sv, "get_config", config_module.XSettings)
     monkeypatch.setattr(runtime_module.sv, "logger", RecordingLogger())
     runtime = runtime_module.XRuntime(store)
 
@@ -1351,18 +1332,13 @@ async def test_x_delivery_permanent_error_dead_letters_immediately(
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_x_delivery_transient_error_dead_letters_after_max_attempts(
+async def test_x_delivery_error_dead_letters_without_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    import sqlite3
-
-    config_module = _x_module("config")
     db = _x_module("db")
     post_module = _x_module("post")
     runtime_module = _x_module("runtime")
     store = await _seed_outbox(db, post_module, tmp_path)
-    settings = replace(config_module.XSettings(), delivery_max_attempts=2)
-    monkeypatch.setattr(runtime_module.sv, "get_config", lambda: settings)
     monkeypatch.setattr(runtime_module.sv, "logger", RecordingLogger())
     runtime = runtime_module.XRuntime(store)
 
@@ -1372,17 +1348,10 @@ async def test_x_delivery_transient_error_dead_letters_after_max_attempts(
     monkeypatch.setattr(runtime.dispatch_mainline.executor, "send", boom)
     monkeypatch.setattr(runtime.errors, "enqueue", lambda *a, **k: _async_result(False))
 
-    # Attempt 1 fails transiently and is rescheduled, still pending.
-    await runtime.dispatch_mainline.dispatch_due()
-    assert _outbox_statuses(tmp_path / "x.db") == {1: "pending"}
-
-    # Make it due again; attempt 2 hits the max and is dead-lettered.
-    conn = sqlite3.connect(tmp_path / "x.db")
-    conn.execute("UPDATE outbox SET next_attempt_at = 0")
-    conn.commit()
-    conn.close()
+    # Any send failure is terminal: the item is dead-lettered immediately.
     await runtime.dispatch_mainline.dispatch_due()
     assert _outbox_statuses(tmp_path / "x.db") == {1: "failed"}
+    assert await store.due_outbox() == []
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

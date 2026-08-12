@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Iterable
 
 from nonebot.adapters import Bot
 from hoshino.core.config import config
-from hoshino.modules.information.utils import PostMessage
+from hoshino.modules.information.utils import PostMessage, PostResource
 from hoshino.command import UniMessage, uni_image, uni_text, uni_video
 from hoshino.platform import (
     Target,
@@ -38,6 +38,11 @@ weibo_msg_dir.mkdir(parents=True, exist_ok=True)
 
 WEIBO_MSG_CACHE_TTL = 3 * 60 * 60
 CACHE_FILE_CLEANUP_DELAY = 3 * 60 * 60
+
+# QQ Highway 群视频上传约 50MiB 封顶，超限的块上传会被服务端以 102902 拒绝
+# （见 weibo_outbox 8 次重试全失败的事故）。超限视频只保留在本地归档中，
+# 不加入发送消息；图片（含视频封面）和微博原文链接仍正常发送。
+MAX_VIDEO_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 # =============================================================================
@@ -274,9 +279,17 @@ class _PostArchiveStore:
         return PostMessage(
             text=post_message.text,
             content=post_message.content,
-            screenshot=(save_dir / "screenshot.jpg") if post_message.screenshot else None,
-            images=[save_dir / "images" / f"{i + 1}.jpg" for i in range(len(post_message.images))],
-            videos=[save_dir / "videos" / f"{i + 1}.mp4" for i in range(len(post_message.videos))],
+            screenshot=(save_dir / "screenshot.jpg")
+            if post_message.screenshot
+            else None,
+            images=[
+                save_dir / "images" / f"{i + 1}.jpg"
+                for i in range(len(post_message.images))
+            ],
+            videos=[
+                save_dir / "videos" / f"{i + 1}.mp4"
+                for i in range(len(post_message.videos))
+            ],
         )
 
     async def load(self, uid: str, post_id: str) -> PostMessage | None:
@@ -425,27 +438,12 @@ class _PostArchiveStore:
 
 
 class _MessageRenderer:
-    def build_image_messages(self, image_paths: list[Path]) -> list[MessageLike]:
-        if not image_paths:
-            return []
-        messages: list[MessageLike] = []
-        chunk_size = 4
-        for divisor in (7, 6, 5, 4, 3):
-            if len(image_paths) % divisor == 0:
-                chunk_size = divisor
-                break
-        for index in range(0, len(image_paths), chunk_size):
-            msg = UniMessage()
-            for image_path in image_paths[index : index + chunk_size]:
-                msg += uni_image(image_path)
-            messages.append(msg)
-        return messages
-
     def render(
         self,
         post_message: PostMessage,
         post: "WeiboPost | None" = None,
     ) -> list[MessageLike]:
+        post_message = filter_oversized_videos(post_message)
         head = post_message.text or ""
         if not post_message.screenshot and post_message.content:
             head += "\n" + post_message.content
@@ -467,6 +465,23 @@ class _MessageRenderer:
         messages.extend(self.build_image_messages(post_message.images))
         messages.extend(uni_video(video) for video in post_message.videos)
         return messages
+
+    def build_image_messages(self, image_paths: list[Path]) -> list[MessageLike]:
+        if not image_paths:
+            return []
+        messages: list[MessageLike] = []
+        chunk_size = 4
+        for divisor in (7, 6, 5, 4, 3):
+            if len(image_paths) % divisor == 0:
+                chunk_size = divisor
+                break
+        for index in range(0, len(image_paths), chunk_size):
+            msg = UniMessage()
+            for image_path in image_paths[index : index + chunk_size]:
+                msg += uni_image(image_path)
+            messages.append(msg)
+        return messages
+
 
 class _MessageDispatcher:
     async def send_messages(
@@ -653,7 +668,9 @@ async def get_post_message(
     video_paths = await _asset_service.download_videos(post)
     screenshot = None
     if with_screenshot:
-        screenshot = await _asset_service.take_screenshot(post, timeout=screenshot_timeout)
+        screenshot = await _asset_service.take_screenshot(
+            post, timeout=screenshot_timeout
+        )
     _file_cleaner.schedule([*image_paths, *video_paths])
     return PostMessage(
         text=header,
@@ -693,6 +710,40 @@ def remove_videos(message: PostMessage) -> PostMessage:
         screenshot=message.screenshot,
         images=list(message.images),
         videos=[],
+    )
+
+
+def _video_upload_exceeds_limit(video: PostResource) -> bool:
+    """Return True when a local video file exceeds the platform upload cap."""
+    if not isinstance(video, Path):
+        return False
+    try:
+        return video.stat().st_size > MAX_VIDEO_UPLOAD_BYTES
+    except OSError:
+        return False
+
+
+def filter_oversized_videos(message: PostMessage) -> PostMessage:
+    """Drop videos above the upload limit from the outgoing message.
+
+    The video file itself is left untouched in the local archive; only the
+    rendered message loses it, while images (including the video cover) and
+    the original post link are still sent.
+    """
+    videos = [
+        video for video in message.videos if not _video_upload_exceeds_limit(video)
+    ]
+    if len(videos) != len(message.videos):
+        sv.logger.warning(
+            "微博视频超过上传限制，已跳过发送（文件仍保留在本地归档）: "
+            f"dropped={len(message.videos) - len(videos)}"
+        )
+    return PostMessage(
+        text=message.text,
+        content=message.content,
+        screenshot=message.screenshot,
+        images=list(message.images),
+        videos=videos,
     )
 
 

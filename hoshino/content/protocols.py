@@ -27,7 +27,7 @@ class OutboxItem(Protocol):
 
 @runtime_checkable
 class OutboxStore(Protocol):
-    """Durable delivery queue: enqueue after persist, dispatch with retry."""
+    """Durable delivery queue: enqueue after persist, dispatch once."""
 
     async def enqueue_posts(self, uid: str, posts: list[Post]) -> int:
         """Fan-out posts to all subscriptions; return number of rows inserted."""

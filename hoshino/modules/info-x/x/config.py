@@ -21,9 +21,6 @@ class XSettings:
     rate_limit_window_seconds: int = 900
     retry_base_seconds: float = 60.0
     retry_max_seconds: float = 1800.0
-    delivery_retry_base_seconds: float = 5.0
-    delivery_retry_max_seconds: float = 900.0
-    delivery_max_attempts: int = 20
 
     @property
     def rate_interval(self) -> float:

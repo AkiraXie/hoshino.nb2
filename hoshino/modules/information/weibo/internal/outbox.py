@@ -2,7 +2,7 @@
 
 Replaces the in-memory PostQueue for the dispatch phase, providing:
 - Persistence across bot restarts (pending items survive)
-- Retry with exponential backoff on send failure
+- Single-shot delivery: send failures are terminal and never retried
 - Deduplication via UNIQUE(group_id, uid, post_id)
 """
 
@@ -20,8 +20,6 @@ from hoshino import db_dir
 from hoshino.content import PostMessage
 
 T = TypeVar("T")
-
-MAX_ATTEMPTS = 8
 
 # How long a dispatched item is leased before it may be picked up again. The
 # dispatch job may run with overlapping instances (APScheduler max_instances=2),
@@ -202,7 +200,7 @@ class WeiboOutboxStore:
         )
 
     async def mark_dead(self, item_id: int, error: str) -> None:
-        """Mark an item as permanently failed (exceeded max attempts)."""
+        """Mark an item as permanently failed so it is never dispatched again."""
         await self._execute(
             "UPDATE weibo_outbox SET status = 'dead', last_error = ? WHERE id = ?",
             (error[:1000], item_id),
@@ -292,7 +290,6 @@ class WeiboOutboxStore:
 
 
 __all__ = [
-    "MAX_ATTEMPTS",
     "WeiboOutboxItem",
     "WeiboOutboxStore",
     "deserialize_post_message",

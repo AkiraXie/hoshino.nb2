@@ -3,7 +3,6 @@ import random
 import time
 from dataclasses import dataclass
 
-from hoshino.content.dispatch import retry_delay
 from hoshino.platform import Target, load_target_or_group
 
 from ..db import (
@@ -14,7 +13,6 @@ from ..db import (
 )
 from ..post import WeiboPost
 from .outbox import (
-    MAX_ATTEMPTS,
     WeiboOutboxItem,
     WeiboOutboxStore,
     deserialize_post_message,
@@ -223,20 +221,13 @@ class DispatchMainline:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                if item.attempts + 1 >= MAX_ATTEMPTS:
-                    await self.outbox.mark_dead(item.id, f"{type(exc).__name__}: {exc}")
-                    sv.logger.error(
-                        f"微博推送永久失败: group={item.group_id} uid={item.uid} post={item.post_id} error={exc}"
-                    )
-                else:
-                    retry_at = time.time() + retry_delay(item.attempts)
-                    await self.outbox.mark_failed(
-                        item.id, retry_at, f"{type(exc).__name__}: {exc}"
-                    )
-                    sv.logger.error(
-                        f"微博推送失败(将重试): group={item.group_id} uid={item.uid} post={item.post_id} "
-                        f"attempts={item.attempts + 1} error={exc}"
-                    )
+                # 发送失败不重试：fetch 阶段已有自己的重试机制，outbox 只负责
+                # 一次性投递，失败即终止，避免重复发送已成功的前置分段。
+                await self.outbox.mark_dead(item.id, f"{type(exc).__name__}: {exc}")
+                sv.logger.error(
+                    f"微博推送永久失败: group={item.group_id} uid={item.uid} "
+                    f"post={item.post_id} error={exc}"
+                )
             else:
                 await self.outbox.mark_sent(item.id)
                 sent += 1
