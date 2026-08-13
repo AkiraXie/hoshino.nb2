@@ -3,6 +3,8 @@
 import pytest
 from nonebug import NONEBOT_INIT_KWARGS
 
+from fake_ai_server import start_fake_server
+
 
 def pytest_configure(config):
     """Keep tests independent from an ignored local ``.env.prod`` file."""
@@ -40,11 +42,11 @@ def tmp_store(tmp_path, monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    import hoshino.modules.ai.store as store
+    import hoshino.modules.ai._store as store
 
     # 先导入 task store 以注册其表类（ai_task_*）到共享 Base.metadata，
     # 否则 create_all 不会建 task 表。task store 不 import providers 链。
-    import hoshino.modules.ai.task.store  # noqa: F401
+    import hoshino.modules.ai._task.store  # noqa: F401
 
     eng = create_engine(f"sqlite:///{tmp_path / 'aichat.db'}")
     store.Base.metadata.create_all(eng)
@@ -53,6 +55,18 @@ def tmp_store(tmp_path, monkeypatch):
         store, "Session", sessionmaker(bind=eng, expire_on_commit=False)
     )
     return store
+
+
+@pytest.fixture
+def fake_ai_server():
+    """本地 fake OpenAI/Anthropic HTTP 服务器，返回 (base_url, requests, stop)。
+
+    每个测试独立服务器实例：base_url 直接作 ProviderConfig.url；requests 记录每个
+    到达的请求（路径/header/body），供断言；stop 在测试结束时关闭服务器。
+    """
+    base_url, requests, stop = start_fake_server()
+    yield base_url, requests
+    stop()
 
 
 @pytest.fixture(scope="session")

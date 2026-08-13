@@ -21,7 +21,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import FunctionModel
 
-from hoshino.modules.ai import harness
+from hoshino.modules.ai import _harness as harness
 
 # ------------------------------------------------------------ helpers
 
@@ -180,9 +180,9 @@ class TestStepPersistence:
 
 class TestTaskRuntimeWiring:
     def test_run_task_run_injects_capabilities(self, tmp_store, monkeypatch):
-        from hoshino.modules.ai.config import AIConfig, ProviderConfig, ProviderOptions
-        from hoshino.modules.ai.task import runtime as task_runtime
-        from hoshino.modules.ai.task.models import TaskContext
+        from hoshino.modules.ai._config import AIConfig, ProviderConfig, ProviderOptions
+        from hoshino.modules.ai._task import runtime as task_runtime
+        from hoshino.modules.ai._task.models import TaskContext
 
         captured: dict = {}
 
@@ -196,16 +196,16 @@ class TestTaskRuntimeWiring:
             conversation_id=None,
             output_type=None,
             capabilities=None,
+            on_event=None,
         ):
             captured["capabilities"] = capabilities
-            fake_result = SimpleNamespace(
+            return SimpleNamespace(
                 run_id="r1",
                 conversation_id="c1",
                 output=None,
                 usage=None,
                 all_messages=lambda: [],
             )
-            yield SimpleNamespace(node=None, ctx=None, result=fake_result)
 
         monkeypatch.setattr(
             task_runtime.providers, "build_agent", lambda *a, **k: object()

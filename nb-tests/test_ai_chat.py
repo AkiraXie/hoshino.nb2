@@ -12,7 +12,7 @@ from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageE
 from nonebot.adapters.milky.model.api import MessageResponse
 from pydantic_ai.usage import RunUsage
 
-from hoshino.modules.ai.config import AIConfig, ProviderConfig, ProviderOptions
+from hoshino.modules.ai._config import AIConfig, ProviderConfig, ProviderOptions
 
 # 本文件会触发 uninfo 会话缓存，见 conftest 中 _clear_uninfo_cache 的说明。
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
@@ -22,6 +22,16 @@ pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
 # 高于仓库其他测试用到的所有硬编码 seq（1、7、1000/1001、7001、100000+），
 # 避免同 (group, seq) 命中他人缓存的 UniMessage。
 _seq = itertools.count(200000)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_conversation_manager(monkeypatch):
+    """每个测试独立 ConversationManager：单例内存缓存会跨测试残留。"""
+    from hoshino.modules.ai import _sessions
+
+    manager = _sessions.ConversationManager()
+    monkeypatch.setattr(_sessions, "conversation_manager", manager)
+    return manager
 
 
 def _milky_group(
@@ -76,14 +86,26 @@ def _milky_group(
 
 
 class FakeResult:
-    def __init__(self, data: str, usage: RunUsage | None = None):
+    def __init__(
+        self,
+        data: str,
+        usage: RunUsage | None = None,
+        messages: list | None = None,
+        prefix: list | None = None,
+    ):
         self.data = data
         self.output = data  # AgentRunResult.output，与旧 .data 语义对齐
-        self._messages: list = []
+        self._messages: list = list(messages) if messages is not None else []
+        self._prefix: list = list(prefix) if prefix is not None else []
         self._usage = usage or RunUsage(input_tokens=5, output_tokens=3, requests=1)
 
     def all_messages(self):
-        return self._messages
+        # 对齐真实 pydantic-ai：all_messages = message_history + 新增。
+        return [*self._prefix, *self._messages]
+
+    def with_prefix(self, prefix: list) -> "FakeResult":
+        """返回一个等价结果，其 all_messages 前置 message_history。"""
+        return FakeResult(self.data, self._usage, self._messages, prefix)
 
     def usage(self) -> RunUsage:
         return self._usage
@@ -92,9 +114,15 @@ class FakeResult:
 class FakeAgentRun:
     """等价 pydantic-ai AgentRun：迭代产出一个 node，结束后 result 可用。"""
 
-    def __init__(self, result: FakeResult, error: Exception | None = None):
+    def __init__(
+        self,
+        result: FakeResult,
+        error: Exception | None = None,
+        message_history: list | None = None,
+    ):
         self._result = result
         self._error = error
+        self._message_history = list(message_history) if message_history else []
         self.ctx = object()
         self.result: FakeResult | None = None
         self._count = 0
@@ -106,7 +134,7 @@ class FakeAgentRun:
         if self._error is not None:
             raise self._error
         if self._count >= 1:
-            self.result = self._result
+            self.result = self._result.with_prefix(self._message_history)
             raise StopAsyncIteration
         self._count += 1
         return object()
@@ -140,9 +168,11 @@ class FakeAgent:
         conversation_id=None,
         output_type=None,
         capabilities=None,
+        usage_limits=None,
     ):
         # 记录与 run 相同的信息，供断言。runner.run_agent 会透传
-        # deferred_tool_results / conversation_id / output_type / capabilities。
+        # deferred_tool_results / conversation_id / output_type / capabilities /
+        # usage_limits。
         self.prompt = prompt
         self.message_history = message_history
         self.deps = deps
@@ -150,7 +180,8 @@ class FakeAgent:
         self.conversation_id = conversation_id
         self.output_type = output_type
         self.capabilities = capabilities
-        return FakeAgentRun(self._result, self._error)
+        self.usage_limits = usage_limits
+        return FakeAgentRun(self._result, self._error, message_history)
 
 
 def _stub_config(monkeypatch, **overrides):
@@ -198,9 +229,16 @@ def _stub_send(monkeypatch):
 def test_ai_config_defaults_and_lookup():
     config = AIConfig()
     assert config.default == ""
-    assert config.max_history_messages == 40
+    assert config.max_history_messages == 64
     assert not config.has_provider("nope")
     assert config.get_provider("nope") is None
+    # 原生联网搜索与工具重试预算的默认值
+    assert config.web_search_native is True
+    assert config.tool_max_retries == 3
+    # web_fetch 证书校验与渲染清晰度/emoji 默认值
+    assert config.web_fetch_verify_ssl is False
+    assert config.render_device_scale == 2.0
+    assert config.render_emoji is True
 
     config = AIConfig(
         providers={
@@ -214,7 +252,7 @@ def test_ai_config_defaults_and_lookup():
 
 
 def test_mask_key_and_url():
-    from hoshino.modules.ai.config import mask_key, mask_url
+    from hoshino.modules.ai._config import mask_key, mask_url
 
     assert mask_key("") == ""
     assert mask_key("sk-1234567890") == "sk-1...7890"
@@ -224,7 +262,7 @@ def test_mask_key_and_url():
 
 
 def test_httpx_proxy_normalizes_socks():
-    from hoshino.modules.ai.providers import _httpx_proxy
+    from hoshino.modules.ai._providers import _httpx_proxy
 
     assert _httpx_proxy(None) is None
     assert _httpx_proxy("http://127.0.0.1:7890") == "http://127.0.0.1:7890"
@@ -240,7 +278,7 @@ def test_build_model_ignores_env_proxy(monkeypatch):
     """
     import asyncio
 
-    from hoshino.modules.ai.providers import build_model
+    from hoshino.modules.ai._providers import build_model
 
     monkeypatch.setenv("ALL_PROXY", "socks://127.0.0.1:7890")
     monkeypatch.setenv("all_proxy", "socks://127.0.0.1:7890")
@@ -254,7 +292,7 @@ def test_build_model_ignores_env_proxy(monkeypatch):
     assert model is not None
     # 关闭 build_model 内部创建的 client（同步测试中 clear_agent_cache 不会
     # 找到事件循环，这里手动关闭避免 Unclosed client 告警）。
-    from hoshino.modules.ai.providers import _http_clients
+    from hoshino.modules.ai._providers import _http_clients
 
     for client in _http_clients:
         asyncio.run(client.aclose())
@@ -265,7 +303,7 @@ def test_build_model_ignores_env_proxy(monkeypatch):
 
 
 def test_resolve_provider_scope_overrides_default(tmp_store):
-    from hoshino.modules.ai.base import resolve_provider
+    from hoshino.modules.ai._base import resolve_provider
 
     config = _make_provider_config(default="openai")
     tmp_store.set_scope_provider("milky:123", "anthropic")
@@ -274,7 +312,7 @@ def test_resolve_provider_scope_overrides_default(tmp_store):
 
 
 def test_resolve_provider_invalid_scope_falls_back(tmp_store):
-    from hoshino.modules.ai.base import resolve_provider
+    from hoshino.modules.ai._base import resolve_provider
 
     config = _make_provider_config(default="openai")
     # 绑定不存在的 provider → 回退默认
@@ -283,7 +321,7 @@ def test_resolve_provider_invalid_scope_falls_back(tmp_store):
 
 
 def test_resolve_provider_none_when_missing(tmp_store):
-    from hoshino.modules.ai.base import resolve_provider
+    from hoshino.modules.ai._base import resolve_provider
 
     config = _make_provider_config(default="")
     assert resolve_provider("milky:123", config) is None
@@ -308,7 +346,7 @@ def _make_provider_config(default: str = "openai") -> AIConfig:
 
 
 def test_truncate_messages_by_turns():
-    from hoshino.modules.ai.context import truncate_messages
+    from hoshino.modules.ai._context import truncate_messages
 
     messages = [f"m{i}" for i in range(10)]  # type: ignore[list-item]
     assert truncate_messages(messages, 3) == ["m7", "m8", "m9"]
@@ -317,7 +355,7 @@ def test_truncate_messages_by_turns():
 
 
 def test_serialize_roundtrip_empty():
-    from hoshino.modules.ai.context import deserialize_messages, serialize_messages
+    from hoshino.modules.ai._context import deserialize_messages, serialize_messages
 
     raw = serialize_messages([])
     assert deserialize_messages(raw) == []
@@ -329,7 +367,7 @@ def test_serialize_roundtrip_empty():
 
 
 def test_snapshot_from_usage():
-    from hoshino.modules.ai.metrics import snapshot_from_usage
+    from hoshino.modules.ai._metrics import snapshot_from_usage
 
     usage = RunUsage(
         input_tokens=10,
@@ -349,14 +387,14 @@ def test_snapshot_from_usage():
 
 
 def test_cache_hit_ratio():
-    from hoshino.modules.ai.metrics import cache_hit_ratio
+    from hoshino.modules.ai._metrics import cache_hit_ratio
 
     assert cache_hit_ratio(10, 40) == 0.8
     assert cache_hit_ratio(0, 0) == 0.0
 
 
 def test_format_stats_contains_tokens():
-    from hoshino.modules.ai.metrics import format_stats
+    from hoshino.modules.ai._metrics import format_stats
 
     text = format_stats(
         {
@@ -382,7 +420,7 @@ def test_format_stats_contains_tokens():
 
 
 def test_markdown_to_html_supports_gfm():
-    from hoshino.modules.ai.rendering import markdown_to_html
+    from hoshino.modules.ai._rendering import markdown_to_html
 
     html = markdown_to_html("# 标题\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] done\n")
     assert "<h1>标题</h1>" in html
@@ -391,7 +429,7 @@ def test_markdown_to_html_supports_gfm():
 
 
 def test_markdown_to_html_highlights_code():
-    from hoshino.modules.ai.rendering import markdown_to_html
+    from hoshino.modules.ai._rendering import markdown_to_html
 
     html = markdown_to_html("```python\nprint(1)\n```")
     assert "codehilite" in html
@@ -399,12 +437,17 @@ def test_markdown_to_html_highlights_code():
 
 
 def test_build_full_html_themes():
-    from hoshino.modules.ai.rendering import build_full_html
+    from hoshino.modules.ai._rendering import build_full_html
 
     body = "<p>hi</p>"
     assert "--bg: #ffffff" in build_full_html(body, "light")
     assert "--bg: #1f2328" in build_full_html(body, "dark")
     assert "--bg: #ffffff" in build_full_html(body, "unknown")  # 回退 light
+    # 彩色 emoji 字体默认开启，可关闭
+    assert '"Apple Color Emoji"' in build_full_html(body, "light")
+    assert '"Apple Color Emoji"' not in build_full_html(body, "light", emoji=False)
+    # 强调色注入 CSS（彩色）
+    assert "--accent: #0969da" in build_full_html(body, "light")
 
 
 # ------------------------------------------------------- SQLite store
@@ -573,6 +616,44 @@ async def test_chat_agent_error_records_metric(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_agent_error_logs_detail_and_tools(monkeypatch, tmp_store):
+    """可观测性：失败日志包含异常详情（message/body）与失败前工具调用。"""
+    from loguru import logger as loguru_logger
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch)
+    agent = FakeAgent(
+        FakeResult("x"),
+        error=UnexpectedModelBehavior(
+            "模型返回了非法工具调用", body='{"tool": "web_search"}'
+        ),
+    )
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    records: list[str] = []
+    sink_id = loguru_logger.add(records.append, format="{message}", level="DEBUG")
+    try:
+        bot, event = _milky_group("#你好", user_id=7)
+        await bot.handle_event(event)
+    finally:
+        loguru_logger.remove(sink_id)
+
+    joined = "\n".join(records)
+    assert "error=UnexpectedModelBehavior" in joined
+    assert "模型返回了非法工具调用" in joined  # message 字段可见
+    assert '"tool": "web_search"' in joined  # body 字段可见
+    assert "tools=-" in joined  # FakeAgent 无图节点 → 无工具调用
+
+    # 用户侧回复保持简短，不把原始 body 泄进群聊
+    _, message = sent[0]
+    assert "web_search" not in message.extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_render_failure_falls_back_to_text(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
@@ -604,10 +685,19 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     tmp_store.set_scope_provider("milky:123456", "anthropic")
     captured: dict = {}
 
-    def fake_build(provider_id, provider_config, *, proxy=None):
+    def fake_build(
+        provider_id,
+        provider_config,
+        *,
+        proxy=None,
+        web_search_native=True,
+        tool_max_retries=3,
+    ):
         captured["provider_id"] = provider_id
         captured["provider_config"] = provider_config
         captured["proxy"] = proxy
+        captured["web_search_native"] = web_search_native
+        captured["tool_max_retries"] = tool_max_retries
         return FakeAgent(FakeResult("hi"))
 
     monkeypatch.setattr(chat.providers, "build_agent", fake_build)
@@ -620,4 +710,334 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     assert captured["provider_id"] == "anthropic"
     assert captured["provider_config"] is config.get_provider("anthropic")
     assert captured["proxy"] == config.proxy
+    assert captured["web_search_native"] is config.web_search_native
+    assert captured["tool_max_retries"] == config.tool_max_retries
     assert len(sent) == 1
+
+
+# ------------------------------------------------------- run_agent 契约
+
+
+async def test_run_agent_emits_node_events_and_returns_result():
+    """run_agent 是协程：逐节点回调 on_event，结束后返回最终结果。"""
+    from hoshino.modules.ai import _runner as runner
+
+    agent = FakeAgent(FakeResult("done"))
+    events: list = []
+    result = await runner.run_agent(agent, "p", deps=object(), on_event=events.append)
+
+    assert isinstance(result, FakeResult)
+    assert len(events) == 1
+    assert type(events[0]).__name__ == "RunEvent"
+    assert events[0].result is None if hasattr(events[0], "result") else True
+
+
+async def test_run_agent_propagates_agent_error():
+    from hoshino.modules.ai import _runner as runner
+
+    agent = FakeAgent(FakeResult("x"), error=RuntimeError("boom"))
+    with pytest.raises(RuntimeError, match="boom"):
+        await runner.run_agent(agent, "p", deps=object())
+
+
+# ------------------------------------------------------- cancel scope 回归
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_run_exits_agent_iter_scope_in_task(monkeypatch, tmp_store):
+    """回归：run 结束后 agent.iter 的 anyio scope 必须在原任务内退出。
+
+    此前 chat 在 run_agent 异步生成器中拿到结果就提前 return，迭代器悬空在
+    ``async with agent.iter(...)`` 内等 GC 关闭。pydantic_graph 在 agent.iter
+    内 enter 的 anyio CancelScope 因此泄漏在 matcher 任务的 scope 栈上，随后
+    NoneBot run_coro_with_shield 退出 shield CancelScope 时报
+    "Attempted to exit a cancel scope that isn't the current tasks's current
+    cancel scope"（每次 ``#`` 聊天成功回复后都记一条 ERROR）。
+    """
+    import asyncio
+
+    import anyio
+    from anyio._backends._asyncio import _task_states
+
+    from hoshino.modules.ai import chat
+
+    class ScopedAgentRun(FakeAgentRun):
+        # 模拟 pydantic-ai/pydantic_graph 的 AgentRun：上下文期间在当前任务
+        # 持有一个 anyio CancelScope（graph_builder 的 with CancelScope()）。
+        async def __aenter__(self):
+            self._scope = anyio.CancelScope()
+            self._scope.__enter__()
+            return await super().__aenter__()
+
+        async def __aexit__(self, *exc):
+            try:
+                return await super().__aexit__(*exc)
+            finally:
+                self._scope.__exit__(None, None, None)
+
+    class ScopedAgent(FakeAgent):
+        def iter(self, prompt, **kwargs):
+            self.prompt = prompt
+            self.message_history = kwargs.get("message_history")
+            return ScopedAgentRun(self._result, self._error)
+
+    def current_scope():
+        state = _task_states.get(asyncio.current_task())
+        return None if state is None else state.cancel_scope
+
+    _stub_config(monkeypatch)
+    agent = ScopedAgent(FakeResult("hi"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+
+    async def fake_render(md, cfg):
+        return b"FAKEPNG"
+
+    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    scope_before = current_scope()
+    bot, event = _milky_group("#你好", user_id=7)
+    await bot.handle_event(event)
+
+    assert agent.prompt == "你好"
+    assert len(sent) == 1
+    # scope 栈必须回到 dispatch 前的状态，否则 NoneBot shield scope 退出会报错。
+    assert current_scope() is scope_before
+
+
+# ------------------------------------------------------- 多对话（上下文）管理
+
+
+def _chat_env(monkeypatch, tmp_store, **config_overrides):
+    """聊天行为测试公共 stub：config/provider/render/service/send。"""
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch, **config_overrides)
+    agent = FakeAgent(FakeResult("回答"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+
+    async def fake_render(md, cfg):
+        return b"FAKEPNG"
+
+    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+    return agent, sent
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_conv_new_creates_and_switches(monkeypatch, tmp_store):
+    from hoshino.modules.ai import _sessions
+
+    _, sent = _chat_env(monkeypatch, tmp_store)
+    manager = _sessions.conversation_manager
+
+    bot, event = _milky_group("#new 旅游计划", user_id=7)
+    await bot.handle_event(event)
+    assert "已新建并切换到对话 `旅游计划`" in sent[-1][1].extract_plain_text()
+    assert manager.get_active("milky:123456").name == "旅游计划"
+
+    # 重名拒绝
+    bot, event = _milky_group("#new 旅游计划", user_id=7)
+    await bot.handle_event(event)
+    assert "已存在" in sent[-1][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_conv_new_with_extra_tokens_is_chat(monkeypatch, tmp_store):
+    """`#new` 后超过一个 token 时按聊天处理（名字不含空白，整词精确匹配）。"""
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("#new a b", user_id=7)
+    await bot.handle_event(event)
+
+    assert agent.prompt == "new a b"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_conv_switch_and_list(monkeypatch, tmp_store):
+    from hoshino.modules.ai import _sessions
+
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+    manager = _sessions.conversation_manager
+
+    # 先聊一轮：全新 scope 自动建「默认」对话
+    bot, event = _milky_group("#hello", user_id=7)
+    await bot.handle_event(event)
+    assert agent.prompt == "hello"
+
+    bot, event = _milky_group("#new 甲", user_id=7)
+    await bot.handle_event(event)
+    bot, event = _milky_group("#switch 默认", user_id=7)
+    await bot.handle_event(event)
+    assert "已切换到对话 `默认`" in sent[-1][1].extract_plain_text()
+    assert manager.get_active("milky:123456").name == "默认"
+
+    # 不存在的对话：列出可用
+    bot, event = _milky_group("#switch 幽灵", user_id=7)
+    await bot.handle_event(event)
+    text = sent[-1][1].extract_plain_text()
+    assert "不存在" in text and "甲" in text
+
+    # list 展示全部对话与激活标记
+    bot, event = _milky_group("#list", user_id=7)
+    await bot.handle_event(event)
+    text = sent[-1][1].extract_plain_text()
+    assert "* 默认" in text and "甲" in text
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_conv_isolation_across_switch(monkeypatch, tmp_store):
+    """切换后聊天写入新对话，旧对话不受影响。"""
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    from hoshino.modules.ai import _sessions
+
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+    manager = _sessions.conversation_manager
+
+    # 「默认」里聊一轮（FakeResult.messages 落进历史）
+    agent._result = FakeResult(
+        "回答一", messages=[ModelRequest(parts=[UserPromptPart(content="问题一")])]
+    )
+    bot, event = _milky_group("#问题一", user_id=7)
+    await bot.handle_event(event)
+    assert len(manager.get_active("milky:123456").messages) == 1
+
+    # 切到新对话再聊：新对话有自己的历史
+    bot, event = _milky_group("#new 乙", user_id=7)
+    await bot.handle_event(event)
+    agent._result = FakeResult(
+        "回答二", messages=[ModelRequest(parts=[UserPromptPart(content="问题二")])]
+    )
+    bot, event = _milky_group("#问题二", user_id=7)
+    await bot.handle_event(event)
+
+    assert manager.get_active("milky:123456").name == "乙"
+    assert len(manager.get_active("milky:123456").messages) == 1
+    # 旧对话历史仍在
+    assert manager.find("milky:123456", "默认") is not None
+    assert len(manager.find("milky:123456", "默认").messages) == 1
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_conv_persists_across_manager_rebuild(monkeypatch, tmp_store):
+    """write-through 落库：重建 manager（模拟重启）后上下文仍在。"""
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    from hoshino.modules.ai import _sessions
+
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+    agent._result = FakeResult(
+        "回答", messages=[ModelRequest(parts=[UserPromptPart(content="问题")])]
+    )
+    bot, event = _milky_group("#问题", user_id=7)
+    await bot.handle_event(event)
+
+    # 模拟进程重启：全新 manager，缓存为空，从 DB 惰性载入
+    monkeypatch.setattr(
+        _sessions, "conversation_manager", _sessions.ConversationManager()
+    )
+    conv = _sessions.conversation_manager.get_active("milky:123456")
+    assert conv.name == "默认"
+    assert len(conv.messages) == 1
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_conv_clear_requires_admin_in_group(monkeypatch, tmp_store):
+    _, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("#clear", user_id=43, role="member")
+    await bot.handle_event(event)
+    assert "管理员权限" in sent[-1][1].extract_plain_text()
+
+    bot, event = _milky_group("#clear", user_id=7, role="admin")
+    await bot.handle_event(event)
+    assert (
+        "已清空" in sent[-1][1].extract_plain_text()
+        or "没有可清空" in sent[-1][1].extract_plain_text()
+    )
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_busy_replies_when_turn_in_progress(monkeypatch, tmp_store):
+    """run 进行中再收 # → 忙提示，且不产生第二次 run。"""
+    from hoshino.modules.ai import _sessions
+
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+    manager = _sessions.conversation_manager
+
+    lock = manager.turn_lock("milky:123456")
+    await lock.acquire()
+    try:
+        bot, event = _milky_group("#你好", user_id=7)
+        await bot.handle_event(event)
+    finally:
+        lock.release()
+
+    assert "还在处理中" in sent[-1][1].extract_plain_text()
+    assert getattr(agent, "prompt", None) is None  # FakeAgent 未被驱动
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_run_timeout_keeps_prompt(monkeypatch, tmp_store):
+    """墙钟超时：回复超时提示，本轮提问写入上下文可续问。"""
+    import asyncio as _asyncio
+
+    from hoshino.modules.ai import _sessions, chat
+
+    agent, sent = _chat_env(monkeypatch, tmp_store, chat_run_timeout_seconds=0.05)
+
+    class SlowRun:
+        def __init__(self):
+            self.ctx = object()
+            self.result = None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await _asyncio.sleep(5)
+            raise StopAsyncIteration
+
+    class SlowAgent(FakeAgent):
+        def iter(self, prompt, **kwargs):
+            self.prompt = prompt
+            return SlowRun()
+
+    slow = SlowAgent(FakeResult("回答"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: slow)
+    manager = _sessions.conversation_manager
+
+    bot, event = _milky_group("#慢慢来", user_id=7)
+    await bot.handle_event(event)
+
+    assert "超时" in sent[-1][1].extract_plain_text()
+    messages = manager.get_active("milky:123456").messages
+    assert len(messages) == 1  # 提问已保留在上下文
+    assert slow.prompt == "慢慢来"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_usage_limit_keeps_prompt(monkeypatch, tmp_store):
+    """UsageLimit 超限与超时同语义：保留提问。"""
+    from pydantic_ai.exceptions import UsageLimitExceeded
+
+    from hoshino.modules.ai import _sessions
+
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+    agent._error = UsageLimitExceeded("too many requests")
+    manager = _sessions.conversation_manager
+
+    bot, event = _milky_group("#循环了", user_id=7)
+    await bot.handle_event(event)
+
+    assert "超出步数限制" in sent[-1][1].extract_plain_text()
+    assert len(manager.get_active("milky:123456").messages) == 1

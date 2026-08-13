@@ -13,6 +13,7 @@ TestMatcher 的 bootstrap 会报 "not loaded as a plugin"。统一先 bootstrap 
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -33,7 +34,7 @@ _ctx_defaults = dict(
 
 
 def _make_ctx(task_id: str = "t1", task_run_id: str = "r1", **overrides):
-    from hoshino.modules.ai.task.models import TaskContext
+    from hoshino.modules.ai._task.models import TaskContext
 
     data = {
         **_ctx_defaults,
@@ -53,8 +54,8 @@ def _create_task(
     ctx=None,
 ):
     """建一个最小 Task，返回 (task_id, task_run_id)。"""
-    from hoshino.modules.ai.task import store as task_store
-    from hoshino.modules.ai.task import events as task_events
+    from hoshino.modules.ai._task import store as task_store
+    from hoshino.modules.ai._task import events as task_events
 
     ctx = ctx or _make_ctx(task_id=task_id, creator_id=creator_id)
     created = task_store.create_task(
@@ -92,7 +93,7 @@ def _create_task(
 
 class TestTaskContextRoundTrip:
     def test_preserves_all_fields_and_frozenset_profile(self):
-        from hoshino.modules.ai.task.models import TaskContext
+        from hoshino.modules.ai._task.models import TaskContext
 
         ctx = _make_ctx(
             conversation_id="conv-x",
@@ -113,7 +114,7 @@ class TestTaskContextRoundTrip:
         assert restored.persona_prompt == "你是研究员"
 
     def test_from_json_missing_fields_use_defaults(self):
-        from hoshino.modules.ai.task.models import TaskContext
+        from hoshino.modules.ai._task.models import TaskContext
 
         restored = TaskContext.from_json({"task_id": "t9"})
         assert restored.task_id == "t9"
@@ -127,7 +128,7 @@ class TestTaskContextRoundTrip:
 
 class TestStore:
     def test_create_claim_succeed(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         task = task_store.get_task(task_id)
@@ -153,7 +154,7 @@ class TestStore:
         assert task_store.get_task(task_id)["status"] == "succeeded"
 
     def test_cooldown_blocks_second_creation(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         _create_task(tmp_store, task_id="t1")
         created = task_store.create_task(
@@ -175,7 +176,7 @@ class TestStore:
         assert 0 < created["remaining"] <= 300.0
 
     def test_cooldown_bypass_for_superuser(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         _create_task(tmp_store, task_id="t1")
         created = task_store.create_task(
@@ -197,7 +198,7 @@ class TestStore:
         assert created["task_id"] == "t2"
 
     def test_request_cancel_only_before_terminal(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         assert task_store.request_cancel(task_id, "42") is True
@@ -206,7 +207,7 @@ class TestStore:
         assert task_store.request_cancel(task_id, "42") is False
 
     def test_count_active_runs(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         _create_task(tmp_store, task_id="t1")
         _create_task(tmp_store, task_id="t2", creator_id="7")
@@ -215,7 +216,7 @@ class TestStore:
         assert task_store.count_active_runs("milky:123456") == 2
 
     def test_interrupted_requeue(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         task_store.claim_next_run("scheduler")
@@ -230,7 +231,7 @@ class TestStore:
         assert run["attempt"] == 1
 
     def test_create_next_attempt_advances_and_reuses_context(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         task_store.claim_next_run("scheduler")
@@ -245,13 +246,57 @@ class TestStore:
         assert new_run["conversation_id"] == "conv-x"
         assert json.loads(new_run["context_json"])["conversation_id"] == "conv-x"
 
+    def test_heartbeat_rejects_foreign_owner(self, tmp_store):
+        """续租只对 claim 时的 owner 生效，防止 lease 被重新 claim 后旧 worker 续租。"""
+        from hoshino.modules.ai._task import store as task_store
+
+        task_id, run_id = _create_task(tmp_store)
+        claimed = task_store.claim_next_run("scheduler")
+        assert claimed is not None and claimed["id"] == run_id
+        assert task_store.heartbeat(run_id, 99999.0, owner="scheduler") is True
+        assert task_store.heartbeat(run_id, 88888.0, owner="stale-worker") is False
+        assert task_store.get_task_run(run_id)["lease_expiry"] == 99999.0
+
+    def test_create_task_freezes_run_identity_and_adapter(self, tmp_store):
+        """创建事务一次性冻结 run id / conversation / adapter，上下文不留空窗。"""
+        from hoshino.modules.ai._task import store as task_store
+        from hoshino.modules.ai._task.models import TaskContext
+
+        ctx = _make_ctx(
+            task_id="t_atomic", task_run_id="r_atomic", conversation_id="conv_atomic"
+        )
+        created = task_store.create_task(
+            task_id="t_atomic",
+            kind="research",
+            prompt=ctx.prompt,
+            scope_key=ctx.scope_key,
+            creator_id="42",
+            target_json=ctx.target_json,
+            provider_id=ctx.provider_id,
+            model=ctx.model,
+            context_json=json.dumps(ctx.to_json(), ensure_ascii=False),
+            snapshot_json="{}",
+            event_payloads=[],
+            outbox_payloads=[],
+            adapter_name="milky",
+            task_run_id="r_atomic",
+            conversation_id="conv_atomic",
+        )
+        assert created["task_run_id"] == "r_atomic"
+        assert task_store.get_task("t_atomic")["adapter_name"] == "milky"
+        run = task_store.get_task_run("r_atomic")
+        assert run["conversation_id"] == "conv_atomic"
+        restored = TaskContext.from_json(json.loads(run["context_json"]))
+        assert restored.task_run_id == "r_atomic"
+        assert restored.conversation_id == "conv_atomic"
+
 
 # ------------------------------------------------------------ policy / workspace
 
 
 class TestPolicyWorkspace:
     def test_policy_default_and_matrix(self, tmp_store):
-        from hoshino.modules.ai.task import policy
+        from hoshino.modules.ai._task import policy
 
         assert policy.get_creation_policy("milky:123456") == "superuser"
         assert policy.policy_allows_creation(
@@ -263,14 +308,14 @@ class TestPolicyWorkspace:
         assert policy.policy_allows_creation("admin", is_superuser=False, is_admin=True)
         assert policy.policy_allows_creation("all", is_superuser=False, is_admin=False)
 
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         task_store.set_scope_policy("milky:123456", "admin", max_concurrent=1)
         assert policy.get_creation_policy("milky:123456") == "admin"
 
     def test_concurrent_guard(self, tmp_store):
-        from hoshino.modules.ai.task import policy
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import policy
+        from hoshino.modules.ai._task import store as task_store
 
         task_store.set_scope_policy("milky:123456", "all", max_concurrent=1)
         _create_task(tmp_store)
@@ -278,7 +323,7 @@ class TestPolicyWorkspace:
         assert allowed is False and active == 1 and cap == 1
 
     def test_workspace_crud_and_default(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         assert (
             task_store.add_workspace("milky:123456", "ws", "/tmp/ws", "read_write")
@@ -297,8 +342,8 @@ class TestPolicyWorkspace:
         assert task_store.get_default_workspace("milky:other") is None
 
     def test_resolve_workspace(self, tmp_store):
-        from hoshino.modules.ai.task import policy
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import policy
+        from hoshino.modules.ai._task import store as task_store
 
         ws, err = policy.resolve_workspace("milky:123456", None)
         assert ws is None and "没有默认 workspace" in err
@@ -318,7 +363,7 @@ class TestPolicyWorkspace:
 
 class TestOutbox:
     def test_enqueue_sequence_pending_sent(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         task_store.outbox_enqueue(
             event_type="task.completed",
@@ -341,7 +386,7 @@ class TestOutbox:
         assert len(remaining) == 1 and remaining[0]["sequence"] == 2
 
     def test_outbox_retry_increments_attempt(self, tmp_store):
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import store as task_store
 
         task_store.outbox_enqueue(
             event_type="task.completed",
@@ -357,17 +402,41 @@ class TestOutbox:
         assert item["attempt"] == 1
         assert item["last_error"] == "send failed"
 
+    def test_outbox_gives_up_after_max_attempts(self, tmp_store):
+        """超过重试上限后放弃投递：不再进入 pending，不回滚 Task 终态（plan 12）。"""
+        from hoshino.modules.ai._task import store as task_store
+
+        task_store.outbox_enqueue(
+            event_type="task.completed",
+            task_id="t1",
+            sequence=1,
+            target_json="{}",
+            payload="{}",
+        )
+        item = task_store.outbox_pending(limit=1)[0]
+        task_store.outbox_mark_retry(
+            item["id"], "send failed", next_retry_at=1.0, max_attempts=3
+        )
+        task_store.outbox_mark_retry(
+            item["id"], "send failed", next_retry_at=1.0, max_attempts=3
+        )
+        assert len(task_store.outbox_pending(limit=1)) == 1  # 未达上限仍可重试
+        task_store.outbox_mark_retry(
+            item["id"], "send failed", next_retry_at=1.0, max_attempts=3
+        )
+        assert task_store.outbox_pending(limit=1) == []  # 达到上限：放弃
+
 
 # ------------------------------------------------------------ scheduler
 
 
 class TestScheduler:
     async def test_tick_success_path(self, tmp_store, monkeypatch):
-        from hoshino.modules.ai.task import scheduler
-        from hoshino.modules.ai.task import store as task_store
-        from hoshino.modules.ai.task import events as task_events
-        from hoshino.modules.ai.task.runtime import RunOutcome
-        from hoshino.modules.ai.task.models import TaskOutput
+        from hoshino.modules.ai._task import scheduler
+        from hoshino.modules.ai._task import store as task_store
+        from hoshino.modules.ai._task import events as task_events
+        from hoshino.modules.ai._task.runtime import RunOutcome
+        from hoshino.modules.ai._task.models import TaskOutput
 
         task_id, run_id = _create_task(tmp_store)
 
@@ -408,10 +477,10 @@ class TestScheduler:
         assert task_store.claim_next_run("scheduler") is None
 
     async def test_tick_internal_retry(self, tmp_store, monkeypatch):
-        from hoshino.modules.ai.task import scheduler
-        from hoshino.modules.ai.task import store as task_store
-        from hoshino.modules.ai.task import events as task_events
-        from hoshino.modules.ai.task.runtime import TaskRuntimeError
+        from hoshino.modules.ai._task import scheduler
+        from hoshino.modules.ai._task import store as task_store
+        from hoshino.modules.ai._task import events as task_events
+        from hoshino.modules.ai._task.runtime import TaskRuntimeError
 
         task_id, run_id = _create_task(tmp_store)
 
@@ -430,8 +499,8 @@ class TestScheduler:
         assert any(e["event_type"] == task_events.RETRY_SCHEDULED for e in events)
 
     def test_approval_denied_terminates(self, tmp_store):
-        from hoshino.modules.ai.task import scheduler
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import scheduler
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         task_store.create_approval(
@@ -455,8 +524,8 @@ class TestScheduler:
         assert task_store.get_task_run(run_id)["state"] == "failed"
 
     def test_approval_approve_resumes(self, tmp_store):
-        from hoshino.modules.ai.task import scheduler
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import scheduler
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         # 更新 run context（含恢复所需历史），让批准后可回 queued
@@ -483,14 +552,14 @@ class TestScheduler:
         assert task_store.get_task(task_id)["status"] == "queued"
         run = task_store.get_task_run(run_id)
         assert run["state"] == "queued"
-        from hoshino.modules.ai.task.models import TaskContext
+        from hoshino.modules.ai._task.models import TaskContext
 
         ctx_restored = TaskContext.from_json(json.loads(run["context_json"]))
         assert ctx_restored.extra["pending_deferred"] == {"call-1": True}
 
     def test_approval_creator_only(self, tmp_store):
-        from hoshino.modules.ai.task import scheduler
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import scheduler
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         task_store.create_approval(
@@ -512,9 +581,49 @@ class TestScheduler:
         assert "创建者" in result["reason"]
         assert task_store.get_task(task_id)["status"] == "queued"
 
+    def test_approval_requires_known_creator(self, tmp_store):
+        """创建者或审批人身份缺失时按拒绝处理，不留空串旁路。"""
+        from hoshino.modules.ai._task import scheduler
+        from hoshino.modules.ai._task import store as task_store
+
+        task_id, run_id = _create_task(tmp_store)
+        task_store.create_approval(
+            approval_id="a_unknown",
+            task_id=task_id,
+            task_run_id=run_id,
+            agent_run_id="agent-1",
+            tool_call_id="call-1",
+            tool_name="bash",
+            version=1,
+            param_hash="h",
+            param_summary="{}",
+            risk_reason="high_risk_tool",
+            creator_id="",
+            expires_at=1e9,
+        )
+        result = scheduler.resolve_approval("a_unknown", "approved", resolved_by="42")
+        assert result["ok"] is False
+        assert task_store.get_approval("a_unknown")["state"] == "pending"
+
+    def test_pick_bot_matches_task_adapter(self, monkeypatch):
+        """outbox 派发挑选与 Task 创建适配器一致的 bot；无匹配返回 None。"""
+        import nonebot
+
+        from hoshino.modules.ai._task import scheduler
+
+        milky_bot = SimpleNamespace(adapter=SimpleNamespace(get_name=lambda: "Milky"))
+        tg_bot = SimpleNamespace(adapter=SimpleNamespace(get_name=lambda: "Telegram"))
+        monkeypatch.setattr(nonebot, "get_bots", lambda: {"m": milky_bot, "t": tg_bot})
+        assert scheduler._pick_bot("Milky") is milky_bot
+        assert scheduler._pick_bot("Telegram") is tg_bot
+        assert scheduler._pick_bot("OneBot V11") is None
+        assert scheduler._pick_bot("") is milky_bot  # 无 adapter 记录退回首个在线
+        monkeypatch.setattr(nonebot, "get_bots", lambda: {})
+        assert scheduler._pick_bot("Milky") is None
+
     def test_approval_expire(self, tmp_store):
-        from hoshino.modules.ai.task import scheduler
-        from hoshino.modules.ai.task import store as task_store
+        from hoshino.modules.ai._task import scheduler
+        from hoshino.modules.ai._task import store as task_store
 
         task_id, run_id = _create_task(tmp_store)
         task_store.create_approval(
@@ -537,7 +646,7 @@ class TestScheduler:
         assert task_store.get_task(task_id)["failure_reason"] == "approval_timeout"
 
     def test_render_notification_redacts_sensitive(self):
-        from hoshino.modules.ai.task.scheduler import render_notification
+        from hoshino.modules.ai._task.scheduler import render_notification
 
         text = render_notification(
             "task.completed",
@@ -559,7 +668,7 @@ class TestMatcher:
     def test_task_command_registered_with_normal_permission(self):
         from hoshino.platform.permission import NORMAL
 
-        import hoshino.modules.ai.task.commands as task_commands
+        import hoshino.modules.ai._task.commands as task_commands
 
         def _perm_names(perm):
             names = set()
@@ -580,7 +689,7 @@ class TestMatcher:
     def test_task_matcher_present_in_nonebot_matchers(self):
         from nonebot import get_loaded_plugins
 
-        from hoshino.modules.ai.task import commands as task_commands
+        from hoshino.modules.ai._task import commands as task_commands
 
         all_matchers = [m for plugin in get_loaded_plugins() for m in plugin.matcher]
         assert task_commands.taskcmd.matcher in all_matchers

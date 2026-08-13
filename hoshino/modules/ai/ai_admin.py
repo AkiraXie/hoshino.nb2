@@ -9,7 +9,8 @@
 - ``ai provider remove <id>``：删除 provider，先清理 scope 绑定；默认 provider 不允许直接删除。SUPERUSER。
 - ``ai status``：显示默认 provider、当前绑定、历史限制、渲染配置。ADMIN。
 - ``ai stats [provider_id]``：显示 token / 缓存 / 延迟统计。ADMIN。
-- ``ai clear [scope]``：清理当前或指定 scope 的会话历史。ADMIN。
+- ``ai clear [scope]``：清空当前或指定 scope 的当前激活对话。ADMIN。
+- ``ai contexts [scope]``：只读查看 scope 的对话清单（多对话模型）。ADMIN。
 """
 
 from __future__ import annotations
@@ -30,29 +31,42 @@ from hoshino.platform.depends import ParamText
 from hoshino.platform.permission import ADMIN
 from hoshino.platform.superuser import is_superuser
 
-from . import deps, metrics, persona, providers, store, tools
-from .base import get_config, sv
-from .config import ProviderConfig, ProviderOptions, mask_url
+from . import (
+    _deps as deps,
+    _metrics as metrics,
+    _persona as persona,
+    _providers as providers,
+    _sessions,
+    _store as store,
+    _tools as tools,
+)
+from ._base import get_config, sv
+from ._config import ProviderConfig, ProviderOptions, mask_url
 
 # 子包目录不会被 load_plugins 遍历，这里在插件加载期（controlled_modules 已建立）
 # 显式导入以注册 ai task matcher 与 scheduler hooks。不能提前到 ai/__init__.py。
-from .task import commands as _task_commands  # noqa: F401
+from ._task import commands as _task_commands  # noqa: F401
 
 USAGE = (
     "AI 管理命令：\n"
     "  ai provider list / default <id> / use <id> / reset / add <id> / remove <id>\n"
-    "  ai status / stats [provider_id] / clear [scope]\n"
+    "  ai status / stats [provider_id] / clear [scope] / contexts [scope]\n"
     "  ai tools list [scope] [chat|task] / ai tools on|off <cat> <chat|task> [scope]\n"
     "  ai persona list/show/create/update/use/reset/global/delete\n"
     "用 ai provider add / ai persona create 查看参数说明。"
 )
 
 _TOOLS_USAGE = (
-    "用法：\n"
-    "  ai tools list [scope] [chat|task]        查看绑定与可解析工具（ADMIN）\n"
-    "  ai tools on|off <category> <chat|task> [scope]   修改类别绑定（SUPERUSER）\n"
-    "category：core / computer / bot / web / skill"
+    "AI 工具管理：\n"
+    "  ai tools list [chat|task]           查看可用工具（管理员）\n"
+    "  ai tools on|off <类别> [chat|task]  开启/关闭类别（超管，默认 chat）\n"
+    "类别：core / computer / bot / web / skill"
 )
+
+
+def _tool_name(tool) -> str:
+    return getattr(tool, "name", None) or getattr(tool, "__name__", None) or "?"
+
 
 _PERSONA_USAGE = (
     "用法：\n"
@@ -94,6 +108,8 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         await _handle_stats(bot, event, rest)
     elif sub == "clear":
         await _handle_clear(bot, event, rest)
+    elif sub == "contexts":
+        await _handle_contexts(bot, event, rest)
     elif sub == "tools":
         await _handle_tools(bot, event, rest)
     elif sub == "persona":
@@ -272,6 +288,14 @@ async def _handle_status(bot: Bot, event: Event) -> None:
     config = get_config()
     scope_key = event_scope_key(bot, event)
     bound = store.get_scope_provider(scope_key) if scope_key else None
+    provider_id = bound or config.default
+    provider_cfg = config.get_provider(provider_id) if provider_id else None
+    # 原生联网搜索只在 anthropic / openai_responses kind 上生效（服务端 web_search）。
+    native_search = (
+        config.web_search_native
+        and provider_cfg is not None
+        and provider_cfg.config.kind in ("anthropic", "openai_responses")
+    )
     lines = [
         f"默认 provider：`{config.default}`"
         if config.default
@@ -280,6 +304,8 @@ async def _handle_status(bot: Bot, event: Event) -> None:
         f"历史长度限制：{config.max_history_messages} 条",
         f"渲染超时：{config.render_timeout_seconds}s",
         f"渲染主题：{config.render_theme}",
+        f"原生联网搜索：{'开（服务端 web_search）' if native_search else '关'}"
+        f"（工具重试预算 {config.tool_max_retries} 次）",
         f"provider 数量：{len(config.providers)}",
     ]
     await send_to_event(bot, event, "\n".join(lines))
@@ -296,18 +322,36 @@ async def _handle_stats(bot: Bot, event: Event, args: list[str]) -> None:
 
 
 async def _handle_clear(bot: Bot, event: Event, args: list[str]) -> None:
+    manager = _sessions.conversation_manager
     if args:
-        # 显式指定 scope_key 清理（ADMIN 即可）。
-        cleared = store.clear_session(args[0])
+        # 显式指定 scope_key：清空其当前激活对话（ADMIN 即可）。
+        cleared = manager.clear_active(args[0])
     else:
         scope_key = event_scope_key(bot, event)
         if scope_key is None:
             await send_to_event(bot, event, "无法解析当前会话 scope。")
             return
-        cleared = store.clear_session(scope_key)
+        cleared = manager.clear_active(scope_key)
     await send_to_event(
         bot, event, "已清理会话历史。" if cleared else "没有可清理的会话历史。"
     )
+
+
+async def _handle_contexts(bot: Bot, event: Event, args: list[str]) -> None:
+    """只读查看 scope 的对话清单（多对话模型，plan aichat-context-timeout）。"""
+    scope_key = args[0] if args else event_scope_key(bot, event)
+    if not scope_key:
+        await send_to_event(bot, event, "无法解析 scope。")
+        return
+    summaries = _sessions.conversation_manager.list_summaries(scope_key)
+    if not summaries:
+        await send_to_event(bot, event, f"scope `{scope_key}` 还没有对话。")
+        return
+    lines = [f"scope `{scope_key}` 的对话："]
+    for s in summaries:
+        mark = "* " if s["active"] else "- "
+        lines.append(f"{mark}{s['name']}（{s['count']} 条消息）")
+    await send_to_event(bot, event, "\n".join(lines))
 
 
 # ------------------------------------------------------------------- tools
@@ -354,49 +398,56 @@ async def _tools_list(bot: Bot, event: Event, args: list[str]) -> None:
     if remaining and remaining[-1] in ("chat", "task"):
         surface = remaining.pop()
     if remaining:
-        scope_key = remaining[0]
+        scope_key = remaining[0]  # 超管可显式查看其它会话
     if not scope_key:
-        await send_to_event(bot, event, "无法解析 scope。")
+        await send_to_event(bot, event, "无法确定目标会话。")
         return
 
-    bindings = store.list_scope_tool_bindings(scope_key, surface)
-    lines = [f"scope `{scope_key}` surface `{surface}` 的工具绑定："]
-    if not bindings:
-        lines.append("（无显式绑定 → 使用安全默认 core/web/skill）")
-    else:
-        for b in bindings:
-            mark = "✓" if b["enabled"] else "✗"
-            lines.append(f"- {mark} `{b['category']}`")
-
+    where = "本群" if get_group_id(event) is not None else "当前会话"
     resolved = tools.resolve_tools(_list_deps(scope_key, surface))
-    names = [
-        getattr(tool, "name", None) or getattr(tool, "__name__", "?")
-        for tool in resolved
-    ]
-    lines.append("可解析工具：" + (", ".join(names) if names else "（无）"))
+    surface_hint = "" if surface == "chat" else f"（{surface}）"
+    if not resolved:
+        await send_to_event(bot, event, f"{where}{surface_hint}没有可用工具。")
+        return
+
+    # 按类别分组展示（类别名与工具名保持原始值，便于 on/off 操控）。
+    by_category: dict[str, list[str]] = {}
+    for tool in resolved:
+        by_category.setdefault(tools.tool_category(tool), []).append(_tool_name(tool))
+
+    lines = [f"{where}{surface_hint}可用工具："]
+    for category in sorted(by_category):
+        lines.append(f"  · {category}：{'、'.join(by_category[category])}")
     await send_to_event(bot, event, "\n".join(lines))
 
 
 async def _tools_set(bot: Bot, event: Event, enabled: bool, args: list[str]) -> None:
     if not _require_superuser(bot, event):
-        await send_to_event(bot, event, "仅 SUPERUSER 可修改工具绑定。")
+        await send_to_event(bot, event, "仅超管可修改工具开关。")
         return
-    if len(args) < 2:
-        await send_to_event(
-            bot, event, "用法：ai tools on/off <category> <chat|task> [scope]"
-        )
+    if not args:
+        await send_to_event(bot, event, "用法：ai tools on/off <类别> [chat|task]")
         return
-    category, surface = args[0], args[1]
-    if surface not in ("chat", "task"):
-        await send_to_event(bot, event, "surface 必须是 chat / task。")
-        return
+    category = args[0]
+    rest = args[1:]
+    # 第二个参数缺省按 chat；仅当它是 chat/task 时才作为 surface，否则视为显式 scope。
+    surface = "chat"
+    scope_key: str | None = None
+    if rest and rest[0] in ("chat", "task"):
+        surface = rest[0]
+        rest = rest[1:]
+    if rest:
+        scope_key = rest[0]
     valid = {"core", "computer", "bot", "web", "skill"}
     if category not in valid:
-        await send_to_event(bot, event, f"category 必须是 {'/'.join(sorted(valid))}。")
+        await send_to_event(
+            bot, event, "类别必须是：core / computer / bot / web / skill。"
+        )
         return
-    scope_key = args[2] if len(args) > 2 else event_scope_key(bot, event)
+    if scope_key is None:
+        scope_key = event_scope_key(bot, event)
     if not scope_key:
-        await send_to_event(bot, event, "无法解析 scope，请显式传入。")
+        await send_to_event(bot, event, "无法确定目标会话。")
         return
     store.set_scope_tool_binding(
         scope_key,
@@ -406,11 +457,8 @@ async def _tools_set(bot: Bot, event: Event, enabled: bool, args: list[str]) -> 
         updated_by=str(get_user_id(event) or ""),
     )
     verb = "开启" if enabled else "关闭"
-    await send_to_event(
-        bot,
-        event,
-        f"已{verb} scope `{scope_key}` 的 `{category}` 类别（surface={surface}）。",
-    )
+    surface_hint = "" if surface == "chat" else f"（{surface}）"
+    await send_to_event(bot, event, f"已{verb} `{category}`{surface_hint}。")
 
 
 # ------------------------------------------------------------------ persona
@@ -478,13 +526,17 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
             return
         name = rest[0]
         opts = _parse_persona_args(rest[1:])
-        p = persona.create_persona(
-            name,
-            gender=opts.get("gender", ""),
-            personality=opts.get("personality", ""),
-            description=opts.get("description", ""),
-            created_by=user,
-        )
+        try:
+            p = persona.create_persona(
+                name,
+                gender=opts.get("gender", ""),
+                personality=opts.get("personality", ""),
+                description=opts.get("description", ""),
+                created_by=user,
+            )
+        except ValueError as exc:
+            await send_to_event(bot, event, str(exc))
+            return
         await send_to_event(bot, event, f"已创建 persona `{p['name']}`：{p['prompt']}")
         return
 

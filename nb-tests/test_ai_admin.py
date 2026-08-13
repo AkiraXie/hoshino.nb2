@@ -10,7 +10,7 @@ from nonebot.adapters.milky.event import FriendMessageEvent as MilkyPrivateMessa
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 
-from hoshino.modules.ai.config import AIConfig, ProviderConfig, ProviderOptions
+from hoshino.modules.ai._config import AIConfig, ProviderConfig, ProviderOptions
 
 # 本文件复用同一（群、用户）组合做不同 role 的权限断言，必须清 uninfo 会话
 # 缓存，见 conftest 中 _clear_uninfo_cache 的说明。
@@ -19,6 +19,16 @@ pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
 # 递增 message_seq 保证 alconna 全局 unimsg_cache 键不跨测试碰撞。起点取
 # 300000，高于仓库其他测试的硬编码 seq，避免同 (group, seq) 缓存碰撞。
 _seq = itertools.count(300000)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_conversation_manager(monkeypatch):
+    """每个测试独立 ConversationManager：单例内存缓存会跨测试残留。"""
+    from hoshino.modules.ai import _sessions
+
+    manager = _sessions.ConversationManager()
+    monkeypatch.setattr(_sessions, "conversation_manager", manager)
+    return manager
 
 
 # ---------------------------------------------------------------- helpers
@@ -115,7 +125,7 @@ def tmp_store(tmp_path, monkeypatch):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    import hoshino.modules.ai.store as store
+    import hoshino.modules.ai._store as store
 
     eng = create_engine(f"sqlite:///{tmp_path / 'aichat.db'}")
     store.Base.metadata.create_all(eng)
@@ -393,7 +403,7 @@ async def test_status_shows_config(monkeypatch, tmp_store):
     text = sent[0][1].extract_plain_text()
     assert "openai" in text
     assert "anthropic" in text
-    assert "40 条" in text
+    assert "64 条" in text
     assert "30.0" in text
 
 
@@ -421,26 +431,52 @@ async def test_stats_aggregates_usage(monkeypatch, tmp_store):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_clear_current_scope(monkeypatch, tmp_store):
-    tmp_store.save_session_messages("milky:123456", "[]", "openai")
+    from hoshino.modules.ai import _sessions
+
+    manager = _sessions.conversation_manager
+    manager.get_active("milky:123456")  # 自动建「默认」对话
+    manager.append_prompt_only("milky:123456", "hi", "openai")
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
     bot, event = _milky_group("ai clear")
     await bot.handle_event(event)
 
-    assert tmp_store.load_session_messages("milky:123456") is None
     assert "已清理" in sent[0][1].extract_plain_text()
+    assert manager.get_active("milky:123456").messages == []
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_clear_explicit_scope(monkeypatch, tmp_store):
-    tmp_store.save_session_messages("milky:777", "[]", "openai")
+    from hoshino.modules.ai import _sessions
+
+    manager = _sessions.conversation_manager
+    manager.get_active("milky:777")
+    manager.append_prompt_only("milky:777", "hi", "openai")
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
     bot, event = _milky_group("ai clear milky:777")
     await bot.handle_event(event)
 
-    assert tmp_store.load_session_messages("milky:777") is None
     assert "已清理" in sent[0][1].extract_plain_text()
+    assert manager.get_active("milky:777").messages == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_contexts_lists_conversations(monkeypatch, tmp_store):
+    from hoshino.modules.ai import _sessions
+
+    manager = _sessions.conversation_manager
+    manager.get_active("milky:123456")
+    manager.create("milky:123456", "调研")
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai contexts")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "默认" in text
+    assert "调研" in text
+    assert "* 调研" in text  # 最新创建的为激活对话
 
 
 # ------------------------------------------------------- tools / persona 命令
@@ -454,10 +490,15 @@ async def test_tools_list_shows_defaults(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "milky:123456" in text
-    assert "安全默认 core/web/skill" in text
-    assert "可解析工具" in text
-    assert "memory" in text
+    assert "本群可用工具" in text
+    assert "core" in text  # 类别名保持原始值
+    assert "web" in text
+    assert "skill" in text
+    assert "memory" in text  # 工具名保持原始值
+    assert "duckduckgo_search" in text
+    assert "skill_read" in text
+    assert "milky:123456" not in text  # 不向用户暴露 scope key
+    assert "surface" not in text  # 不向用户暴露 surface 概念
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -479,7 +520,7 @@ async def test_tools_set_requires_superuser(monkeypatch, tmp_store):
     bot, event = _milky_group("ai tools off core chat")
     await bot.handle_event(event)
 
-    assert "仅 SUPERUSER" in sent[0][1].extract_plain_text()
+    assert "仅超管" in sent[0][1].extract_plain_text()
     assert tmp_store.list_scope_tool_bindings("milky:123456", "chat") == []
 
 
@@ -505,6 +546,47 @@ async def test_persona_create_use_flow(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_persona_create_duplicate_rejected(monkeypatch, tmp_store):
+    """重名创建走提示而不是抛 IntegrityError 崩 matcher（原 persona 不被覆盖）。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group(
+        "ai persona create 小爱 --gender 女性 --personality 温柔 --description 原版"
+    )
+    await bot.handle_event(event)
+    assert "已创建" in sent[0][1].extract_plain_text()
+
+    bot, event = _milky_group(
+        "ai persona create 小爱 --gender 女性 --personality 急躁 --description 覆盖"
+    )
+    await bot.handle_event(event)
+    assert "已存在" in sent[-1][1].extract_plain_text()
+    assert tmp_store.get_persona_by_name("小爱")["description"] == "原版"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_permission_snapshot_admin_roles(monkeypatch, tmp_store):
+    """build_permission_snapshot 按 uninfo role.id 识别 admin/owner，member 否。"""
+    from nonebot import get_driver
+
+    from hoshino.modules.ai import _deps as ai_deps
+
+    monkeypatch.setattr(get_driver().config, "superusers", set())
+
+    bot, event = _milky_group("x", role="admin", user_id=42)
+    snap = await ai_deps.build_permission_snapshot(bot, event)
+    assert snap.is_admin is True and snap.is_superuser is False
+
+    bot, event = _milky_group("x", role="owner", user_id=43)
+    snap = await ai_deps.build_permission_snapshot(bot, event)
+    assert snap.is_admin is True
+
+    bot, event = _milky_group("x", role="member", user_id=44)
+    snap = await ai_deps.build_permission_snapshot(bot, event)
+    assert snap.is_admin is False
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_persona_global_requires_superuser(monkeypatch, tmp_store):
     _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
 
@@ -513,3 +595,45 @@ async def test_persona_global_requires_superuser(monkeypatch, tmp_store):
 
     assert "仅 SUPERUSER" in sent[0][1].extract_plain_text()
     assert tmp_store.get_global_value("global_persona") is None
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_task_workspaces_root_hidden_from_member(monkeypatch, tmp_store):
+    """workspace 本机绝对路径只对 ADMIN+ 展示，普通成员只见名称/模式（plan 8.1）。"""
+    from hoshino.modules.ai._task import store as task_store
+
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
+    task_store.add_workspace("milky:123456", "proj", "/srv/secret/proj", "read_write")
+
+    bot, event = _milky_group("ai task workspaces", role="member", user_id=43)
+    await bot.handle_event(event)
+    assert "/srv/secret/proj" not in sent[-1][1].extract_plain_text()
+
+    bot, event = _milky_group("ai task workspaces", role="admin")
+    await bot.handle_event(event)
+    assert "/srv/secret/proj" in sent[-1][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_task_list_visibility_matrix(monkeypatch, tmp_store):
+    """list 权限矩阵（plan 5.1）：创建者看自己；ADMIN 看本 scope；SUPERUSER 看全部。"""
+    from test_ai_task import _create_task
+
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
+    # 用户 43 与另一用户 7 各一个 Task，同 scope
+    _create_task(tmp_store, task_id="t_mine", creator_id="43")
+    _create_task(tmp_store, task_id="t_other", creator_id="7")
+
+    # 普通成员：只见自己创建的（user_id=43 避免与 admin 分发共用 uninfo 会话缓存）
+    bot, event = _milky_group("ai task list", role="member", user_id=43)
+    await bot.handle_event(event)
+    text = sent[-1][1].extract_plain_text()
+    assert "t_mine" in text
+    assert "t_other" not in text
+
+    # ADMIN：见本 scope 全部
+    bot, event = _milky_group("ai task list", role="admin")
+    await bot.handle_event(event)
+    text = sent[-1][1].extract_plain_text()
+    assert "t_mine" in text
+    assert "t_other" in text
