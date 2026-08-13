@@ -17,17 +17,20 @@ per_run_step=False 的 DynamicToolset 在 for_run 时只求值一次工具集，
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.run import AgentRunResult
 from pydantic_ai.tools import DeferredToolResults
 from pydantic_ai.usage import UsageLimits
 from pydantic_graph import GraphRunContext
 
+from . import _hooks
 from ._deps import AgentDeps
 
 
@@ -37,6 +40,44 @@ class RunEvent:
 
     node: Any  # UserPromptNode / ModelRequestNode / CallToolsNode / …
     ctx: GraphRunContext
+
+
+@dataclass(slots=True)
+class RunLog:
+    """一次 turn 的进程内观测收集（可观测/审计，非持久化对象）。
+
+    ``run_agent`` 在迭代图节点时填充 steps / tool_calls；started_at 在首次进入
+    时设置（跨 retry 尝试不重置），ended_at / reason 在退出或异常时设置。
+    ``reason`` 取值：completed | error | timeout | max-requests | aborted。
+    """
+
+    started_at: float = 0.0
+    ended_at: float = 0.0
+    steps: int = 0
+    step_at: list[float] = field(default_factory=list)  # 每个 model request 完成时刻
+    tool_calls: list[dict] = field(default_factory=list)  # {name, args_summary}
+    reason: str = ""
+
+
+def redact_args(args: Any) -> str:
+    """把工具参数脱敏为「键名 + 值长度」摘要，不落完整参数（供 tool/call 事件）。
+
+    与 ``_task/scheduler._params_summary`` 同语义；此处单独实现以规避
+    scheduler → runtime → runner 的循环 import（未来可抽公共 util 合并）。
+    """
+    if args is None:
+        return "{}"
+    if isinstance(args, str):
+        return f"<str:{len(args)}>"
+    if isinstance(args, dict):
+        parts = []
+        for key, value in args.items():
+            if isinstance(value, (str, bytes)):
+                parts.append(f"{key}=<{len(value)}>")
+            else:
+                parts.append(f"{key}={type(value).__name__}")
+        return "{" + ", ".join(parts) + "}"
+    return type(args).__name__
 
 
 def tool_calls_from_node(node: Any) -> list[str]:
@@ -57,6 +98,30 @@ def tool_calls_from_node(node: Any) -> list[str]:
     return names
 
 
+def tool_call_events_from_node(node: Any) -> list[dict]:
+    """从图节点提取本步发起的工具调用事件（name + 脱敏参数摘要）。
+
+    与 ``tool_calls_from_node`` 同 duck-typed 识别；额外取 ``part.args`` 做脱敏，
+    供 ``RunLog.tool_calls`` 落 ``tool/call`` 事件。非 ``CallToolsNode`` 或解析
+    失败返回空列表。
+    """
+    if type(node).__name__ != "CallToolsNode":
+        return []
+    response = getattr(node, "model_response", None)
+    parts = getattr(response, "parts", None) or []
+    events: list[dict] = []
+    for part in parts:
+        name = getattr(part, "tool_name", None)
+        if name:
+            events.append(
+                {
+                    "name": str(name),
+                    "args_summary": redact_args(getattr(part, "args", None)),
+                }
+            )
+    return events
+
+
 async def run_agent(
     agent: Agent[AgentDeps, Any],
     prompt: str,
@@ -69,6 +134,7 @@ async def run_agent(
     capabilities: Sequence[Any] | None = None,
     on_event: Callable[[RunEvent], None] | None = None,
     usage_limits: UsageLimits | None = None,
+    run_log: RunLog | None = None,
 ) -> AgentRunResult | None:
     """驱动 Agent run 直到结束，返回最终结果（未正常结束时为 None）。
 
@@ -80,18 +146,116 @@ async def run_agent(
     与 agent 构造时的 capabilities 合并）。
     ``usage_limits``：run 级护栏（请求次数/token 上限，超限抛 UsageLimitExceeded）；
     持久化不能替代超时，见 aichat-context-timeout-plan.md §3。
+    ``run_log``：可选进程内观测收集器；填充 started_at/steps/tool_calls/ended_at/
+    reason。chat 用它落 log-only 事件与失败日志的 tools 字段；task 不传。
     """
-    async with agent.iter(
-        prompt,
-        message_history=message_history,
-        deps=deps,
-        deferred_tool_results=deferred_tool_results,
-        conversation_id=conversation_id,
-        output_type=output_type,
-        capabilities=capabilities,
-        usage_limits=usage_limits,
-    ) as agent_run:
-        async for node in agent_run:
-            if on_event is not None:
-                on_event(RunEvent(node=node, ctx=agent_run.ctx))
-        return agent_run.result
+    if run_log is not None and run_log.started_at == 0.0:
+        run_log.started_at = time.time()
+
+    def _observe(node: Any, ctx: GraphRunContext) -> None:
+        if run_log is not None:
+            if type(node).__name__ == "ModelRequestNode":
+                run_log.steps += 1
+                run_log.step_at.append(time.time())
+            run_log.tool_calls.extend(tool_call_events_from_node(node))
+        if on_event is not None:
+            on_event(RunEvent(node=node, ctx=ctx))
+
+    try:
+        async with agent.iter(
+            prompt,
+            message_history=message_history,
+            deps=deps,
+            deferred_tool_results=deferred_tool_results,
+            conversation_id=conversation_id,
+            output_type=output_type,
+            capabilities=capabilities,
+            usage_limits=usage_limits,
+        ) as agent_run:
+            async for node in agent_run:
+                _observe(node, agent_run.ctx)
+            if run_log is not None:
+                run_log.reason = "completed"
+                run_log.ended_at = time.time()
+            return agent_run.result
+    except BaseException:
+        if run_log is not None:
+            run_log.ended_at = time.time()
+        raise
+
+
+def is_transient_error(exc: Exception) -> bool:
+    """判定瞬态 provider 异常：可安全重试的第一次模型请求失败。
+
+    只覆盖限流（429）与服务端 5xx / 传输层错误 / 连接错误；不覆盖护栏异常
+    （``TimeoutError``/``UsageLimitExceeded``，由调用方在重试前排除）。
+    """
+    from httpx import TransportError
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    if isinstance(exc, ModelHTTPError):
+        status = getattr(exc, "status_code", None)
+        return status == 429 or (isinstance(status, int) and status >= 500)
+    if isinstance(exc, TransportError):
+        return True
+    return isinstance(exc, ConnectionError)
+
+
+async def run_agent_with_retry(
+    agent: Agent[AgentDeps, Any],
+    prompt: str,
+    *,
+    deps: AgentDeps,
+    message_history: Sequence[ModelMessage] | None = None,
+    deferred_tool_results: DeferredToolResults | None = None,
+    conversation_id: str | None = None,
+    output_type=None,
+    capabilities: Sequence[Any] | None = None,
+    on_event: Callable[[RunEvent], None] | None = None,
+    usage_limits: UsageLimits | None = None,
+    run_log: RunLog | None = None,
+    max_retries: int = 2,
+) -> AgentRunResult | None:
+    """带 request-error 有界重试的 ``run_agent``。
+
+    重试仅在同时满足：异常被 hook 判定 retry 或落入内置瞬态分类器、且本次 turn
+    尚无工具调用（无副作用，重进 ``agent.iter`` 不会重放工具执行）、且未达上限。
+    护栏异常（``TimeoutError``/``UsageLimitExceeded``）不重试，直接抛出。
+    """
+    attempt = 0
+    while True:
+        try:
+            return await run_agent(
+                agent,
+                prompt,
+                deps=deps,
+                message_history=message_history,
+                deferred_tool_results=deferred_tool_results,
+                conversation_id=conversation_id,
+                output_type=output_type,
+                capabilities=capabilities,
+                on_event=on_event,
+                usage_limits=usage_limits,
+                run_log=run_log,
+            )
+        except (TimeoutError, UsageLimitExceeded):
+            raise
+        except Exception as exc:
+            attempt += 1
+            ctx = _hooks.RequestErrorContext(
+                exc=exc,
+                scope_key=deps.scope_key,
+                provider_id=deps.telemetry.provider_id,
+                surface=deps.surface,
+                attempt=attempt,
+                deps=deps,
+            )
+            decision = _hooks.run_request_error_hooks(ctx)
+            no_side_effects = run_log is None or not run_log.tool_calls
+            if (
+                (decision.retry or is_transient_error(exc))
+                and no_side_effects
+                and attempt <= max_retries
+            ):
+                continue
+            raise

@@ -184,6 +184,45 @@ class FakeAgent:
         return FakeAgentRun(self._result, self._error, message_history)
 
 
+class RetryAgent(FakeAgent):
+    """第一次 iter 抛错、之后成功的替身：验证 request-error 有界重试。"""
+
+    def __init__(self, error: Exception):
+        super().__init__(FakeResult("回答"))
+        self._first_error = error
+        self._calls = 0
+
+    def iter(self, prompt, **kwargs):
+        self.prompt = prompt
+        self.message_history = kwargs.get("message_history")
+        self._calls += 1
+        if self._calls == 1:
+            return FakeAgentRun(
+                FakeResult("x"), self._first_error, kwargs.get("message_history")
+            )
+        return FakeAgentRun(self._result, None, kwargs.get("message_history"))
+
+
+class _RetryDeps:
+    """run_agent_with_retry 构建 RequestErrorContext 所需的最小 deps 替身。"""
+
+    scope_key = "milky:1"
+    surface = "chat"
+
+    class telemetry:
+        provider_id = "openai"
+
+
+@pytest.fixture
+def _reset_hooks():
+    """钩子注册表是模块全局，每个测试前后清空。"""
+    from hoshino.modules.ai import _hooks as hooks
+
+    hooks.reset_hooks()
+    yield
+    hooks.reset_hooks()
+
+
 def _stub_config(monkeypatch, **overrides):
     from hoshino.modules.ai import chat
 
@@ -1041,3 +1080,155 @@ async def test_chat_usage_limit_keeps_prompt(monkeypatch, tmp_store):
 
     assert "超出步数限制" in sent[-1][1].extract_plain_text()
     assert len(manager.get_active("milky:123456").messages) == 1
+
+
+# ------------------------------------------------------- 拦截瀑布（pre-step / retry）
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap", "_reset_hooks")
+async def test_chat_pre_step_reject_blocks_run(monkeypatch, tmp_store):
+    """pre-step reject：回固定文案、不跑模型、不写事件。"""
+    from hoshino.modules.ai import _hooks as hooks
+    from hoshino.modules.ai import _sessions, chat
+
+    _stub_config(monkeypatch)
+    agent = FakeAgent(FakeResult("x"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    hooks.register_pre_step(lambda ctx: hooks.PreStepDecision.reject("这条不能回答"))
+
+    bot, event = _milky_group("#你好", user_id=7)
+    await bot.handle_event(event)
+
+    assert getattr(agent, "prompt", None) is None  # 未驱动模型
+    assert "这条不能回答" in sent[-1][1].extract_plain_text()
+    # 不写事件
+    assert _sessions.conversation_manager.get_active("milky:123456").messages == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap", "_reset_hooks")
+async def test_chat_pre_step_rewrite_changes_model_prompt(monkeypatch, tmp_store):
+    """pre-step rewrite：模型看到改写后的 prompt（surface 仍为用户原话）。"""
+    from hoshino.modules.ai import _hooks as hooks
+
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+
+    hooks.register_pre_step(
+        lambda ctx: hooks.PreStepDecision.rewrite(ctx.prompt + "（系统注入）")
+    )
+
+    bot, event = _milky_group("#你好", user_id=7)
+    await bot.handle_event(event)
+
+    assert agent.prompt == "你好（系统注入）"
+    assert len(sent) == 1
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap", "_reset_hooks")
+async def test_chat_retries_transient_first_request_error(monkeypatch, tmp_store):
+    """瞬态 provider 异常（429）且尚无工具调用：同轮有界重试后成功。"""
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    from hoshino.modules.ai import chat
+
+    agent = RetryAgent(ModelHTTPError(429, "deepseek"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    sent = _stub_send(monkeypatch)
+
+    async def fake_render(md, cfg):
+        return b"FAKEPNG"
+
+    _stub_config(monkeypatch)
+    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+
+    bot, event = _milky_group("#你好", user_id=7)
+    await bot.handle_event(event)
+
+    assert agent._calls == 2  # 重试了一次
+    assert len(sent) == 1
+    assert [segment.type for segment in sent[0][1]] == ["image"]
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap", "_reset_hooks")
+async def test_chat_does_not_retry_non_transient_error(monkeypatch, tmp_store):
+    """非瞬态异常不重试，直接按失败回复。"""
+    from hoshino.modules.ai import chat
+
+    agent = RetryAgent(RuntimeError("boom"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    sent = _stub_send(monkeypatch)
+    _stub_config(monkeypatch)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+
+    bot, event = _milky_group("#你好", user_id=7)
+    await bot.handle_event(event)
+
+    assert agent._calls == 1
+    assert "AI 请求失败" in sent[-1][1].extract_plain_text()
+
+
+async def test_run_agent_with_retry_skips_when_tools_called():
+    """副作用守卫：已有工具调用时不重试（避免重放副作用）。"""
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    from hoshino.modules.ai import _runner as runner
+
+    agent = RetryAgent(ModelHTTPError(429, "deepseek"))
+    run_log = runner.RunLog()
+    run_log.tool_calls.append({"name": "bash", "args_summary": "{}"})
+
+    with pytest.raises(ModelHTTPError):
+        await runner.run_agent_with_retry(
+            agent, "p", deps=_RetryDeps(), run_log=run_log, max_retries=2
+        )
+    assert agent._calls == 1  # 不重试
+
+
+# ------------------------------------------------------- 目标（goal）命令
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_goal_set_view_and_transition(monkeypatch, tmp_store):
+    _, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("#goal set 学习 dsh agent", user_id=7)
+    await bot.handle_event(event)
+    assert "已设定目标" in sent[-1][1].extract_plain_text()
+
+    bot, event = _milky_group("#goal", user_id=7)
+    await bot.handle_event(event)
+    text = sent[-1][1].extract_plain_text()
+    assert "学习 dsh agent" in text
+    assert "进行中" in text
+
+    bot, event = _milky_group("#goal done", user_id=7)
+    await bot.handle_event(event)
+    assert "已完成" in sent[-1][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_goal_set_requires_objective(monkeypatch, tmp_store):
+    _, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("#goal set", user_id=7)
+    await bot.handle_event(event)
+    assert "用法" in sent[-1][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_goal_clear_requires_admin_in_group(monkeypatch, tmp_store):
+    _, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("#goal set 目标", user_id=7)
+    await bot.handle_event(event)
+
+    bot, event = _milky_group("#goal clear", user_id=43, role="member")
+    await bot.handle_event(event)
+    assert "管理员权限" in sent[-1][1].extract_plain_text()
+
+    bot, event = _milky_group("#goal clear", user_id=7, role="admin")
+    await bot.handle_event(event)
+    assert "已清除" in sent[-1][1].extract_plain_text()

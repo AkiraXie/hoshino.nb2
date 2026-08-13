@@ -197,6 +197,9 @@ class TestTaskRuntimeWiring:
             output_type=None,
             capabilities=None,
             on_event=None,
+            usage_limits=None,
+            run_log=None,
+            max_retries=2,
         ):
             captured["capabilities"] = capabilities
             return SimpleNamespace(
@@ -210,7 +213,7 @@ class TestTaskRuntimeWiring:
         monkeypatch.setattr(
             task_runtime.providers, "build_agent", lambda *a, **k: object()
         )
-        monkeypatch.setattr(task_runtime.runner, "run_agent", fake_run_agent)
+        monkeypatch.setattr(task_runtime.runner, "run_agent_with_retry", fake_run_agent)
 
         config = AIConfig(
             providers={

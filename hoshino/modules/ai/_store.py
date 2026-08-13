@@ -435,17 +435,17 @@ def load_conversation_events(conv_id: str, *, after_seq: int = -1) -> list[dict]
         return [_event_to_dict(row) for row in rows]
 
 
-def count_conversation_events(conv_id: str) -> int:
-    """对话事件条数（当前事件模型下等于派生消息条数）。"""
+def count_conversation_events(
+    conv_id: str, *, types: tuple[str, ...] | None = None
+) -> int:
+    """对话事件条数；``types`` 非空时只数指定类型（如 surface 事件）。"""
     with Session() as session:
-        return (
-            session.execute(
-                select(func.count(AIConversationEvent.seq)).where(
-                    AIConversationEvent.conv_id == conv_id
-                )
-            ).scalar()
-            or 0
+        stmt = select(func.count(AIConversationEvent.seq)).where(
+            AIConversationEvent.conv_id == conv_id
         )
+        if types is not None:
+            stmt = stmt.where(AIConversationEvent.type.in_(types))
+        return session.execute(stmt).scalar() or 0
 
 
 def migrate_conv_events_if_empty(conv_id: str, events: list[dict]) -> bool:
@@ -1040,3 +1040,91 @@ def set_skill_enabled(scope_key: str, skill_name: str, enabled: bool) -> None:
             row.enabled = enabled
             row.updated_at = time.time()
         session.commit()
+
+
+# ------------------------------------------------------------- goals
+
+
+class AIGoal(Base):
+    """每 scope 一个跨轮持续目标（GoalService 状态行，revision CAS）。"""
+
+    __tablename__ = "ai_goals"
+
+    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    objective: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    phase: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    max_rounds: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    completed_rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    blocked_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+
+
+def _goal_to_dict(row: AIGoal) -> dict:
+    return {
+        "scope_key": row.scope_key,
+        "objective": row.objective,
+        "phase": row.phase,
+        "revision": row.revision,
+        "max_rounds": row.max_rounds,
+        "completed_rounds": row.completed_rounds,
+        "blocked_reason": row.blocked_reason,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def get_goal(scope_key: str) -> dict | None:
+    with Session() as session:
+        row = session.get(AIGoal, scope_key)
+        return _goal_to_dict(row) if row is not None else None
+
+
+def upsert_goal(
+    scope_key: str,
+    *,
+    objective: str,
+    phase: str,
+    revision: int,
+    max_rounds: int | None = None,
+    completed_rounds: int = 0,
+    blocked_reason: str = "",
+) -> None:
+    """写入/更新目标状态（revision CAS 由 GoalService 保证，这里只落库）。"""
+    now = time.time()
+    with Session() as session:
+        row = session.get(AIGoal, scope_key)
+        if row is None:
+            session.add(
+                AIGoal(
+                    scope_key=scope_key,
+                    objective=objective,
+                    phase=phase,
+                    revision=revision,
+                    max_rounds=max_rounds,
+                    completed_rounds=completed_rounds,
+                    blocked_reason=blocked_reason,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            row.objective = objective
+            row.phase = phase
+            row.revision = revision
+            row.max_rounds = max_rounds
+            row.completed_rounds = completed_rounds
+            row.blocked_reason = blocked_reason
+            row.updated_at = now
+        session.commit()
+
+
+def delete_goal(scope_key: str) -> bool:
+    with Session() as session:
+        row = session.get(AIGoal, scope_key)
+        if row is None:
+            return False
+        session.delete(row)
+        session.commit()
+        return True

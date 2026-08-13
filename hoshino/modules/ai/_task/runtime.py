@@ -16,6 +16,7 @@ from pydantic_ai.tools import DeferredToolRequests
 from .. import (
     _context as context,
     _harness as harness,
+    _hooks as hooks,
     _providers as providers,
     _runner as runner,
 )
@@ -117,9 +118,27 @@ async def run_task_run(
     # harness 可用时注入 Planning + StepPersistence；不可用时为空列表（降级，功能不缺失）。
     capabilities = harness.build_task_capabilities(task_id=ctx.task_id)
 
-    result = await runner.run_agent(
+    # pre-step 瀑布：task 的 reject 表现为确定性错误，交 scheduler 既有失败流程承接。
+    pre = hooks.run_pre_step_hooks(
+        hooks.PreStepContext(
+            prompt=ctx.prompt,
+            history=history,
+            scope_key=ctx.scope_key,
+            provider_id=ctx.provider_id,
+            surface="task",
+            deps=deps,
+        )
+    )
+    if pre.action == "reject":
+        raise TaskRuntimeError(pre.reply or "pre_step_reject")
+    prompt = (
+        pre.prompt if pre.action == "rewrite" and pre.prompt is not None else ctx.prompt
+    )
+
+    run_log = runner.RunLog()
+    result = await runner.run_agent_with_retry(
         agent,
-        ctx.prompt,
+        prompt,
         deps=deps,
         message_history=history,
         deferred_tool_results=deferred,
@@ -127,6 +146,7 @@ async def run_task_run(
         output_type=TaskOutput,
         capabilities=capabilities,
         on_event=on_event,
+        run_log=run_log,
     )
     if result is None:
         raise TaskRuntimeError("Agent run 未返回结果")

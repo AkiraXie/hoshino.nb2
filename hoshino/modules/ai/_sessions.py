@@ -81,6 +81,47 @@ def _row_to_conversation(row: dict) -> Conversation:
     )
 
 
+def _run_log_prefix_events(run_log, provider_id: str) -> list[dict]:
+    """把 RunLog 折成 log-only 前缀事件（request/header + turn/start + tool/call* + step/end*）。
+
+    仅当 run_log 非空时产事件；空时返回 []，保持「无 run_log → 只写 surface 事件」的
+    既有语义（迁移/测试路径不引入额外事件）。
+    """
+    if run_log is None:
+        return []
+    events: list[dict] = []
+    if provider_id:
+        events.append(
+            {
+                "type": context.EVENT_REQUEST_HEADER,
+                "data": {"provider_id": provider_id},
+            }
+        )
+    events.append(
+        {"type": context.EVENT_TURN_START, "data": {"started_at": run_log.started_at}}
+    )
+    for call in run_log.tool_calls:
+        events.append({"type": context.EVENT_TOOL_CALL, "data": call})
+    for index, at in enumerate(run_log.step_at, 1):
+        events.append(
+            {"type": context.EVENT_STEP_END, "data": {"step": index, "at": at}}
+        )
+    return events
+
+
+def _run_log_end_event(run_log, reason: str) -> dict:
+    """RunLog 的 turn/end 事件；``reason`` 为 completed | timeout | max-requests 等。"""
+    return {
+        "type": context.EVENT_TURN_END,
+        "data": {
+            "reason": reason,
+            "ended_at": run_log.ended_at,
+            "steps": run_log.steps,
+            "tool_count": len(run_log.tool_calls),
+        },
+    }
+
+
 class ConversationManager:
     """单进程对话管理器。测试中可整体替换实例（经 ``_sessions.conversation_manager``）。"""
 
@@ -162,8 +203,10 @@ class ConversationManager:
         active_id = store.get_active_conv_id(scope_key)
         summaries = []
         for row in store.get_conversations(scope_key):
-            # 消息条数 = 事件条数；未迁移的旧对话回退读 messages_json。
-            count = store.count_conversation_events(row["id"])
+            # 消息条数 = surface 事件条数（log-only 事件不计）；未迁移的旧对话回退读 messages_json。
+            count = store.count_conversation_events(
+                row["id"], types=context.SURFACE_EVENT_TYPES
+            )
             if count == 0 and row.get("messages_json"):
                 count = len(context.deserialize_messages(row["messages_json"]))
             summaries.append(
@@ -238,23 +281,43 @@ class ConversationManager:
         return had_content
 
     def commit_turn(
-        self, scope_key: str, new_messages: list[ModelMessage], provider_id: str
+        self,
+        scope_key: str,
+        new_messages: list[ModelMessage],
+        provider_id: str,
+        run_log=None,
     ) -> None:
-        """成功轮结束：把本轮新增消息折成事件 append（write-through）。"""
+        """成功轮结束：把本轮新增消息折成事件 append（write-through）。
+
+        ``run_log`` 非空时在 surface 事件前后追加 log-only 事件（request/header、
+        turn/start、tool/call、step/end、turn/end）；空时只写 surface 事件。
+        """
         conv = self.get_active(scope_key)
-        events = context.messages_to_events(new_messages)
+        events = _run_log_prefix_events(run_log, provider_id)
+        events += context.messages_to_events(new_messages)
+        if run_log is not None:
+            events.append(_run_log_end_event(run_log, "completed"))
         conv._append_events(events)
         conv.provider_id = provider_id
         conv.updated_at = time.time()
         store.append_conversation_events(conv.id, events)
         store.update_conversation_provider(conv.id, provider_id)
 
-    def append_prompt_only(self, scope_key: str, prompt: str, provider_id: str) -> None:
-        """超时/UsageLimit 超限：保留本轮提问为一条 user/message 事件，下一轮可续问。"""
+    def append_prompt_only(
+        self, scope_key: str, prompt: str, provider_id: str, run_log=None
+    ) -> None:
+        """超时/UsageLimit 超限：保留本轮提问为一条 user/message 事件，下一轮可续问。
+
+        ``run_log`` 非空时同时落 log-only 事件（含超时前调用过的 tool/call），
+        turn/end reason 取 ``run_log.reason``（timeout | max-requests）。
+        """
         conv = self.get_active(scope_key)
-        events = context.messages_to_events(
+        events = _run_log_prefix_events(run_log, provider_id)
+        events += context.messages_to_events(
             [ModelRequest(parts=[UserPromptPart(content=prompt)])]
         )
+        if run_log is not None:
+            events.append(_run_log_end_event(run_log, run_log.reason or "aborted"))
         conv._append_events(events)
         conv.provider_id = provider_id
         conv.updated_at = time.time()

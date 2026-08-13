@@ -51,6 +51,22 @@ EVENT_USER_MESSAGE = "user/message"
 EVENT_ASSISTANT_MESSAGE = "assistant/message"
 EVENT_TOOL_RESULT = "tool/result"
 
+# log-only 事件（可观测/审计，不投影为模型消息）。``derive_messages`` 对它们
+# 一律跳过，因此顺序/数量不影响历史重放；落库时与 surface 事件同表追加。
+# step 只记录「完成」边界（agent.iter 仅在节点产出后可观测，无法可靠观测 step 开始）。
+EVENT_TURN_START = "turn/start"
+EVENT_TURN_END = "turn/end"
+EVENT_STEP_END = "step/end"
+EVENT_TOOL_CALL = "tool/call"
+EVENT_REQUEST_HEADER = "request/header"
+
+# 参与模型历史投影的 surface 事件类型；供“消息条数”类计数过滤 log-only 事件。
+SURFACE_EVENT_TYPES = (
+    EVENT_USER_MESSAGE,
+    EVENT_ASSISTANT_MESSAGE,
+    EVENT_TOOL_RESULT,
+)
+
 
 def serialize_message(message: ModelMessage) -> str:
     """序列化单条模型消息（复用列表 adapter，取 [0]）。"""

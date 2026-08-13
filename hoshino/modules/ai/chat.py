@@ -3,7 +3,8 @@
 - 群聊/私聊均可用，不要求 @机器人；只感知 ``#`` 前缀消息。
 - ``#`` 命名空间保留词为控制命令（整词精确匹配）：
   ``#new [name]`` 新建并切换 / ``#switch|sw <name>`` 切换 / ``#list|ls`` 列出 /
-  ``#clear`` 清空当前对话；其余内容一律按聊天处理（``#new 特性介绍`` 是提问）。
+  ``#clear`` 清空当前对话 / ``#goal ...`` 查看与管理跨轮目标；其余内容一律按聊天
+  处理（``#new 特性介绍`` 是提问）。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
   见 ``_sessions.py``；轮次按 scope 锁串行化，run 进行中再收 ``#`` 回忙提示。
 - 执行护栏（持久化不替代超时，见 aichat-context-timeout-plan.md §3）：
@@ -36,6 +37,8 @@ from . import (
     _context as context,
     _deps as deps,
     _errors as errors,
+    _goal as goal,
+    _hooks as hooks,
     _metrics as metrics,
     _providers as providers,
     _rendering as rendering,
@@ -93,6 +96,15 @@ def _parse_control(body: str) -> tuple[str, str | None] | None:
         return ("list", None)
     if head == "clear" and not rest:
         return ("clear", None)
+    if head == "goal":
+        if not rest:
+            return ("goal_view", None)
+        sub = rest[0].lower()
+        if sub == "set":
+            return ("goal_set", " ".join(rest[1:]) if len(rest) > 1 else None)
+        if sub in ("pause", "resume", "done", "clear") and len(rest) == 1:
+            return (f"goal_{sub}", None)
+        return ("goal_help", None)
     return None
 
 
@@ -101,6 +113,10 @@ async def _handle_control(
 ) -> None:
     manager = _sessions.conversation_manager
     action, arg = control
+
+    if action.startswith("goal_"):
+        await _handle_goal(bot, event, scope_key, action, arg)
+        return
 
     if action == "new":
         try:
@@ -155,6 +171,102 @@ async def _can_clear(bot: Bot, event: Event) -> bool:
     return permissions.is_admin or permissions.is_superuser
 
 
+# ---------------------------------------------------------------- 目标（goal）
+
+
+_GOAL_PHASE_LABEL = {
+    "active": "进行中",
+    "paused": "已暂停",
+    "blocked": "已阻塞",
+    "complete": "已完成",
+}
+
+
+def _format_goal(g) -> str:
+    phase = _GOAL_PHASE_LABEL.get(g.phase, g.phase)
+    rounds = (
+        f"{g.completed_rounds}/{g.max_rounds}"
+        if g.max_rounds
+        else str(g.completed_rounds)
+    )
+    lines = [f"目标（{phase}）：{g.objective}", f"轮次：{rounds}"]
+    if g.blocked_reason:
+        lines.append(f"阻塞原因：{g.blocked_reason}")
+    return "\n".join(lines)
+
+
+async def _handle_goal(
+    bot: Bot, event: Event, scope_key: str, action: str, arg: str | None
+) -> None:
+    service = goal.GoalService()
+
+    if action == "goal_view":
+        current = service.get(scope_key)
+        if current is None:
+            await send_to_event(
+                bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。"
+            )
+        else:
+            await send_to_event(bot, event, _format_goal(current))
+        return
+
+    if action == "goal_set":
+        if not arg:
+            await send_to_event(bot, event, "用法：`#goal set <目标>`。")
+            return
+        try:
+            created = service.create(scope_key, arg)
+        except ValueError as exc:
+            await send_to_event(bot, event, str(exc))
+            return
+        await send_to_event(bot, event, f"已设定目标：{created.objective}")
+        return
+
+    if action == "goal_clear":
+        if not await _can_clear(bot, event):
+            await send_to_event(bot, event, "清除目标需要管理员权限。")
+            return
+        await send_to_event(
+            bot, event, "已清除目标。" if service.clear(scope_key) else "当前没有目标。"
+        )
+        return
+
+    transition = {
+        "goal_pause": "pause",
+        "goal_resume": "resume",
+        "goal_done": "complete",
+    }.get(action)
+    if transition is not None:
+        await _goal_transition(bot, event, scope_key, transition)
+        return
+
+    # goal_help / 非法子命令
+    await send_to_event(
+        bot,
+        event,
+        "用法：`#goal` 查看 / `#goal set <目标>` 设定 / `#goal pause|resume|done` / "
+        "`#goal clear`。",
+    )
+
+
+async def _goal_transition(bot: Bot, event: Event, scope_key: str, action: str) -> None:
+    service = goal.GoalService()
+    current = service.get(scope_key)
+    if current is None:
+        await send_to_event(
+            bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。"
+        )
+        return
+    try:
+        updated = service.update(
+            scope_key, goal.GoalRef(scope_key, current.revision), action
+        )
+    except (goal.GoalConflict, ValueError) as exc:
+        await send_to_event(bot, event, str(exc))
+        return
+    await send_to_event(bot, event, _format_goal(updated))
+
+
 # ---------------------------------------------------------------- 聊天
 
 
@@ -184,6 +296,26 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         provider_id=provider_id,
         model=model_name,
     )
+    # pre-step 瀑布：reject（拒绝本轮，不跑模型）/ rewrite（改写模型可见 prompt）。
+    # rewrite 只改进入模型的文本；事件日志按改写后的内容记录（重放保真优先，
+    # 平台聊天记录仍保留用户原话）。本期无默认订阅者。
+    pre = hooks.run_pre_step_hooks(
+        hooks.PreStepContext(
+            prompt=prompt,
+            history=history,
+            scope_key=scope_key,
+            provider_id=provider_id,
+            surface="chat",
+            deps=agent_deps,
+        )
+    )
+    if pre.action == "reject":
+        agent_deps.telemetry.record_error("pre_step_reject")
+        await send_to_event(bot, event, pre.reply or "本次请求已被拦截。")
+        return
+    if pre.action == "rewrite" and pre.prompt is not None:
+        prompt = pre.prompt
+
     agent = providers.build_agent(
         provider_id,
         provider_config,
@@ -191,29 +323,27 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
     )
-    # 失败可观测性：记录本轮发起过的工具调用，异常时随日志输出定位是
-    # 模型侧问题还是工具侧问题（如 web_search）。
-    last_tools: list[str] = []
-
-    def _track_tools(ev: runner.RunEvent) -> None:
-        last_tools.extend(runner.tool_calls_from_node(ev.node))
+    # 失败可观测性：RunLog 记录本轮发起过的工具调用（含超时前），异常时随日志
+    # 输出定位是模型侧问题还是工具侧问题（如 web_search）。
+    run_log = runner.RunLog()
 
     try:
         result = await asyncio.wait_for(
-            runner.run_agent(
+            runner.run_agent_with_retry(
                 agent,
                 prompt,
                 deps=agent_deps,
                 message_history=history,
                 usage_limits=UsageLimits(request_limit=config.chat_max_requests),
-                on_event=_track_tools,
+                run_log=run_log,
             ),
             timeout=config.chat_run_timeout_seconds,
         )
     except (TimeoutError, UsageLimitExceeded) as exc:
         # 护栏触发：丢弃本次执行，但把提问留在上下文，下一轮可续问。
         agent_deps.telemetry.record_error(type(exc).__name__)
-        manager.append_prompt_only(scope_key, prompt, provider_id)
+        run_log.reason = "timeout" if isinstance(exc, TimeoutError) else "max-requests"
+        manager.append_prompt_only(scope_key, prompt, provider_id, run_log)
         reason = "超时" if isinstance(exc, TimeoutError) else "超出步数限制"
         sv.logger.warning(
             f"AI 请求{reason} provider={provider_id} scope={scope_key} conv={conv.name}"
@@ -227,11 +357,13 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     except Exception as exc:
         # 完整错误详情（message + body/status/tool）+ 失败前工具调用；
         # traceback 只在 DEBUG 级别落，避免 WARNING 刷屏。
+        run_log.reason = "error"
         detail = errors.format_exception_detail(exc)
         agent_deps.telemetry.record_error(detail)
+        tools = ",".join(c["name"] for c in run_log.tool_calls) or "-"
         sv.logger.warning(
             f"AI 请求失败 provider={provider_id} scope={scope_key} conv={conv.name} "
-            f"error={type(exc).__name__} tools={','.join(last_tools) or '-'} "
+            f"error={type(exc).__name__} tools={tools} "
             f"detail={detail}"
         )
         sv.logger.debug(
@@ -249,7 +381,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     # all_messages() = 传入的 history + 本轮新增；只把新增折成事件 append，
     # 避免重复记录历史（pydantic-ai 已验证该前缀对齐语义）。
     new_messages = list(result.all_messages())[len(history) :]
-    manager.commit_turn(scope_key, new_messages, provider_id)
+    manager.commit_turn(scope_key, new_messages, provider_id, run_log)
     sv.logger.info(
         f"AI 请求成功 provider={provider_id} scope={scope_key} "
         f"conv={conv.name} tokens={metrics.snapshot_from_result(result).total_tokens}"

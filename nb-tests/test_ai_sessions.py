@@ -15,7 +15,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from hoshino.modules.ai import _context, _sessions
+from hoshino.modules.ai import _context, _runner, _sessions
 from hoshino.modules.ai._config import AIConfig
 
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
@@ -321,3 +321,71 @@ def test_legacy_messages_json_migrates_to_events(tmp_store):
     fresh = _sessions.ConversationManager()
     assert len(fresh.get_active("milky:legacy").messages) == 2
     assert len(store.load_conversation_events("c_legacy")) == 2
+
+
+# ------------------------------------------------------- log-only 事件
+
+
+def _make_run_log(**kwargs) -> "_runner.RunLog":
+    run_log = _runner.RunLog(started_at=1.0, ended_at=2.0, steps=1, step_at=[1.5])
+    for key, value in kwargs.items():
+        setattr(run_log, key, value)
+    return run_log
+
+
+def test_commit_turn_with_run_log_writes_log_only_events(manager, tmp_store):
+    """run_log 非空时：surface 事件前后追加 log-only 事件，派生历史不受影响。"""
+    manager.get_active("milky:1")
+    run_log = _make_run_log()
+    run_log.tool_calls.append({"name": "now", "args_summary": "{}"})
+    messages = [_user("q"), _asst("a")]
+    manager.commit_turn("milky:1", messages, "openai", run_log)
+
+    conv = manager.get_active("milky:1")
+    events = tmp_store.load_conversation_events(conv.id)
+    assert [e["type"] for e in events] == [
+        "request/header",
+        "turn/start",
+        "tool/call",
+        "step/end",
+        "user/message",
+        "assistant/message",
+        "turn/end",
+    ]
+    assert events[-1]["data"]["reason"] == "completed"
+    # 派生只含 surface，log-only 被跳过
+    assert [m.parts[0].content for m in conv.messages] == ["q", "a"]
+
+    # 重建 manager 后重放仍一致（log-only 不影响重放）
+    fresh = _sessions.ConversationManager()
+    assert _context.serialize_messages(
+        fresh.get_active("milky:1").messages
+    ) == _context.serialize_messages(messages)
+
+
+def test_append_prompt_only_with_run_log_keeps_tool_calls(manager, tmp_store):
+    """超时路径保留提问的同时，记录超时前调用过的工具与 turn/end reason。"""
+    manager.get_active("milky:1")
+    run_log = _make_run_log(reason="timeout")
+    run_log.tool_calls.append({"name": "web_search", "args_summary": "q=<3>"})
+    manager.append_prompt_only("milky:1", "超时问题", "openai", run_log)
+
+    conv = manager.get_active("milky:1")
+    events = tmp_store.load_conversation_events(conv.id)
+    types = [e["type"] for e in events]
+    assert "tool/call" in types
+    assert types[-1] == "turn/end"
+    assert events[-1]["data"]["reason"] == "timeout"
+    assert events[-1]["data"]["tool_count"] == 1
+    # surface 只含提问
+    assert [m.parts[0].content for m in conv.messages] == ["超时问题"]
+
+
+def test_list_summaries_counts_surface_only(manager, tmp_store):
+    """log-only 事件不计入 #list 的消息条数。"""
+    manager.get_active("milky:1")
+    run_log = _make_run_log()
+    manager.commit_turn("milky:1", [_user("q"), _asst("a")], "openai", run_log)
+
+    summaries = manager.list_summaries("milky:1")
+    assert summaries[0]["count"] == 2  # 只数 user/message + assistant/message

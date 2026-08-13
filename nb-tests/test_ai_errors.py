@@ -109,5 +109,38 @@ def test_tool_calls_from_node_ignores_other_nodes():
     assert tool_calls_from_node(CallToolsNode([type("P", (), {})()])) == []
 
 
+# ---------------------------------------------------- tool_call_events_from_node
+
+
+def test_tool_call_events_from_node_redacts_args():
+    from hoshino.modules.ai._runner import tool_call_events_from_node
+
+    node = CallToolsNode(
+        [
+            type(
+                "P",
+                (),
+                {"tool_name": "web_search", "args": {"q": "secret-string", "n": 3}},
+            )(),
+            type("P", (), {"tool_name": "now"})(),
+        ]
+    )
+    assert tool_call_events_from_node(node) == [
+        {"name": "web_search", "args_summary": "{q=<13>, n=int}"},
+        {"name": "now", "args_summary": "{}"},
+    ]
+    assert tool_call_events_from_node(object()) == []
+    assert tool_call_events_from_node(CallToolsNode([])) == []
+
+
+def test_redact_args_shapes():
+    from hoshino.modules.ai._runner import redact_args
+
+    assert redact_args(None) == "{}"
+    assert redact_args("abc") == "<str:3>"
+    assert redact_args({"k": "vv", "n": 1}) == "{k=<2>, n=int}"
+    assert redact_args(42) == "int"
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-q"])
