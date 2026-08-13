@@ -11,13 +11,13 @@ def test_list_skills_contains_builtin(tmp_store):
     from hoshino.modules.ai import _skills as skills
 
     names = {s.name for s in skills.list_skills()}
-    assert "web_research" in names
+    assert "web-research" in names
 
 
 def test_get_skill_parses_frontmatter(tmp_store):
     from hoshino.modules.ai import _skills as skills
 
-    skill = skills.get_skill("web_research")
+    skill = skills.get_skill("web-research")
     assert skill is not None
     assert skill.source == "builtin"
     assert skill.description
@@ -37,10 +37,10 @@ def test_default_all_enabled(tmp_store):
 def test_disable_excludes(tmp_store):
     from hoshino.modules.ai import _skills as skills
 
-    assert skills.set_enabled("milky:1", "web_research", False) is True
+    assert skills.set_enabled("milky:1", "web-research", False) is True
     assert skills.list_enabled("milky:1") == []
-    assert skills.set_enabled("milky:1", "web_research", True) is True
-    assert [s.name for s in skills.list_enabled("milky:1")] == ["web_research"]
+    assert skills.set_enabled("milky:1", "web-research", True) is True
+    assert [s.name for s in skills.list_enabled("milky:1")] == ["web-research"]
 
 
 def test_set_enabled_missing_skill_returns_false(tmp_store):
@@ -53,13 +53,13 @@ def test_local_skill_overrides_builtin(tmp_store, tmp_path, monkeypatch):
     from hoshino.modules.ai import _skills as skills
 
     local_dir = tmp_path / "skills"
-    (local_dir / "web_research").mkdir(parents=True)
-    (local_dir / "web_research" / "SKILL.md").write_text(
-        "---\nname: web_research\ndescription: 本地覆盖版。\n---\n本地正文\n",
+    (local_dir / "web-research").mkdir(parents=True)
+    (local_dir / "web-research" / "SKILL.md").write_text(
+        "---\nname: web-research\ndescription: 本地覆盖版。\n---\n本地正文\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(skills, "LOCAL_SKILLS_DIR", str(local_dir))
-    skill = skills.get_skill("web_research")
+    skill = skills.get_skill("web-research")
     assert skill is not None
     assert skill.source == "local"
     assert skill.description == "本地覆盖版。"

@@ -298,13 +298,13 @@ def test_build_tool_instructions_states(tmp_store):
     tmp_store.set_scope_tool_binding("milky:1", "bot", "chat", True)
     parts = build_tool_instructions(_deps(event=None))
     assert any(p == prompts.TOOL_CALL_PROMPT for p in parts)
-    assert any("web_research" in p for p in parts)
+    assert any("web-research" in p for p in parts)
 
     # 关闭全部技能 → 技能清单消失，但工具提示仍在（基础/联网类别）
-    skills.set_enabled("milky:1", "web_research", False)
+    skills.set_enabled("milky:1", "web-research", False)
     parts = build_tool_instructions(_deps(event=None))
     assert any(p == prompts.TOOL_CALL_PROMPT for p in parts)
-    assert not any("web_research" in p for p in parts)
+    assert not any("web-research" in p for p in parts)
 
 
 # ------------------------------------------------------- computer/file 工具

@@ -1,5 +1,5 @@
 ---
-name: web_research
+name: web-research
 description: 网络调研：多来源搜索与交叉验证，输出带来源的结论。
 version: 1.0.0
 ---
