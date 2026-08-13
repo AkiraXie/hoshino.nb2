@@ -33,6 +33,9 @@ dependencies = [
     "markdown-it-py[plugins]>=4.2.0",
     "pygments>=2.20.0",
     "linkify-it-py>=2.0.0",
+    "ddgs>=7.0.0",
+    "markdownify>=1.2.3",
+    "pydantic-ai-harness==0.18.1",
 ]
 
 [project.scripts]

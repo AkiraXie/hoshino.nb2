@@ -78,6 +78,7 @@ def _milky_group(
 class FakeResult:
     def __init__(self, data: str, usage: RunUsage | None = None):
         self.data = data
+        self.output = data  # AgentRunResult.output，与旧 .data 语义对齐
         self._messages: list = []
         self._usage = usage or RunUsage(input_tokens=5, output_tokens=3, requests=1)
 
@@ -86,6 +87,35 @@ class FakeResult:
 
     def usage(self) -> RunUsage:
         return self._usage
+
+
+class FakeAgentRun:
+    """等价 pydantic-ai AgentRun：迭代产出一个 node，结束后 result 可用。"""
+
+    def __init__(self, result: FakeResult, error: Exception | None = None):
+        self._result = result
+        self._error = error
+        self.ctx = object()
+        self.result: FakeResult | None = None
+        self._count = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._error is not None:
+            raise self._error
+        if self._count >= 1:
+            self.result = self._result
+            raise StopAsyncIteration
+        self._count += 1
+        return object()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
 
 
 class FakeAgent:
@@ -100,21 +130,27 @@ class FakeAgent:
         self.message_history = message_history
         return self._result
 
-
-@pytest.fixture
-def tmp_store(tmp_path, monkeypatch):
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    import hoshino.modules.ai.store as store
-
-    eng = create_engine(f"sqlite:///{tmp_path / 'aichat.db'}")
-    store.Base.metadata.create_all(eng)
-    monkeypatch.setattr(store, "engine", eng)
-    monkeypatch.setattr(
-        store, "Session", sessionmaker(bind=eng, expire_on_commit=False)
-    )
-    return store
+    def iter(
+        self,
+        prompt,
+        *,
+        message_history=None,
+        deps=None,
+        deferred_tool_results=None,
+        conversation_id=None,
+        output_type=None,
+        capabilities=None,
+    ):
+        # 记录与 run 相同的信息，供断言。runner.run_agent 会透传
+        # deferred_tool_results / conversation_id / output_type / capabilities。
+        self.prompt = prompt
+        self.message_history = message_history
+        self.deps = deps
+        self.deferred_tool_results = deferred_tool_results
+        self.conversation_id = conversation_id
+        self.output_type = output_type
+        self.capabilities = capabilities
+        return FakeAgentRun(self._result, self._error)
 
 
 def _stub_config(monkeypatch, **overrides):
@@ -568,10 +604,9 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     tmp_store.set_scope_provider("milky:123456", "anthropic")
     captured: dict = {}
 
-    def fake_build(provider_id, provider_config, system_prompt, *, proxy=None):
+    def fake_build(provider_id, provider_config, *, proxy=None):
         captured["provider_id"] = provider_id
         captured["provider_config"] = provider_config
-        captured["system_prompt"] = system_prompt
         captured["proxy"] = proxy
         return FakeAgent(FakeResult("hi"))
 
@@ -584,6 +619,5 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
 
     assert captured["provider_id"] == "anthropic"
     assert captured["provider_config"] is config.get_provider("anthropic")
-    assert captured["system_prompt"] == "你是测试助手。"
     assert captured["proxy"] == config.proxy
     assert len(sent) == 1

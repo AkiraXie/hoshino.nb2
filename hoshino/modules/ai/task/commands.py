@@ -1,0 +1,480 @@
+"""AI Task 命令层：创建/状态/列表/审批/取消/workspace 管理。
+
+用独立的 NORMAL permission matcher（``ai task`` 前缀，priority 0 先于 ai_admin 的
+``on_command("ai")`` 拦截），在 handler 内按 scope policy 执行权限（plan 5.1：
+不能挂到 ADMIN matcher 下，否则 ``all`` policy 对普通成员不可达）。workspace 管理
+命令在 handler 内要求 SUPERUSER。
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import os
+
+from nonebot.adapters import Bot, Event
+
+from hoshino.platform import (
+    dump_target,
+    event_scope_key,
+    get_plaintext,
+    get_user_id,
+    platform_key,
+    send_to_event,
+    target_from_event,
+)
+from hoshino.platform.superuser import is_superuser
+
+from .. import deps as ai_deps
+from .. import persona, skills, tools
+from ..base import get_config, resolve_provider, sv
+from . import events as task_events
+from . import policy, runtime as task_runtime, scheduler, store as task_store
+from .models import CapabilitySnapshot, TaskContext, TaskOutput
+from .store import new_id
+
+_USAGE = (
+    "AI Task 命令：\n"
+    "  ai task research [--workspace <name>] <topic>\n"
+    "  ai task plan [--workspace <name>] <goal>\n"
+    "  ai task status <task_id>\n"
+    "  ai task list\n"
+    "  ai task approve <task_id>\n"
+    "  ai task deny <task_id>\n"
+    "  ai task cancel <task_id>\n"
+    "  ai task workspaces\n"
+    "  ai task workspace add <name> <absolute_path> [read_only|read_write]（SUPERUSER）\n"
+    "  ai task workspace remove <name>（SUPERUSER）\n"
+    "  ai task workspace default <name>（SUPERUSER）"
+)
+
+# priority=0 先于 ai_admin 的 on_command("ai")（默认 1）拦截 "ai task ..."。
+taskcmd = sv.on_startswith("ai task", priority=0, only_group=False, block=True)
+
+
+@taskcmd.handle()
+async def _(bot: Bot, event: Event):
+    text = get_plaintext(event).strip()
+    rest = text.removeprefix("ai task").strip()
+    if not rest:
+        await send_to_event(bot, event, _USAGE)
+        return
+    args = rest.split()
+    sub, subargs = args[0], args[1:]
+    if sub in ("research", "plan"):
+        await _create(bot, event, sub, subargs)
+    elif sub == "status":
+        await _status(bot, event, subargs)
+    elif sub == "list":
+        await _list(bot, event)
+    elif sub == "approve":
+        await _approve(bot, event, subargs, "approved")
+    elif sub == "deny":
+        await _approve(bot, event, subargs, "denied")
+    elif sub == "cancel":
+        await _cancel(bot, event, subargs)
+    elif sub == "workspaces":
+        await _workspaces(bot, event)
+    elif sub == "workspace":
+        await _workspace_manage(bot, event, subargs)
+    else:
+        await send_to_event(bot, event, _USAGE)
+
+
+def _split_flags(args: list[str]) -> tuple[dict[str, str], list[str]]:
+    opts: dict[str, str] = {}
+    positional: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg.startswith("--"):
+            key = arg[2:].replace("-", "_")
+            value = args[index + 1] if index + 1 < len(args) else ""
+            opts[key] = value
+            index += 2
+        else:
+            positional.append(arg)
+            index += 1
+    return opts, positional
+
+
+def _is_superuser(bot: Bot, event: Event) -> bool:
+    user_id = get_user_id(event)
+    return bool(user_id is not None and is_superuser(bot, user_id))
+
+
+def _build_prompt(kind: str, topic: str) -> str:
+    if kind == "plan":
+        return (
+            "请针对以下目标制定实施计划。只输出结构化结果（plan），"
+            "必要时使用工具调研背景。\n目标：\n" + topic
+        )
+    return (
+        "请研究以下主题并给出结构化结论（research）。必要时使用工具"
+        "搜索、抓取并交叉验证来源。\n主题：\n" + topic
+    )
+
+
+def _can_view(task: dict, scope_key: str, permissions) -> bool:
+    """status/list/cancel 权限矩阵：创建者 / 本 scope ADMIN / SUPERUSER。"""
+    if permissions.is_superuser:
+        return True
+    if task["creator_id"] and task["creator_id"] == permissions.user_id:
+        return True
+    if permissions.is_admin and task["scope_key"] == scope_key:
+        return True
+    return False
+
+
+# ------------------------------------------------------------ 创建
+
+
+async def _create(bot: Bot, event: Event, kind: str, args: list[str]) -> None:
+    opts, positional = _split_flags(args)
+    topic = " ".join(positional).strip()
+    if not topic:
+        await send_to_event(bot, event, _USAGE)
+        return
+    config = get_config()
+    scope_key = event_scope_key(bot, event)
+    if scope_key is None:
+        await send_to_event(bot, event, "无法确定当前 scope。")
+        return
+    permissions = await ai_deps.build_permission_snapshot(bot, event)
+
+    creation_policy = policy.get_creation_policy(scope_key)
+    if not policy.policy_allows_creation(
+        creation_policy,
+        is_superuser=permissions.is_superuser,
+        is_admin=permissions.is_admin,
+    ):
+        await send_to_event(
+            bot,
+            event,
+            f"当前 scope 的 Task 创建策略为 `{creation_policy}`，你没有创建权限。",
+        )
+        return
+
+    allowed, active, max_concurrent = policy.check_concurrent(scope_key)
+    if not allowed:
+        await send_to_event(
+            bot,
+            event,
+            f"当前 scope 并发 Task 已达上限（{active}/{max_concurrent}）。",
+        )
+        return
+
+    workspace, ws_error = policy.resolve_workspace(scope_key, opts.get("workspace"))
+    if ws_error:
+        await send_to_event(bot, event, ws_error)
+        return
+
+    provider_id = resolve_provider(scope_key, config)
+    if provider_id is None:
+        await send_to_event(bot, event, "未配置可用 provider，请联系管理员。")
+        return
+    provider_config = config.get_provider(provider_id)
+    model = provider_config.config.model or provider_id
+
+    approval_mode = (
+        config.task_approval_mode
+        if config.task_approval_mode in ("auto", "always", "never")
+        else "auto"
+    )
+    prompt = _build_prompt(kind, topic)
+    persona_prompt = persona.resolve_prompt(scope_key, config)
+    skill_names = [s.name for s in skills.list_enabled(scope_key)]
+    tool_profile = tools.freeze_tool_profile(scope_key)
+
+    task_id = new_id("t")
+    target = target_from_event(bot, event)
+    target_json = dump_target(target)
+
+    snapshot = CapabilitySnapshot(
+        persona_id=ai_store_get_scope_persona(scope_key),
+        persona_version=0,
+        skill_names=skill_names,
+        enabled_categories=[],
+        tool_profile=tool_profile,
+        workspace_id=workspace["id"],
+        workspace_root=workspace["root"],
+        workspace_mode=workspace["mode"],
+        approval_mode=approval_mode,
+    )
+    ctx = TaskContext(
+        task_id=task_id,
+        task_run_id="",
+        task_kind=kind,
+        scope_key=scope_key,
+        creator_id=permissions.user_id or "",
+        target_json=target_json,
+        bot_self_id=bot.self_id,
+        adapter_name=platform_key(bot),
+        provider_id=provider_id,
+        model=model,
+        prompt=prompt,
+        workdir=workspace["root"],
+        workdir_mode=workspace["mode"],
+        approval_mode=approval_mode,
+        persona_prompt=persona_prompt,
+        permission_json=task_runtime.permission_to_json(permissions),
+        tool_profile=frozenset(tool_profile.items()),
+    )
+
+    created = task_store.create_task(
+        task_id=task_id,
+        kind=kind,
+        prompt=prompt,
+        scope_key=scope_key,
+        creator_id=permissions.user_id or "",
+        target_json=target_json,
+        provider_id=provider_id,
+        model=model,
+        context_json=ctx.to_json(),
+        snapshot_json=json.dumps(dataclasses.asdict(snapshot), ensure_ascii=False),
+        event_payloads=[
+            {
+                "event_type": task_events.CREATED,
+                "payload": json.dumps({"kind": kind}, ensure_ascii=False),
+            },
+            {"event_type": task_events.QUEUED, "payload": "{}"},
+        ],
+        outbox_payloads=[
+            {
+                "event_type": task_events.CREATED,
+                "sequence": 1,
+                "payload": json.dumps(
+                    {"kind": kind, "status": "accepted"}, ensure_ascii=False
+                ),
+            }
+        ],
+        bypass_cooldown=bool(permissions.is_superuser),
+    )
+    if created.get("cooldown"):
+        await send_to_event(
+            bot,
+            event,
+            f"5 分钟内已创建过 Task（{created['task_id']}，状态 "
+            f"{created['status']}），剩余 {int(created['remaining'])} 秒后重试。",
+        )
+        return
+
+    task_run_id = created["task_run_id"]
+    run = task_store.get_task_run(task_run_id)
+    if run is not None:
+        ctx.task_run_id = task_run_id
+        ctx.conversation_id = run["conversation_id"]
+        task_store.update_run_state(task_run_id, "queued", context_json=ctx.to_json())
+
+    task_events.enqueue_notification(
+        task_events.QUEUED,
+        task_id=task_id,
+        target_json=target_json,
+        payload={"kind": kind, "status": "queued"},
+    )
+    await send_to_event(
+        bot,
+        event,
+        f"Task 已接受：`{task_id}`（{kind}）\n"
+        f"将在后台执行，可用 `ai task status {task_id}` 查看进度。",
+    )
+
+
+def ai_store_get_scope_persona(scope_key: str) -> int | None:
+    """scope 级 persona id（capability snapshot 冻结用）。"""
+    from .. import store as ai_store
+
+    return ai_store.get_scope_persona_id(scope_key)
+
+
+# ------------------------------------------------------------ 状态 / 列表
+
+
+async def _status(bot: Bot, event: Event, args: list[str]) -> None:
+    if not args:
+        await send_to_event(bot, event, _USAGE)
+        return
+    task_id = args[0]
+    task = task_store.get_task(task_id)
+    if task is None:
+        await send_to_event(bot, event, f"Task `{task_id}` 不存在。")
+        return
+    scope_key = event_scope_key(bot, event) or ""
+    permissions = await ai_deps.build_permission_snapshot(bot, event)
+    if not _can_view(task, scope_key, permissions):
+        await send_to_event(bot, event, "无权限查看该 Task。")
+        return
+
+    lines = [f"Task `{task_id}`（{task['kind']}）", f"状态：{task['status']}"]
+    if task["failure_reason"]:
+        lines.append(f"失败原因：{task['failure_reason']}")
+    run = task_store.get_task_run_for_task(task_id)
+    if run is not None:
+        lines.append(f"attempt：{run['attempt']}，运行状态：{run['state']}")
+    pending = [a for a in task_store.list_approvals(task_id) if a["state"] == "pending"]
+    if pending:
+        lines.append(f"待审批：{len(pending)} 个（`ai task approve/deny {task_id}`）")
+    if task["output_json"]:
+        try:
+            output = TaskOutput.model_validate_json(task["output_json"])
+        except Exception:
+            output = None
+        if output is not None and output.summary:
+            lines.append(f"摘要：{output.summary}")
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _list(bot: Bot, event: Event) -> None:
+    scope_key = event_scope_key(bot, event)
+    permissions = await ai_deps.build_permission_snapshot(bot, event)
+    tasks = task_store.list_tasks(
+        scope_key=scope_key, creator_id=permissions.user_id or "", limit=10
+    )
+    if not tasks:
+        await send_to_event(bot, event, "当前 scope 还没有 Task。")
+        return
+    lines = [f"近期 Task（{scope_key}）："]
+    for t in tasks:
+        lines.append(f"- `{t['id']}` {t['kind']} {t['status']}")
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+# ------------------------------------------------------------ 审批 / 取消
+
+
+async def _approve(bot: Bot, event: Event, args: list[str], state: str) -> None:
+    if not args:
+        await send_to_event(bot, event, _USAGE)
+        return
+    task_id = args[0]
+    pending = [a for a in task_store.list_approvals(task_id) if a["state"] == "pending"]
+    if not pending:
+        await send_to_event(bot, event, "该 Task 没有待审批项。")
+        return
+    user_id = get_user_id(event)
+    uid = str(user_id) if user_id is not None else ""
+    result = None
+    for approval in pending:
+        result = scheduler.resolve_approval(approval["id"], state, uid)
+        if not result["ok"]:
+            await send_to_event(bot, event, result["reason"])
+            return
+    if result is None:
+        return
+    terminal = result.get("terminal")
+    if state == "approved":
+        if terminal == "queued":
+            message = "已批准全部待审批项，Task 恢复执行。"
+        elif terminal == "failed":
+            message = "存在已拒绝的审批，Task 已失败。"
+        else:
+            message = "已批准该审批项（仍有其他待审批项）。"
+    else:
+        if terminal == "failed":
+            message = "已拒绝，Task 已失败。"
+        else:
+            message = "已拒绝该审批项（仍有其他待审批项）。"
+    await send_to_event(bot, event, message)
+
+
+async def _cancel(bot: Bot, event: Event, args: list[str]) -> None:
+    if not args:
+        await send_to_event(bot, event, _USAGE)
+        return
+    task_id = args[0]
+    task = task_store.get_task(task_id)
+    if task is None:
+        await send_to_event(bot, event, f"Task `{task_id}` 不存在。")
+        return
+    scope_key = event_scope_key(bot, event) or ""
+    permissions = await ai_deps.build_permission_snapshot(bot, event)
+    if not _can_view(task, scope_key, permissions):
+        await send_to_event(bot, event, "无权限取消该 Task。")
+        return
+    if not task_store.request_cancel(task_id, permissions.user_id or ""):
+        await send_to_event(bot, event, "Task 已到终态，无法取消。")
+        return
+    task_events.emit(
+        task_events.CANCELLED,
+        scope_key=task["scope_key"],
+        task_id=task_id,
+        task_run_id=(task_store.get_task_run_for_task(task_id) or {}).get("id", ""),
+        payload={"reason": "user_cancelled"},
+    )
+    task_events.enqueue_notification(
+        task_events.CANCELLED,
+        task_id=task_id,
+        target_json=task["target_json"],
+        payload={
+            "kind": task["kind"],
+            "status": "cancelled",
+            "reason": "user_cancelled",
+        },
+    )
+    await send_to_event(bot, event, "已请求取消该 Task。")
+
+
+# ------------------------------------------------------------ workspace
+
+
+async def _workspaces(bot: Bot, event: Event) -> None:
+    scope_key = event_scope_key(bot, event)
+    workspaces = task_store.list_workspaces(scope_key)
+    if not workspaces:
+        await send_to_event(bot, event, "当前 scope 未绑定 workspace。")
+        return
+    lines = ["已绑定 workspace："]
+    for ws in workspaces:
+        mark = "（默认）" if ws["is_default"] else ""
+        lines.append(f"- {ws['name']} {ws['root']} [{ws['mode']}]{mark}")
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _workspace_manage(bot: Bot, event: Event, args: list[str]) -> None:
+    if not args:
+        await send_to_event(bot, event, _USAGE)
+        return
+    if not _is_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可管理 workspace。")
+        return
+    scope_key = event_scope_key(bot, event)
+    if scope_key is None:
+        await send_to_event(bot, event, "无法确定当前 scope。")
+        return
+    user_id = get_user_id(event)
+    updated_by = str(user_id) if user_id is not None else ""
+    action = args[0]
+
+    if action == "add" and len(args) >= 3:
+        name, path = args[1], args[2]
+        mode = args[3] if len(args) > 3 else "read_write"
+        if mode not in ("read_only", "read_write"):
+            await send_to_event(bot, event, "mode 必须是 read_only 或 read_write。")
+            return
+        root = os.path.abspath(os.path.expanduser(path))
+        error = task_store.add_workspace(
+            scope_key, name, root, mode, updated_by=updated_by
+        )
+        if error:
+            await send_to_event(bot, event, error)
+        else:
+            await send_to_event(
+                bot, event, f"已添加 workspace `{name}`（{root} [{mode}]）。"
+            )
+        return
+
+    if action == "remove" and len(args) == 2:
+        removed = task_store.remove_workspace(scope_key, args[1])
+        await send_to_event(
+            bot, event, "已删除该 workspace。" if removed else "workspace 不存在。"
+        )
+        return
+
+    if action == "default" and len(args) == 2:
+        ok = task_store.set_default_workspace(scope_key, args[1])
+        await send_to_event(
+            bot, event, "已设为默认 workspace。" if ok else "workspace 不存在。"
+        )
+        return
+
+    await send_to_event(bot, event, _USAGE)

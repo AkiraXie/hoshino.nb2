@@ -42,11 +42,17 @@ class AIConfig:
     max_history_messages: int = 40
     render_timeout_seconds: float = 30.0
     render_theme: ThemeKind = "light"
+    # computer 工具的工作根目录；空字符串 → data_dir / "ai_computer"。
+    # 只作为冻结 workspace 的 cwd，不是完整 sandbox（见 computer/_runtime.py）。
+    computer_workdir: str = ""
     # 代理走显式配置而非环境变量：与 info-x 一致，避免读入无法解析的
     # ``ALL_PROXY=socks://...`` 环境变量导致 httpx 崩溃。支持 http(s):// 与
     # socks://（后者归一化为 socks5://）。
     proxy: str | None = None
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
+    # Task 默认审批模式：auto（high-risk 工具 deferred approval）/
+    # always（全部工具先审批）/ never（不审批）。创建 Task 时冻结进 capability snapshot。
+    task_approval_mode: str = "auto"
 
     def get_provider(self, provider_id: str) -> ProviderConfig | None:
         return self.providers.get(provider_id)

@@ -21,7 +21,7 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from sqlalchemy.types import Float, Integer, Text
+from sqlalchemy.types import Boolean, Float, Integer, Text
 
 from hoshino import db_dir
 from hoshino.core.hooks import on_serial_startup
@@ -278,3 +278,393 @@ def aggregate_usage(
             "error_count": error_count,
             "success_count": (row[0] or 0) - error_count,
         }
+
+
+# ------------------------------------------------------------ tool bindings
+
+
+class AIScopeToolBinding(Base):
+    """scope 的工具类别绑定。category 是授权粒度；无行时使用安全默认。"""
+
+    __tablename__ = "ai_scope_tool_bindings"
+
+    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    category: Mapped[str] = mapped_column(Text, primary_key=True)
+    surface: Mapped[str] = mapped_column(Text, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+
+
+def set_scope_tool_binding(
+    scope_key: str,
+    category: str,
+    surface: str,
+    enabled: bool,
+    updated_by: str = "",
+) -> None:
+    """更新 scope 的工具类别绑定（upsert）。"""
+    now = time.time()
+    with Session() as session:
+        obj = session.get(AIScopeToolBinding, (scope_key, category, surface))
+        if obj is None:
+            session.add(
+                AIScopeToolBinding(
+                    scope_key=scope_key,
+                    category=category,
+                    surface=surface,
+                    enabled=enabled,
+                    updated_by=updated_by,
+                    updated_at=now,
+                )
+            )
+        else:
+            obj.enabled = enabled
+            obj.updated_by = updated_by
+            obj.updated_at = now
+        session.commit()
+
+
+def get_scope_tool_bindings(scope_key: str, surface: str) -> set[str]:
+    """返回 scope 在指定 surface 上已启用的工具类别集合。
+
+    安全默认：无行时返回空集（``computer``/``bot`` 默认不注入）。
+    """
+    with Session() as session:
+        stmt = select(AIScopeToolBinding).where(
+            AIScopeToolBinding.scope_key == scope_key,
+            AIScopeToolBinding.surface == surface,
+            AIScopeToolBinding.enabled.is_(True),
+        )
+        return {row.category for row in session.execute(stmt).scalars().all()}
+
+
+def list_scope_tool_bindings(scope_key: str, surface: str) -> list[dict[str, Any]]:
+    """列出 scope 在指定 surface 上的全部绑定行（含关闭项），供管理命令展示。"""
+    with Session() as session:
+        stmt = (
+            select(AIScopeToolBinding)
+            .where(
+                AIScopeToolBinding.scope_key == scope_key,
+                AIScopeToolBinding.surface == surface,
+            )
+            .order_by(AIScopeToolBinding.category)
+        )
+        return [
+            {
+                "category": row.category,
+                "enabled": row.enabled,
+                "updated_by": row.updated_by,
+                "updated_at": row.updated_at,
+            }
+            for row in session.execute(stmt).scalars().all()
+        ]
+
+
+# ----------------------------------------------------------------- personas
+
+
+class AIPersona(Base):
+    """命名 persona。prompt 由特征模板生成，也可手动覆盖。"""
+
+    __tablename__ = "ai_personas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    gender: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    personality: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    traits_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_by: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+
+
+class AIScopePersona(Base):
+    """scope 级 persona 绑定（scope_key 唯一）。"""
+
+    __tablename__ = "ai_scope_personas"
+
+    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    persona_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+
+
+class AIGlobal(Base):
+    """全局键值（persona 全局绑定用 key='global_persona'）。"""
+
+    __tablename__ = "ai_globals"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+def _persona_to_dict(row: AIPersona) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "gender": row.gender,
+        "personality": row.personality,
+        "description": row.description,
+        "prompt": row.prompt,
+        "traits_json": row.traits_json,
+        "created_by": row.created_by,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def list_personas() -> list[dict[str, Any]]:
+    with Session() as session:
+        stmt = select(AIPersona).order_by(AIPersona.name)
+        return [_persona_to_dict(row) for row in session.execute(stmt).scalars().all()]
+
+
+def get_persona_by_name(name: str) -> dict[str, Any] | None:
+    with Session() as session:
+        row = session.execute(
+            select(AIPersona).where(AIPersona.name == name)
+        ).scalar_one_or_none()
+        return _persona_to_dict(row) if row is not None else None
+
+
+def get_persona_by_id(persona_id: int) -> dict[str, Any] | None:
+    with Session() as session:
+        row = session.get(AIPersona, persona_id)
+        return _persona_to_dict(row) if row is not None else None
+
+
+def create_persona(
+    *,
+    name: str,
+    gender: str = "",
+    personality: str = "",
+    description: str = "",
+    prompt: str = "",
+    traits_json: str = "{}",
+    created_by: str = "",
+) -> dict[str, Any]:
+    """创建 persona；prompt 为空时由调用方（persona.py）生成模板。"""
+    with Session() as session:
+        row = AIPersona(
+            name=name,
+            gender=gender,
+            personality=personality,
+            description=description,
+            prompt=prompt,
+            traits_json=traits_json,
+            created_by=created_by,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return _persona_to_dict(row)
+
+
+def update_persona(
+    name: str,
+    *,
+    gender: str | None = None,
+    personality: str | None = None,
+    description: str | None = None,
+    prompt: str | None = None,
+    traits_json: str | None = None,
+) -> dict[str, Any] | None:
+    """更新 persona 特征并刷新 prompt；不存在返回 None。"""
+    with Session() as session:
+        row = session.execute(
+            select(AIPersona).where(AIPersona.name == name)
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        if gender is not None:
+            row.gender = gender
+        if personality is not None:
+            row.personality = personality
+        if description is not None:
+            row.description = description
+        if prompt is not None:
+            row.prompt = prompt
+        if traits_json is not None:
+            row.traits_json = traits_json
+        row.updated_at = time.time()
+        session.commit()
+        return _persona_to_dict(row)
+
+
+def delete_persona(name: str) -> bool:
+    """删除 persona 及绑定引用；返回是否删除了记录。"""
+    with Session() as session:
+        row = session.execute(
+            select(AIPersona).where(AIPersona.name == name)
+        ).scalar_one_or_none()
+        if row is None:
+            return False
+        persona_id = row.id
+        # 清理 scope / global 绑定引用
+        session.execute(
+            AIScopePersona.__table__.delete().where(
+                AIScopePersona.persona_id == persona_id
+            )
+        )
+        session.execute(
+            AIGlobal.__table__.delete().where(
+                AIGlobal.key == "global_persona", AIGlobal.value == name
+            )
+        )
+        session.delete(row)
+        session.commit()
+        return True
+
+
+def bind_scope_persona(scope_key: str, persona_id: int, updated_by: str = "") -> None:
+    """绑定 scope 级 persona（upsert）。"""
+    with Session() as session:
+        row = session.get(AIScopePersona, scope_key)
+        if row is None:
+            session.add(
+                AIScopePersona(
+                    scope_key=scope_key,
+                    persona_id=persona_id,
+                    updated_by=updated_by,
+                )
+            )
+        else:
+            row.persona_id = persona_id
+            row.updated_by = updated_by
+            row.updated_at = time.time()
+        session.commit()
+
+
+def get_scope_persona_id(scope_key: str) -> int | None:
+    with Session() as session:
+        row = session.get(AIScopePersona, scope_key)
+        return row.persona_id if row is not None else None
+
+
+def clear_scope_persona(scope_key: str) -> bool:
+    with Session() as session:
+        row = session.get(AIScopePersona, scope_key)
+        if row is None:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
+
+
+def get_global_value(key: str) -> str | None:
+    with Session() as session:
+        row = session.get(AIGlobal, key)
+        return row.value if row is not None else None
+
+
+def set_global_value(key: str, value: str) -> None:
+    with Session() as session:
+        row = session.get(AIGlobal, key)
+        if row is None:
+            session.add(AIGlobal(key=key, value=value))
+        else:
+            row.value = value
+        session.commit()
+
+
+def clear_global_value(key: str) -> bool:
+    with Session() as session:
+        row = session.get(AIGlobal, key)
+        if row is None:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
+
+
+# ------------------------------------------------------------------- memory
+
+
+class AIMemory(Base):
+    """scope 隔离的长期记忆。"""
+
+    __tablename__ = "ai_memory"
+
+    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+
+
+def memory_get(scope_key: str, key: str) -> str | None:
+    with Session() as session:
+        row = session.get(AIMemory, (scope_key, key))
+        return row.value if row is not None else None
+
+
+def memory_set(scope_key: str, key: str, value: str) -> None:
+    """写入长期记忆（upsert）。值长度限制由调用方（memory 工具）负责。"""
+    with Session() as session:
+        row = session.get(AIMemory, (scope_key, key))
+        if row is None:
+            session.add(AIMemory(scope_key=scope_key, key=key, value=value))
+        else:
+            row.value = value
+            row.updated_at = time.time()
+        session.commit()
+
+
+def memory_delete(scope_key: str, key: str) -> bool:
+    with Session() as session:
+        row = session.get(AIMemory, (scope_key, key))
+        if row is None:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
+
+
+def memory_list_keys(scope_key: str) -> list[str]:
+    with Session() as session:
+        stmt = (
+            select(AIMemory.key)
+            .where(AIMemory.scope_key == scope_key)
+            .order_by(AIMemory.key)
+        )
+        return list(session.execute(stmt).scalars().all())
+
+
+# ------------------------------------------------------------- skill states
+
+
+class AISkillState(Base):
+    """scope 对技能的启停状态；无行默认 enabled=True。"""
+
+    __tablename__ = "ai_skill_states"
+
+    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    skill_name: Mapped[str] = mapped_column(Text, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+
+
+def get_skill_enabled(scope_key: str, skill_name: str) -> bool:
+    with Session() as session:
+        row = session.get(AISkillState, (scope_key, skill_name))
+        return row.enabled if row is not None else True
+
+
+def set_skill_enabled(scope_key: str, skill_name: str, enabled: bool) -> None:
+    """更新技能启停（upsert）。"""
+    with Session() as session:
+        row = session.get(AISkillState, (scope_key, skill_name))
+        if row is None:
+            session.add(
+                AISkillState(
+                    scope_key=scope_key,
+                    skill_name=skill_name,
+                    enabled=enabled,
+                )
+            )
+        else:
+            row.enabled = enabled
+            row.updated_at = time.time()
+        session.commit()

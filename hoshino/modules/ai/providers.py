@@ -1,8 +1,8 @@
 """Pydantic AI model / agent 工厂。
 
-根据 ``ProviderConfig`` 构建对应协议格式的 model，并按 (provider_id, 配置,
-system_prompt) 缓存 ``Agent``。provider 配置更新后，缓存 key 自然变化，
-旧 Agent 实例被 GC，无需手动失效。
+根据 ``ProviderConfig`` 构建对应协议格式的 model，并按 (provider_id, 配置, 代理)
+缓存 ``Agent``。缓存 key 不含 system_prompt：persona 与工具都通过动态注入解析，不随
+scope/绑定变化失效；一个缓存 Agent 服务多 scope。
 """
 
 from __future__ import annotations
@@ -11,14 +11,22 @@ import asyncio
 from typing import Any
 
 import httpx
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.toolsets import (
+    ApprovalRequiredToolset,
+    DynamicToolset,
+    FunctionToolset,
+)
 
+from . import persona
 from .config import ProviderConfig, ProviderOptions
+from .deps import AgentDeps
+from .tools import approval_required, build_tool_instructions, resolve_tools
 
 _agent_cache: dict[tuple[Any, ...], Agent] = {}
 # build_model 创建的 http client，供 clear_agent_cache 关闭，避免泄漏。
@@ -90,24 +98,45 @@ def build_model(provider_config: ProviderConfig, *, proxy: str | None = None) ->
     raise ValueError(f"未知 provider kind: {opts.kind}")
 
 
+async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
+    """每 run 解析 persona：Task 用冻结快照，chat 用三级解析。"""
+    task = getattr(ctx.deps, "task", None)
+    if task is not None:
+        return getattr(task, "persona_prompt", None) or ctx.deps.config.system_prompt
+    return persona.resolve_prompt(ctx.deps.scope_key, ctx.deps.config)
+
+
+def _resolve_toolset(ctx: RunContext[AgentDeps]) -> FunctionToolset | None:
+    """每 run 按 deps 解析工具集；无工具时返回 None（DynamicToolset 接受 None）。"""
+    tools = resolve_tools(ctx.deps)
+    if not tools:
+        return None
+    return FunctionToolset(tools, instructions=build_tool_instructions(ctx.deps))
+
+
 def build_agent(
     provider_id: str,
     provider_config: ProviderConfig,
-    system_prompt: str,
     *,
     proxy: str | None = None,
 ) -> Agent:
-    """构建并缓存 Agent。缓存 key 含 provider 配置、system_prompt 与代理。"""
-    key = (provider_id, provider_config, system_prompt, proxy)
+    """构建并缓存 Agent。缓存 key 只含 provider 配置与代理；persona/工具动态注入。"""
+    key = (provider_id, provider_config, proxy)
     agent = _agent_cache.get(key)
     if agent is None:
         model = build_model(provider_config, proxy=proxy)
         model_settings = build_model_settings(provider_config.config)
         agent = Agent(
             model=model,
-            system_prompt=system_prompt,
             model_settings=model_settings,
+            deps_type=AgentDeps,
+            toolsets=[
+                DynamicToolset(_resolve_toolset, per_run_step=False),
+                # 常驻挂载：approval_required 按 deps 判定，chat（task=None）从不审批。
+                ApprovalRequiredToolset(approval_required_func=approval_required),
+            ],
         )
+        agent.system_prompt(dynamic=True)(_persona_system_prompt)
         _agent_cache[key] = agent
     return agent
 

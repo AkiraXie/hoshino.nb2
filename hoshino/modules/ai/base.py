@@ -15,8 +15,8 @@ from .store import get_scope_provider
 sv = Service(
     "aichat",
     config_type=AIConfig,
-    enable_on_default=True,
-    visible=True,
+    enable_on_default=False,
+    visible=False,
 )
 
 

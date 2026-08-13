@@ -30,15 +30,40 @@ from hoshino.platform.depends import ParamText
 from hoshino.platform.permission import ADMIN
 from hoshino.platform.superuser import is_superuser
 
-from . import metrics, providers, store
+from . import deps, metrics, persona, providers, store, tools
 from .base import get_config, sv
 from .config import ProviderConfig, ProviderOptions, mask_url
+
+# 子包目录不会被 load_plugins 遍历，这里在插件加载期（controlled_modules 已建立）
+# 显式导入以注册 ai task matcher 与 scheduler hooks。不能提前到 ai/__init__.py。
+from .task import commands as _task_commands  # noqa: F401
 
 USAGE = (
     "AI 管理命令：\n"
     "  ai provider list / default <id> / use <id> / reset / add <id> / remove <id>\n"
     "  ai status / stats [provider_id] / clear [scope]\n"
-    "用 ai provider add 查看参数说明。"
+    "  ai tools list [scope] [chat|task] / ai tools on|off <cat> <chat|task> [scope]\n"
+    "  ai persona list/show/create/update/use/reset/global/delete\n"
+    "用 ai provider add / ai persona create 查看参数说明。"
+)
+
+_TOOLS_USAGE = (
+    "用法：\n"
+    "  ai tools list [scope] [chat|task]        查看绑定与可解析工具（ADMIN）\n"
+    "  ai tools on|off <category> <chat|task> [scope]   修改类别绑定（SUPERUSER）\n"
+    "category：core / computer / bot / web / skill"
+)
+
+_PERSONA_USAGE = (
+    "用法：\n"
+    "  ai persona list\n"
+    "  ai persona show <name>\n"
+    "  ai persona create <name> [--gender <g>] [--personality <p>] [--description <d>]\n"
+    "  ai persona update <name> [--gender <g>] [--personality <p>] [--description <d>]\n"
+    "  ai persona use <name>   绑定当前 scope（ADMIN）\n"
+    "  ai persona reset        解除当前 scope 绑定（ADMIN）\n"
+    "  ai persona global <name>|off   设置/清除全局（SUPERUSER）\n"
+    "  ai persona delete <name>       删除（SUPERUSER）"
 )
 
 _ADD_USAGE = (
@@ -69,6 +94,10 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         await _handle_stats(bot, event, rest)
     elif sub == "clear":
         await _handle_clear(bot, event, rest)
+    elif sub == "tools":
+        await _handle_tools(bot, event, rest)
+    elif sub == "persona":
+        await _handle_persona(bot, event, rest)
     else:
         await send_to_event(bot, event, USAGE)
 
@@ -279,3 +308,264 @@ async def _handle_clear(bot: Bot, event: Event, args: list[str]) -> None:
     await send_to_event(
         bot, event, "已清理会话历史。" if cleared else "没有可清理的会话历史。"
     )
+
+
+# ------------------------------------------------------------------- tools
+
+
+async def _handle_tools(bot: Bot, event: Event, args: list[str]) -> None:
+    if not args:
+        await send_to_event(bot, event, _TOOLS_USAGE)
+        return
+    action, rest = args[0], args[1:]
+    if action == "list":
+        await _tools_list(bot, event, rest)
+    elif action in ("on", "off"):
+        await _tools_set(bot, event, action == "on", rest)
+    else:
+        await send_to_event(bot, event, _TOOLS_USAGE)
+
+
+def _list_deps(scope_key: str, surface: str):
+    """构造仅用于查询可解析工具的 AgentDeps（无 bot/event）。"""
+    return deps.AgentDeps(
+        surface=surface,  # type: ignore[arg-type]
+        scope_key=scope_key,
+        target=deps_target_placeholder(),
+        config=get_config(),
+        permissions=deps.PermissionSnapshot(),
+        bot=None,
+        event=None,
+        telemetry=deps.Telemetry(provider_id="", scope_key=scope_key, model=""),
+    )
+
+
+def deps_target_placeholder():
+    """占位 Target，仅供 ai tools list 展示解析结果用。"""
+    from nonebot_plugin_alconna.uniseg import Target
+
+    return Target.group("0")
+
+
+async def _tools_list(bot: Bot, event: Event, args: list[str]) -> None:
+    surface = "chat"
+    scope_key = event_scope_key(bot, event)
+    remaining = list(args)
+    if remaining and remaining[-1] in ("chat", "task"):
+        surface = remaining.pop()
+    if remaining:
+        scope_key = remaining[0]
+    if not scope_key:
+        await send_to_event(bot, event, "无法解析 scope。")
+        return
+
+    bindings = store.list_scope_tool_bindings(scope_key, surface)
+    lines = [f"scope `{scope_key}` surface `{surface}` 的工具绑定："]
+    if not bindings:
+        lines.append("（无显式绑定 → 使用安全默认 core/web/skill）")
+    else:
+        for b in bindings:
+            mark = "✓" if b["enabled"] else "✗"
+            lines.append(f"- {mark} `{b['category']}`")
+
+    resolved = tools.resolve_tools(_list_deps(scope_key, surface))
+    names = [
+        getattr(tool, "name", None) or getattr(tool, "__name__", "?")
+        for tool in resolved
+    ]
+    lines.append("可解析工具：" + (", ".join(names) if names else "（无）"))
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _tools_set(bot: Bot, event: Event, enabled: bool, args: list[str]) -> None:
+    if not _require_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可修改工具绑定。")
+        return
+    if len(args) < 2:
+        await send_to_event(
+            bot, event, "用法：ai tools on/off <category> <chat|task> [scope]"
+        )
+        return
+    category, surface = args[0], args[1]
+    if surface not in ("chat", "task"):
+        await send_to_event(bot, event, "surface 必须是 chat / task。")
+        return
+    valid = {"core", "computer", "bot", "web", "skill"}
+    if category not in valid:
+        await send_to_event(bot, event, f"category 必须是 {'/'.join(sorted(valid))}。")
+        return
+    scope_key = args[2] if len(args) > 2 else event_scope_key(bot, event)
+    if not scope_key:
+        await send_to_event(bot, event, "无法解析 scope，请显式传入。")
+        return
+    store.set_scope_tool_binding(
+        scope_key,
+        category,
+        surface,
+        enabled,
+        updated_by=str(get_user_id(event) or ""),
+    )
+    verb = "开启" if enabled else "关闭"
+    await send_to_event(
+        bot,
+        event,
+        f"已{verb} scope `{scope_key}` 的 `{category}` 类别（surface={surface}）。",
+    )
+
+
+# ------------------------------------------------------------------ persona
+
+
+def _parse_persona_args(args: list[str]) -> dict[str, str]:
+    """解析 ``--key value``（value 可含空格，直到下一个 -- 或末尾）。"""
+    opts: dict[str, list[str]] = {}
+    current: str | None = None
+    for token in args:
+        if token.startswith("--"):
+            current = token[2:].replace("-", "_")
+            opts[current] = []
+        elif current is not None:
+            opts[current].append(token)
+    return {k: " ".join(v).strip() for k, v in opts.items() if v}
+
+
+async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
+    if not args:
+        await send_to_event(bot, event, _PERSONA_USAGE)
+        return
+    action, rest = args[0], args[1:]
+    scope_key = event_scope_key(bot, event) or ""
+    user = str(get_user_id(event) or "")
+
+    if action == "list":
+        rows = persona.list_personas()
+        if not rows:
+            await send_to_event(bot, event, "暂无 persona。")
+            return
+        lines = [
+            f"- {row['name']}：{row['description'] or row['prompt'][:40]}"
+            for row in rows
+        ]
+        await send_to_event(bot, event, "\n".join(lines))
+        return
+
+    if action == "show":
+        if not rest:
+            await send_to_event(bot, event, "用法：ai persona show <name>")
+            return
+        p = persona.get_persona(rest[0])
+        if p is None:
+            await send_to_event(bot, event, f"persona `{rest[0]}` 不存在。")
+            return
+        binds = []
+        if scope_key and store.get_scope_persona_id(scope_key) == p["id"]:
+            binds.append("当前 scope")
+        if store.get_global_value("global_persona") == p["name"]:
+            binds.append("全局")
+        lines = [f"persona `{p['name']}`", f"prompt：{p['prompt']}"]
+        if binds:
+            lines.append("绑定：" + "、".join(binds))
+        await send_to_event(bot, event, "\n".join(lines))
+        return
+
+    if action == "create":
+        if not rest:
+            await send_to_event(
+                bot,
+                event,
+                "用法：ai persona create <name> [--gender ...] [--personality ...] [--description ...]",
+            )
+            return
+        name = rest[0]
+        opts = _parse_persona_args(rest[1:])
+        p = persona.create_persona(
+            name,
+            gender=opts.get("gender", ""),
+            personality=opts.get("personality", ""),
+            description=opts.get("description", ""),
+            created_by=user,
+        )
+        await send_to_event(bot, event, f"已创建 persona `{p['name']}`：{p['prompt']}")
+        return
+
+    if action == "update":
+        if not rest:
+            await send_to_event(
+                bot,
+                event,
+                "用法：ai persona update <name> [--gender ...] [--personality ...] [--description ...]",
+            )
+            return
+        name = rest[0]
+        opts = _parse_persona_args(rest[1:])
+        p = persona.update_persona(
+            name,
+            gender=opts.get("gender"),
+            personality=opts.get("personality"),
+            description=opts.get("description"),
+        )
+        if p is None:
+            await send_to_event(bot, event, f"persona `{name}` 不存在。")
+            return
+        await send_to_event(bot, event, f"已更新 persona `{p['name']}`：{p['prompt']}")
+        return
+
+    if action in ("use", "reset"):
+        # ADMIN（aicmd matcher 已保证），group/private 均允许（scope 级）。
+        if action == "use":
+            if not rest:
+                await send_to_event(bot, event, "用法：ai persona use <name>")
+                return
+            if not scope_key:
+                await send_to_event(bot, event, "无法解析当前 scope。")
+                return
+            if persona.bind_scope(scope_key, rest[0], updated_by=user):
+                await send_to_event(
+                    bot, event, f"已绑定当前会话为 persona `{rest[0]}`。"
+                )
+            else:
+                await send_to_event(bot, event, f"persona `{rest[0]}` 不存在。")
+        else:
+            if not scope_key:
+                await send_to_event(bot, event, "无法解析当前 scope。")
+                return
+            if persona.clear_scope(scope_key):
+                await send_to_event(
+                    bot, event, "已解除当前会话的 persona 绑定，回退默认。"
+                )
+            else:
+                await send_to_event(bot, event, "当前会话没有绑定 persona。")
+        return
+
+    if action == "global":
+        if not _require_superuser(bot, event):
+            await send_to_event(bot, event, "仅 SUPERUSER 可设置全局 persona。")
+            return
+        if not rest:
+            await send_to_event(bot, event, "用法：ai persona global <name>|off")
+            return
+        if rest[0] == "off":
+            if persona.clear_global():
+                await send_to_event(bot, event, "已清除全局 persona。")
+            else:
+                await send_to_event(bot, event, "当前没有全局 persona。")
+        elif persona.set_global(rest[0]):
+            await send_to_event(bot, event, f"已设置全局 persona `{rest[0]}`。")
+        else:
+            await send_to_event(bot, event, f"persona `{rest[0]}` 不存在。")
+        return
+
+    if action == "delete":
+        if not _require_superuser(bot, event):
+            await send_to_event(bot, event, "仅 SUPERUSER 可删除 persona。")
+            return
+        if not rest:
+            await send_to_event(bot, event, "用法：ai persona delete <name>")
+            return
+        if persona.delete_persona(rest[0]):
+            await send_to_event(bot, event, f"已删除 persona `{rest[0]}`。")
+        else:
+            await send_to_event(bot, event, f"persona `{rest[0]}` 不存在。")
+        return
+
+    await send_to_event(bot, event, _PERSONA_USAGE)

@@ -2,14 +2,15 @@
 
 - 群聊/私聊均可用，不要求 @机器人。
 - 聊天不携带 provider 参数；provider 由当前 scope 绑定或全局默认解析。
+- persona 与工具通过 deps 动态注入；使用 ``runner.run_agent`` 迭代消费 run 事件。
 - 模型输出 Markdown 先渲染为图片；渲染失败（超时/浏览器异常）回退纯文本。
+- 含图输入只加提示文案，不做多模态理解。
 - 日志只记录 provider id、scope、耗时、错误类型，不打印 key 或完整历史。
 """
 
 from __future__ import annotations
 
 import asyncio
-import time
 
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_alconna.uniseg import UniMessage
@@ -20,28 +21,29 @@ from hoshino.platform import (
     send_to_event,
 )
 
-from . import context, metrics, providers, rendering
+from . import context, deps, metrics, providers, rendering, runner
 from .base import (
     get_config,
     provider_error_message,
     resolve_provider,
     sv,
 )
-from .persona import resolve_persona
 from .store import load_session_messages, save_session_messages
 
 # 默认 block=True，避免 ``#`` 消息继续命中其他 on_message 规则。
-chat = sv.on_startswith("#", only_group=False, only_to_me=False)
+chat = sv.on_startswith(
+    "#", only_group=False, only_to_me=False, priority=10, block=True
+)
 
 
 @chat.handle()
 async def _(bot: Bot, event: Event):
-    scope_key = event_scope_key(bot, event)
     prompt = get_plaintext(event).removeprefix("#").strip()
     if not prompt:
         return
 
     config = get_config()
+    scope_key = event_scope_key(bot, event)
     provider_id = resolve_provider(scope_key, config)
     if provider_id is None:
         await send_to_event(bot, event, provider_error_message(config))
@@ -52,45 +54,29 @@ async def _(bot: Bot, event: Event):
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
         return
 
-    # 会话历史：读取 → 反序列化 → 按 max_history_messages 裁剪。
     history_json = load_session_messages(scope_key) if scope_key else None
     messages = context.deserialize_messages(history_json)
     history = context.prepare_history(scope_key, messages, config)
 
-    system_prompt = resolve_persona(scope_key, config)
     model_name = provider_config.config.model or provider_id
-    agent = providers.build_agent(
-        provider_id, provider_config, system_prompt, proxy=config.proxy
-    )
-
-    start = time.perf_counter()
-    try:
-        result = await agent.run(prompt, message_history=history)
-    except Exception as exc:
-        latency_ms = (time.perf_counter() - start) * 1000
-        error_type = type(exc).__name__
-        metrics.record_error(
-            provider_id=provider_id,
-            scope_key=scope_key or "",
-            model=model_name,
-            latency_ms=latency_ms,
-            error=error_type,
-        )
-        sv.logger.warning(
-            f"AI 请求失败 provider={provider_id} scope={scope_key} error={error_type}"
-        )
-        await send_to_event(bot, event, f"AI 请求失败（{error_type}），请稍后再试。")
-        return
-
-    latency_ms = (time.perf_counter() - start) * 1000
-    snapshot = metrics.snapshot_from_result(result)
-    metrics.record_success(
+    permissions = await deps.build_permission_snapshot(bot, event)
+    agent_deps = deps.construct_chat_deps(
+        bot,
+        event,
+        config,
+        permissions,
         provider_id=provider_id,
-        scope_key=scope_key or "",
         model=model_name,
-        snapshot=snapshot,
-        latency_ms=latency_ms,
     )
+    agent = providers.build_agent(provider_id, provider_config, proxy=config.proxy)
+
+    result = await _run_to_result(
+        agent, prompt, history, agent_deps, provider_id, scope_key, bot, event
+    )
+    if result is None:
+        return  # 已发送失败提示
+
+    agent_deps.telemetry.record_success(result)
     if scope_key:
         save_session_messages(
             scope_key,
@@ -99,10 +85,57 @@ async def _(bot: Bot, event: Event):
         )
     sv.logger.info(
         f"AI 请求成功 provider={provider_id} scope={scope_key} "
-        f"latency={latency_ms:.0f}ms tokens={snapshot.total_tokens}"
+        f"tokens={metrics.snapshot_from_result(result).total_tokens}"
     )
 
-    raw = result.data
+    raw = result.output
+    mask = await _image_input_mask(bot, event)
+    if mask:
+        raw = mask + raw
+    await _send_result(bot, event, raw, config, provider_id)
+
+
+async def _run_to_result(
+    agent, prompt, history, agent_deps, provider_id, scope_key, bot, event
+):
+    """消费 run_agent 事件直到拿到最终结果；失败记录遥测并回复用户，返回 None。"""
+    try:
+        async for ev in runner.run_agent(
+            agent, prompt, deps=agent_deps, message_history=history
+        ):
+            if ev.result is not None:
+                return ev.result
+    except Exception as exc:
+        agent_deps.telemetry.record_error(type(exc).__name__)
+        sv.logger.warning(
+            f"AI 请求失败 provider={provider_id} scope={scope_key} error={type(exc).__name__}"
+        )
+        await send_to_event(
+            bot, event, f"AI 请求失败（{type(exc).__name__}），请稍后再试。"
+        )
+        return None
+    return None
+
+
+async def _image_input_mask(bot: Bot, event: Event) -> str:
+    """含图输入时返回图片输入 mask 文案；无图返回空串。解析失败按无图处理。"""
+    try:
+        from hoshino.util.media import get_event_media_segments
+        from nonebot_plugin_alconna.uniseg import Image as UniImage
+
+        images = await get_event_media_segments(bot, event, UniImage)
+    except Exception as exc:
+        sv.logger.warning(f"AI 媒体段解析失败 error={type(exc).__name__}")
+        images = []
+    if images:
+        return "（目前还不支持图片输入，请用文字描述图片内容或直接提问。）\n\n"
+    return ""
+
+
+async def _send_result(
+    bot: Bot, event: Event, raw: str, config, provider_id: str
+) -> None:
+    """先渲染 Markdown 为图片，失败回退纯文本。"""
     try:
         png = await asyncio.wait_for(
             rendering.render_markdown(raw, config),

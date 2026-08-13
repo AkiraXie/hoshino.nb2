@@ -34,6 +34,27 @@ def _clear_uninfo_cache():
     yield
 
 
+@pytest.fixture
+def tmp_store(tmp_path, monkeypatch):
+    """把 ai store 指向临时 SQLite 库并建全表，隔离 DB 状态。"""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import hoshino.modules.ai.store as store
+
+    # 先导入 task store 以注册其表类（ai_task_*）到共享 Base.metadata，
+    # 否则 create_all 不会建 task 表。task store 不 import providers 链。
+    import hoshino.modules.ai.task.store  # noqa: F401
+
+    eng = create_engine(f"sqlite:///{tmp_path / 'aichat.db'}")
+    store.Base.metadata.create_all(eng)
+    monkeypatch.setattr(store, "engine", eng)
+    monkeypatch.setattr(
+        store, "Session", sessionmaker(bind=eng, expire_on_commit=False)
+    )
+    return store
+
+
 @pytest.fixture(scope="session")
 def _nonebot_bootstrap():
     """One-time NoneBot init + full plugin load — session-scoped for speed."""

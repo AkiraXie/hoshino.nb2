@@ -141,6 +141,9 @@ def _stub_env(monkeypatch, tmp_store, *, superuser: bool = True, **overrides):
     monkeypatch.setattr(get_driver().config, "superusers", set(users))
     # 与 is_superuser 一致：user_id 可能是 int，需要 str() 归一化再比较。
     monkeypatch.setattr(ai_admin, "is_superuser", lambda bot, uid: str(uid) in users)
+    # base.py 的 aichat Service 默认关闭（enable_on_default=False），matcher 的
+    # check_service rule 会拦截所有命令；测试里显式开启。
+    monkeypatch.setattr(ai_admin.sv, "check_enabled", lambda scope: True)
 
     defaults = dict(
         default="openai",
@@ -438,3 +441,75 @@ async def test_clear_explicit_scope(monkeypatch, tmp_store):
 
     assert tmp_store.load_session_messages("milky:777") is None
     assert "已清理" in sent[0][1].extract_plain_text()
+
+
+# ------------------------------------------------------- tools / persona 命令
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_tools_list_shows_defaults(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai tools list")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "milky:123456" in text
+    assert "安全默认 core/web/skill" in text
+    assert "可解析工具" in text
+    assert "memory" in text
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_tools_on_binds_category(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai tools on computer chat")
+    await bot.handle_event(event)
+
+    assert "已开启" in sent[0][1].extract_plain_text()
+    bindings = tmp_store.list_scope_tool_bindings("milky:123456", "chat")
+    assert {"computer": True} == {b["category"]: b["enabled"] for b in bindings}
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_tools_set_requires_superuser(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
+
+    bot, event = _milky_group("ai tools off core chat")
+    await bot.handle_event(event)
+
+    assert "仅 SUPERUSER" in sent[0][1].extract_plain_text()
+    assert tmp_store.list_scope_tool_bindings("milky:123456", "chat") == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_persona_create_use_flow(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group(
+        "ai persona create 小爱 --gender 女性 --personality 温柔 --description 测试人格"
+    )
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "已创建 persona `小爱`" in text
+    assert "温柔" in text
+    assert tmp_store.get_persona_by_name("小爱") is not None
+
+    bot, event = _milky_group("ai persona use 小爱")
+    await bot.handle_event(event)
+
+    assert "已绑定" in sent[-1][1].extract_plain_text()
+    assert tmp_store.get_scope_persona_id("milky:123456") is not None
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_persona_global_requires_superuser(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
+
+    bot, event = _milky_group("ai persona global 小爱")
+    await bot.handle_event(event)
+
+    assert "仅 SUPERUSER" in sent[0][1].extract_plain_text()
+    assert tmp_store.get_global_value("global_persona") is None
