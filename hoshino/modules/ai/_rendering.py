@@ -41,7 +41,8 @@ html, body {{
   color: var(--fg);
   font-family: {font_stack};
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.8;
+  letter-spacing: 0.02em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }}
@@ -53,17 +54,17 @@ html, body {{
   word-break: break-word;
 }}
 .md-body h1, .md-body h2, .md-body h3, .md-body h4 {{
-  margin: 0.9em 0 0.5em;
-  line-height: 1.3;
+  margin: 1.1em 0 0.55em;
+  line-height: 1.35;
 }}
 .md-body h1 {{ font-size: 1.6em; border-bottom: 2px solid var(--accent); padding-bottom: 0.3em; }}
 .md-body h2 {{ font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }}
 .md-body h3 {{ font-size: 1.15em; }}
-.md-body p {{ margin: 0.6em 0; }}
+.md-body p {{ margin: 0.85em 0; }}
 .md-body a {{ color: var(--link); text-decoration: none; }}
 .md-body a:hover {{ text-decoration: underline; }}
-.md-body ul, .md-body ol {{ margin: 0.6em 0; padding-left: 1.5em; }}
-.md-body li {{ margin: 0.2em 0; }}
+.md-body ul, .md-body ol {{ margin: 0.75em 0; padding-left: 1.5em; }}
+.md-body li {{ margin: 0.35em 0; }}
 .md-body blockquote {{
   margin: 0.8em 0;
   padding: 0.4em 1em;

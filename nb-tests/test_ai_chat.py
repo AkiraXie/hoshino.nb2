@@ -499,6 +499,15 @@ def test_build_full_html_uses_configured_font():
     assert '"Inter"' not in build_full_html(body, "light", font="JetBrains Mono")
 
 
+def test_build_full_html_spacing():
+    """渲染 CSS 采用更宽松的行距与字距，避免正文拥挤。"""
+    from hoshino.modules.ai._rendering import build_full_html
+
+    html = build_full_html("<p>hi</p>", "light")
+    assert "line-height: 1.8" in html
+    assert "letter-spacing: 0.02em" in html
+
+
 # ------------------------------------------------------- SQLite store
 
 
