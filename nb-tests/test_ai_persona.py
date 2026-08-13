@@ -17,6 +17,17 @@ def test_build_prompt_template():
     assert build_prompt("爱丽丝") == "你是 爱丽丝。"
 
 
+def test_default_system_prompt_persona_and_style():
+    """默认人格是元气少女，且带简洁高效 + 禁止奇怪对比句与黑话的风格约束。"""
+    from hoshino.modules.ai._prompts import DEFAULT_SYSTEM_PROMPT
+
+    for keyword in ("乐观开朗", "阳光明媚", "少女", "好奇心", "元气"):
+        assert keyword in DEFAULT_SYSTEM_PROMPT
+    assert "简洁高效" in DEFAULT_SYSTEM_PROMPT
+    assert "不是xxx而是yyy" in DEFAULT_SYSTEM_PROMPT
+    assert "黑话" in DEFAULT_SYSTEM_PROMPT
+
+
 def test_resolve_prompt_fallback(tmp_store):
     """无绑定/无全局时回退 AIConfig.system_prompt。"""
     from hoshino.modules.ai._persona import resolve_prompt
