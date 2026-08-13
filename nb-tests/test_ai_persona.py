@@ -28,6 +28,41 @@ def test_default_system_prompt_persona_and_style():
     assert "黑话" in DEFAULT_SYSTEM_PROMPT
 
 
+def test_output_style_rules_loaded():
+    """output.md 被加载为强制输出规范，且包含 Markdown 结构与禁用黑话等约束。"""
+    from hoshino.modules.ai._prompts import OUTPUT_STYLE_RULES
+
+    assert OUTPUT_STYLE_RULES
+    for keyword in (
+        "简洁",
+        "标题",
+        "表格",
+        "不是xxx而是yyy",
+        "收口",
+        "基线",
+        "接缝",
+        "黑话",
+    ):
+        assert keyword in OUTPUT_STYLE_RULES
+
+
+def test_persona_system_prompt_appends_output_rules(tmp_store):
+    """系统提示词在 persona 之后追加 Markdown 输出规范（所有 persona 强制生效）。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.modules.ai import _prompts, _providers
+
+    config = AIConfig(system_prompt="人格")
+    deps = SimpleNamespace(task=None, scope_key=None, config=config)
+    ctx = SimpleNamespace(deps=deps)
+
+    prompt = asyncio.run(_providers._persona_system_prompt(ctx))
+    assert prompt.startswith("人格")
+    assert "必须严格遵守" in prompt
+    assert _prompts.OUTPUT_STYLE_RULES in prompt
+
+
 def test_resolve_prompt_fallback(tmp_store):
     """无绑定/无全局时回退 AIConfig.system_prompt。"""
     from hoshino.modules.ai._persona import resolve_prompt

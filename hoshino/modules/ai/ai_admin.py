@@ -304,6 +304,8 @@ async def _handle_status(bot: Bot, event: Event) -> None:
         f"历史长度限制：{config.max_history_messages} 条",
         f"渲染超时：{config.render_timeout_seconds}s",
         f"渲染主题：{config.render_theme}",
+        f"渲染字体：{config.render_font}",
+        f"代理：{config.proxy or '未设置'}",
         f"原生联网搜索：{'开（服务端 web_search）' if native_search else '关'}"
         f"（工具重试预算 {config.tool_max_retries} 次）",
         f"provider 数量：{len(config.providers)}",

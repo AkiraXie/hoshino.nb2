@@ -186,10 +186,15 @@ def markdown_to_html(markdown_text: str) -> str:
     return md.render(markdown_text)
 
 
-def build_full_html(html_body: str, theme: str = "light", emoji: bool = True) -> str:
-    """把渲染好的 HTML 包进带内嵌 CSS 的完整页面。``emoji`` 控制彩色 emoji 字体。"""
+def build_full_html(
+    html_body: str, theme: str = "light", emoji: bool = True, font: str = "Inter"
+) -> str:
+    """把渲染好的 HTML 包进带内嵌 CSS 的完整页面。
+
+    ``emoji`` 控制彩色 emoji 字体；``font`` 为主字体 family 名（中文经字体栈回退）。
+    """
     theme_values = _THEMES.get(theme, _THEMES["light"])
-    font_stack = _BASE_FONT_STACK
+    font_stack = f'"{font}", {_BASE_FONT_STACK}'
     if emoji:
         font_stack += f", {_EMOJI_FONTS}"
     font_stack += ", sans-serif"
@@ -220,7 +225,12 @@ async def render_markdown(markdown_text: str, config: AIConfig) -> bytes:
     from hoshino.util.playwrights import get_b
 
     html_body = markdown_to_html(markdown_text)
-    html = build_full_html(html_body, config.render_theme, emoji=config.render_emoji)
+    html = build_full_html(
+        html_body,
+        config.render_theme,
+        emoji=config.render_emoji,
+        font=config.render_font,
+    )
     browser = await get_b()
     page = await browser.new_page(
         viewport={"width": 820, "height": 100},

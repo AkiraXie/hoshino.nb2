@@ -1,10 +1,16 @@
-"""系统提示词素材：工具策略、技能清单与默认人设。
+"""系统提示词素材：工具策略、技能清单、默认人设与 Markdown 输出规范。
 
 这些文本是纯字符串/纯函数，供 ``tools/__init__.py`` 的动态 toolset 组装 instructions，
 以及 persona 默认级使用。schema 由 Pydantic 从工具函数推断，不在 prose 里重列。
+
+``output.md`` 是 Markdown 输出的强制规范，随本模块加载为 ``OUTPUT_STYLE_RULES``，
+由 ``_providers._persona_system_prompt`` 注入系统提示词（对 chat 与 task、所有
+persona 一视同仁强制生效）。
 """
 
 from __future__ import annotations
+
+import os
 
 TOOL_CALL_PROMPT = """【工具使用策略】
 你可以使用工具完成实际操作。请把握何时用、为何用，而非记忆 schema（schema 会随调用提供）。
@@ -71,3 +77,23 @@ DEFAULT_SYSTEM_PROMPT = (
     "这类黑话，用大家都能听懂的话把事情讲清楚。\n"
     "多轮对话中记住本群上下文，避免重复提问。"
 )
+
+_OUTPUT_MD_PATH = os.path.join(os.path.dirname(__file__), "output.md")
+
+_OUTPUT_STYLE_FALLBACK = (
+    "回答要简洁高效、结构清晰：先直接回答问题，再按需补充要点。\n"
+    "绝不说「不是xxx而是yyy」这种莫名其妙的话，也不说「收口」「基线」「接缝」等黑话。"
+)
+
+
+def _load_output_style() -> str:
+    """加载 ``output.md`` 全文作为强制输出规范；文件缺失/为空时回退精简版。"""
+    try:
+        with open(_OUTPUT_MD_PATH, encoding="utf-8") as fh:
+            content = fh.read().strip()
+    except OSError:
+        return _OUTPUT_STYLE_FALLBACK
+    return content or _OUTPUT_STYLE_FALLBACK
+
+
+OUTPUT_STYLE_RULES = _load_output_style()

@@ -45,6 +45,9 @@ class AIConfig:
     max_history_messages: int = 64
     render_timeout_seconds: float = 30.0
     render_theme: ThemeKind = "light"
+    # Markdown 渲染主字体（CSS font-family 首项）。默认 Inter（拉丁），中文按字体栈
+    # 回退到系统 CJK 字体；可配置为任意已安装字体的 family 名。
+    render_font: str = "Inter"
     # computer 工具的工作根目录；空字符串 → data_dir / "ai_computer"。
     # 只作为冻结 workspace 的 cwd，不是完整 sandbox（见 computer/_runtime.py）。
     computer_workdir: str = ""

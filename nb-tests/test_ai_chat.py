@@ -489,6 +489,16 @@ def test_build_full_html_themes():
     assert "--accent: #0969da" in build_full_html(body, "light")
 
 
+def test_build_full_html_uses_configured_font():
+    from hoshino.modules.ai._rendering import build_full_html
+
+    body = "<p>hi</p>"
+    # 默认 Inter；主字体带引号置于字体栈首位，中文经系统字体回退
+    assert '"Inter"' in build_full_html(body, "light")
+    assert '"JetBrains Mono"' in build_full_html(body, "light", font="JetBrains Mono")
+    assert '"Inter"' not in build_full_html(body, "light", font="JetBrains Mono")
+
+
 # ------------------------------------------------------- SQLite store
 
 

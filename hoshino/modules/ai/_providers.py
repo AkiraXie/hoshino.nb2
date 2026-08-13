@@ -24,6 +24,7 @@ from pydantic_ai.toolsets import (
 )
 
 from . import _persona as persona
+from . import _prompts as prompts
 from ._config import ProviderConfig, ProviderOptions
 from ._deps import AgentDeps
 from ._tools import approval_required, build_tool_instructions, resolve_tools
@@ -98,12 +99,21 @@ def build_model(provider_config: ProviderConfig, *, proxy: str | None = None) ->
     raise ValueError(f"未知 provider kind: {opts.kind}")
 
 
+OUTPUT_STYLE_HEADER = "\n\n【Markdown 输出规范（必须严格遵守）】\n"
+
+
 async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
-    """每 run 解析 persona：Task 用冻结快照，chat 用三级解析。"""
+    """每 run 解析 persona：Task 用冻结快照，chat 用三级解析。
+
+    最后统一追加 Markdown 输出规范（``output.md``），使其对所有 persona / surface
+    强制生效（chat 与 task 回复都遵守同一份格式约束）。
+    """
     task = getattr(ctx.deps, "task", None)
     if task is not None:
-        return getattr(task, "persona_prompt", None) or ctx.deps.config.system_prompt
-    return persona.resolve_prompt(ctx.deps.scope_key, ctx.deps.config)
+        base = getattr(task, "persona_prompt", None) or ctx.deps.config.system_prompt
+    else:
+        base = persona.resolve_prompt(ctx.deps.scope_key, ctx.deps.config)
+    return f"{base}{OUTPUT_STYLE_HEADER}{prompts.OUTPUT_STYLE_RULES}"
 
 
 def _resolve_toolset(ctx: RunContext[AgentDeps]) -> FunctionToolset | None:
