@@ -43,6 +43,7 @@ Tool`，注册在 `hoshino/ai/tools/__init__.py` 的 `REGISTRATIONS`；模型"�
 | `now` | core | low | chat/task | 当前时间 |
 | `memory` | core | medium | chat/task | scope 隔离长期记忆读写 |
 | `persona_manage` | core | medium | chat/task | 人设 CRUD/绑定（use/reset 需管理员） |
+| `provider_choose` | core | medium | chat/task | 调整 scope 的 provider/文本/视觉模型（**仅 superuser**） |
 | `bash` | computer | high | chat/task | shell（chat 静态排除；需显式开启） |
 | `python` | computer | high | chat/task | Python 执行（chat 静态排除） |
 | `file` | computer | medium→high | chat/task | 冻结工作目录内读写删（参数级风险） |
@@ -51,7 +52,8 @@ Tool`，注册在 `hoshino/ai/tools/__init__.py` 的 `REGISTRATIONS`；模型"�
 | `send_message` | bot | medium | chat | 单向发消息（需 live event） |
 | `duckduckgo_search` | web | low | chat/task | 搜索 |
 | `web_fetch` | web | low | chat/task | 网页转 Markdown |
-| `image_view` | web | low | chat/task | 图片查看 |
+| `image_view` | web | low | chat/task | 抓图片 URL → vision 模型识别 → 返回文字描述 |
+| `browser_use` | web | medium | chat/task | Playwright 浏览网页 → 截图 → vision 模型识别 |
 | `skill_read` | skill | low | chat/task | 读技能说明 |
 | `skill_manage` | skill | medium | chat | 技能启停 |
 

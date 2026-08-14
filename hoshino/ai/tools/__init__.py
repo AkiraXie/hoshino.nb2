@@ -21,6 +21,7 @@ from ..deps import AgentDeps
 from .core import memory as _memory
 from .core import now as _now
 from .core import persona_manage as _persona_manage
+from .core import provider_choose as _provider_choose
 from .computer import bash as _bash
 from .computer import file as _file
 from .computer import python as _python
@@ -29,6 +30,7 @@ from .bot import send_message as _send_message
 from .bot import service_manage as _service_manage
 from .skill import skill_manage as _skill_manage
 from .skill import skill_read as _skill_read
+from .web import browser_use as _browser_use
 from .web import image_view as _image_view
 from .web import web_fetch as _web_fetch
 from .web import web_search as _web_search
@@ -68,6 +70,14 @@ REGISTRATIONS: tuple[ToolRegistration, ...] = (
         "persona_manage",
         1,
         _persona_manage.persona_manage,
+        "core",
+        frozenset({"chat", "task"}),
+        risk="medium",
+    ),
+    ToolRegistration(
+        "provider_choose",
+        1,
+        _provider_choose.provider_choose,
         "core",
         frozenset({"chat", "task"}),
         risk="medium",
@@ -147,6 +157,15 @@ REGISTRATIONS: tuple[ToolRegistration, ...] = (
         _image_view.tool,
         "web",
         frozenset({"chat", "task"}),
+    ),
+    ToolRegistration(
+        "browser_use",
+        1,
+        _browser_use.tool,
+        "web",
+        frozenset({"chat", "task"}),
+        risk="medium",
+        local_access=True,
     ),
     ToolRegistration(
         "skill_read",

@@ -493,3 +493,159 @@ async def test_hoshino_nb2_code_read_rejects_unsafe(tmp_path):
     assert "read 需要 path 参数" in await hoshino_nb2_code(ctx, "read")
     # 未知 action
     assert "未知 action" in await hoshino_nb2_code(ctx, "bogus")
+
+
+# ------------------------------------------------------- core/provider_choose
+
+
+def _seed_provider_pair(tmp_store):
+    tmp_store.upsert_provider_row(
+        provider_id="openai",
+        url="https://api.example.com/v1",
+        key="sk-abcdefghij",
+        kind="openai_chat",
+        default_text_model="gpt-4o-mini",
+        default_vision_model="gpt-4o",
+    )
+    tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
+    tmp_store.upsert_provider_model("openai", "gpt-4o", "multimodal")
+
+
+async def test_provider_choose_requires_superuser(tmp_store):
+    from hoshino.ai.tools.core.provider_choose import provider_choose
+
+    _seed_provider_pair(tmp_store)
+    deps = _deps(
+        permissions=PermissionSnapshot(user_id="u1", is_superuser=False, is_admin=True)
+    )
+    out = await provider_choose(_ctx(deps), "provider", value="openai")
+    assert "仅超级用户可用" in out
+    # 管理员也改不了 scope provider
+    assert tmp_store.get_scope_provider("milky:1") is None
+
+
+async def test_provider_choose_status_and_provider(tmp_store):
+    from hoshino.ai.tools.core.provider_choose import provider_choose
+
+    _seed_provider_pair(tmp_store)
+    # _deps 的 AIConfig 无默认 provider：先绑定 scope 使 provider 生效
+    tmp_store.set_scope_provider("milky:1", "openai")
+    deps = _deps(permissions=PermissionSnapshot(user_id="u1", is_superuser=True))
+    ctx = _ctx(deps)
+
+    out = await provider_choose(ctx, "status")
+    assert "gpt-4o-mini" in out
+    assert "gpt-4o" in out  # 可用模型清单含多模态
+
+    out = await provider_choose(ctx, "provider", value="openai")
+    assert "已把当前会话切换到 provider" in out
+    assert tmp_store.get_scope_provider("milky:1") == "openai"
+
+    # 不存在的 provider
+    out = await provider_choose(ctx, "provider", value="ghost")
+    assert "不存在" in out
+
+
+async def test_provider_choose_text_and_vision_models(tmp_store):
+    from hoshino.ai.tools.core.provider_choose import provider_choose
+
+    _seed_provider_pair(tmp_store)
+    tmp_store.set_scope_provider("milky:1", "openai")
+    ctx = _ctx(_deps(permissions=PermissionSnapshot(user_id="u1", is_superuser=True)))
+
+    out = await provider_choose(ctx, "text", value="gpt-4o-mini")
+    assert "文本模型" in out
+    assert tmp_store.get_scope_model_overrides("milky:1")["text_model"] == "gpt-4o-mini"
+
+    out = await provider_choose(ctx, "vision", value="gpt-4o")
+    assert "视觉模型" in out
+    assert tmp_store.get_scope_model_overrides("milky:1")["vision_model"] == "gpt-4o"
+
+    # 文本模型不能用作 vision（能力不匹配）
+    out = await provider_choose(ctx, "vision", value="gpt-4o-mini")
+    assert "不能用作多模态" in out or "能力" in out
+
+    # 未注册的模型
+    out = await provider_choose(ctx, "text", value="ghost-1")
+    assert "不在 provider" in out
+
+    # vision none 禁用
+    out = await provider_choose(ctx, "vision", value="none")
+    assert "已显式禁用多模态" in out
+    assert tmp_store.get_scope_model_overrides("milky:1")["vision_model"] == "none"
+
+    # reset 清除
+    out = await provider_choose(ctx, "reset")
+    assert "已清除" in out
+    overrides = tmp_store.get_scope_model_overrides("milky:1")
+    assert overrides["text_model"] == "" and overrides["vision_model"] == ""
+
+
+# ------------------------------------------------------- web/browser_use
+
+
+async def test_browser_use_requires_vision_model(tmp_store):
+    from hoshino.ai.tools.web.browser_use import browser_use
+
+    # openai provider 只配了文本模型（无 vision）
+    tmp_store.upsert_provider_row(
+        provider_id="openai",
+        url="https://api.example.com/v1",
+        key="sk",
+        kind="openai_chat",
+        default_text_model="gpt-4o-mini",
+    )
+    tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
+    out = await browser_use(_ctx(_deps()), "https://example.com/page")
+    assert "未配置 vision 模型" in out
+
+
+async def test_browser_use_rejects_private_host(tmp_store, monkeypatch):
+    from hoshino.ai.tools.web.browser_use import browser_use
+
+    _seed_provider_pair(tmp_store)
+    out = await browser_use(_ctx(_deps()), "http://127.0.0.1/admin")
+    assert "拒绝访问私有" in out
+
+
+async def test_browser_use_delegates_to_vision_model(tmp_store, monkeypatch):
+    from hoshino.ai.tools.web import browser_use as bu
+
+    _seed_provider_pair(tmp_store)
+
+    class _FakePage:
+        def __init__(self):
+            self.goto_called = False
+
+        async def goto(self, url, **kwargs):
+            self.goto_called = True
+
+        async def screenshot(self, **kwargs):
+            return b"\x89PNG shot"
+
+        async def close(self):
+            pass
+
+    class _FakeBrowser:
+        async def new_page(self, viewport=None):
+            return _FakePage()
+
+    calls: list = []
+
+    async def fake_describe(record, vision_model, content, *, proxy=None, prompt=None):
+        calls.append((record.id, vision_model, content))
+        return "页面显示：Hello"
+
+    import hoshino.util.playwrights as pw  # browser_use 函数内导入，patch 模块对象
+
+    async def fake_get_b():
+        return _FakeBrowser()
+
+    monkeypatch.setattr(bu.vision, "describe_images", fake_describe)
+    monkeypatch.setattr(pw, "get_b", fake_get_b)
+
+    out = await bu.browser_use(_ctx(_deps()), "https://example.com/page")
+    assert out == "页面显示：Hello"
+    assert calls[0][0] == "openai"
+    assert calls[0][1] == "gpt-4o"
+    assert calls[0][2][0].data == b"\x89PNG shot"

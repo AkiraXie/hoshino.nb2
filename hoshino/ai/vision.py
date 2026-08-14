@@ -32,6 +32,22 @@ _DESCRIBE_SYSTEM = (
 _vision_model_cache: dict[tuple[Any, ...], Any] = {}
 
 
+def resolve_vision_model(ctx) -> tuple[ProviderRecord | None, str]:
+    """解析当前 scope/provider 的 vision 模型；无配置返回 (record, "")。
+
+    record 为 provider 快照（供 build_model / describe_images），空串表示
+    当前 provider/scope 没有可用多模态模型。
+    """
+    from . import provider  # 函数内导入（vision 是底层模块，避免被工具层反向依赖）
+
+    provider_id = ctx.deps.telemetry.provider_id
+    record = provider.get_provider(provider_id)
+    if record is None:
+        return None, ""
+    _, vision_model = provider.resolve_models(ctx.deps.scope_key, provider_id)
+    return record, vision_model
+
+
 def _vision_model(record: ProviderRecord, model: str, *, proxy: str | None) -> Any:
     """构建并缓存 vision 描述用的 model（不包 Agent，只做一次子请求）。"""
     from . import providers  # 函数内导入，避免 providers→tools→image_view→vision 循环

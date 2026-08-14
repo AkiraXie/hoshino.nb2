@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic_ai import BinaryContent, RunContext
 
-from ... import provider, vision
+from ... import vision
 from ...deps import AgentDeps
 from .net import is_private_host
 
@@ -34,16 +34,6 @@ def _media_type_from_content_type(content_type: str | None) -> str:
     return "image/png"
 
 
-def _resolve_vision_model(ctx: RunContext[AgentDeps]):
-    """解析当前 scope/provider 的 vision 模型；无配置返回 None。"""
-    provider_id = ctx.deps.telemetry.provider_id
-    record = provider.get_provider(provider_id)
-    if record is None:
-        return None, None
-    _, vision_model = provider.resolve_models(ctx.deps.scope_key, provider_id)
-    return record, vision_model
-
-
 async def image_view(ctx: RunContext[AgentDeps], url: str):
     """抓取指定 URL 的图片，用 vision 模型识别后返回文字描述。
 
@@ -56,7 +46,7 @@ async def image_view(ctx: RunContext[AgentDeps], url: str):
     if is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
-    record, vision_model = _resolve_vision_model(ctx)
+    record, vision_model = vision.resolve_vision_model(ctx)
     if record is None:
         return "provider 配置异常。"
     if not vision_model:
