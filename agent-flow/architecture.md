@@ -87,9 +87,21 @@ hoshino/
 │   ├── permission.py
 │   ├── rule.py
 │   └── schedule.py
+├── ai/                    # AI 能力基建包（非插件，见 ai.md）
+│   ├── config.py         # AIConfig + AI_* env 挂载进 HoshinoConfig
+│   ├── providers.py      # pydantic-ai model / Agent 工厂（缓存）
+│   ├── runner.py         # agent.iter() 图循环驱动、有界重试、RunLog
+│   ├── persona.py        # 三级 persona 解析 + {{variable}} 模板
+│   ├── sessions.py       # ConversationManager（多对话，内存 + SQLite write-through）
+│   ├── context.py        # 事件日志 → derive_messages 派生模型历史
+│   ├── hooks.py          # pre-step / request-error / post-execute 拦截瀑布
+│   ├── goal.py           # 跨轮目标（revision CAS + round cap）
+│   ├── tools/            # 工具注册表与实现（core/computer/bot/web/skill）
+│   ├── task/             # 后台任务运行时（状态机/调度/审批/冻结快照）
+│   └── harness.py        # pydantic-ai-harness 兼容 facade（Planning/StepPersistence）
 ├── service.py             # Service/MatcherWrapper 兼容出口
 ├── types.py               # 纯 NoneBot 类型，零 OneBot
-├── modules/               # 业务插件
+├── modules/               # 业务插件（含 ai/：chat、ai_admin、task_commands）
 ├── base/                  # 内置服务
 └── util/                  # 工具函数
 ```
@@ -103,6 +115,7 @@ hoshino/
 | `modules/` | core, platform, command, nonebot_plugin_alconna |
 | `core/` | platform, nonebot, nonebot_plugin_alconna |
 | `command/` | nonebot_plugin_alconna, nonebot（不能 import platform/ob11） |
+| `ai/` | platform, nonebot, nonebot_plugin_alconna.uniseg, pydantic-ai（基建包，插件从 `hoshino.ai.<submodule>` 直连） |
 | `platform/common` | nonebot, nonebot_plugin_alconna.uniseg, platform adapter modules |
 | `platform/ob11/` | nonebot.adapters.onebot.v11（OneBot 符号唯一入口） |
 | `platform/telegram/` | nonebot.adapters.telegram（Telegram 符号唯一入口） |

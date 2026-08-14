@@ -23,6 +23,7 @@
 专题文档位于 `agent-flow/`：
 
 - `architecture.md`：分层与 adapter 隔离边界
+- `ai.md`：AI 模块结构（pydantic-ai 能力使用 + 自有扩展 + 参考致谢）
 - `ai-tools.md`：AI 模块工具系统（注册表、类别/风险门控、`hoshino-nb2-code` 仓库知识工具）
 - `docs/plugin-development.md`：面向开发者的完整插件开发指南
 - `milky.md` / `telegram.md`：平台能力与限制
@@ -153,7 +154,8 @@ hoshino/platform/ob11/     OneBot V11 类型与实现隔离区
 hoshino/platform/milky/    Milky 类型与实现隔离区
 hoshino/platform/telegram/ Telegram 类型与实现隔离区
 hoshino/content/           Post/PostMessage/PostQueue/UIDManager 内容推送引擎
-hoshino/ai/                AI 对话/任务模块（persona/provider/tools/task，详见 agent-flow/ai-tools.md）
+hoshino/ai/                AI 能力基建包（非插件；结构、pydantic-ai 能力与自有扩展详见 agent-flow/ai.md）
+hoshino/modules/ai/        AI 插件（chat # 对话、ai_admin 管理、task_commands 后台任务）
 hoshino/base/              始终加载的内置服务
 hoshino/modules/           按 category 配置加载的业务插件
 hoshino/service_config/    每个 Service 的业务配置 JSON
@@ -207,6 +209,30 @@ from hoshino.core.hooks import on_serial_startup, on_shutdown
 不要在 import 时调用 `nonebot.get_driver().on_startup`。数据库建表、客户端初始化等需要
 确定顺序的工作放 `on_serial_startup`；非阻塞后台启动工作使用 `on_post_startup`；资源释放
 放 `on_shutdown`。不要在模块 import 阶段执行 DDL 或启动长期任务。
+
+### AI 模块（hoshino/ai/）
+
+AI 能力基建包（非插件）+ `hoshino/modules/ai/` 插件（chat / ai_admin /
+task_commands）。完整结构与实现说明见 `agent-flow/ai.md`，工具系统见
+`agent-flow/ai-tools.md`。要点：
+
+- 底座是 **pydantic-ai**：`Agent`（RunContext deps 注入、动态 system prompt、
+  `ApprovalRequiredToolset(DynamicToolset(...))` 工具集、`WebSearch` capability）、
+  `agent.iter()` 图循环驱动、`UsageLimits` 护栏、`ModelMessagesTypeAdapter`
+  序列化；Task 另注入 `pydantic-ai-harness` 的 Planning / StepPersistence。
+- **自有扩展**（pydantic-ai 只提供单次 run，其余全部自建）：事件溯源式会话历史
+  （append-only 事件日志 → `derive_messages` 派生模型历史）、多对话管理器、
+  三级 persona + `{{variable}}` 模板 + 示例对话 few-shot、provider DB 治理与
+  双模型槽位、工具注册表门控（授权与注入分离）、后台 Task 运行时（冻结
+  capability snapshot + 审批流）、Goal 服务、拦截瀑布 hooks、遥测与脱敏日志、
+  Markdown→图片渲染、多模态 vision 子请求。
+- 设计参考了 **DeepSeek Harness（事件溯源/拦截瀑布/goal/persona 模板）** 与
+  **AstrBot（ConversationManager 多对话/轮边界截断/skill prompt/begin_dialogs）**，
+  具体对应关系见 `agent-flow/ai.md` §5。
+- chat surface：`#` 前缀或回复机器人消息触发；task surface：`ai task` 后台任务，
+  恢复时 `bot`/`event` 为 None，权限按冻结快照复核。
+- 改 AI 行为常见落点：人格/口吻在 `prompts.py`，输出规范在 `hoshino/ai/output.md`，
+  新工具在 `tools/`，新配置在 `config.py`（env `AI_*`）。
 
 ## 6. 插件与平台规范
 

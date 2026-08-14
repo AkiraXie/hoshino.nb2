@@ -84,17 +84,11 @@ _FLOW = """【agent 工作流程】
 
 专题文档（agent-flow/）：
 - architecture.md：分层与 adapter 隔离边界
+- ai.md：AI 模块结构（pydantic-ai 能力使用 + 自有扩展 + 参考致谢）
 - ai-tools.md：AI 模块工具系统（注册表、类别/风险门控、hoshino-nb2-code 工具）
 - docs/plugin-development.md：插件开发完整指南
 - milky.md / telegram.md：平台能力与限制
-- milky-plugin-test-protocol.md：Milky 端到端行为测试标准
-
-AI 模块相关历史报告（agent-plan-report/，改 AI 代码前可先读）：
-- ai-tools-skill-persona-plan.md（工具/技能/persona 设计）
-- ai-infra-refactor-multimodal-plan.md / execution-report.md
-- aichat-integration-*.md、aichat-context-timeout-*.md
-- pydantic-ai-task-runtime-v1-plan.md / execution-report.md
-- deepseek-harness-agent-capabilities-report.md"""
+- milky-plugin-test-protocol.md：Milky 端到端行为测试标准"""
 
 _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
 - config.py：AIConfig（默认 provider、护栏、代理、渲染配置）
@@ -109,7 +103,8 @@ _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
   （core/computer/bot/web/skill）；computer 默认不注入，需管理员显式开启
 - task/：后台任务运行时（TaskContext/审批/调度）
 - modules/ai/：chat.py（# 对话入口）、ai_admin.py（管理命令）
-- 工具系统完整说明见 agent-flow/ai-tools.md
+- 模块结构、pydantic-ai 能力使用与自有扩展见 agent-flow/ai.md；工具系统完整说明见
+  agent-flow/ai-tools.md
 
 改进 AI 行为常见落点：
 - 人格/口吻：prompts.py 的 DEFAULT_SYSTEM_PROMPT / DEFAULT_BEGIN_DIALOGS

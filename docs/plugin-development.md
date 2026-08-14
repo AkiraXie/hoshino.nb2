@@ -43,10 +43,17 @@ hoshino.core       Service、权限、hook、调度
 hoshino.command    Alconna、Args、UniMessage 等命令 facade
 hoshino.platform   adapter-neutral 事件、DI、消息、Target 和 Bot API
 hoshino.content    内容推送模型与队列
+hoshino.ai         AI 能力基建包（Agent/persona/provider/工具/task，非插件）
 ```
 
 业务插件不得直接 import `nonebot.adapters.onebot.v11`、`nonebot.adapters.milky` 或
 `nonebot.adapters.telegram`。adapter-specific 类型和转换应留在 `hoshino/platform/<adapter>/`。
+
+`hoshino.ai` 是 AI 能力基建包（不被 `nonebot.load_plugins` 扫描），AI 功能集中在
+`hoshino/modules/ai/` 三个插件里（chat `#` 对话、ai_admin 管理、task_commands 后台
+任务）。需要 AI 能力的插件用 `from hoshino.ai.<submodule>` 直连；模块结构、pydantic-ai
+能力使用与自有扩展见 [AI 模块文档](../agent-flow/ai.md)，工具注册表与门控见
+[AI 工具系统](../agent-flow/ai-tools.md)。
 
 ## 3. 最小插件
 
@@ -461,6 +468,8 @@ Milky 用例必须使用唯一 `message_seq`，避免 Alconna 消息缓存串用
 
 - [AGENTS.md](../AGENTS.md)：仓库级开发和交付规则
 - [架构文档](../agent-flow/architecture.md)：分层和 adapter 隔离
+- [AI 模块文档](../agent-flow/ai.md)：AI 模块结构、pydantic-ai 能力使用与自有扩展
+- [AI 工具系统](../agent-flow/ai-tools.md)：AI 工具注册表、类别/风险门控
 - [Milky](../agent-flow/milky.md)：Milky 数据模型和平台限制
 - [Telegram](../agent-flow/telegram.md)：Telegram 平台限制
 - [Milky 插件测试协议](../agent-flow/milky-plugin-test-protocol.md)：Milky 行为测试协议
