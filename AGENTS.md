@@ -23,6 +23,7 @@
 专题文档位于 `agent-flow/`：
 
 - `architecture.md`：分层与 adapter 隔离边界
+- `ai-tools.md`：AI 模块工具系统（注册表、类别/风险门控、`hoshino-nb2-code` 仓库知识工具）
 - `docs/plugin-development.md`：面向开发者的完整插件开发指南
 - `milky.md` / `telegram.md`：平台能力与限制
 - `milky-plugin-test-protocol.md`：Milky 端到端行为测试标准
@@ -152,6 +153,7 @@ hoshino/platform/ob11/     OneBot V11 类型与实现隔离区
 hoshino/platform/milky/    Milky 类型与实现隔离区
 hoshino/platform/telegram/ Telegram 类型与实现隔离区
 hoshino/content/           Post/PostMessage/PostQueue/UIDManager 内容推送引擎
+hoshino/ai/                AI 对话/任务模块（persona/provider/tools/task，详见 agent-flow/ai-tools.md）
 hoshino/base/              始终加载的内置服务
 hoshino/modules/           按 category 配置加载的业务插件
 hoshino/service_config/    每个 Service 的业务配置 JSON

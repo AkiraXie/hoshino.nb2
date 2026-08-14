@@ -24,6 +24,7 @@ from .core import persona_manage as _persona_manage
 from .computer import bash as _bash
 from .computer import file as _file
 from .computer import python as _python
+from .computer import repo_code as _repo_code
 from .bot import send_message as _send_message
 from .bot import service_manage as _service_manage
 from .skill import skill_manage as _skill_manage
@@ -97,6 +98,15 @@ REGISTRATIONS: tuple[ToolRegistration, ...] = (
         frozenset({"chat", "task"}),
         risk="medium",
         risk_for=_file.risk_for_file,
+        local_access=True,
+    ),
+    ToolRegistration(
+        "hoshino_nb2_code",
+        1,
+        _repo_code.hoshino_nb2_code,
+        "computer",
+        frozenset({"chat", "task"}),
+        risk="low",
         local_access=True,
     ),
     ToolRegistration(

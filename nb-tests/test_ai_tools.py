@@ -409,3 +409,87 @@ def test_web_search_prefers_search_over_fetch():
         pytest.skip("ddgs 未安装")
     assert web_search_mod.tool.name == "duckduckgo_search"
     assert "优先" in web_search_mod.tool.description
+
+
+# ------------------------------------------------------- computer/hoshino_nb2_code
+
+
+def test_resolve_tools_hoshino_nb2_code_in_computer(tmp_store):
+    """hoshino_nb2_code 属 computer 类别：默认不注入，显式开启后 chat 可用。"""
+    from hoshino.ai.tools import resolve_tools
+
+    assert "hoshino_nb2_code" not in _names(resolve_tools(_deps()))
+    tmp_store.set_scope_tool_binding("milky:1", "computer", "chat", True)
+    names = _names(resolve_tools(_deps()))
+    assert "hoshino_nb2_code" in names
+    assert "file" in names  # computer 类别整体叠加
+
+
+async def test_hoshino_nb2_code_overview():
+    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
+
+    ctx = _ctx(_deps())
+    text = await hoshino_nb2_code(ctx, "overview")
+    assert "hoshino.nb2" in text
+    assert "uv run pytest nb-tests" in text
+    assert "hoshino/ai" in text
+
+
+async def test_hoshino_nb2_code_norms_and_flow():
+    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
+
+    ctx = _ctx(_deps())
+    norms = await hoshino_nb2_code(ctx, "norms")
+    assert "agent-plan-report" in norms
+    assert "不主动提交/推送 Git" in norms
+    flow = await hoshino_nb2_code(ctx, "flow")
+    assert "architecture.md" in flow
+    assert "milky-plugin-test-protocol.md" in flow
+    assert "ai-tools.md" in flow
+
+
+async def test_hoshino_nb2_code_ai_module():
+    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
+
+    ctx = _ctx(_deps())
+    text = await hoshino_nb2_code(ctx, "ai_module")
+    assert "prompts.py" in text
+    assert "REGISTRATIONS" in text
+    assert "output.md" in text
+
+
+async def test_hoshino_nb2_code_read_valid():
+    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
+
+    ctx = _ctx(_deps())
+    text = await hoshino_nb2_code(ctx, "read", path="hoshino/ai/prompts.py")
+    assert "DEFAULT_SYSTEM_PROMPT" in text
+    text = await hoshino_nb2_code(ctx, "read", path="AGENTS.md")
+    assert "HoshinoBot" in text
+
+
+async def test_hoshino_nb2_code_read_rejects_unsafe(tmp_path):
+    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
+
+    ctx = _ctx(_deps())
+    # 绝对路径 / 越界（.. 段在 containment 前即被相对路径校验拦截）
+    assert "只接受仓库内的相对路径" in await hoshino_nb2_code(
+        ctx, "read", path="/etc/passwd"
+    )
+    assert "只接受仓库内的相对路径" in await hoshino_nb2_code(
+        ctx, "read", path="../outside.txt"
+    )
+    # 敏感路径
+    assert "敏感路径不允许访问" in await hoshino_nb2_code(ctx, "read", path=".env.prod")
+    assert "敏感路径不允许访问" in await hoshino_nb2_code(
+        ctx, "read", path="data/db/aichat.db"
+    )
+    assert "敏感路径不允许访问" in await hoshino_nb2_code(
+        ctx, "read", path="logs/info/x.log"
+    )
+    # 不存在
+    assert "文件不存在" in await hoshino_nb2_code(ctx, "read", path="no/such/file.py")
+    # 缺 path
+    assert "read 需要 path 参数" in await hoshino_nb2_code(ctx, "read")
+    # 未知 action
+    assert "未知 action" in await hoshino_nb2_code(ctx, "bogus")
