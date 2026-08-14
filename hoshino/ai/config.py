@@ -10,6 +10,7 @@ provider 的全局配置与默认 provider 指针（``default``，运行时可�
 """
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from typing import Literal
 
@@ -155,3 +156,40 @@ def mount_into_hsnconfig(hsn_cls) -> None:
     if "ai" in hsn_cls.__dict__:
         return
     hsn_cls.ai = property(lambda self: load_ai_config_from_env())
+
+
+def write_ai_config_env(
+    env_file: str,
+    *,
+    updates: dict[str, str] | None = None,
+    removes: Sequence[str] | None = None,
+) -> None:
+    """把 ``AI_*`` 配置项写入 env 文件（供 ``ai config`` 在线修改写盘）。
+
+    ``updates``：字段名 → 字符串值，写 ``AI_<NAME>=<value>`` 行（已有行就地替换
+    值，否则追加到文件末尾）；``removes``：删除对应行（恢复代码默认）。文件不存在
+    时新建；其余行（注释/其它配置）原样保留。值校验由调用方完成。
+    """
+    updates = updates or {}
+    removes = {_env_name(name) for name in (removes or [])}
+    wanted = {_env_name(name): value for name, value in updates.items()}
+    lines: list[str] = []
+    try:
+        with open(env_file, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        pass  # 文件不存在 → 从空开始，按新增处理
+    kept: list[str] = []
+    for line in lines:
+        key, _, _ = line.partition("=")
+        if key in wanted:
+            kept.append(f"{key}={wanted.pop(key)}")
+        elif key in removes:
+            continue  # 删除行
+        else:
+            kept.append(line)
+    for key, value in wanted.items():
+        kept.append(f"{key}={value}")
+    if kept or lines:
+        with open(env_file, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(kept) + "\n")

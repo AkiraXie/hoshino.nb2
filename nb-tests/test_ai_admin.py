@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import itertools
+import os
+
 import pytest
 from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.config import ClientInfo
@@ -764,3 +766,168 @@ async def test_setup_missing_url_key(monkeypatch, tmp_store):
 
     assert "需要 --url 与 --key" in sent[0][1].extract_plain_text()
     assert not tmp_store.has_provider_row("bad")
+
+
+# ------------------------------------------------------- ai config
+
+
+def _stub_env_file(monkeypatch, tmp_path) -> str:
+    """把 ai config 的写盘目标指到临时文件，返回路径。"""
+    from hoshino.modules.ai import ai_admin
+
+    env_file = str(tmp_path / "env.prod")
+    monkeypatch.setattr(ai_admin, "AI_ENV_FILE", env_file)
+    return env_file
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_show_lists_render_and_proxy(monkeypatch, tmp_store):
+    """`ai config`：显示当前代理/渲染配置与操作提示。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "proxy" in text
+    assert "render_font" in text
+    assert "render_theme" in text
+    assert "render_emoji" in text
+    assert "ai config set" in text
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_set_font_writes_env_file(monkeypatch, tmp_store, tmp_path):
+    """`ai config set render_font`：写盘 .env.prod，重新加载即生效。"""
+    from hoshino.ai.config import load_ai_config_from_env
+
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config set render_font Noto Sans CJK")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "已更新 `render_font`=Noto Sans CJK" in text
+    assert "env.prod" in text
+    # 写盘内容 + 重新加载生效
+    assert "AI_RENDER_FONT=Noto Sans CJK" in open(env_file, encoding="utf-8").read()
+    loaded = load_ai_config_from_env(env={}, env_file=env_file)
+    assert loaded.render_font == "Noto Sans CJK"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_set_preserves_unrelated_lines(monkeypatch, tmp_store, tmp_path):
+    """写盘只改目标行：既有注释与其它配置行原样保留。"""
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    with open(env_file, "w", encoding="utf-8") as fh:
+        fh.write("# comment\nHOST=0.0.0.0\nAI_RENDER_THEME=dark\n")
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config set render_font Inter")
+    await bot.handle_event(event)
+
+    content = open(env_file, encoding="utf-8").read()
+    assert "# comment" in content
+    assert "HOST=0.0.0.0" in content
+    assert "AI_RENDER_THEME=dark" in content
+    assert "AI_RENDER_FONT=Inter" in content
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_set_rejects_non_render_proxy_keys(
+    monkeypatch, tmp_store, tmp_path
+):
+    """白名单外参数（如历史条数）拒绝修改，不写盘。"""
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config set max_history_messages 10")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "仅代理与渲染相关参数可改" in text
+    assert not os.path.exists(env_file)
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_set_theme_rejects_invalid(monkeypatch, tmp_store, tmp_path):
+    """render_theme 只接受 light/dark。"""
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config set render_theme blue")
+    await bot.handle_event(event)
+
+    assert "仅支持 light / dark" in sent[0][1].extract_plain_text()
+    assert not os.path.exists(env_file)
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_set_numeric_validation(monkeypatch, tmp_store, tmp_path):
+    """数值参数：非数字与 <=0 拒绝。"""
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config set render_device_scale abc")
+    await bot.handle_event(event)
+    assert "需要数字" in sent[0][1].extract_plain_text()
+
+    bot, event = _milky_group("ai config set render_timeout_seconds -5")
+    await bot.handle_event(event)
+    assert "需要大于 0" in sent[1][1].extract_plain_text()
+    assert not os.path.exists(env_file)
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_set_emoji_normalizes(monkeypatch, tmp_store, tmp_path):
+    """render_emoji 接受 1/on 等写法，写盘统一 true/false。"""
+    from hoshino.ai.config import load_ai_config_from_env
+
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config set render_emoji 1")
+    await bot.handle_event(event)
+    assert "`render_emoji`=true" in sent[0][1].extract_plain_text()
+    assert "AI_RENDER_EMOJI=true" in open(env_file, encoding="utf-8").read()
+    assert load_ai_config_from_env(env={}, env_file=env_file).render_emoji is True
+
+    bot, event = _milky_group("ai config set render_emoji maybe")
+    await bot.handle_event(event)
+    assert "仅支持 true / false" in sent[1][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_proxy_empty_hints_reset(monkeypatch, tmp_store, tmp_path):
+    """set proxy 空值提示用 reset 清除。"""
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group('ai config set proxy ""')
+    await bot.handle_event(event)
+
+    assert "值不能为空" in sent[0][1].extract_plain_text()
+    assert "reset proxy" in sent[0][1].extract_plain_text()
+    assert not os.path.exists(env_file)
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_config_reset_removes_line(monkeypatch, tmp_store, tmp_path):
+    """`ai config reset`：删除对应行恢复默认；白名单外拒绝。"""
+    env_file = _stub_env_file(monkeypatch, tmp_path)
+    with open(env_file, "w", encoding="utf-8") as fh:
+        fh.write("# comment\nAI_RENDER_FONT=Noto Sans\nAI_RENDER_THEME=dark\n")
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai config reset render_font")
+    await bot.handle_event(event)
+    assert "已清除 `render_font`" in sent[0][1].extract_plain_text()
+    content = open(env_file, encoding="utf-8").read()
+    assert "AI_RENDER_FONT" not in content
+    assert "AI_RENDER_THEME=dark" in content  # 其它行保留
+    assert "# comment" in content
+
+    bot, event = _milky_group("ai config reset system_prompt")
+    await bot.handle_event(event)
+    assert "仅代理与渲染相关参数可改" in sent[1][1].extract_plain_text()

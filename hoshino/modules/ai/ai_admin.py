@@ -23,6 +23,7 @@ provider 管理语义：
 from __future__ import annotations
 
 from nonebot.adapters import Bot, Event
+from nonebot_plugin_alconna.uniseg import Target
 
 from hoshino.core.permission import SUPERUSER
 from hoshino.platform import (
@@ -47,7 +48,7 @@ from hoshino.ai import (
     tools,
 )
 from hoshino.ai.base import get_config
-from hoshino.ai.config import mask_url
+from hoshino.ai.config import mask_url, write_ai_config_env
 from hoshino.ai.provider import ProviderRecord
 from hoshino.core.service import Service
 
@@ -67,8 +68,9 @@ USAGE = (
     "  ai provider list / default <id> / reset / remove\n"
     "  ai model reset [text|vision] / ai status / ai stats [provider_id]\n"
     "  ai clear [scope] / ai contexts [scope] / ai tools ... / ai persona ...\n"
+    "  ai config [set <key> <value> | reset <key>]  在线改代理/渲染参数并写盘\n"
     "  ai task research|plan|status|list|approve|deny|cancel|workspaces\n"
-    "用 ai setup / ai persona 查看参数说明。"
+    "用 ai setup / ai persona / ai config 查看参数说明。"
 )
 
 _SETUP_USAGE = (
@@ -111,6 +113,33 @@ _MODEL_USAGE = (
     "示例：ai model set deepseek-v4-flash；ai model set vision gpt-5.6-luna"
 )
 
+# ai config 可在线修改并写盘的白名单：仅代理与渲染相关参数。
+CONFIG_EDITABLE = (
+    "proxy",
+    "render_font",
+    "render_theme",
+    "render_timeout_seconds",
+    "render_device_scale",
+    "render_emoji",
+)
+# 写盘目标（.env.prod；测试可 monkeypatch 到临时文件）。
+AI_ENV_FILE = ".env.prod"
+
+_CONFIG_USAGE = (
+    "用法：\n"
+    "  ai config                   查看当前代理/渲染配置\n"
+    "  ai config set <key> <value> 修改并写盘（.env.prod）\n"
+    "  ai config reset <key>       删除对应行，恢复代码默认\n"
+    "可改参数（仅代理与渲染相关）：\n"
+    "  proxy <http(s)://|socks://...>   代理（清空用 reset）\n"
+    "  render_font <字体名>             渲染主字体\n"
+    "  render_theme light|dark          渲染主题\n"
+    "  render_timeout_seconds <秒>      渲染超时\n"
+    "  render_device_scale <倍数>       渲染清晰度（2.0=2x）\n"
+    "  render_emoji true|false          渲染是否启用彩色 emoji\n"
+    "其余 AI 配置项不支持在线修改，请直接编辑 .env.prod。"
+)
+
 # 全部 ai 管理命令仅 SUPERUSER 可用；only_group=False 让私聊也能触发，从而在
 # handler 内给出“私聊不允许”的明确提示，而不是静默无响应。
 aicmd = sv.on_command("ai", permission=SUPERUSER, compact=False, only_group=False)
@@ -144,6 +173,8 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         await _handle_tools(bot, event, rest)
     elif sub == "persona":
         await _handle_persona(bot, event, rest)
+    elif sub == "config":
+        await _handle_config(bot, event, rest)
     else:
         await send_to_event(bot, event, USAGE)
 
@@ -658,8 +689,6 @@ def _list_deps(scope_key: str, surface: str):
 
 def deps_target_placeholder():
     """占位 Target，仅供 ai tools list 展示解析结果用。"""
-    from nonebot_plugin_alconna.uniseg import Target
-
     return Target.group("0")
 
 
@@ -836,3 +865,121 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
         return
 
     await send_to_event(bot, event, _PERSONA_USAGE)
+
+
+# ------------------------------------------------------------ ai config
+
+
+def _parse_config_value(key: str, value: str) -> tuple[str, str | None]:
+    """校验并规范化一个 config 值；返回 (错误提示, 规范化字符串值)。
+
+    仅处理白名单字段；非白名单返回明确拒绝（其余 AI 配置不支持在线修改）。
+    """
+    if key == "proxy":
+        return "", value
+    if key == "render_font":
+        return "", value
+    if key == "render_theme":
+        if value not in ("light", "dark"):
+            return f"render_theme 仅支持 light / dark（当前：{value}）。", None
+        return "", value
+    if key in ("render_timeout_seconds", "render_device_scale"):
+        try:
+            number = float(value)
+        except ValueError:
+            return f"{key} 需要数字（当前：{value}）。", None
+        if number <= 0:
+            return f"{key} 需要大于 0。", None
+        return "", str(number)
+    if key == "render_emoji":
+        normalized = value.strip().lower()
+        if normalized in ("1", "true", "yes", "on"):
+            return "", "true"
+        if normalized in ("0", "false", "no", "off"):
+            return "", "false"
+        return f"render_emoji 仅支持 true / false（当前：{value}）。", None
+    return (
+        f"不支持修改 `{key}`：仅代理与渲染相关参数可改"
+        f"（proxy / render_font / render_theme / render_timeout_seconds / "
+        f"render_device_scale / render_emoji），其余请直接编辑 .env.prod。",
+        None,
+    )
+
+
+async def _config_status(bot: Bot, event: Event) -> None:
+    """`ai config`：显示当前生效的代理/渲染配置。"""
+    cfg = get_config()
+    lines = [
+        "当前 AI 代理 / 渲染配置（生效值）：",
+        f"proxy：{cfg.proxy or '（未设置）'}",
+        f"render_font：{cfg.render_font}",
+        f"render_theme：{cfg.render_theme}",
+        f"render_timeout_seconds：{cfg.render_timeout_seconds}",
+        f"render_device_scale：{cfg.render_device_scale}",
+        f"render_emoji：{cfg.render_emoji}",
+        "在线修改并写盘：ai config set <key> <value>",
+        "恢复默认：ai config reset <key>；参数说明：ai config help",
+    ]
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _handle_config(bot: Bot, event: Event, args: list[str]) -> None:
+    """`ai config`：在线修改代理/渲染参数并写盘（.env.prod），其余参数不可改。"""
+    if not args:
+        await _config_status(bot, event)
+        return
+    action, rest = args[0], args[1:]
+    if action == "help":
+        await send_to_event(bot, event, _CONFIG_USAGE)
+        return
+    if action == "set":
+        if len(rest) < 2:
+            await send_to_event(bot, event, "用法：ai config set <key> <value>")
+            return
+        key, value = rest[0], " ".join(rest[1:]).strip()
+        if value in ('""', "''"):
+            value = ""
+        if key not in CONFIG_EDITABLE:
+            await send_to_event(bot, event, _parse_config_value(key, value)[0])
+            return
+        if not value:
+            await send_to_event(
+                bot,
+                event,
+                f"`{key}` 的值不能为空，清除请用 `ai config reset {key}`。",
+            )
+            return
+        error, normalized = _parse_config_value(key, value)
+        if error:
+            await send_to_event(bot, event, error)
+            return
+        try:
+            write_ai_config_env(AI_ENV_FILE, updates={key: normalized})
+        except OSError as exc:
+            await send_to_event(bot, event, f"写盘失败：{exc}")
+            return
+        await send_to_event(
+            bot,
+            event,
+            f"已更新 `{key}`={normalized}（写入 {AI_ENV_FILE}，立即生效；"
+            "若进程环境已设置同名 AI_* 变量，以环境变量为准）。",
+        )
+        return
+    if action == "reset":
+        if not rest:
+            await send_to_event(bot, event, "用法：ai config reset <key>")
+            return
+        key = rest[0]
+        if key not in CONFIG_EDITABLE:
+            await send_to_event(bot, event, _parse_config_value(key, "")[0])
+            return
+        try:
+            write_ai_config_env(AI_ENV_FILE, removes=[key])
+        except OSError as exc:
+            await send_to_event(bot, event, f"写盘失败：{exc}")
+            return
+        await send_to_event(
+            bot, event, f"已清除 `{key}` 的写盘覆盖，恢复代码默认（{AI_ENV_FILE}）。"
+        )
+        return
+    await send_to_event(bot, event, _CONFIG_USAGE)
