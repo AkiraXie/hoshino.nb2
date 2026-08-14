@@ -39,7 +39,7 @@ HoshinoBot 是迁移到 NoneBot2 的多适配器机器人，支持：
 - Milky：QQNT 正向 WebSocket/HTTP 或 webhook
 - Telegram：polling 或 webhook
 
-Python 要求 `>=3.10`，Python 依赖和虚拟环境统一由 `uv` 管理。机器人配置默认读取
+Python 要求 `>=3.12`，Python 依赖和虚拟环境统一由 `uv` 管理。机器人配置默认读取
 `.env.prod`；示例配置见 `.env.prod.example`。
 
 仓库还包含独立的微博图片 Web 应用：FastAPI 后端加 React/Vite 前端。它读取同一仓库
@@ -277,7 +277,7 @@ ID 是会话内序列号，取回消息时必须保留 group/scene。详细限�
 
 ## 7. Python 代码风格
 
-- 保持 Python 3.10 兼容；不要使用仅更新版本支持的语法或标准库 API。
+- 保持 Python 3.12 兼容；不要使用仅更新版本支持的语法或标准库 API。
 - 遵循现有 Ruff 规则。import 按 stdlib、third-party、local 分组并置于文件顶部。
 - 函数内 import 仅用于真实循环依赖、可选依赖或昂贵 lazy load，并注释原因。
 - 优先小函数和明确的数据流；只有在维护状态或匹配既有抽象时才新增类。

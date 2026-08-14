@@ -39,7 +39,7 @@ _MAX_READ_CHARS = 50_000
 RepoAction = Literal["overview", "norms", "flow", "ai_module", "read"]
 
 _OVERVIEW = """【hoshino.nb2 仓库概览】
-项目：HoshinoBot，迁移到 NoneBot2 的多适配器 QQ 机器人（Python >=3.10，依赖由 uv 管理）。
+项目：HoshinoBot，迁移到 NoneBot2 的多适配器 QQ 机器人（Python >=3.12，依赖由 uv 管理）。
 - 适配器：OneBot V11（Lagrange/LLOneBot）、Milky（QQNT）、Telegram
 - 启动：run.py（加载顺序是运行契约）；`uv run python run.py`；配置默认 .env.prod
 - 运行时数据在 data/（不要清理/迁移）；独立微博图片 Web 应用：image_web/ + 前端
@@ -67,7 +67,7 @@ _NORMS = """【开发规范（AGENTS.md 要点）】
 - plan/调查报告/执行报告统一落 agent-plan-report/（已 gitignore；禁写 token/秘密，
   只记脱敏后的键名、数量、路径、命令结果与验证结论）
 
-Python 风格（§7）：3.10 兼容；import 分组置顶；函数内 import 仅限循环依赖/可选依赖；
+Python 风格（§7）：3.12 兼容；import 分组置顶；函数内 import 仅限循环依赖/可选依赖；
 异步 I/O 不用阻塞调用；资源用 with 管理；捕获 Exception 不捕 BaseException；
 日志带操作上下文但不输出秘密；公共 API 小而稳定。
 

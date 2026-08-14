@@ -45,7 +45,7 @@ x_image_web/               X 站点前端与启停脚本
 
 ## 环境要求
 
-- Python 3.10 或更高版本
+- Python 3.12 或更高版本
 - [uv](https://docs.astral.sh/uv/)
 - 至少一个可用的机器人协议端或 Telegram Bot token
 - Node.js 与 npm，仅在开发图片浏览站点前端时需要
