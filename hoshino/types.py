@@ -28,3 +28,6 @@ else:
     T_Message: TypeAlias = Any
 
 MessageLike = T_Message
+
+# 跨 adapter 统一的消息/会话 id 形态（OB11/Milky/Telegram 均为 int，保留 str 兼容）。
+MessageId: TypeAlias = int | str

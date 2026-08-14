@@ -7,6 +7,8 @@ from typing import Any
 from nonebot.adapters.onebot.v11 import Event
 from nonebot.compat import type_validate_python
 
+from hoshino.types import MessageId, MessageLike
+
 from hoshino.platform.ob11.types import Bot, Message
 
 
@@ -37,7 +39,7 @@ def get_user_id(event: Event, default: int | None = None) -> int | None:
     return get_event_value(event, "user_id", default)
 
 
-def get_event_message(event: Event, default: Any = None) -> Any:
+def get_event_message(event: Event, default: Any = None) -> MessageLike | None:
     get_message = getattr(event, "get_message", None)
     if callable(get_message):
         return get_message()
@@ -61,11 +63,11 @@ def get_session_id(event: Event, default: str | None = None) -> str | None:
     return default
 
 
-def get_message_id(event: Event, default: Any = None) -> Any:
+def get_message_id(event: Event, default: Any = None) -> MessageId | None:
     return get_event_value(event, "message_id", default)
 
 
-def get_reply_message(event: Event, default: Any = None) -> Any:
+def get_reply_message(event: Event, default: Any = None) -> MessageLike | None:
     reply = get_event_value(event, "reply")
     if reply is None:
         return default
@@ -82,7 +84,7 @@ def get_reply_sender_id(event: Event, default: str | None = None) -> str | None:
     return str(uid) if uid is not None else default
 
 
-def get_reply_message_id(event: Event, default: Any = None) -> Any:
+def get_reply_message_id(event: Event, default: Any = None) -> MessageId | None:
     """回复目标的消息 id（OB11 供 get_msg 拉取原文用）。"""
     reply = get_event_value(event, "reply")
     if reply is None:
@@ -130,7 +132,7 @@ def is_private_event(event: Event) -> bool:
     return get_group_id(event) is None and get_user_id(event) is not None
 
 
-async def get_forwarded_messages(bot: Bot, event: Event) -> list[Message]:
+async def get_forwarded_messages(bot: Bot, event: Event) -> list[MessageLike]:
     async def expand(message: Message) -> list[Message]:
         result = []
         for segment in message:

@@ -1,10 +1,17 @@
-"""Adapter-aware event accessors."""
+"""Adapter-aware event accessors.
+
+公共访问器全部走 ``_backend`` 分发的 adapter event 模块（ob11 / milky /
+telegram）；``EventBackend`` Protocol 显式描述这些模块的结构化接口，
+让每个 adapter 的实现与公共层的契约保持一致。
+"""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol, cast
 
 from nonebot.adapters import Bot, Event
+
+from hoshino.types import MessageId, MessageLike
 
 from hoshino.platform.milky import event as milky_event
 from hoshino.platform.milky.types import Event as MilkyEvent
@@ -13,10 +20,46 @@ from hoshino.platform.telegram import event as telegram_event
 from hoshino.platform.telegram.types import Event as TelegramEvent
 
 
-def _backend(event: Event):
+class EventBackend(Protocol):
+    """adapter event 模块的公共接口（ob11/milky/telegram 结构性匹配）。
+
+    返回 ``MessageLike`` 的访问器在消息不存在时返回 None（default 语义）。
+    """
+
+    def get_event_value(self, event: Event, name: str, default: Any = None) -> Any: ...
+    def get_group_id(self, event: Event, default: int | None = None) -> int | None: ...
+    def get_user_id(self, event: Event, default: int | None = None) -> int | None: ...
+    def get_event_message(
+        self, event: Event, default: Any = None
+    ) -> MessageLike | None: ...
+    def get_plaintext(self, event: Event, default: str = "") -> str: ...
+    def get_session_id(
+        self, event: Event, default: str | None = None
+    ) -> str | None: ...
+    def get_message_id(self, event: Event, default: Any = None) -> MessageId | None: ...
+    def get_reply_message(
+        self, event: Event, default: Any = None
+    ) -> MessageLike | None: ...
+    def get_reply_sender_id(
+        self, event: Event, default: str | None = None
+    ) -> str | None: ...
+    def get_reply_message_id(
+        self, event: Event, default: Any = None
+    ) -> MessageId | None: ...
+    def is_message_event(self, event: Event) -> bool: ...
+    def is_group_event(self, event: Event) -> bool: ...
+    def is_private_event(self, event: Event) -> bool: ...
+    async def get_forwarded_messages(
+        self, bot: Bot, event: Event
+    ) -> list[MessageLike]: ...
+
+
+def _backend(event: Event) -> EventBackend:
     if isinstance(event, MilkyEvent):
-        return milky_event
-    return telegram_event if isinstance(event, TelegramEvent) else ob11_event
+        return cast(EventBackend, milky_event)
+    if isinstance(event, TelegramEvent):
+        return cast(EventBackend, telegram_event)
+    return cast(EventBackend, ob11_event)
 
 
 def get_event(event: Event) -> str:
@@ -35,7 +78,7 @@ def get_user_id(event: Event, default: int | None = None) -> int | None:
     return _backend(event).get_user_id(event, default)
 
 
-def get_event_message(event: Event, default: Any = None) -> Any:
+def get_event_message(event: Event, default: Any = None) -> MessageLike | None:
     return _backend(event).get_event_message(event, default)
 
 
@@ -47,11 +90,11 @@ def get_session_id(event: Event, default: str | None = None) -> str | None:
     return _backend(event).get_session_id(event, default)
 
 
-def get_message_id(event: Event, default: Any = None) -> Any:
+def get_message_id(event: Event, default: Any = None) -> MessageId | None:
     return _backend(event).get_message_id(event, default)
 
 
-def get_reply_message(event: Event, default: Any = None) -> Any:
+def get_reply_message(event: Event, default: Any = None) -> MessageLike | None:
     return _backend(event).get_reply_message(event, default)
 
 
@@ -60,7 +103,7 @@ def get_reply_sender_id(event: Event, default: str | None = None) -> str | None:
     return _backend(event).get_reply_sender_id(event, default)
 
 
-def get_reply_message_id(event: Event, default: Any = None) -> Any:
+def get_reply_message_id(event: Event, default: Any = None) -> MessageId | None:
     """回复目标的消息 id（供 API 拉取原文或匹配 bot 自己消息）。"""
     return _backend(event).get_reply_message_id(event, default)
 
@@ -71,7 +114,7 @@ def is_reply_to_bot(bot: Bot, event: Event) -> bool:
     return sender is not None and sender == str(bot.self_id)
 
 
-async def get_reply_content(bot: Bot, event: Event) -> Any | None:
+async def get_reply_content(bot: Bot, event: Event) -> MessageLike | None:
     """回复目标的完整内容；事件内无内容（如 OB11 仅带 id）时经 API 拉取。"""
     reply = get_reply_message(event)
     fetcher = getattr(_backend(event), "fetch_reply_content", None)
@@ -92,6 +135,6 @@ def is_private_event(event: Event) -> bool:
     return _backend(event).is_private_event(event)
 
 
-async def get_forwarded_messages(bot: Bot, event: Event) -> list[Any]:
+async def get_forwarded_messages(bot: Bot, event: Event) -> list[MessageLike]:
     getter = getattr(_backend(event), "get_forwarded_messages", None)
     return await getter(bot, event) if getter else []

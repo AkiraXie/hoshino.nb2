@@ -6,6 +6,8 @@ from typing import Any
 
 from nonebot.adapters import Event
 
+from hoshino.types import MessageId, MessageLike
+
 from hoshino.platform.milky.types import (
     GroupMessageEvent,
     MessageEvent,
@@ -54,7 +56,7 @@ def get_user_id(event: Event, default: int | None = None) -> int | None:
     return default
 
 
-def get_event_message(event: Event, default: Any = None) -> Any:
+def get_event_message(event: Event, default: Any = None) -> MessageLike | None:
     getter = getattr(event, "get_message", None)
     if callable(getter):
         try:
@@ -88,14 +90,14 @@ def get_session_id(event: Event, default: str | None = None) -> str | None:
     return default
 
 
-def get_message_id(event: Event, default: Any = None) -> Any:
+def get_message_id(event: Event, default: Any = None) -> MessageId | None:
     value = getattr(event, "message_id", None)
     if value is not None:
         return value
     return _data_value(event, "message_seq", default)
 
 
-def get_reply_message(event: Event, default: Any = None) -> Any:
+def get_reply_message(event: Event, default: Any = None) -> MessageLike | None:
     reply = getattr(event, "reply", None)
     if reply is None:
         return default
@@ -111,7 +113,7 @@ def get_reply_sender_id(event: Event, default: str | None = None) -> str | None:
     return str(sender_id) if sender_id is not None else default
 
 
-def get_reply_message_id(event: Event, default: Any = None) -> Any:
+def get_reply_message_id(event: Event, default: Any = None) -> MessageId | None:
     """回复目标的消息序列号（Milky 会话内序列）。"""
     reply = getattr(event, "reply", None)
     if reply is None:
@@ -153,7 +155,7 @@ async def _expand_forward_segments(bot, message) -> list[Any]:
     return forwarded
 
 
-async def get_forwarded_messages(bot, event: Event) -> list[Any]:
+async def get_forwarded_messages(bot, event: Event) -> list[MessageLike]:
     forwarded = []
     for message in (get_event_message(event), get_reply_message(event)):
         forwarded.extend(await _expand_forward_segments(bot, message))
