@@ -16,6 +16,7 @@ from pydantic_ai.messages import (
     ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
+    TextContent,
     UserPromptPart,
 )
 
@@ -83,13 +84,31 @@ def deserialize_message(message_json: str) -> ModelMessage | None:
         return None
 
 
+def _user_prompt_text(part: UserPromptPart) -> str:
+    """UserPromptPart 内容转可观测文本：str 直用，多模态部件列表提取文本并标注图片。"""
+    content = part.content
+    if isinstance(content, str):
+        return content
+    texts: list[str] = []
+    for item in content:
+        if isinstance(item, str):
+            texts.append(item)
+        elif isinstance(item, TextContent):
+            texts.append(item.content)
+        elif type(item).__name__ in ("ImageUrl", "BinaryContent"):
+            texts.append("[图片]")
+        else:
+            texts.append(str(item))
+    return "".join(texts)
+
+
 def messages_to_events(messages: list[ModelMessage]) -> list[dict]:
     """把消息列表拆成事件序列（迁移与 commit 复用）。
 
     只产 surface 事件；``ModelRequest`` 含 ``UserPromptPart`` 记为 user/message，
     否则（tool return 或兜底）序列化整条为 tool/result；``ModelResponse`` 序列化
-    整条为 assistant/message。user/message 同时保留 ``content``（可观测）与
-    ``message_json``（含 timestamp 的无损重放），保证
+    整条为 assistant/message。user/message 同时保留 ``content``（可观测，多模态
+    内容提取文本并标注图片）与 ``message_json``（含 timestamp 的无损重放），保证
     ``derive_messages(messages_to_events(m)) == m`` 字节级往返。
     """
     events: list[dict] = []
@@ -97,7 +116,7 @@ def messages_to_events(messages: list[ModelMessage]) -> list[dict]:
         if isinstance(message, ModelRequest):
             if any(isinstance(part, UserPromptPart) for part in message.parts):
                 content = "".join(
-                    part.content
+                    _user_prompt_text(part)
                     for part in message.parts
                     if isinstance(part, UserPromptPart)
                 )
