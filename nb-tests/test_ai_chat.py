@@ -41,6 +41,7 @@ def _milky_group(
     role: str = "admin",
     group_id: int = 123456,
     reply: dict | None = None,
+    segments: list[dict] | None = None,
 ) -> tuple[MilkyBot, MilkyGroupMessageEvent]:
     from nonebot import get_adapters
     from nonebot.adapters.milky import Adapter as MilkyAdapter
@@ -59,7 +60,11 @@ def _milky_group(
                 "message_seq": next(_seq),
                 "sender_id": user_id,
                 "time": 1,
-                "segments": [{"type": "text", "data": {"text": text}}],
+                "segments": (
+                    segments
+                    if segments is not None
+                    else [{"type": "text", "data": {"text": text}}]
+                ),
                 "group": {
                     "group_id": group_id,
                     "group_name": "test group",
@@ -641,6 +646,80 @@ async def test_chat_without_hash_does_not_trigger(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_at_other_bot_with_hash_does_not_trigger(monkeypatch, tmp_store):
+    """`@bot2 #xxx` 不应触发本 bot：纯文本提取会把 at 段丢掉误判为 `#xxx`。"""
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch, tmp_store)
+    agent = FakeAgent(FakeResult("x"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    # @ 另一个机器人（9999 ≠ self_id 10000）+ # 开头文本
+    bot, event = _milky_group(
+        "x",
+        user_id=7,
+        segments=[
+            {"type": "mention", "data": {"user_id": 9999}},
+            {"type": "text", "data": {"text": "#你好"}},
+        ],
+    )
+    await bot.handle_event(event)
+
+    assert sent == []  # 不触发，不响应
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_at_self_with_hash_triggers(monkeypatch, tmp_store):
+    """`@bot1 #xxx`（@ 自己）触发，# 前缀被剥离后进入对话。"""
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch, tmp_store)
+    agent = FakeAgent(FakeResult("你好！"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    bot, event = _milky_group(
+        "x",
+        user_id=7,
+        segments=[
+            {"type": "mention", "data": {"user_id": 10000}},
+            {"type": "text", "data": {"text": "#你好"}},
+        ],
+    )
+    await bot.handle_event(event)
+
+    assert agent.prompt == "你好"
+    assert len(sent) == 1
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_at_self_without_hash_does_not_trigger(monkeypatch, tmp_store):
+    """`@bot1 你好`（@ 自己但无 #、非回复）不触发。"""
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch, tmp_store)
+    agent = FakeAgent(FakeResult("x"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    bot, event = _milky_group(
+        "x",
+        user_id=7,
+        segments=[
+            {"type": "mention", "data": {"user_id": 10000}},
+            {"type": "text", "data": {"text": "你好"}},
+        ],
+    )
+    await bot.handle_event(event)
+
+    assert sent == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_no_provider_configured(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
@@ -1102,6 +1181,52 @@ async def test_conv_persists_across_manager_rebuild(monkeypatch, tmp_store):
     conv = sessions.conversation_manager.get_active("milky:123456")
     assert conv.name == "默认"
     assert len(conv.messages) == 1
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_consecutive_turns_keep_history(monkeypatch, tmp_store):
+    """连续 4 轮 # 对话（1-1a-2-2a-3-3a-4-4a）：每轮模型必须收到此前全部历史。
+
+    第 2 轮发问时历史含 1+1a；第 3 轮含 1..2a；第 4 轮含 1..3a；顺序与内容
+    逐条断言，确认事件日志派生历史不丢轮、不串轮。
+    """
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        UserPromptPart,
+    )
+
+    def _turn(question: str, answer: str) -> FakeResult:
+        # 对齐真实 pydantic-ai：一轮 = user ModelRequest + assistant ModelResponse。
+        return FakeResult(
+            answer,
+            messages=[
+                ModelRequest(parts=[UserPromptPart(content=question)]),
+                ModelResponse(parts=[TextPart(content=answer)]),
+            ],
+        )
+
+    turns = [
+        ("问题一", "回答一"),
+        ("问题二", "回答二"),
+        ("问题三", "回答三"),
+        ("问题四", "回答四"),
+    ]
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+    for index, (question, answer) in enumerate(turns, start=1):
+        agent._result = _turn(question, answer)
+        bot, event = _milky_group(f"#{question}", user_id=7)
+        await bot.handle_event(event)
+        # 本轮模型收到的历史 = 此前所有轮（1..(i-1) 的 user+assistant）
+        expected = 2 * (index - 1)
+        assert len(agent.message_history) == expected, (
+            f"第 {index} 轮应收到 {expected} 条历史，实际 {len(agent.message_history)}"
+        )
+        for prior in range(index - 1):
+            q, a = turns[prior]
+            assert agent.message_history[2 * prior].parts[0].content == q
+            assert agent.message_history[2 * prior + 1].parts[0].content == a
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

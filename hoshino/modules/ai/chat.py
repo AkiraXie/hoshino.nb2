@@ -27,18 +27,21 @@ from collections.abc import Callable
 
 from nonebot.adapters import Bot, Event
 from nonebot.rule import Rule
+from nonebot_plugin_alconna.uniseg import Image as UniImage
 from nonebot_plugin_alconna.uniseg import UniMessage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from hoshino.platform import (
     event_scope_key,
+    get_event_message,
     get_forwarded_messages,
     get_group_id,
     get_plaintext,
     get_reply_content,
     is_reply_to_bot,
     send_to_event,
+    to_unimessage,
 )
 
 from hoshino.ai import (
@@ -62,16 +65,47 @@ from hoshino.ai.base import (
     resolve_provider,
 )
 from hoshino.core.service import Service
+from hoshino.util.media import get_event_media_segments
 
 # aichat 服务仅属于聊天插件（# 触发）：默认关闭，按 scope 启用后才应答。
 sv = Service("aichat", enable_on_default=False, visible=False)
 
 
 async def _ai_chat_rule(bot: Bot, event: Event) -> bool:
-    """``#`` 前缀，或对机器人自己消息的引用回复（无需 ``#``）。"""
-    if get_plaintext(event).lstrip().startswith("#"):
+    """``#`` 前缀（``#xxx`` / ``@本bot #xxx``），或对机器人自己消息的引用回复。
+
+    按消息段结构判断而非 ``get_plaintext``：纯文本提取会丢弃 at 段，
+    导致 ``@bot2 #xxx`` 被误判为 ``#xxx`` 而触发本 bot。
+    """
+    if await _hash_prefix_trigger(bot, event):
         return True
     return is_reply_to_bot(bot, event)
+
+
+async def _hash_prefix_trigger(bot: Bot, event: Event) -> bool:
+    """``#`` 前缀触发：消息本体以 ``#`` 开头，或 @ 本 bot 后跟 ``#`` 开头文本。
+
+    - ``#xxx`` → True；``@本bot #xxx`` → True（@ 自己后继续检查文本）；
+    - ``@其他 #xxx`` → False（at 段目标不是自己，直接拒绝）；
+    - 文本段前出现图片等非文本段 → False。
+    """
+    message = get_event_message(event)
+    if message is None:
+        return False
+    try:
+        unimsg = await to_unimessage(message, bot=bot, event=event)
+    except Exception:
+        return False
+    for segment in unimsg:
+        if segment.type == "at":
+            target = getattr(segment, "target", None)
+            if target is not None and str(target) != str(bot.self_id):
+                return False  # @ 了其他实体（如另一个 bot）→ 不触发
+            continue  # @ 自己 → 继续检查后续文本
+        if segment.type == "text":
+            return bool(segment.text and segment.text.lstrip().startswith("#"))
+        return False  # 文本前出现图片等非文本段 → 不触发
+    return False
 
 
 # 默认 block=True，避免命中消息继续落到其他 on_message 规则。
@@ -542,9 +576,6 @@ async def _reply_context_text(bot: Bot, event: Event) -> str:
 async def _event_images(bot: Bot, event: Event) -> list:
     """提取事件中的图片段（含回复引用/转发）；解析失败按无图处理。"""
     try:
-        from hoshino.util.media import get_event_media_segments
-        from nonebot_plugin_alconna.uniseg import Image as UniImage
-
         return await get_event_media_segments(bot, event, UniImage)
     except Exception as exc:
         sv.logger.warning(f"AI 媒体段解析失败 error={type(exc).__name__}")
