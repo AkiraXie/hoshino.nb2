@@ -122,7 +122,6 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
     if not args:
         # 裸 `ai`：直接给状态总览（含看图引导），比命令清单更自然。
         await _handle_status(bot, event)
-        await send_to_event(bot, event, "更多命令：`ai help` 查看完整说明。")
         return
     sub, rest = args[0], args[1:]
     if sub in ("help", "?"):
@@ -572,9 +571,8 @@ async def _handle_status(bot: Bot, event: Event) -> None:
         )
         return
     text_model, vision_model = provider.resolve_models(scope_key, provider_id)
-    source = "（本群绑定）" if bound else "（全局默认）"
     lines = [
-        f"当前 provider：`{provider_id}`{source}",
+        f"当前 provider：`{provider_id}`",
         f"文本模型：`{text_model or '（未设置）'}`",
         f"多模态模型：`{vision_model or '（未设置）'}`",
     ]
