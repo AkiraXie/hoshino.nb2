@@ -610,7 +610,7 @@ async def _handle_clear(bot: Bot, event: Event, args: list[str]) -> None:
 
 
 async def _handle_contexts(bot: Bot, event: Event, args: list[str]) -> None:
-    """只读查看 scope 的对话清单（多对话模型，plan aichat-context-timeout）。"""
+    """只读查看 scope 的对话清单（多对话模型）。"""
     scope_key = args[0] if args else event_scope_key(bot, event)
     if not scope_key:
         await send_to_event(bot, event, "无法解析 scope。")

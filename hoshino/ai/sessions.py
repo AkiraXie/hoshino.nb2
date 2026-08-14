@@ -1,6 +1,6 @@
 """对话（上下文）管理器：内存优先 + SQLite write-through。
 
-Session(scope) → Conversation 双层模型（plan aichat-context-timeout，对齐 AstrBot
+Session(scope) → Conversation 双层模型（对齐 AstrBot
 ConversationManager）：每个 scope 持有多个命名对话，``active_conv_id`` 指向当前
 对话；消息经 pydantic-ai ``ModelMessagesTypeAdapter`` 序列化。
 

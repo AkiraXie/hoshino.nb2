@@ -1,6 +1,6 @@
 """稳定领域事件 facade。
 
-事件类型名固定（plan 12），schema version 稳定；payload 只含脱敏字段，不落原始
+事件类型名固定，schema version 稳定；payload 只含脱敏字段，不落原始
 prompt、完整工具参数或内部 thinking。内部遥测事件与稳定事件共用同一张
 ``ai_task_events`` 表，用 ``event_type`` 前缀区分。outbox 幂等键为
 ``(task_id, event_type, sequence)``。
@@ -56,7 +56,7 @@ def enqueue_notification(
     target_json: str,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    """把用户侧通知写入 outbox（发送失败不阻塞 Task 终态，见 plan 6.2/12）。
+    """把用户侧通知写入 outbox（发送失败不阻塞 Task 终态）。
 
     sequence 自动取该 task 下一个序号，保证 (task_id, event_type, sequence) 幂等。
     """

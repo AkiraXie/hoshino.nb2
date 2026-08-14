@@ -403,7 +403,7 @@ class TestOutbox:
         assert item["last_error"] == "send failed"
 
     def test_outbox_gives_up_after_max_attempts(self, tmp_store):
-        """超过重试上限后放弃投递：不再进入 pending，不回滚 Task 终态（plan 12）。"""
+        """超过重试上限后放弃投递：不再进入 pending，不回滚 Task 终态。"""
         from hoshino.ai.task import store as task_store
 
         task_store.outbox_enqueue(

@@ -335,7 +335,7 @@ def _file_ctx(tmp_path, *, surface: str = "chat") -> SimpleNamespace:
 
 
 async def test_file_delete_refused_on_chat_surface(tmp_path):
-    """chat 不执行 delete（无副作用），引导创建 Task（plan 10：chat 不审批）。"""
+    """chat 不执行 delete（无副作用），引导创建 Task（chat 不审批）。"""
     from hoshino.ai.tools.computer.file import file
 
     ctx = _file_ctx(tmp_path)
@@ -346,7 +346,7 @@ async def test_file_delete_refused_on_chat_surface(tmp_path):
 
 
 async def test_file_delete_executes_on_task_surface(tmp_path):
-    """task surface 的 delete 经 deferred approval 后实际执行（plan 8.1）。"""
+    """task surface 的 delete 经 deferred approval 后实际执行。"""
     from hoshino.ai.tools.computer.file import file
 
     ctx = _file_ctx(tmp_path, surface="task")
@@ -369,7 +369,7 @@ async def test_file_delete_directory_refused_on_task(tmp_path):
 
 
 async def test_file_sensitive_paths_always_refused(tmp_path):
-    """.env 等敏感路径任何 mode 都拒绝，审批不能放行（plan 8.1/10）。"""
+    """.env 等敏感路径任何 mode 都拒绝，审批不能放行。"""
     from hoshino.ai.tools.computer.file import file
 
     sensitive = tmp_path / ".env"

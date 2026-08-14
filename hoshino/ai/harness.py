@@ -1,4 +1,4 @@
-"""Pydantic AI Harness 兼容 facade（task-runtime-v1 plan 实施顺序第 8 项）。
+"""Pydantic AI Harness 兼容 facade。
 
 选择性引入官方 ``pydantic-ai-harness`` 的 **Planning** / **StepPersistence** 能力：
 

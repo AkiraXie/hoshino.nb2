@@ -1,7 +1,7 @@
 """Agent 运行时依赖（AgentDeps）与遥测 recorder。
 
 chat 与 task 两个 surface 共用同一 ``AgentDeps`` 定义；``bot``/``event`` 是可选运行时
-依赖（后台 Task 恢复时可能不可用，见 pydantic-ai-task-runtime-v1-plan.md）。只把每次 run
+依赖（后台 Task 恢复时可能不可用）。只把每次 run
 真正变化的状态注入 deps，固定的 store/logger/factory 不注入（设计审查结论）。
 """
 

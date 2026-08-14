@@ -203,7 +203,7 @@ async def _execute_claimed(run: dict, task: dict, ctx: TaskContext) -> None:
         )
         return
 
-    # 成功：结果落库与 Task 完成在同一逻辑步骤内（plan 6.2）
+    # 成功：结果落库与 Task 完成在同一逻辑步骤内
     task_store.update_run_state(
         run["id"],
         "succeeded",

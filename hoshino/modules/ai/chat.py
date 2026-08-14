@@ -9,7 +9,7 @@
   回复/转发里的图片（多模态路径），而不仅是当前消息本体。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
   见 ``sessions.py``；轮次按 scope 锁串行化，run 进行中再收消息回忙提示。
-- 执行护栏（持久化不替代超时，见 aichat-context-timeout-plan.md §3）：
+- 执行护栏（持久化不替代超时）：
   run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
   超时/超限把本轮提问写入上下文可续问；provider 异常不写。
 - 模型输出 Markdown 先渲染为图片；渲染失败（超时/浏览器异常）回退纯文本。

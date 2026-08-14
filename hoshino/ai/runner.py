@@ -12,7 +12,7 @@ CancelScope 退出时报 "Attempted to exit a cancel scope that isn't the curren
 tasks's current cancel scope"。
 
 per_run_step=False 的 DynamicToolset 在 for_run 时只求值一次工具集，scope 的工具类别在
-单次对话中不变，这正确且省 DB 查询（见 ai-tools-skill-persona-plan.md）。
+单次对话中不变，这正确且省 DB 查询。
 """
 
 from __future__ import annotations
@@ -234,7 +234,7 @@ async def run_agent(
     ``capabilities`` 供 Task 注入 harness 的 Planning/StepPersistence（chat 不传，
     与 agent 构造时的 capabilities 合并）。
     ``usage_limits``：run 级护栏（请求次数/token 上限，超限抛 UsageLimitExceeded）；
-    持久化不能替代超时，见 aichat-context-timeout-plan.md §3。
+    持久化不能替代超时。
     ``run_log``：可选进程内观测收集器；填充 started_at/steps/tool_calls/ended_at/
     reason。chat 用它落 log-only 事件与失败日志的 tools 字段；task 不传。
     """

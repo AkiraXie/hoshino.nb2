@@ -266,7 +266,7 @@ def freeze_tool_profile(scope_key: str) -> dict[str, int]:
     """按 scope 的 task binding 展开最终 tool_id -> version profile（Task 冻结用）。
 
     与 ``resolve_tools`` 同一 category 解析，但展开为可持久化的 id/version 快照；
-    Task 恢复只按该快照展开，不受后续 binding 变化影响（plan 2.3/6.1）。
+    Task 恢复只按该快照展开，不受后续 binding 变化影响。
     """
     enabled_categories = _enabled_categories(scope_key, "task")
     profile: dict[str, int] = {}
@@ -301,7 +301,7 @@ def approval_required(ctx, tool_definition, kwargs: dict[str, Any]) -> bool:
     """ApprovalRequiredToolset 回调：决定一次 tool call 是否需要 deferred approval。
 
     - chat（task 为空）从不审批：high-risk 工具已静态排除，file 参数级高风险返回
-      “创建 Task”的无副作用结果（plan 10 未注：chat 不使用 deferred approval）；
+      “创建 Task”的无副作用结果（chat 不使用 deferred approval）；
     - task 按冻结 approval_mode：never 不审批；always 全部审批；auto 仅 high-risk。
     """
     task = getattr(ctx.deps, "task", None)

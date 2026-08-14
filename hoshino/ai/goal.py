@@ -5,7 +5,7 @@ maxGoalRounds），但用「状态行 + CAS」而非事件溯源（v1；``goal/c
 留到后续，CAS 已提供 dsh fold 的安全保证，对聊天机器人足够）。
 
 目标**不自动驱动执行**：执行仍由用户逐轮 ``#`` 提问驱动，Goal 只是可显式管理的
-跨轮状态；把 Goal 接到 Task/自动续跑是后续 Phase 2 的事。每 scope 单目标，
+跨轮状态；把 Goal 接到 Task/自动续跑留待后续。每 scope 单目标，
 ``scope_key`` 主键即约束。
 
 本模块不 ``import nonebot``，不作为插件加载。

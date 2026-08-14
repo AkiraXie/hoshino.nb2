@@ -336,7 +336,7 @@ async def _status(bot: Bot, event: Event, args: list[str]) -> None:
 
 
 async def _list(bot: Bot, event: Event) -> None:
-    """plan 5.1 权限矩阵：创建者看自己的；ADMIN/OWNER 看本 scope；SUPERUSER 看任意。"""
+    """权限矩阵：创建者看自己的；ADMIN/OWNER 看本 scope；SUPERUSER 看任意。"""
     scope_key = event_scope_key(bot, event)
     permissions = await ai_deps.build_permission_snapshot(bot, event)
     if permissions.is_superuser:
@@ -440,7 +440,7 @@ async def _workspaces(bot: Bot, event: Event) -> None:
     if not workspaces:
         await send_to_event(bot, event, "当前 scope 未绑定 workspace。")
         return
-    # 本机绝对路径只对 ADMIN+ 展示，普通成员只看名称/模式（plan 8.1 不泄露本机路径）。
+    # 本机绝对路径只对 ADMIN+ 展示，普通成员只看名称/模式（不泄露本机路径）。
     permissions = await ai_deps.build_permission_snapshot(bot, event)
     show_root = permissions.is_admin or permissions.is_superuser
     lines = ["已绑定 workspace："]

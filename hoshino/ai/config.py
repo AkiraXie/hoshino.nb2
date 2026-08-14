@@ -21,7 +21,7 @@ ThemeKind = Literal["light", "dark"]
 @dataclass(frozen=True, slots=True)
 class AIConfig:
     default: str = ""
-    # 默认人设取 prompts.DEFAULT_SYSTEM_PROMPT（plan「bot 默认人设」精修版）。
+    # 默认人设取 prompts.DEFAULT_SYSTEM_PROMPT。
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
     max_history_messages: int = 64
     render_timeout_seconds: float = 30.0
@@ -39,7 +39,7 @@ class AIConfig:
     # Task 默认审批模式：auto（high-risk 工具 deferred approval）/
     # always（全部工具先审批）/ never（不审批）。创建 Task 时冻结进 capability snapshot。
     task_approval_mode: str = "auto"
-    # 聊天执行护栏（plan aichat-context-timeout：持久化不替代超时）：
+    # 聊天执行护栏（持久化不替代超时）：
     # run 墙钟上限；run 内模型请求次数上限（UsageLimits.request_limit）。
     chat_run_timeout_seconds: float = 180.0
     chat_max_requests: int = 12

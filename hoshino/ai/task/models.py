@@ -1,6 +1,6 @@
 """Task 领域模型与稳定 DTO。
 
-- 状态机见 plan 6.3：``TaskStatus``（Task 层）与 ``TaskRunState``（一次 attempt）。
+- 状态机：``TaskStatus``（Task 层）与 ``TaskRunState``（一次 attempt）。
 - ``TaskOutput`` 是 Task 成功的唯一产物，群消息只渲染它；原始历史/工具参数不公开。
 - ``TaskContext`` 是可持久化产品运行上下文；``TaskDeps`` 由能力底座的 ``AgentDeps``
   承载（``task`` 字段），这里只定义序列化所需的字段与快照。

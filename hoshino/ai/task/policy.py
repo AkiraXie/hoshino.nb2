@@ -1,4 +1,4 @@
-"""scope task policy、cooldown、并发 guard 与 workspace 冻结（plan 9/8.1）。
+"""scope task policy、cooldown、并发 guard 与 workspace 冻结。
 
 检查顺序：Service 启用 → scope policy → 用户实际权限 → 并发上限 → cooldown。
 cooldown 只在创建事务内原子判定（``store.create_task``），这里提供窗口内最近 Task
@@ -62,7 +62,7 @@ def resolve_workspace(
     """解析创建 Task 使用的 workspace：指定名称验证存在；缺省用 default。
 
     返回 ``(workspace, "")`` 或 ``(None, 错误提示)``。创建时必须冻结规范化绝对
-    root 与读写模式；命令不能传入任意路径（plan 8.1）。
+    root 与读写模式；命令不能传入任意路径。
     """
     if name:
         ws = task_store.get_workspace(scope_key, name)

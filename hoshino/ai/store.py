@@ -168,8 +168,8 @@ def clear_session(scope_key: str) -> bool:
 
 # ------------------------------------------------------------- conversations
 #
-# Session(scope) → Conversation 双层模型（plan aichat-context-timeout，
-# 对齐 AstrBot ConversationManager）：一个 scope 持有多个命名对话，
+# Session(scope) → Conversation 双层模型（对齐 AstrBot ConversationManager）：
+# 一个 scope 持有多个命名对话，
 # ``ai_scope_chat_states`` 记录当前激活对话；历史仍是 pydantic-ai messages JSON。
 # ``ai_sessions`` 被取代：启动时幂等迁移为每个 scope 的「默认」对话。
 
@@ -573,7 +573,7 @@ def clear_provider_references(provider_id: str) -> int:
 
 # ------------------------------------------------------------------ providers
 #
-# provider 的唯一事实源（plan ai-infra-refactor-multimodal）。``AIConfig.providers``
+# provider 的唯一事实源。``AIConfig.providers``
 # （service_config JSON）只在启动迁移时读取一次，随后清空；key 明文落 SQLite
 # （与旧 JSON 一致），日志与命令输出一律脱敏。
 

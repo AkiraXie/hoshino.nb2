@@ -2,7 +2,7 @@
 
 表类继承 ``ai/store.py`` 的共享 ``Base``，DDL 经同一 ``on_serial_startup`` 建表。
 CRUD 用同步 SQLAlchemy；创建事务显式 ``IMMEDIATE``（单写者）串行化 check-and-insert，
-满足 plan 6.1 的并发 cooldown 要求。
+满足并发 cooldown 要求。
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ def _begin_immediate(session) -> None:
     SQLAlchemy 2.x 的 sqlite 方言静态拒绝 ``isolation_level="IMMEDIATE"``（只认
     READ UNCOMMITTED / SERIALIZABLE / AUTOCOMMIT），因此用原生 SQL 抢占写锁：
     并发会话在 BEGIN 处即等待到前一事务 commit 后才读到对方写入，从而串行化
-    cooldown check-and-insert 与 TaskRun claim（plan 6.1/11）。
+    cooldown check-and-insert 与 TaskRun claim。
     """
     session.connection().exec_driver_sql("BEGIN IMMEDIATE")
 
@@ -217,7 +217,7 @@ def create_task(
     ``outbox_payloads``：``{"event_type","sequence","payload"}``（target 用 task 的）。
     显式 ``IMMEDIATE`` 事务串行化 SQLite 上的 check-and-insert：并发两个 matcher
     同时进入时，第二个事务阻塞到第一个 commit 后，重读能看到新 Task，从而通过
-    cooldown 拒绝（plan 6.1 不允许先查再另一个事务插入）。
+    cooldown 拒绝（不允许先查再另一个事务插入）。
     命中 cooldown 时返回 ``{"cooldown": True, "task_id", "status", "remaining"}``。
     """
     now = _now()
@@ -443,7 +443,7 @@ def claim_next_run(owner: str, now: float | None = None) -> dict[str, Any] | Non
     """原子 claim 一个到期的 queued/retry_wait TaskRun。
 
     只能用条件 UPDATE 把仍为 queued/retry_wait 且已到期的行置为 running，
-    更新行数为 1 才获得 lease（plan 11）。SQLAlchemy 同步会话里用事务化
+    更新行数为 1 才获得 lease。SQLAlchemy 同步会话里用事务化
     ``select_for_update`` 不可用（SQLite 无行锁），退化为：
     SELECT（不锁）+ IMMEDIATE 事务里 UPDATE … WHERE state IN (...) AND next_retry_at <= now
     由 ``UPDATE`` 返回 rowcount==1 判断是否获得。
@@ -563,7 +563,7 @@ def requeue_interrupted(now: float | None = None) -> int:
 
 
 def create_next_attempt(task_id: str) -> dict[str, Any] | None:
-    """内部重试耗尽后创建 attempt+1 的新 TaskRun（plan 6.3 业务重试）。
+    """内部重试耗尽后创建 attempt+1 的新 TaskRun（业务重试）。
 
     新 run 沿用上一 run 的 conversation 与 context（含消息历史）；Task 回 queued。
     返回新 run 概要；Task 不存在返回 None。

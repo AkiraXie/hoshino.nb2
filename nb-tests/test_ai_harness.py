@@ -1,4 +1,4 @@
-"""Harness compatibility facade 单元测试（task-runtime-v1 plan 实施顺序第 8 项）。
+"""Harness compatibility facade 单元测试。
 
 harness 作为固定依赖安装（``pydantic-ai-harness``），真实 capability 路径用 pydantic-ai
 的 ``FunctionModel`` 驱动多轮工具调用（不连真实模型）；降级路径 monkeypatch

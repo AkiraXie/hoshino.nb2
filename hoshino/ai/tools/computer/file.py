@@ -107,7 +107,7 @@ async def file(
 async def _delete_file(ctx: RunContext[AgentDeps], resolved: str, path: str) -> str:
     """chat surface 拒绝 delete；task surface 经 deferred approval 后实际删除。
 
-    plan 8.1：delete 为 high-risk，Task auto 模式下先审批，批准后执行时仍复核
+    delete 为 high-risk，Task auto 模式下先审批，批准后执行时仍复核
     containment（调用方已做）与路径形态；只删单个文件，不做目录递归（bulk）。
     """
     if ctx.deps.task is None:
