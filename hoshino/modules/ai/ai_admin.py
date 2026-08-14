@@ -554,48 +554,28 @@ async def _echo_models(
 
 
 async def _handle_status(bot: Bot, event: Event) -> None:
+    """`ai status` / 裸 `ai`：只显示当前 provider 与文本/多模态模型。
+
+    刻意不暴露代理、渲染、历史长度等配置细节（看板保持极简，且不泄露内网配置）。
+    """
     config = get_config()
     scope_key = event_scope_key(bot, event)
     bound = store.get_scope_provider(scope_key) if scope_key else None
     provider_id = bound or config.default
-    record = provider.get_provider(provider_id) if provider_id else None
-    # 原生联网搜索只在 anthropic / openai_responses kind 上生效（服务端 web_search）。
-    native_search = (
-        config.web_search_native
-        and record is not None
-        and record.kind in ("anthropic", "openai_responses")
-    )
-    text_model, vision_model = (
-        provider.resolve_models(scope_key, provider_id)
-        if scope_key and provider_id
-        else ("", "")
-    )
-    lines = [
-        f"默认 provider：`{config.default}`"
-        if config.default
-        else "默认 provider：未设置",
-        f"当前 scope 绑定：`{bound}`" if bound else "当前 scope 绑定：无（回退默认）",
-        f"纯文本模型：`{text_model or '（未配置）'}`",
-        f"多模态模型：`{vision_model or '（无）'}`",
-        f"历史长度限制：{config.max_history_messages} 条",
-        f"渲染超时：{config.render_timeout_seconds}s",
-        f"渲染主题：{config.render_theme}",
-        f"渲染字体：{config.render_font}",
-        f"代理：{config.proxy or '未设置'}",
-        f"原生联网搜索：{'开（服务端 web_search）' if native_search else '关'}"
-        f"（工具重试预算 {config.tool_max_retries} 次）",
-        f"provider 数量：{len(provider.list_providers())}",
-    ]
-    if vision_model:
-        lines.append(f"看图：已启用（vision 模型 `{vision_model}`）")
-    else:
-        lines.extend(
-            [
-                "看图：未启用",
-                "配置看图：`ai model set vision <模型>`（可用模型先 `ai model list` 查看，",
-                "确认本群 provider：`ai provider set <id>`）",
-            ]
+    if not provider_id or not provider.has_provider(provider_id):
+        await send_to_event(
+            bot,
+            event,
+            "当前没有可用 provider：`ai provider list` 查看，`ai provider set <id>` 绑定。",
         )
+        return
+    text_model, vision_model = provider.resolve_models(scope_key, provider_id)
+    source = "（本群绑定）" if bound else "（全局默认）"
+    lines = [
+        f"当前 provider：`{provider_id}`{source}",
+        f"文本模型：`{text_model or '（未设置）'}`",
+        f"多模态模型：`{vision_model or '（未设置）'}`",
+    ]
     await send_to_event(bot, event, "\n".join(lines))
 
 

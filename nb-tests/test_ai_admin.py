@@ -458,7 +458,8 @@ async def test_model_set_member_rejected(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_status_shows_config(monkeypatch, tmp_store):
+async def test_status_shows_minimal_dashboard(monkeypatch, tmp_store):
+    """ai status 只显示当前 provider/文本/多模态，不暴露代理、渲染等配置细节。"""
     tmp_store.set_scope_provider("milky:123456", "anthropic")
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
@@ -466,13 +467,14 @@ async def test_status_shows_config(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "openai" in text
-    assert "anthropic" in text
-    assert "64 条" in text
-    assert "30.0" in text
-    # 未配置 vision 模型时给出配置引导（降低门槛）
-    assert "配置看图" in text
-    assert "ai model set vision" in text
+    assert "当前 provider：`anthropic`" in text
+    assert "文本模型：`claude-3-5-sonnet`" in text
+    assert "多模态模型：`（未设置）`" in text
+    # 极简看板：不暴露代理/渲染/历史限制等
+    assert "代理" not in text
+    assert "渲染" not in text
+    assert "64 条" not in text
+    assert "provider 数量" not in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -716,7 +718,7 @@ async def test_bare_ai_shows_status(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "默认 provider" in text
+    assert "当前 provider" in text
     assert "ai help" in sent[1][1].extract_plain_text()  # 入口附带指引
 
 
