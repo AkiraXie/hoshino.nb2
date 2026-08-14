@@ -83,7 +83,7 @@ class _FakeHandler(BaseHTTPRequestHandler):
 def start_fake_server() -> tuple[str, list[dict], callable]:
     """启动 fake HTTP 服务器。
 
-    返回 ``(base_url, requests, stop)``：``base_url`` 可直接作 ``ProviderConfig.url``；
+    返回 ``(base_url, requests, stop)``：``base_url`` 可直接作 provider 的 url；
     ``requests`` 是累积的请求记录（每次调用会清空旧的）；``stop`` 关闭服务器。
     """
     _FakeHandler.requests = []

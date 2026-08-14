@@ -1,13 +1,20 @@
-"""AI 管理插件：provider 配置、scope provider 切换、用量查询。
+"""AI 管理插件：provider / model-list / scope 模型、scope provider 切换、用量查询。
 
 命令与权限（全部平台无关）：
 - ``ai provider list``：列出 provider 信息（url 掩码，不显示 key）。ADMIN。
 - ``ai provider default <id>``：设置全局默认 provider。SUPERUSER。
 - ``ai provider use <id>``：把当前群 scope 绑定到指定 provider。群内 ADMIN+，私聊拒绝。
 - ``ai provider reset``：清除当前群 scope 绑定。群内 ADMIN+，私聊拒绝。
-- ``ai provider add <id> [--url ... --key ... --kind ... --model ...]``：新增/更新。SUPERUSER。
-- ``ai provider remove <id>``：删除 provider，先清理 scope 绑定；默认 provider 不允许直接删除。SUPERUSER。
-- ``ai status``：显示默认 provider、当前绑定、历史限制、渲染配置。ADMIN。
+- ``ai provider add <id> [--url ... --key ... --kind ... --model ... --vision-model ...]``：
+  新增/更新 provider（DB）。SUPERUSER。
+- ``ai provider remove <id>``：删除 provider 及其 model-list，先清理 scope 绑定；
+  默认 provider 不允许直接删除。SUPERUSER。
+- ``ai provider model-list <id>``：查看 provider 的 model-list。ADMIN。
+- ``ai provider model-add <id> <model> [--capabilities text|multimodal|both]``。SUPERUSER。
+- ``ai provider model-remove <id> <model>``：被默认模型引用时拒绝。SUPERUSER。
+- ``ai model show`` / ``ai model set text|vision <model>`` / ``ai model reset [text|vision]``：
+  查看/设置/清除当前群 scope 的模型覆盖（继承 provider 默认）。群内 ADMIN+，私聊拒绝。
+- ``ai status``：显示默认 provider、当前绑定与有效模型、历史限制、渲染配置。ADMIN。
 - ``ai stats [provider_id]``：显示 token / 缓存 / 延迟统计。ADMIN。
 - ``ai clear [scope]``：清空当前或指定 scope 的当前激活对话。ADMIN。
 - ``ai contexts [scope]``：只读查看 scope 的对话清单（多对话模型）。ADMIN。
@@ -31,25 +38,25 @@ from hoshino.platform.depends import ParamText
 from hoshino.platform.permission import ADMIN
 from hoshino.platform.superuser import is_superuser
 
-from . import (
-    _deps as deps,
-    _metrics as metrics,
-    _persona as persona,
-    _providers as providers,
-    _sessions,
-    _store as store,
-    _tools as tools,
+from hoshino.ai import (
+    deps,
+    metrics,
+    persona,
+    provider,
+    providers,
+    sessions,
+    store,
+    tools,
 )
-from ._base import get_config, sv
-from ._config import ProviderConfig, ProviderOptions, mask_url
-
-# 子包目录不会被 load_plugins 遍历，这里在插件加载期（controlled_modules 已建立）
-# 显式导入以注册 ai task matcher 与 scheduler hooks。不能提前到 ai/__init__.py。
-from ._task import commands as _task_commands  # noqa: F401
+from hoshino.ai.base import get_config, sv
+from hoshino.ai.config import mask_url
+from hoshino.ai.provider import ProviderRecord
 
 USAGE = (
     "AI 管理命令：\n"
     "  ai provider list / default <id> / use <id> / reset / add <id> / remove <id>\n"
+    "  ai provider model-list <id> / model-add <id> <model> / model-remove <id> <model>\n"
+    "  ai model show / set text|vision <model> / reset [text|vision]\n"
     "  ai status / stats [provider_id] / clear [scope] / contexts [scope]\n"
     "  ai tools list [scope] [chat|task] / ai tools on|off <cat> <chat|task> [scope]\n"
     "  ai persona list/show/create/update/use/reset/global/delete\n"
@@ -83,10 +90,17 @@ _PERSONA_USAGE = (
 _ADD_USAGE = (
     "用法：ai provider add <id> --url <url> --key <key> [选项]\n"
     "选项：--kind openai_chat|openai_responses|anthropic --model <m> "
-    "--temperature <t> --max-tokens <n> --timeout <s>"
+    "--vision-model <m> --temperature <t> --max-tokens <n> --timeout <s>\n"
+    "model / vision-model 会自动注册进该 provider 的 model-list。"
 )
 
-_KNOWN_KINDS = ("openai_chat", "openai_responses", "anthropic")
+_MODEL_USAGE = (
+    "用法：\n"
+    "  ai model show\n"
+    "  ai model set text <model> | vision <model> | vision none\n"
+    "  ai model reset [text|vision]\n"
+    "模型须存在于当前群 provider 的 model-list；vision 的 none 表示显式禁用多模态。"
+)
 
 # only_group=False：让私聊也能触发，从而在 handler 内对 use/reset 给出
 # “私聊不允许”的明确提示，而不是静默无响应。
@@ -102,6 +116,8 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
     sub, rest = args[0], args[1:]
     if sub == "provider":
         await _handle_provider(bot, event, rest)
+    elif sub == "model":
+        await _handle_model(bot, event, rest)
     elif sub == "status":
         await _handle_status(bot, event)
     elif sub == "stats":
@@ -150,27 +166,36 @@ async def _handle_provider(bot: Bot, event: Event, args: list[str]) -> None:
     elif action == "default":
         await _provider_default(bot, event, rest, config)
     elif action == "use":
-        await _provider_use(bot, event, rest, config)
+        await _provider_use(bot, event, rest)
     elif action == "reset":
         await _provider_reset(bot, event)
     elif action == "add":
-        await _provider_add(bot, event, rest, config)
+        await _provider_add(bot, event, rest)
     elif action == "remove":
         await _provider_remove(bot, event, rest, config)
+    elif action == "model-list":
+        await _provider_model_list(bot, event, rest)
+    elif action == "model-add":
+        await _provider_model_add(bot, event, rest)
+    elif action == "model-remove":
+        await _provider_model_remove(bot, event, rest)
     else:
         await send_to_event(bot, event, USAGE)
 
 
 async def _provider_list(bot: Bot, event: Event, config) -> None:
-    if not config.providers:
+    records = provider.list_providers()
+    if not records:
         await send_to_event(bot, event, "未配置任何 provider。")
         return
     lines = ["已配置的 provider："]
-    for pid, pc in config.providers.items():
-        mark = " ← 默认" if pid == config.default else ""
+    for record in records:
+        mark = " ← 默认" if record.id == config.default else ""
+        vision = record.default_vision_model or "（无）"
         lines.append(
-            f"- `{pid}` kind={pc.config.kind} model={pc.config.model or '-'} "
-            f"url={mask_url(pc.url)}{mark}"
+            f"- `{record.id}` kind={record.kind} "
+            f"text={record.default_text_model or '-'} "
+            f"vision={vision} url={mask_url(record.url)}{mark}"
         )
     await send_to_event(bot, event, "\n".join(lines))
 
@@ -183,14 +208,14 @@ async def _provider_default(bot: Bot, event: Event, args: list[str], config) -> 
         await send_to_event(bot, event, "用法：ai provider default <id>")
         return
     pid = args[0]
-    if not config.has_provider(pid):
+    if not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
     sv.save_config(replace(config, default=pid))
     await send_to_event(bot, event, f"已设置全局默认 provider：`{pid}`")
 
 
-async def _provider_use(bot: Bot, event: Event, args: list[str], config) -> None:
+async def _provider_use(bot: Bot, event: Event, args: list[str]) -> None:
     gid = get_group_id(event)
     if gid is None:
         await send_to_event(bot, event, "私聊不允许切换 provider。")
@@ -199,7 +224,7 @@ async def _provider_use(bot: Bot, event: Event, args: list[str], config) -> None
         await send_to_event(bot, event, "用法：ai provider use <id>")
         return
     pid = args[0]
-    if not config.has_provider(pid):
+    if not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
     scope_key = group_scope_key(gid, platform=platform_key(bot))
@@ -220,7 +245,7 @@ async def _provider_reset(bot: Bot, event: Event) -> None:
         await send_to_event(bot, event, "本群当前没有绑定 provider。")
 
 
-async def _provider_add(bot: Bot, event: Event, args: list[str], config) -> None:
+async def _provider_add(bot: Bot, event: Event, args: list[str]) -> None:
     if not _require_superuser(bot, event):
         await send_to_event(bot, event, "仅 SUPERUSER 可新增/修改 provider。")
         return
@@ -230,31 +255,42 @@ async def _provider_add(bot: Bot, event: Event, args: list[str], config) -> None
     pid = args[0]
     opts = _parse_flags(args[1:])
     kind = opts.get("kind", "openai_chat")
-    if kind not in _KNOWN_KINDS:
+    if kind not in provider.KNOWN_KINDS:
         await send_to_event(
             bot, event, "kind 必须是 openai_chat / openai_responses / anthropic。"
         )
         return
     try:
-        options = ProviderOptions(
-            kind=kind,
-            model=opts.get("model", ""),
-            temperature=float(opts["temperature"]) if opts.get("temperature") else None,
-            max_tokens=int(opts["max_tokens"]) if opts.get("max_tokens") else None,
-            timeout_seconds=float(opts["timeout"]) if opts.get("timeout") else None,
-        )
+        temperature = float(opts["temperature"]) if opts.get("temperature") else None
+        max_tokens = int(opts["max_tokens"]) if opts.get("max_tokens") else None
+        timeout_seconds = float(opts["timeout"]) if opts.get("timeout") else None
     except ValueError:
         await send_to_event(
             bot, event, "temperature / max-tokens / timeout 必须是数字。"
         )
         return
-    new_pc = ProviderConfig(
-        url=opts.get("url", ""), key=opts.get("key", ""), config=options
+    existed = provider.has_provider(pid)
+    provider.upsert_provider(
+        ProviderRecord(
+            id=pid,
+            url=opts.get("url", ""),
+            key=opts.get("key", ""),
+            kind=kind,
+            default_text_model=opts.get("model", ""),
+            default_vision_model=opts.get("vision_model", ""),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout_seconds=timeout_seconds,
+        )
     )
-    existed = pid in config.providers
-    providers_map = dict(config.providers)
-    providers_map[pid] = new_pc
-    sv.save_config(replace(config, providers=providers_map))
+    # 默认模型自动注册进 model-list（已注册的不覆盖其能力标记）。
+    if opts.get("model") and store.get_provider_model(pid, opts["model"]) is None:
+        store.upsert_provider_model(pid, opts["model"], "text")
+    if (
+        opts.get("vision_model")
+        and store.get_provider_model(pid, opts["vision_model"]) is None
+    ):
+        store.upsert_provider_model(pid, opts["vision_model"], "multimodal")
     providers.clear_agent_cache()
     verb = "更新" if existed else "新增"
     await send_to_event(bot, event, f"已{verb} provider `{pid}`（kind={kind}）。")
@@ -273,15 +309,193 @@ async def _provider_remove(bot: Bot, event: Event, args: list[str], config) -> N
             bot, event, "当前默认 provider 不允许直接删除，请先修改 default。"
         )
         return
-    if not config.has_provider(pid):
+    if not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
     store.clear_provider_references(pid)
-    providers_map = dict(config.providers)
-    del providers_map[pid]
-    sv.save_config(replace(config, providers=providers_map))
+    provider.remove_provider(pid)
     providers.clear_agent_cache()
     await send_to_event(bot, event, f"已删除 provider `{pid}`。")
+
+
+# ------------------------------------------------------------ model-list
+
+
+async def _provider_model_list(bot: Bot, event: Event, args: list[str]) -> None:
+    if not args:
+        await send_to_event(bot, event, "用法：ai provider model-list <id>")
+        return
+    pid = args[0]
+    if not provider.has_provider(pid):
+        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
+        return
+    models = provider.list_models(pid)
+    if not models:
+        await send_to_event(bot, event, f"provider `{pid}` 还没有注册任何模型。")
+        return
+    lines = [f"provider `{pid}` 的 model-list："]
+    for entry in models:
+        lines.append(f"- `{entry['model']}` [{entry['capabilities']}]")
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _provider_model_add(bot: Bot, event: Event, args: list[str]) -> None:
+    if not _require_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可修改 model-list。")
+        return
+    if not args or len(args) < 2:
+        await send_to_event(
+            bot,
+            event,
+            "用法：ai provider model-add <id> <model> [--capabilities text|multimodal|both]",
+        )
+        return
+    pid, model = args[0], args[1]
+    opts = _parse_flags(args[2:])
+    capabilities = opts.get("capabilities", "text")
+    if capabilities not in ("text", "multimodal", "both"):
+        await send_to_event(
+            bot, event, "capabilities 必须是 text / multimodal / both。"
+        )
+        return
+    if not provider.has_provider(pid):
+        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
+        return
+    provider.add_model(pid, model, capabilities)
+    await send_to_event(
+        bot, event, f"已注册模型 `{model}`（{capabilities}）到 `{pid}`。"
+    )
+
+
+async def _provider_model_remove(bot: Bot, event: Event, args: list[str]) -> None:
+    if not _require_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可修改 model-list。")
+        return
+    if not args or len(args) < 2:
+        await send_to_event(bot, event, "用法：ai provider model-remove <id> <model>")
+        return
+    pid, model = args[0], args[1]
+    record = provider.get_provider(pid)
+    if record is None:
+        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
+        return
+    if model in (record.default_text_model, record.default_vision_model):
+        await send_to_event(
+            bot,
+            event,
+            f"模型 `{model}` 是 `{pid}` 的默认模型，请先修改 provider 再删除。",
+        )
+        return
+    if provider.remove_model(pid, model):
+        await send_to_event(bot, event, f"已从 `{pid}` 移除模型 `{model}`。")
+    else:
+        await send_to_event(
+            bot, event, f"模型 `{model}` 不在 `{pid}` 的 model-list 中。"
+        )
+
+
+# ------------------------------------------------------------ scope models
+
+
+async def _handle_model(bot: Bot, event: Event, args: list[str]) -> None:
+    if not args:
+        await send_to_event(bot, event, _MODEL_USAGE)
+        return
+    action, rest = args[0], args[1:]
+    if action == "show":
+        await _model_show(bot, event)
+        return
+    gid = get_group_id(event)
+    if gid is None:
+        await send_to_event(bot, event, "模型设置仅限群聊。")
+        return
+    scope_key = group_scope_key(gid, platform=platform_key(bot))
+    if action == "set":
+        await _model_set(bot, event, scope_key, rest)
+    elif action == "reset":
+        await _model_reset(bot, event, scope_key, rest)
+    else:
+        await send_to_event(bot, event, _MODEL_USAGE)
+
+
+async def _scope_provider_id(scope_key: str, config) -> str | None:
+    """当前 scope 的有效 provider id（scope 绑定 > 默认），不存在返回 None。"""
+    bound = store.get_scope_provider(scope_key)
+    if bound and provider.has_provider(bound):
+        return bound
+    if config.default and provider.has_provider(config.default):
+        return config.default
+    return None
+
+
+async def _model_show(bot: Bot, event: Event) -> None:
+    config = get_config()
+    scope_key = event_scope_key(bot, event)
+    bound = store.get_scope_provider(scope_key) if scope_key else None
+    pid = await _scope_provider_id(scope_key, config) if scope_key else None
+    if pid is None:
+        await send_to_event(bot, event, "当前会话没有可用 provider，无法解析模型。")
+        return
+    text_model, vision_model = provider.resolve_models(scope_key, pid)
+    overrides = store.get_scope_model_overrides(scope_key or "")
+    source_text = "覆盖" if overrides["text_model"] else "默认"
+    source_vision = (
+        "覆盖"
+        if overrides["vision_model"]
+        else (
+            "显式禁用"
+            if overrides["vision_model"] == provider.VISION_DISABLED
+            else "默认"
+        )
+    )
+    lines = [
+        f"provider：`{pid}`" + ("" if not bound else "（本群绑定）"),
+        f"纯文本模型：`{text_model or '（未配置）'}`（{source_text}）",
+        f"多模态模型：`{vision_model or '（无）'}`（{source_vision}）",
+    ]
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _model_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
+    if len(args) != 2 or args[0] not in ("text", "vision"):
+        await send_to_event(bot, event, "用法：ai model set text|vision <model>")
+        return
+    slot, model = args[0], args[1]
+    config = get_config()
+    pid = await _scope_provider_id(scope_key, config)
+    if pid is None:
+        await send_to_event(
+            bot, event, "本群没有可用 provider，请先 `ai provider use <id>`。"
+        )
+        return
+    error = provider.validate_model_choice(pid, model, slot)
+    if error:
+        await send_to_event(bot, event, error)
+        return
+    store.set_scope_model_override(
+        scope_key, slot, model, updated_by=str(get_user_id(event) or "")
+    )
+    label = "纯文本" if slot == "text" else "多模态"
+    display = "none（禁用）" if model == provider.VISION_DISABLED else f"`{model}`"
+    await send_to_event(bot, event, f"本群{label}模型已设为 {display}（覆盖默认）。")
+
+
+async def _model_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
+    if args and args[0] not in ("text", "vision"):
+        await send_to_event(bot, event, "用法：ai model reset [text|vision]")
+        return
+    slot = args[0] if args else None
+    if store.clear_scope_model_override(scope_key, slot):
+        label = (
+            "纯文本模型"
+            if slot == "text"
+            else ("多模态模型" if slot == "vision" else "模型")
+        )
+        await send_to_event(bot, event, f"已清除本群{label}覆盖，回退 provider 默认。")
+    else:
+        await send_to_event(
+            bot, event, "本群当前没有模型覆盖。" if slot is None else "该槽位没有覆盖。"
+        )
 
 
 async def _handle_status(bot: Bot, event: Event) -> None:
@@ -289,18 +503,25 @@ async def _handle_status(bot: Bot, event: Event) -> None:
     scope_key = event_scope_key(bot, event)
     bound = store.get_scope_provider(scope_key) if scope_key else None
     provider_id = bound or config.default
-    provider_cfg = config.get_provider(provider_id) if provider_id else None
+    record = provider.get_provider(provider_id) if provider_id else None
     # 原生联网搜索只在 anthropic / openai_responses kind 上生效（服务端 web_search）。
     native_search = (
         config.web_search_native
-        and provider_cfg is not None
-        and provider_cfg.config.kind in ("anthropic", "openai_responses")
+        and record is not None
+        and record.kind in ("anthropic", "openai_responses")
+    )
+    text_model, vision_model = (
+        provider.resolve_models(scope_key, provider_id)
+        if scope_key and provider_id
+        else ("", "")
     )
     lines = [
         f"默认 provider：`{config.default}`"
         if config.default
         else "默认 provider：未设置",
         f"当前 scope 绑定：`{bound}`" if bound else "当前 scope 绑定：无（回退默认）",
+        f"纯文本模型：`{text_model or '（未配置）'}`",
+        f"多模态模型：`{vision_model or '（无）'}`",
         f"历史长度限制：{config.max_history_messages} 条",
         f"渲染超时：{config.render_timeout_seconds}s",
         f"渲染主题：{config.render_theme}",
@@ -308,15 +529,14 @@ async def _handle_status(bot: Bot, event: Event) -> None:
         f"代理：{config.proxy or '未设置'}",
         f"原生联网搜索：{'开（服务端 web_search）' if native_search else '关'}"
         f"（工具重试预算 {config.tool_max_retries} 次）",
-        f"provider 数量：{len(config.providers)}",
+        f"provider 数量：{len(provider.list_providers())}",
     ]
     await send_to_event(bot, event, "\n".join(lines))
 
 
 async def _handle_stats(bot: Bot, event: Event, args: list[str]) -> None:
     pid = args[0] if args else None
-    config = get_config()
-    if pid is not None and not config.has_provider(pid):
+    if pid is not None and not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
     aggregate = store.aggregate_usage(provider_id=pid)
@@ -324,7 +544,7 @@ async def _handle_stats(bot: Bot, event: Event, args: list[str]) -> None:
 
 
 async def _handle_clear(bot: Bot, event: Event, args: list[str]) -> None:
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
     if args:
         # 显式指定 scope_key：清空其当前激活对话（ADMIN 即可）。
         cleared = manager.clear_active(args[0])
@@ -345,7 +565,7 @@ async def _handle_contexts(bot: Bot, event: Event, args: list[str]) -> None:
     if not scope_key:
         await send_to_event(bot, event, "无法解析 scope。")
         return
-    summaries = _sessions.conversation_manager.list_summaries(scope_key)
+    summaries = sessions.conversation_manager.list_summaries(scope_key)
     if not summaries:
         await send_to_event(bot, event, f"scope `{scope_key}` 还没有对话。")
         return

@@ -1,4 +1,4 @@
-"""``_errors.format_exception_detail`` 与 ``_runner.tool_calls_from_node`` 单元测试。
+"""``errors.format_exception_detail`` 与 ``runner.tool_calls_from_node`` 单元测试。
 
 失败日志可观测性（error=UnexpectedModelBehavior 等只显示类名）的修复保障：
 - 异常详情必须包含 pydantic-ai 异常的 message / body / status / tool 字段；
@@ -13,8 +13,8 @@ import builtins
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 
-from hoshino.modules.ai._errors import format_exception_detail
-from hoshino.modules.ai._runner import tool_calls_from_node
+from hoshino.ai.errors import format_exception_detail
+from hoshino.ai.runner import tool_calls_from_node
 
 
 def _make_group(*exceptions: BaseException) -> BaseException:
@@ -113,7 +113,7 @@ def test_tool_calls_from_node_ignores_other_nodes():
 
 
 def test_tool_call_events_from_node_redacts_args():
-    from hoshino.modules.ai._runner import tool_call_events_from_node
+    from hoshino.ai.runner import tool_call_events_from_node
 
     node = CallToolsNode(
         [
@@ -134,7 +134,7 @@ def test_tool_call_events_from_node_redacts_args():
 
 
 def test_redact_args_shapes():
-    from hoshino.modules.ai._runner import redact_args
+    from hoshino.ai.runner import redact_args
 
     assert redact_args(None) == "{}"
     assert redact_args("abc") == "<str:3>"

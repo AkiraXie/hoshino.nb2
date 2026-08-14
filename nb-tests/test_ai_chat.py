@@ -12,7 +12,7 @@ from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageE
 from nonebot.adapters.milky.model.api import MessageResponse
 from pydantic_ai.usage import RunUsage
 
-from hoshino.modules.ai._config import AIConfig, ProviderConfig, ProviderOptions
+from hoshino.ai.config import AIConfig
 
 # 本文件会触发 uninfo 会话缓存，见 conftest 中 _clear_uninfo_cache 的说明。
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
@@ -27,10 +27,10 @@ _seq = itertools.count(200000)
 @pytest.fixture(autouse=True)
 def _fresh_conversation_manager(monkeypatch):
     """每个测试独立 ConversationManager：单例内存缓存会跨测试残留。"""
-    from hoshino.modules.ai import _sessions
+    from hoshino.ai import sessions
 
-    manager = _sessions.ConversationManager()
-    monkeypatch.setattr(_sessions, "conversation_manager", manager)
+    manager = sessions.ConversationManager()
+    monkeypatch.setattr(sessions, "conversation_manager", manager)
     return manager
 
 
@@ -216,14 +216,14 @@ class _RetryDeps:
 @pytest.fixture
 def _reset_hooks():
     """钩子注册表是模块全局，每个测试前后清空。"""
-    from hoshino.modules.ai import _hooks as hooks
+    from hoshino.ai import hooks
 
     hooks.reset_hooks()
     yield
     hooks.reset_hooks()
 
 
-def _stub_config(monkeypatch, **overrides):
+def _stub_config(monkeypatch, tmp_store, *, seed_providers: bool = True, **overrides):
     from hoshino.modules.ai import chat
 
     defaults = dict(
@@ -232,22 +232,28 @@ def _stub_config(monkeypatch, **overrides):
         max_history_messages=40,
         render_timeout_seconds=30.0,
         render_theme="light",
-        providers={
-            "openai": ProviderConfig(
-                url="https://api.example.com/v1",
-                key="sk-abcdefghij",
-                config=ProviderOptions(kind="openai_chat", model="gpt-4o-mini"),
-            ),
-            "anthropic": ProviderConfig(
-                url="https://api.anthropic.com",
-                key="sk-ant-1234567890",
-                config=ProviderOptions(kind="anthropic", model="claude-3-5-sonnet"),
-            ),
-        },
     )
     defaults.update(overrides)
     config = AIConfig(**defaults)
     monkeypatch.setattr(chat, "get_config", lambda: config)
+    if seed_providers:
+        # provider 存 DB（唯一事实源）：预置两个 provider 及其 model-list。
+        tmp_store.upsert_provider_row(
+            provider_id="openai",
+            url="https://api.example.com/v1",
+            key="sk-abcdefghij",
+            kind="openai_chat",
+            default_text_model="gpt-4o-mini",
+        )
+        tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
+        tmp_store.upsert_provider_row(
+            provider_id="anthropic",
+            url="https://api.anthropic.com",
+            key="sk-ant-1234567890",
+            kind="anthropic",
+            default_text_model="claude-3-5-sonnet",
+        )
+        tmp_store.upsert_provider_model("anthropic", "claude-3-5-sonnet", "text")
     return config
 
 
@@ -265,12 +271,10 @@ def _stub_send(monkeypatch):
 # ---------------------------------------------------------- 配置纯函数
 
 
-def test_ai_config_defaults_and_lookup():
+def test_ai_config_defaults():
     config = AIConfig()
     assert config.default == ""
     assert config.max_history_messages == 64
-    assert not config.has_provider("nope")
-    assert config.get_provider("nope") is None
     # 原生联网搜索与工具重试预算的默认值
     assert config.web_search_native is True
     assert config.tool_max_retries == 3
@@ -279,19 +283,9 @@ def test_ai_config_defaults_and_lookup():
     assert config.render_device_scale == 2.0
     assert config.render_emoji is True
 
-    config = AIConfig(
-        providers={
-            "p": ProviderConfig(
-                url="u", key="k", config=ProviderOptions(kind="openai_chat")
-            )
-        }
-    )
-    assert config.has_provider("p")
-    assert config.get_provider("p").key == "k"
-
 
 def test_mask_key_and_url():
-    from hoshino.modules.ai._config import mask_key, mask_url
+    from hoshino.ai.config import mask_key, mask_url
 
     assert mask_key("") == ""
     assert mask_key("sk-1234567890") == "sk-1...7890"
@@ -301,7 +295,7 @@ def test_mask_key_and_url():
 
 
 def test_httpx_proxy_normalizes_socks():
-    from hoshino.modules.ai._providers import _httpx_proxy
+    from hoshino.ai.providers import _httpx_proxy
 
     assert _httpx_proxy(None) is None
     assert _httpx_proxy("http://127.0.0.1:7890") == "http://127.0.0.1:7890"
@@ -317,21 +311,23 @@ def test_build_model_ignores_env_proxy(monkeypatch):
     """
     import asyncio
 
-    from hoshino.modules.ai._providers import build_model
+    from hoshino.ai.provider import ProviderRecord
+    from hoshino.ai.providers import build_model
 
     monkeypatch.setenv("ALL_PROXY", "socks://127.0.0.1:7890")
     monkeypatch.setenv("all_proxy", "socks://127.0.0.1:7890")
     monkeypatch.setenv("HTTPS_PROXY", "socks://127.0.0.1:7890")
-    pc = ProviderConfig(
+    record = ProviderRecord(
+        id="openai",
         url="https://api.example.com/v1",
         key="sk-test-key",
-        config=ProviderOptions(kind="openai_chat", model="gpt-4o-mini"),
+        kind="openai_chat",
     )
-    model = build_model(pc)  # proxy 缺省 None → trust_env=False，不读环境变量
+    model = build_model(record, "gpt-4o-mini")  # proxy 缺省 None → trust_env=False
     assert model is not None
     # 关闭 build_model 内部创建的 client（同步测试中 clear_agent_cache 不会
     # 找到事件循环，这里手动关闭避免 Unclosed client 告警）。
-    from hoshino.modules.ai._providers import _http_clients
+    from hoshino.ai.providers import _http_clients
 
     for client in _http_clients:
         asyncio.run(client.aclose())
@@ -342,50 +338,55 @@ def test_build_model_ignores_env_proxy(monkeypatch):
 
 
 def test_resolve_provider_scope_overrides_default(tmp_store):
-    from hoshino.modules.ai._base import resolve_provider
+    from hoshino.ai.base import resolve_provider
 
-    config = _make_provider_config(default="openai")
+    config = _seed_test_providers(tmp_store)
     tmp_store.set_scope_provider("milky:123", "anthropic")
     assert resolve_provider("milky:123", config) == "anthropic"
     assert resolve_provider("milky:999", config) == "openai"
 
 
 def test_resolve_provider_invalid_scope_falls_back(tmp_store):
-    from hoshino.modules.ai._base import resolve_provider
+    from hoshino.ai.base import resolve_provider
 
-    config = _make_provider_config(default="openai")
+    config = _seed_test_providers(tmp_store)
     # 绑定不存在的 provider → 回退默认
     tmp_store.set_scope_provider("milky:123", "ghost")
     assert resolve_provider("milky:123", config) == "openai"
 
 
 def test_resolve_provider_none_when_missing(tmp_store):
-    from hoshino.modules.ai._base import resolve_provider
+    from hoshino.ai.base import resolve_provider
 
-    config = _make_provider_config(default="")
+    config = AIConfig(default="")
     assert resolve_provider("milky:123", config) is None
     assert resolve_provider(None, config) is None
 
 
-def _make_provider_config(default: str = "openai") -> AIConfig:
-    return AIConfig(
-        default=default,
-        providers={
-            "openai": ProviderConfig(
-                url="u", key="k", config=ProviderOptions(kind="openai_chat")
-            ),
-            "anthropic": ProviderConfig(
-                url="u2", key="k2", config=ProviderOptions(kind="anthropic")
-            ),
-        },
+def _seed_test_providers(tmp_store) -> AIConfig:
+    """预置 openai/anthropic 两个 provider 行，返回默认指向 openai 的配置。"""
+    tmp_store.upsert_provider_row(
+        provider_id="openai",
+        url="u",
+        key="k",
+        kind="openai_chat",
+        default_text_model="gpt-4o-mini",
     )
+    tmp_store.upsert_provider_row(
+        provider_id="anthropic",
+        url="u2",
+        key="k2",
+        kind="anthropic",
+        default_text_model="claude-3-5-sonnet",
+    )
+    return AIConfig(default="openai")
 
 
 # ------------------------------------------------------- 历史裁剪
 
 
 def test_truncate_messages_by_turns():
-    from hoshino.modules.ai._context import truncate_messages
+    from hoshino.ai.context import truncate_messages
 
     messages = [f"m{i}" for i in range(10)]  # type: ignore[list-item]
     assert truncate_messages(messages, 3) == ["m7", "m8", "m9"]
@@ -394,7 +395,7 @@ def test_truncate_messages_by_turns():
 
 
 def test_serialize_roundtrip_empty():
-    from hoshino.modules.ai._context import deserialize_messages, serialize_messages
+    from hoshino.ai.context import deserialize_messages, serialize_messages
 
     raw = serialize_messages([])
     assert deserialize_messages(raw) == []
@@ -406,7 +407,7 @@ def test_serialize_roundtrip_empty():
 
 
 def test_snapshot_from_usage():
-    from hoshino.modules.ai._metrics import snapshot_from_usage
+    from hoshino.ai.metrics import snapshot_from_usage
 
     usage = RunUsage(
         input_tokens=10,
@@ -426,14 +427,14 @@ def test_snapshot_from_usage():
 
 
 def test_cache_hit_ratio():
-    from hoshino.modules.ai._metrics import cache_hit_ratio
+    from hoshino.ai.metrics import cache_hit_ratio
 
     assert cache_hit_ratio(10, 40) == 0.8
     assert cache_hit_ratio(0, 0) == 0.0
 
 
 def test_format_stats_contains_tokens():
-    from hoshino.modules.ai._metrics import format_stats
+    from hoshino.ai.metrics import format_stats
 
     text = format_stats(
         {
@@ -459,7 +460,7 @@ def test_format_stats_contains_tokens():
 
 
 def test_markdown_to_html_supports_gfm():
-    from hoshino.modules.ai._rendering import markdown_to_html
+    from hoshino.ai.rendering import markdown_to_html
 
     html = markdown_to_html("# 标题\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] done\n")
     assert "<h1>标题</h1>" in html
@@ -468,7 +469,7 @@ def test_markdown_to_html_supports_gfm():
 
 
 def test_markdown_to_html_highlights_code():
-    from hoshino.modules.ai._rendering import markdown_to_html
+    from hoshino.ai.rendering import markdown_to_html
 
     html = markdown_to_html("```python\nprint(1)\n```")
     assert "codehilite" in html
@@ -476,7 +477,7 @@ def test_markdown_to_html_highlights_code():
 
 
 def test_build_full_html_themes():
-    from hoshino.modules.ai._rendering import build_full_html
+    from hoshino.ai.rendering import build_full_html
 
     body = "<p>hi</p>"
     assert "--bg: #ffffff" in build_full_html(body, "light")
@@ -490,7 +491,7 @@ def test_build_full_html_themes():
 
 
 def test_build_full_html_uses_configured_font():
-    from hoshino.modules.ai._rendering import build_full_html
+    from hoshino.ai.rendering import build_full_html
 
     body = "<p>hi</p>"
     # 默认 Inter；主字体带引号置于字体栈首位，中文经系统字体回退
@@ -501,7 +502,7 @@ def test_build_full_html_uses_configured_font():
 
 def test_build_full_html_spacing():
     """渲染 CSS 采用更宽松的行距与字距，避免正文拥挤。"""
-    from hoshino.modules.ai._rendering import build_full_html
+    from hoshino.ai.rendering import build_full_html
 
     html = build_full_html("<p>hi</p>", "light")
     assert "line-height: 1.8" in html
@@ -584,7 +585,7 @@ def test_store_usage_aggregate(tmp_store):
 async def test_chat_hash_strips_prefix_and_sends_image(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(FakeResult("**你好**"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
 
@@ -609,7 +610,7 @@ async def test_chat_hash_strips_prefix_and_sends_image(monkeypatch, tmp_store):
 async def test_chat_empty_hash_no_call(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(FakeResult("x"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
@@ -625,7 +626,7 @@ async def test_chat_empty_hash_no_call(monkeypatch, tmp_store):
 async def test_chat_without_hash_does_not_trigger(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(FakeResult("x"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
@@ -641,7 +642,7 @@ async def test_chat_without_hash_does_not_trigger(monkeypatch, tmp_store):
 async def test_chat_no_provider_configured(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch, default="", providers={})
+    _stub_config(monkeypatch, tmp_store, seed_providers=False, default="")
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
     sent = _stub_send(monkeypatch)
 
@@ -657,7 +658,7 @@ async def test_chat_no_provider_configured(monkeypatch, tmp_store):
 async def test_chat_agent_error_records_metric(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(FakeResult("x"), error=RuntimeError("boom"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
@@ -681,7 +682,7 @@ async def test_chat_agent_error_logs_detail_and_tools(monkeypatch, tmp_store):
 
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(
         FakeResult("x"),
         error=UnexpectedModelBehavior(
@@ -715,7 +716,7 @@ async def test_chat_agent_error_logs_detail_and_tools(monkeypatch, tmp_store):
 async def test_chat_render_failure_falls_back_to_text(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(FakeResult("**你好**"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
 
@@ -738,21 +739,23 @@ async def test_chat_render_failure_falls_back_to_text(monkeypatch, tmp_store):
 async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
-    config = _stub_config(monkeypatch)
-    # 该群 scope 绑定 anthropic → build_agent 应收到 anthropic
+    _stub_config(monkeypatch, tmp_store)
+    # 该群 scope 绑定 anthropic → build_agent 应收到 anthropic 及其默认模型
     tmp_store.set_scope_provider("milky:123456", "anthropic")
     captured: dict = {}
 
     def fake_build(
         provider_id,
-        provider_config,
+        provider_record,
+        model,
         *,
         proxy=None,
         web_search_native=True,
         tool_max_retries=3,
     ):
         captured["provider_id"] = provider_id
-        captured["provider_config"] = provider_config
+        captured["provider_record"] = provider_record
+        captured["model"] = model
         captured["proxy"] = proxy
         captured["web_search_native"] = web_search_native
         captured["tool_max_retries"] = tool_max_retries
@@ -766,10 +769,11 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     assert captured["provider_id"] == "anthropic"
-    assert captured["provider_config"] is config.get_provider("anthropic")
-    assert captured["proxy"] == config.proxy
-    assert captured["web_search_native"] is config.web_search_native
-    assert captured["tool_max_retries"] == config.tool_max_retries
+    assert captured["provider_record"].id == "anthropic"
+    assert captured["model"] == "claude-3-5-sonnet"
+    assert captured["proxy"] == chat.get_config().proxy
+    assert captured["web_search_native"] is True
+    assert captured["tool_max_retries"] == 3
     assert len(sent) == 1
 
 
@@ -778,7 +782,7 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
 
 async def test_run_agent_emits_node_events_and_returns_result():
     """run_agent 是协程：逐节点回调 on_event，结束后返回最终结果。"""
-    from hoshino.modules.ai import _runner as runner
+    from hoshino.ai import runner
 
     agent = FakeAgent(FakeResult("done"))
     events: list = []
@@ -791,7 +795,7 @@ async def test_run_agent_emits_node_events_and_returns_result():
 
 
 async def test_run_agent_propagates_agent_error():
-    from hoshino.modules.ai import _runner as runner
+    from hoshino.ai import runner
 
     agent = FakeAgent(FakeResult("x"), error=RuntimeError("boom"))
     with pytest.raises(RuntimeError, match="boom"):
@@ -843,7 +847,7 @@ async def test_chat_run_exits_agent_iter_scope_in_task(monkeypatch, tmp_store):
         state = _task_states.get(asyncio.current_task())
         return None if state is None else state.cancel_scope
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = ScopedAgent(FakeResult("hi"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
 
@@ -871,7 +875,7 @@ def _chat_env(monkeypatch, tmp_store, **config_overrides):
     """聊天行为测试公共 stub：config/provider/render/service/send。"""
     from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch, **config_overrides)
+    _stub_config(monkeypatch, tmp_store, **config_overrides)
     agent = FakeAgent(FakeResult("回答"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
 
@@ -886,10 +890,10 @@ def _chat_env(monkeypatch, tmp_store, **config_overrides):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_conv_new_creates_and_switches(monkeypatch, tmp_store):
-    from hoshino.modules.ai import _sessions
+    from hoshino.ai import sessions
 
     _, sent = _chat_env(monkeypatch, tmp_store)
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
 
     bot, event = _milky_group("#new 旅游计划", user_id=7)
     await bot.handle_event(event)
@@ -915,10 +919,10 @@ async def test_conv_new_with_extra_tokens_is_chat(monkeypatch, tmp_store):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_conv_switch_and_list(monkeypatch, tmp_store):
-    from hoshino.modules.ai import _sessions
+    from hoshino.ai import sessions
 
     agent, sent = _chat_env(monkeypatch, tmp_store)
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
 
     # 先聊一轮：全新 scope 自动建「默认」对话
     bot, event = _milky_group("#hello", user_id=7)
@@ -950,10 +954,10 @@ async def test_conv_isolation_across_switch(monkeypatch, tmp_store):
     """切换后聊天写入新对话，旧对话不受影响。"""
     from pydantic_ai.messages import ModelRequest, UserPromptPart
 
-    from hoshino.modules.ai import _sessions
+    from hoshino.ai import sessions
 
     agent, sent = _chat_env(monkeypatch, tmp_store)
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
 
     # 「默认」里聊一轮（FakeResult.messages 落进历史）
     agent._result = FakeResult(
@@ -984,7 +988,7 @@ async def test_conv_persists_across_manager_rebuild(monkeypatch, tmp_store):
     """write-through 落库：重建 manager（模拟重启）后上下文仍在。"""
     from pydantic_ai.messages import ModelRequest, UserPromptPart
 
-    from hoshino.modules.ai import _sessions
+    from hoshino.ai import sessions
 
     agent, sent = _chat_env(monkeypatch, tmp_store)
     agent._result = FakeResult(
@@ -995,9 +999,9 @@ async def test_conv_persists_across_manager_rebuild(monkeypatch, tmp_store):
 
     # 模拟进程重启：全新 manager，缓存为空，从 DB 惰性载入
     monkeypatch.setattr(
-        _sessions, "conversation_manager", _sessions.ConversationManager()
+        sessions, "conversation_manager", sessions.ConversationManager()
     )
-    conv = _sessions.conversation_manager.get_active("milky:123456")
+    conv = sessions.conversation_manager.get_active("milky:123456")
     assert conv.name == "默认"
     assert len(conv.messages) == 1
 
@@ -1021,10 +1025,10 @@ async def test_conv_clear_requires_admin_in_group(monkeypatch, tmp_store):
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_busy_replies_when_turn_in_progress(monkeypatch, tmp_store):
     """run 进行中再收 # → 忙提示，且不产生第二次 run。"""
-    from hoshino.modules.ai import _sessions
+    from hoshino.ai import sessions
 
     agent, sent = _chat_env(monkeypatch, tmp_store)
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
 
     lock = manager.turn_lock("milky:123456")
     await lock.acquire()
@@ -1043,7 +1047,8 @@ async def test_chat_run_timeout_keeps_prompt(monkeypatch, tmp_store):
     """墙钟超时：回复超时提示，本轮提问写入上下文可续问。"""
     import asyncio as _asyncio
 
-    from hoshino.modules.ai import _sessions, chat
+    from hoshino.ai import sessions
+    from hoshino.modules.ai import chat
 
     agent, sent = _chat_env(monkeypatch, tmp_store, chat_run_timeout_seconds=0.05)
 
@@ -1072,7 +1077,7 @@ async def test_chat_run_timeout_keeps_prompt(monkeypatch, tmp_store):
 
     slow = SlowAgent(FakeResult("回答"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: slow)
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
 
     bot, event = _milky_group("#慢慢来", user_id=7)
     await bot.handle_event(event)
@@ -1088,11 +1093,11 @@ async def test_chat_usage_limit_keeps_prompt(monkeypatch, tmp_store):
     """UsageLimit 超限与超时同语义：保留提问。"""
     from pydantic_ai.exceptions import UsageLimitExceeded
 
-    from hoshino.modules.ai import _sessions
+    from hoshino.ai import sessions
 
     agent, sent = _chat_env(monkeypatch, tmp_store)
     agent._error = UsageLimitExceeded("too many requests")
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
 
     bot, event = _milky_group("#循环了", user_id=7)
     await bot.handle_event(event)
@@ -1107,10 +1112,11 @@ async def test_chat_usage_limit_keeps_prompt(monkeypatch, tmp_store):
 @pytest.mark.usefixtures("_nonebot_bootstrap", "_reset_hooks")
 async def test_chat_pre_step_reject_blocks_run(monkeypatch, tmp_store):
     """pre-step reject：回固定文案、不跑模型、不写事件。"""
-    from hoshino.modules.ai import _hooks as hooks
-    from hoshino.modules.ai import _sessions, chat
+    from hoshino.ai import hooks
+    from hoshino.ai import sessions
+    from hoshino.modules.ai import chat
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(FakeResult("x"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
@@ -1124,13 +1130,13 @@ async def test_chat_pre_step_reject_blocks_run(monkeypatch, tmp_store):
     assert getattr(agent, "prompt", None) is None  # 未驱动模型
     assert "这条不能回答" in sent[-1][1].extract_plain_text()
     # 不写事件
-    assert _sessions.conversation_manager.get_active("milky:123456").messages == []
+    assert sessions.conversation_manager.get_active("milky:123456").messages == []
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap", "_reset_hooks")
 async def test_chat_pre_step_rewrite_changes_model_prompt(monkeypatch, tmp_store):
     """pre-step rewrite：模型看到改写后的 prompt（surface 仍为用户原话）。"""
-    from hoshino.modules.ai import _hooks as hooks
+    from hoshino.ai import hooks
 
     agent, sent = _chat_env(monkeypatch, tmp_store)
 
@@ -1159,7 +1165,7 @@ async def test_chat_retries_transient_first_request_error(monkeypatch, tmp_store
     async def fake_render(md, cfg):
         return b"FAKEPNG"
 
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
 
@@ -1179,7 +1185,7 @@ async def test_chat_does_not_retry_non_transient_error(monkeypatch, tmp_store):
     agent = RetryAgent(RuntimeError("boom"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
     sent = _stub_send(monkeypatch)
-    _stub_config(monkeypatch)
+    _stub_config(monkeypatch, tmp_store)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
 
     bot, event = _milky_group("#你好", user_id=7)
@@ -1193,7 +1199,7 @@ async def test_run_agent_with_retry_skips_when_tools_called():
     """副作用守卫：已有工具调用时不重试（避免重放副作用）。"""
     from pydantic_ai.exceptions import ModelHTTPError
 
-    from hoshino.modules.ai import _runner as runner
+    from hoshino.ai import runner
 
     agent = RetryAgent(ModelHTTPError(429, "deepseek"))
     run_log = runner.RunLog()

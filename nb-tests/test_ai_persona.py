@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from hoshino.modules.ai._config import AIConfig
+from hoshino.ai.config import AIConfig
 
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
 
 
 def test_build_prompt_template():
-    from hoshino.modules.ai._persona import build_prompt
+    from hoshino.ai.persona import build_prompt
 
     p = build_prompt("爱丽丝", "女性", "温柔善良", "测试简介")
     assert p == "你是 爱丽丝，女性。温柔善良。\n测试简介"
@@ -19,7 +19,7 @@ def test_build_prompt_template():
 
 def test_default_system_prompt_persona_and_style():
     """默认人格是元气少女，且带简洁高效 + 禁止奇怪对比句与黑话的风格约束。"""
-    from hoshino.modules.ai._prompts import DEFAULT_SYSTEM_PROMPT
+    from hoshino.ai.prompts import DEFAULT_SYSTEM_PROMPT
 
     for keyword in ("乐观开朗", "阳光明媚", "少女", "好奇心", "元气"):
         assert keyword in DEFAULT_SYSTEM_PROMPT
@@ -30,7 +30,7 @@ def test_default_system_prompt_persona_and_style():
 
 def test_output_style_rules_loaded():
     """output.md 被加载为强制输出规范，且包含 Markdown 结构与禁用黑话等约束。"""
-    from hoshino.modules.ai._prompts import OUTPUT_STYLE_RULES
+    from hoshino.ai.prompts import OUTPUT_STYLE_RULES
 
     assert OUTPUT_STYLE_RULES
     for keyword in (
@@ -51,21 +51,21 @@ def test_persona_system_prompt_appends_output_rules(tmp_store):
     import asyncio
     from types import SimpleNamespace
 
-    from hoshino.modules.ai import _prompts, _providers
+    from hoshino.ai import prompts, providers
 
     config = AIConfig(system_prompt="人格")
     deps = SimpleNamespace(task=None, scope_key=None, config=config)
     ctx = SimpleNamespace(deps=deps)
 
-    prompt = asyncio.run(_providers._persona_system_prompt(ctx))
+    prompt = asyncio.run(providers._persona_system_prompt(ctx))
     assert prompt.startswith("人格")
     assert "必须严格遵守" in prompt
-    assert _prompts.OUTPUT_STYLE_RULES in prompt
+    assert prompts.OUTPUT_STYLE_RULES in prompt
 
 
 def test_resolve_prompt_fallback(tmp_store):
     """无绑定/无全局时回退 AIConfig.system_prompt。"""
-    from hoshino.modules.ai._persona import resolve_prompt
+    from hoshino.ai.persona import resolve_prompt
 
     config = AIConfig(system_prompt="默认提示词")
     assert resolve_prompt(None, config) == "默认提示词"
@@ -73,7 +73,7 @@ def test_resolve_prompt_fallback(tmp_store):
 
 
 def test_resolve_prompt_global(tmp_store):
-    from hoshino.modules.ai import _persona as persona
+    from hoshino.ai import persona
 
     config = AIConfig(system_prompt="默认提示词")
     persona.create_persona("全局", gender="机器人", personality="稳重", description="g")
@@ -85,7 +85,7 @@ def test_resolve_prompt_global(tmp_store):
 
 def test_resolve_prompt_scope_beats_global(tmp_store):
     """优先级：scope 级 > 全局级 > 默认级。"""
-    from hoshino.modules.ai import _persona as persona
+    from hoshino.ai import persona
 
     config = AIConfig(system_prompt="默认提示词")
     persona.create_persona("全局", gender="机器人", personality="稳重", description="g")
@@ -103,7 +103,7 @@ def test_resolve_prompt_scope_beats_global(tmp_store):
 
 def test_resolve_prompt_dangling_scope_binding_falls_back(tmp_store):
     """scope 绑定指向已删除 persona 时回退下一级。"""
-    from hoshino.modules.ai import _persona as persona
+    from hoshino.ai import persona
 
     config = AIConfig(system_prompt="默认提示词")
     persona.create_persona("幽灵", gender="机器人", personality="稳重", description="g")
@@ -113,7 +113,7 @@ def test_resolve_prompt_dangling_scope_binding_falls_back(tmp_store):
 
 
 def test_persona_crud(tmp_store):
-    from hoshino.modules.ai import _persona as persona
+    from hoshino.ai import persona
 
     created = persona.create_persona(
         "小爱", gender="女性", personality="温柔", description="测试人格"
@@ -133,14 +133,14 @@ def test_persona_crud(tmp_store):
 
 
 def test_bind_missing_persona_returns_false(tmp_store):
-    from hoshino.modules.ai import _persona as persona
+    from hoshino.ai import persona
 
     assert persona.bind_scope("milky:1", "不存在") is False
     assert persona.set_global("不存在") is False
 
 
 def test_clear_scope_and_global(tmp_store):
-    from hoshino.modules.ai import _persona as persona
+    from hoshino.ai import persona
 
     persona.create_persona("小爱", gender="女性", personality="温柔", description="d")
     persona.bind_scope("milky:1", "小爱")
@@ -153,7 +153,7 @@ def test_clear_scope_and_global(tmp_store):
 
 
 def test_missing_traits():
-    from hoshino.modules.ai._persona import missing_traits
+    from hoshino.ai.persona import missing_traits
 
     assert missing_traits("", "", "") == "创建人格需补充：性别、性格、简介"
     assert missing_traits("女", "温", "d") == ""
@@ -161,7 +161,7 @@ def test_missing_traits():
 
 def test_create_duplicate_persona_raises(tmp_store):
     """重名创建抛 ValueError 且不覆盖原 persona（由入口层转为提示，不崩 matcher）。"""
-    from hoshino.modules.ai import _persona as persona
+    from hoshino.ai import persona
 
     persona.create_persona(
         "小爱", gender="女性", personality="温柔", description="原版"

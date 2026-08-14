@@ -6,12 +6,13 @@
   ``#clear`` 清空当前对话 / ``#goal ...`` 查看与管理跨轮目标；其余内容一律按聊天
   处理（``#new 特性介绍`` 是提问）。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
-  见 ``_sessions.py``；轮次按 scope 锁串行化，run 进行中再收 ``#`` 回忙提示。
+  见 ``sessions.py``；轮次按 scope 锁串行化，run 进行中再收 ``#`` 回忙提示。
 - 执行护栏（持久化不替代超时，见 aichat-context-timeout-plan.md §3）：
   run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
   超时/超限把本轮提问写入上下文可续问；provider 异常不写。
 - 模型输出 Markdown 先渲染为图片；渲染失败（超时/浏览器异常）回退纯文本。
-- 含图输入只加提示文案，不做多模态理解。
+- 多模态：scope/provider 配置多模态模型时，含图消息走 vision 模型（图片经
+  ImageUrl/BinaryContent 传入）；未配置时保留文本提示（mask），模型不看图。
 - 日志只记录 provider id、scope、耗时、错误类型，不打印 key 或完整历史。
 """
 
@@ -33,19 +34,21 @@ from hoshino.platform import (
     send_to_event,
 )
 
-from . import (
-    _context as context,
-    _deps as deps,
-    _errors as errors,
-    _goal as goal,
-    _hooks as hooks,
-    _metrics as metrics,
-    _providers as providers,
-    _rendering as rendering,
-    _runner as runner,
-    _sessions,
+from hoshino.ai import (
+    context,
+    deps,
+    errors,
+    goal,
+    hooks,
+    media as ai_media,
+    metrics,
+    provider,
+    providers,
+    rendering,
+    runner,
+    sessions,
 )
-from ._base import (
+from hoshino.ai.base import (
     get_config,
     provider_error_message,
     resolve_provider,
@@ -72,7 +75,7 @@ async def _(bot: Bot, event: Event):
         await _handle_control(bot, event, scope_key, control)
         return
 
-    lock = _sessions.conversation_manager.turn_lock(scope_key)
+    lock = sessions.conversation_manager.turn_lock(scope_key)
     if lock.locked():
         await send_to_event(bot, event, "上一条消息还在处理中，请稍候再试。")
         return
@@ -111,7 +114,7 @@ def _parse_control(body: str) -> tuple[str, str | None] | None:
 async def _handle_control(
     bot: Bot, event: Event, scope_key: str, control: tuple[str, str | None]
 ) -> None:
-    manager = _sessions.conversation_manager
+    manager = sessions.conversation_manager
     action, arg = control
 
     if action.startswith("goal_"):
@@ -271,22 +274,33 @@ async def _goal_transition(bot: Bot, event: Event, scope_key: str, action: str) 
 
 
 async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str):
-    """单轮聊天：解析 provider → 读当前对话上下文 → run（带护栏）→ 渲染回复。"""
-    manager = _sessions.conversation_manager
+    """单轮聊天：解析 provider/双模型 → 读当前对话上下文 → run（带护栏）→ 渲染回复。"""
+    manager = sessions.conversation_manager
     config = get_config()
     provider_id = resolve_provider(scope_key, config)
     if provider_id is None:
         await send_to_event(bot, event, provider_error_message(config))
         return
-    provider_config = config.get_provider(provider_id)
-    if provider_config is None:
+    record = provider.get_provider(provider_id)
+    if record is None:
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
+        return
+    text_model, vision_model = provider.resolve_models(scope_key, provider_id)
+
+    # 多模态选择：事件含图且 scope/provider 配了多模态模型 → vision 模型 + 图片内容；
+    # 否则 text 模型（含图但无 vision 时保留 mask 提示，见 _send_result）。
+    images = await _event_images(bot, event)
+    use_vision = bool(images and vision_model)
+    model_name = vision_model if use_vision else text_model
+    if not model_name:
+        await send_to_event(
+            bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。"
+        )
         return
 
     conv = manager.get_active(scope_key)
     history = context.prepare_history(scope_key, conv.messages, config)
 
-    model_name = provider_config.config.model or provider_id
     permissions = await deps.build_permission_snapshot(bot, event)
     agent_deps = deps.construct_chat_deps(
         bot,
@@ -316,9 +330,15 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     if pre.action == "rewrite" and pre.prompt is not None:
         prompt = pre.prompt
 
+    # 多模态输入：文本 + 图片内容（ImageUrl / BinaryContent）；无图或全失败回退纯文本。
+    prompt_arg: str | list = prompt
+    if use_vision:
+        prompt_arg = ai_media.build_multimodal_prompt(prompt, images)
+
     agent = providers.build_agent(
         provider_id,
-        provider_config,
+        record,
+        model_name,
         proxy=config.proxy,
         web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
@@ -331,7 +351,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         result = await asyncio.wait_for(
             runner.run_agent_with_retry(
                 agent,
-                prompt,
+                prompt_arg,
                 deps=agent_deps,
                 message_history=history,
                 usage_limits=UsageLimits(request_limit=config.chat_max_requests),
@@ -341,6 +361,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         )
     except (TimeoutError, UsageLimitExceeded) as exc:
         # 护栏触发：丢弃本次执行，但把提问留在上下文，下一轮可续问。
+        # 已知限制：多模态轮只保留文本 prompt（图片部件不落历史）。
         agent_deps.telemetry.record_error(type(exc).__name__)
         run_log.reason = "timeout" if isinstance(exc, TimeoutError) else "max-requests"
         manager.append_prompt_only(scope_key, prompt, provider_id, run_log)
@@ -388,25 +409,22 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     )
 
     raw = result.output
-    mask = await _image_input_mask(bot, event)
-    if mask:
-        raw = mask + raw
+    if images and not use_vision:
+        # 含图但当前没有多模态模型：回复开头提示本次未看图。
+        raw = "（目前未启用多模态模型，请用文字描述图片内容或直接提问。）\n\n" + raw
     await _send_result(bot, event, raw, config, provider_id)
 
 
-async def _image_input_mask(bot: Bot, event: Event) -> str:
-    """含图输入时返回图片输入 mask 文案；无图返回空串。解析失败按无图处理。"""
+async def _event_images(bot: Bot, event: Event) -> list:
+    """提取事件中的图片段（含回复引用/转发）；解析失败按无图处理。"""
     try:
         from hoshino.util.media import get_event_media_segments
         from nonebot_plugin_alconna.uniseg import Image as UniImage
 
-        images = await get_event_media_segments(bot, event, UniImage)
+        return await get_event_media_segments(bot, event, UniImage)
     except Exception as exc:
         sv.logger.warning(f"AI 媒体段解析失败 error={type(exc).__name__}")
-        images = []
-    if images:
-        return "（目前还不支持图片输入，请用文字描述图片内容或直接提问。）\n\n"
-    return ""
+        return []
 
 
 async def _send_result(

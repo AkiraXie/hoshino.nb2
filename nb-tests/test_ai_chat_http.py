@@ -15,7 +15,7 @@ from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 
-from hoshino.modules.ai._config import AIConfig, ProviderConfig, ProviderOptions
+from hoshino.ai.config import AIConfig
 
 # 本文件会触发 uninfo 会话缓存，见 conftest 中 _clear_uninfo_cache 的说明。
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
@@ -89,18 +89,18 @@ def _stub_send(monkeypatch):
     return sent
 
 
-def _openai_config(base_url: str) -> AIConfig:
-    return AIConfig(
-        default="openai",
-        system_prompt="你是测试助手。",
-        providers={
-            "openai": ProviderConfig(
-                url=base_url,
-                key="sk-test-openai",
-                config=ProviderOptions(kind="openai_chat", model="gpt-4o-mini"),
-            ),
-        },
+def _seed_openai(tmp_store, base_url: str, *, bad_path: bool = False) -> AIConfig:
+    """预置 openai provider 行（url 指向 fake server），返回默认配置。"""
+    url = f"{base_url}/nope" if bad_path else base_url
+    tmp_store.upsert_provider_row(
+        provider_id="openai",
+        url=url,
+        key="sk-test-openai",
+        kind="openai_chat",
+        default_text_model="gpt-4o-mini",
     )
+    tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
+    return AIConfig(default="openai", system_prompt="你是测试助手。")
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -109,7 +109,7 @@ async def test_chat_full_http_roundtrip(fake_ai_server, monkeypatch, tmp_store):
     base_url, requests = fake_ai_server
     from hoshino.modules.ai import chat
 
-    monkeypatch.setattr(chat, "get_config", lambda: _openai_config(base_url))
+    monkeypatch.setattr(chat, "get_config", lambda: _seed_openai(tmp_store, base_url))
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
 
     async def fake_render(md, cfg):
@@ -144,17 +144,9 @@ async def test_chat_http_agent_error_falls_back_to_text(
 
     # 指向不存在的路径：openai SDK 会把 base_url 拼成 /nope/chat/completions，
     # fake 服务器对未知路径返回 404，SDK 解析成错误 → chat 捕获并回复失败提示。
-    bad_config = AIConfig(
-        default="openai",
-        providers={
-            "openai": ProviderConfig(
-                url=f"{base_url}/nope",
-                key="sk-test-openai",
-                config=ProviderOptions(kind="openai_chat", model="gpt-4o-mini"),
-            ),
-        },
+    monkeypatch.setattr(
+        chat, "get_config", lambda: _seed_openai(tmp_store, base_url, bad_path=True)
     )
-    monkeypatch.setattr(chat, "get_config", lambda: bad_config)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
     sent = _stub_send(monkeypatch)
 

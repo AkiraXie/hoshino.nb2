@@ -21,7 +21,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models.function import FunctionModel
 
-from hoshino.modules.ai import _harness as harness
+from hoshino.ai import harness
 
 # ------------------------------------------------------------ helpers
 
@@ -180,9 +180,9 @@ class TestStepPersistence:
 
 class TestTaskRuntimeWiring:
     def test_run_task_run_injects_capabilities(self, tmp_store, monkeypatch):
-        from hoshino.modules.ai._config import AIConfig, ProviderConfig, ProviderOptions
-        from hoshino.modules.ai._task import runtime as task_runtime
-        from hoshino.modules.ai._task.models import TaskContext
+        from hoshino.ai.config import AIConfig
+        from hoshino.ai.task import runtime as task_runtime
+        from hoshino.ai.task.models import TaskContext
 
         captured: dict = {}
 
@@ -215,13 +215,13 @@ class TestTaskRuntimeWiring:
         )
         monkeypatch.setattr(task_runtime.runner, "run_agent_with_retry", fake_run_agent)
 
-        config = AIConfig(
-            providers={
-                "openai": ProviderConfig(
-                    config=ProviderOptions(kind="openai_chat", model="gpt-4o-mini")
-                )
-            }
+        # provider 存 DB：run_task_run 从 DB 解析 provider 记录
+        tmp_store.upsert_provider_row(
+            provider_id="openai",
+            kind="openai_chat",
+            default_text_model="gpt-4o-mini",
         )
+        config = AIConfig()
         ctx = TaskContext(
             task_id="t_wiring",
             task_run_id="r_wiring",

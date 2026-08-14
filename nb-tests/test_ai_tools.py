@@ -11,8 +11,8 @@ from types import SimpleNamespace
 import pytest
 from nonebot_plugin_alconna.uniseg import Target
 
-from hoshino.modules.ai._config import AIConfig
-from hoshino.modules.ai._deps import AgentDeps, PermissionSnapshot, Telemetry
+from hoshino.ai.config import AIConfig
+from hoshino.ai.deps import AgentDeps, PermissionSnapshot, Telemetry
 
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
 
@@ -57,7 +57,7 @@ def _names(tools) -> set[str]:
 
 def test_resolve_tools_default_categories(tmp_store):
     """未配置类别的 scope 用安全默认 core/web/skill；high-risk 不注入 chat。"""
-    from hoshino.modules.ai._tools import resolve_tools
+    from hoshino.ai.tools import resolve_tools
 
     names = _names(resolve_tools(_deps()))
     assert {"memory", "persona_manage", "skill_read"} <= names
@@ -73,7 +73,7 @@ def test_resolve_tools_default_categories(tmp_store):
 
 def test_resolve_tools_explicit_categories(tmp_store):
     """显式绑定叠加到默认之上；显式关闭项不出现。"""
-    from hoshino.modules.ai._tools import resolve_tools
+    from hoshino.ai.tools import resolve_tools
 
     tmp_store.set_scope_tool_binding("milky:1", "core", "chat", True)
     tmp_store.set_scope_tool_binding("milky:1", "web", "chat", False)
@@ -88,7 +88,7 @@ def test_resolve_tools_explicit_categories(tmp_store):
 
 def test_resolve_tools_computer_adds_file_only_in_chat(tmp_store):
     """开启 computer 叠加到默认之上：chat 只放行 file，bash/python 仍被静态排除。"""
-    from hoshino.modules.ai._tools import resolve_tools
+    from hoshino.ai.tools import resolve_tools
 
     tmp_store.set_scope_tool_binding("milky:1", "computer", "chat", True)
     names = _names(resolve_tools(_deps()))
@@ -103,7 +103,7 @@ def test_resolve_tools_computer_adds_file_only_in_chat(tmp_store):
 
 
 def test_resolve_tools_bot_requires_live_event(tmp_store):
-    from hoshino.modules.ai._tools import resolve_tools
+    from hoshino.ai.tools import resolve_tools
 
     tmp_store.set_scope_tool_binding("milky:1", "bot", "chat", True)
     # 无 live event（task 恢复等场景）→ bot 工具不注入，但默认类别仍可用
@@ -118,7 +118,7 @@ def test_resolve_tools_bot_requires_live_event(tmp_store):
 
 def test_resolve_tools_task_restores_profile():
     """task 恢复只按冻结的 tool_profile 展开，不按当前 category。"""
-    from hoshino.modules.ai._tools import resolve_tools
+    from hoshino.ai.tools import resolve_tools
 
     task = SimpleNamespace(tool_profile={("now", 1)})
     names = _names(resolve_tools(_deps(surface="task", task=task)))
@@ -129,7 +129,7 @@ def test_resolve_tools_task_restores_profile():
 
 
 async def test_memory_tool_scope_isolated(tmp_store):
-    from hoshino.modules.ai._tools.core.memory import memory
+    from hoshino.ai.tools.core.memory import memory
 
     ctx = _ctx(_deps("milky:1"))
     assert "已写入" in await memory(ctx, "set", key="k", value="v")
@@ -142,7 +142,7 @@ async def test_memory_tool_scope_isolated(tmp_store):
 
 
 async def test_memory_tool_value_limit(tmp_store):
-    from hoshino.modules.ai._tools.core.memory import memory
+    from hoshino.ai.tools.core.memory import memory
 
     ctx = _ctx(_deps("milky:1"))
     out = await memory(ctx, "set", key="big", value="x" * 2001)
@@ -151,8 +151,8 @@ async def test_memory_tool_value_limit(tmp_store):
 
 
 async def test_persona_manage_use_requires_admin(tmp_store):
-    from hoshino.modules.ai import _persona as persona
-    from hoshino.modules.ai._tools.core.persona_manage import persona_manage
+    from hoshino.ai import persona
+    from hoshino.ai.tools.core.persona_manage import persona_manage
 
     persona.create_persona(
         "爱丽丝", gender="女性", personality="温柔", description="测试"
@@ -165,8 +165,8 @@ async def test_persona_manage_use_requires_admin(tmp_store):
 
 
 async def test_persona_manage_use_admin_binds(tmp_store):
-    from hoshino.modules.ai import _persona as persona
-    from hoshino.modules.ai._tools.core.persona_manage import persona_manage
+    from hoshino.ai import persona
+    from hoshino.ai.tools.core.persona_manage import persona_manage
 
     persona.create_persona(
         "爱丽丝", gender="女性", personality="温柔", description="测试"
@@ -181,8 +181,8 @@ async def test_persona_manage_use_admin_binds(tmp_store):
 
 async def test_persona_manage_global_delete_rejected(tmp_store):
     """global/delete 仅能通过 admin command，工具内直接拒绝并引导。"""
-    from hoshino.modules.ai import _persona as persona
-    from hoshino.modules.ai._tools.core.persona_manage import persona_manage
+    from hoshino.ai import persona
+    from hoshino.ai.tools.core.persona_manage import persona_manage
 
     persona.create_persona(
         "爱丽丝", gender="女性", personality="温柔", description="测试"
@@ -198,7 +198,7 @@ async def test_persona_manage_global_delete_rejected(tmp_store):
 
 async def test_send_message_single_emit(monkeypatch):
     """send_message 只调一次 send_to_event，不额外副作用。"""
-    from hoshino.modules.ai._tools.bot.send_message import send_message
+    from hoshino.ai.tools.bot.send_message import send_message
 
     calls: list[str] = []
 
@@ -213,7 +213,7 @@ async def test_send_message_single_emit(monkeypatch):
 
 
 async def test_send_message_requires_live_event(monkeypatch):
-    from hoshino.modules.ai._tools.bot.send_message import send_message
+    from hoshino.ai.tools.bot.send_message import send_message
 
     calls: list[str] = []
 
@@ -227,7 +227,7 @@ async def test_send_message_requires_live_event(monkeypatch):
 
 
 async def test_send_message_length_limit(monkeypatch):
-    from hoshino.modules.ai._tools.bot.send_message import send_message
+    from hoshino.ai.tools.bot.send_message import send_message
 
     calls: list[str] = []
 
@@ -241,8 +241,8 @@ async def test_send_message_length_limit(monkeypatch):
 
 
 async def test_service_manage_requires_admin_and_flips_state(tmp_store, monkeypatch):
-    from hoshino.modules.ai import _base as base
-    from hoshino.modules.ai._tools.bot.service_manage import service_manage
+    from hoshino.ai import base
+    from hoshino.ai.tools.bot.service_manage import service_manage
 
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -274,7 +274,7 @@ async def test_service_manage_requires_admin_and_flips_state(tmp_store, monkeypa
 
 def test_enabled_task_categories_default_and_explicit(tmp_store):
     """与 resolve_tools 同一叠加语义：默认 + 显式 on。"""
-    from hoshino.modules.ai import _tools as tools
+    from hoshino.ai import tools
 
     assert tools.enabled_task_categories("milky:new") == ["core", "skill", "web"]
     tmp_store.set_scope_tool_binding("milky:new", "computer", "task", True)
@@ -287,8 +287,8 @@ def test_enabled_task_categories_default_and_explicit(tmp_store):
 
 
 def test_build_tool_instructions_states(tmp_store):
-    from hoshino.modules.ai import _prompts as prompts, _skills as skills
-    from hoshino.modules.ai._tools import build_tool_instructions
+    from hoshino.ai import prompts, skills
+    from hoshino.ai.tools import build_tool_instructions
 
     # 默认有工具（core/web/skill）→ 含 TOOL_CALL_PROMPT
     parts = build_tool_instructions(_deps())
@@ -332,7 +332,7 @@ def _file_ctx(tmp_path, *, surface: str = "chat") -> SimpleNamespace:
 
 async def test_file_delete_refused_on_chat_surface(tmp_path):
     """chat 不执行 delete（无副作用），引导创建 Task（plan 10：chat 不审批）。"""
-    from hoshino.modules.ai._tools.computer.file import file
+    from hoshino.ai.tools.computer.file import file
 
     ctx = _file_ctx(tmp_path)
     assert "已写入" in await file(ctx, "a.txt", mode="write", content="x")
@@ -343,7 +343,7 @@ async def test_file_delete_refused_on_chat_surface(tmp_path):
 
 async def test_file_delete_executes_on_task_surface(tmp_path):
     """task surface 的 delete 经 deferred approval 后实际执行（plan 8.1）。"""
-    from hoshino.modules.ai._tools.computer.file import file
+    from hoshino.ai.tools.computer.file import file
 
     ctx = _file_ctx(tmp_path, surface="task")
     await file(ctx, "a.txt", mode="write", content="x")
@@ -355,7 +355,7 @@ async def test_file_delete_executes_on_task_surface(tmp_path):
 
 async def test_file_delete_directory_refused_on_task(tmp_path):
     """目录删除（bulk）不在 v1 范围：拒绝且无副作用。"""
-    from hoshino.modules.ai._tools.computer.file import file
+    from hoshino.ai.tools.computer.file import file
 
     (tmp_path / "sub").mkdir()
     ctx = _file_ctx(tmp_path, surface="task")
@@ -366,7 +366,7 @@ async def test_file_delete_directory_refused_on_task(tmp_path):
 
 async def test_file_sensitive_paths_always_refused(tmp_path):
     """.env 等敏感路径任何 mode 都拒绝，审批不能放行（plan 8.1/10）。"""
-    from hoshino.modules.ai._tools.computer.file import file
+    from hoshino.ai.tools.computer.file import file
 
     sensitive = tmp_path / ".env"
     sensitive.write_text("SECRET=1")
@@ -379,7 +379,7 @@ async def test_file_sensitive_paths_always_refused(tmp_path):
 
 async def test_file_containment_blocks_escape(tmp_path):
     """相对路径越出 workspace root 直接拒绝。"""
-    from hoshino.modules.ai._tools.computer.file import file
+    from hoshino.ai.tools.computer.file import file
 
     ctx = _file_ctx(tmp_path, surface="task")
     assert "越出" in await file(ctx, "../../etc/passwd", mode="read")
@@ -391,7 +391,7 @@ async def test_file_containment_blocks_escape(tmp_path):
 
 async def test_web_fetch_blocks_private_and_non_http():
     """web_fetch 拒绝私有/回环地址与非 http 协议（SSRF 防护）。"""
-    from hoshino.modules.ai._tools.web import web_fetch as web_fetch_mod
+    from hoshino.ai.tools.web import web_fetch as web_fetch_mod
 
     if web_fetch_mod.tool is None:
         pytest.skip("markdownify 未安装")
@@ -403,7 +403,7 @@ async def test_web_fetch_blocks_private_and_non_http():
 
 def test_web_search_prefers_search_over_fetch():
     """web_search 保持原始名，但描述引导优先搜索、少抓全文。"""
-    from hoshino.modules.ai._tools.web import web_search as web_search_mod
+    from hoshino.ai.tools.web import web_search as web_search_mod
 
     if web_search_mod.tool is None:
         pytest.skip("ddgs 未安装")

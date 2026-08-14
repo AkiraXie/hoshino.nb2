@@ -15,15 +15,15 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from hoshino.modules.ai import _context, _runner, _sessions
-from hoshino.modules.ai._config import AIConfig
+from hoshino.ai import context, runner, sessions
+from hoshino.ai.config import AIConfig
 
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
 
 
 @pytest.fixture
 def manager():
-    return _sessions.ConversationManager()
+    return sessions.ConversationManager()
 
 
 def _user(text: str) -> ModelRequest:
@@ -100,7 +100,7 @@ def test_commit_turn_persists_across_manager_rebuild(manager, tmp_store):
     manager.get_active("milky:1")
     manager.commit_turn("milky:1", messages, "openai")
 
-    fresh = _sessions.ConversationManager()
+    fresh = sessions.ConversationManager()
     conv = fresh.get_active("milky:1")
     assert conv.name == "默认"
     assert len(conv.messages) == 2
@@ -110,7 +110,7 @@ def test_commit_turn_persists_across_manager_rebuild(manager, tmp_store):
 def test_append_prompt_only_persists(manager, tmp_store):
     manager.get_active("milky:1")
     manager.append_prompt_only("milky:1", "超时的问题", "openai")
-    fresh = _sessions.ConversationManager()
+    fresh = sessions.ConversationManager()
     conv = fresh.get_active("milky:1")
     assert len(conv.messages) == 1
     assert isinstance(conv.messages[0].parts[0], UserPromptPart)
@@ -121,12 +121,12 @@ def test_append_prompt_only_persists(manager, tmp_store):
 
 def test_lru_evicts_non_active(monkeypatch, tmp_store):
     """驻留上限内只保留 active + 最近对话；写穿策略下逐出仅丢缓存。"""
-    from hoshino.modules.ai import _base
+    from hoshino.ai import base
 
     monkeypatch.setattr(
-        _base, "get_config", lambda: AIConfig(chat_memory_conversations=2)
+        base, "get_config", lambda: AIConfig(chat_memory_conversations=2)
     )
-    manager = _sessions.ConversationManager()
+    manager = sessions.ConversationManager()
     manager.get_active("milky:1")  # 默认
     manager.create("milky:1", "甲")
     manager.create("milky:1", "乙")
@@ -160,7 +160,7 @@ def test_migrate_sessions_to_conversations(tmp_store):
     assert len(tmp_store.get_conversations("milky:old")) == 1
 
     # 已有对话的 scope 不受旧表影响
-    manager = _sessions.ConversationManager()
+    manager = sessions.ConversationManager()
     manager.get_active("milky:new")
     tmp_store.save_session_messages("milky:new", "[]", "x")
     tmp_store.migrate_sessions_to_conversations(tmp_store.engine)
@@ -192,30 +192,30 @@ def test_truncate_keeps_round_boundaries():
         _asst("a3"),
     ]
     # 切点落在工具轮内部（cut=3）→ 对齐到 q3 的轮边界，宁可多丢
-    kept = _context.truncate_messages(messages, 5)
+    kept = context.truncate_messages(messages, 5)
     assert len(kept) == 2
     assert kept[0].parts[0].content == "q3"
     assert kept[1].parts[0].content == "a3"
     # 切点=2 正好是工具轮边界 → 完整保留工具轮
-    kept = _context.truncate_messages(messages, 6)
+    kept = context.truncate_messages(messages, 6)
     assert kept[0].parts[0].content == "q2"
     assert len(kept) == 6
 
 
 def test_truncate_never_splits_overlong_last_round():
     messages = _tool_round("q", "a")  # 一轮 4 条
-    kept = _context.truncate_messages(messages, 2)
+    kept = context.truncate_messages(messages, 2)
     assert len(kept) == 4  # 最后一轮超长时整轮保留，不切半轮
 
 
 def test_truncate_passthrough_and_fallback():
     messages = [_user("q1"), _asst("a1")]
-    assert _context.truncate_messages(messages, 0) is not messages
-    assert len(_context.truncate_messages(messages, 0)) == 2
-    assert len(_context.truncate_messages(messages, 10)) == 2
+    assert context.truncate_messages(messages, 0) is not messages
+    assert len(context.truncate_messages(messages, 0)) == 2
+    assert len(context.truncate_messages(messages, 10)) == 2
     # 无轮可对齐的异常历史退化为尾部保留
     orphan = [_asst("x"), _asst("y"), _asst("z")]
-    kept = _context.truncate_messages(orphan, 2)
+    kept = context.truncate_messages(orphan, 2)
     assert [m.parts[0].content for m in kept] == ["y", "z"]
 
 
@@ -225,22 +225,22 @@ def test_truncate_passthrough_and_fallback():
 def test_messages_to_events_derive_roundtrip():
     """messages_to_events → derive_messages 无损往返（含工具轮，可重放）。"""
     messages = _tool_round("q", "a")
-    events = _context.messages_to_events(messages)
-    derived = _context.derive_messages(events)
-    assert _context.serialize_messages(derived) == _context.serialize_messages(messages)
+    events = context.messages_to_events(messages)
+    derived = context.derive_messages(events)
+    assert context.serialize_messages(derived) == context.serialize_messages(messages)
 
 
 def test_derive_skips_unknown_event_types():
     """未知事件类型在派生时跳过，不破坏重放（前向兼容）。"""
     events = [
-        {"type": _context.EVENT_USER_MESSAGE, "data": {"content": "hi"}},
+        {"type": context.EVENT_USER_MESSAGE, "data": {"content": "hi"}},
         {"type": "future/event", "data": {"x": 1}},
         {
-            "type": _context.EVENT_ASSISTANT_MESSAGE,
-            "data": {"message_json": _context.serialize_message(_asst("ok"))},
+            "type": context.EVENT_ASSISTANT_MESSAGE,
+            "data": {"message_json": context.serialize_message(_asst("ok"))},
         },
     ]
-    derived = _context.derive_messages(events)
+    derived = context.derive_messages(events)
     assert len(derived) == 2
     assert derived[0].parts[0].content == "hi"
 
@@ -271,9 +271,9 @@ def test_replay_across_manager_rebuild_with_tools(manager, tmp_store):
     messages = _tool_round("问题", "回答")
     manager.commit_turn("milky:1", messages, "openai")
 
-    fresh = _sessions.ConversationManager()
+    fresh = sessions.ConversationManager()
     conv = fresh.get_active("milky:1")
-    assert _context.serialize_messages(conv.messages) == _context.serialize_messages(
+    assert context.serialize_messages(conv.messages) == context.serialize_messages(
         messages
     )
 
@@ -296,29 +296,29 @@ def test_append_prompt_only_as_event(manager, tmp_store):
     assert [e["type"] for e in events] == ["user/message"]
     assert events[0]["data"]["content"] == "超时的问题"
 
-    fresh = _sessions.ConversationManager()
+    fresh = sessions.ConversationManager()
     assert len(fresh.get_active("milky:1").messages) == 1
 
 
 def test_legacy_messages_json_migrates_to_events(tmp_store):
     """旧 messages_json 在加载期惰性迁移为事件（幂等，不重复）。"""
-    from hoshino.modules.ai import _store as store
+    from hoshino.ai import store
 
     store.create_conversation("milky:legacy", "c_legacy", "默认")
     store.save_conversation_messages(
         "c_legacy",
-        _context.serialize_messages([_user("旧问题"), _asst("旧回答")]),
+        context.serialize_messages([_user("旧问题"), _asst("旧回答")]),
         "openai",
     )
     store.set_active_conv_id("milky:legacy", "c_legacy")
 
-    manager = _sessions.ConversationManager()
+    manager = sessions.ConversationManager()
     conv = manager.get_active("milky:legacy")
     assert [m.parts[0].content for m in conv.messages] == ["旧问题", "旧回答"]
     assert len(store.load_conversation_events("c_legacy")) == 2
 
     # 再次载入不重复迁移
-    fresh = _sessions.ConversationManager()
+    fresh = sessions.ConversationManager()
     assert len(fresh.get_active("milky:legacy").messages) == 2
     assert len(store.load_conversation_events("c_legacy")) == 2
 
@@ -326,8 +326,8 @@ def test_legacy_messages_json_migrates_to_events(tmp_store):
 # ------------------------------------------------------- log-only 事件
 
 
-def _make_run_log(**kwargs) -> "_runner.RunLog":
-    run_log = _runner.RunLog(started_at=1.0, ended_at=2.0, steps=1, step_at=[1.5])
+def _make_run_log(**kwargs) -> "runner.RunLog":
+    run_log = runner.RunLog(started_at=1.0, ended_at=2.0, steps=1, step_at=[1.5])
     for key, value in kwargs.items():
         setattr(run_log, key, value)
     return run_log
@@ -357,10 +357,10 @@ def test_commit_turn_with_run_log_writes_log_only_events(manager, tmp_store):
     assert [m.parts[0].content for m in conv.messages] == ["q", "a"]
 
     # 重建 manager 后重放仍一致（log-only 不影响重放）
-    fresh = _sessions.ConversationManager()
-    assert _context.serialize_messages(
+    fresh = sessions.ConversationManager()
+    assert context.serialize_messages(
         fresh.get_active("milky:1").messages
-    ) == _context.serialize_messages(messages)
+    ) == context.serialize_messages(messages)
 
 
 def test_append_prompt_only_with_run_log_keeps_tool_calls(manager, tmp_store):

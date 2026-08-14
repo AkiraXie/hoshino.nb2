@@ -1,13 +1,11 @@
-"""AI 业务分类。
+"""AI 业务分类：本目录只放 NoneBot 插件。
 
-公共 AI 基建（config / store / providers / base / metrics / rendering /
-persona / context / deps）不 ``import nonebot``，因此不会被
-``nonebot.load_plugins`` 当作插件加载；``chat.py`` 与 ``ai_admin.py`` 是真正的
-NoneBot 插件。``task/commands.py`` 同样是插件（``ai task`` NORMAL matcher 与
-scheduler hooks），因位于子包目录不会被 ``load_plugins`` 遍历，由 ``ai_admin``
-在插件加载期显式导入完成注册。
+``chat.py``（``#`` 聊天）、``ai_admin.py``（``ai`` 管理命令）、``task_commands.py``
+（``ai task`` 命令与 scheduler 注册）是全部插件；AI 基建位于 ``hoshino.ai`` 包，
+插件通过 ``from hoshino.ai import ...`` 引用。
 
-注意：这里不能直接 ``import`` task 子包 —— 它会把 ``providers`` 等模块链提前到
-``load_plugins`` 的 ``controlled_modules`` 建立之前加载，触发
-"Module ... is not loaded as a plugin!"。
+注意：本包 ``__init__`` 保持 docstring-only —— ``nonebot.load_plugins`` 扫描本目录
+时先 import 包本身，任何会把 ``hoshino.ai`` 链（含 nonebot 相关模块）提前加载的
+import 都会在 ``controlled_modules`` 建立前触发 "Module ... is not loaded as a
+plugin!"。
 """

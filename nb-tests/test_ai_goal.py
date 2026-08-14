@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from hoshino.modules.ai._goal import GoalConflict, GoalRef, GoalService
+from hoshino.ai.goal import GoalConflict, GoalRef, GoalService
 
 
 @pytest.fixture
