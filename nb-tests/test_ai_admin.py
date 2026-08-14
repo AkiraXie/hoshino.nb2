@@ -387,6 +387,98 @@ async def test_provider_add_invalid_kind(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_provider_alter_requires_superuser(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
+
+    bot, event = _milky_group("ai provider alter openai --model new-model")
+    await bot.handle_event(event)
+
+    assert "仅 SUPERUSER" in sent[0][1].extract_plain_text()
+    assert tmp_store.get_provider_row("openai")["default_text_model"] == "gpt-4o-mini"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_provider_alter_partial_update(monkeypatch, tmp_store):
+    """只变更显式传入的属性，其余保持不变；新模型自动注册 model-list。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=True)
+
+    bot, event = _milky_group(
+        "ai provider alter openai --model gpt-5 --temperature 0.1"
+    )
+    await bot.handle_event(event)
+
+    row = tmp_store.get_provider_row("openai")
+    assert row["default_text_model"] == "gpt-5"  # 变更
+    assert row["temperature"] == 0.1
+    # 未传字段保持不变
+    assert row["url"] == "https://api.example.com/v1"
+    assert row["key"] == "sk-abcdefghij"
+    assert row["kind"] == "openai_chat"
+    assert row["default_vision_model"] == ""
+    assert row["max_tokens"] is None
+    assert "已变更 provider" in sent[0][1].extract_plain_text()
+    # 新默认模型自动注册 model-list（text）
+    assert tmp_store.get_provider_model("openai", "gpt-5")["capabilities"] == "text"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_provider_alter_empty_value_clears_field(monkeypatch, tmp_store):
+    """传空值清空该字段（vision 模型 / 采样参数）。"""
+    tmp_store.upsert_provider_row(
+        provider_id="multi",
+        url="u",
+        key="k",
+        kind="openai_chat",
+        default_text_model="t",
+        default_vision_model="v",
+        temperature=0.7,
+    )
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=True)
+
+    bot, event = _milky_group(
+        "ai provider alter multi --vision-model '' --temperature ''"
+    )
+    await bot.handle_event(event)
+
+    row = tmp_store.get_provider_row("multi")
+    assert row["default_vision_model"] == ""  # 清空
+    assert row["temperature"] is None  # 清空
+    assert row["default_text_model"] == "t"  # 其余不变
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_provider_alter_unknown_provider(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=True)
+
+    bot, event = _milky_group("ai provider alter ghost --model x")
+    await bot.handle_event(event)
+
+    assert "不存在" in sent[0][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_provider_alter_invalid_kind(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=True)
+
+    bot, event = _milky_group("ai provider alter openai --kind nonsense")
+    await bot.handle_event(event)
+
+    assert "kind 必须是" in sent[0][1].extract_plain_text()
+    assert tmp_store.get_provider_row("openai")["kind"] == "openai_chat"  # 未变更
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_provider_alter_invalid_number(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=True)
+
+    bot, event = _milky_group("ai provider alter openai --max-tokens abc")
+    await bot.handle_event(event)
+
+    assert "必须是数字" in sent[0][1].extract_plain_text()
+    assert tmp_store.get_provider_row("openai")["max_tokens"] is None
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_provider_remove_default_rejected(monkeypatch, tmp_store):
     _, sent, saved = _stub_env(monkeypatch, tmp_store)
 
@@ -672,6 +764,26 @@ async def test_contexts_lists_conversations(monkeypatch, tmp_store):
     assert "默认" in text
     assert "调研" in text
     assert "* 调研" in text  # 最新创建的为激活对话
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_persona_create_with_dialogs(monkeypatch, tmp_store):
+    """persona create --dialogs 解析示例对话并入库。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group(
+        "ai persona create 小夏 --gender 女 --dialogs 用户: 早啊 小夏: 早呀！ 用户: 在吗 小夏: 在的在的！"
+    )
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "已创建 persona" in text
+    assert "示例对话 2 组" in text
+    row = tmp_store.get_persona_by_name("小夏")
+    assert row["begin_dialogs"] == [
+        {"user": "早啊", "assistant": "早呀！"},
+        {"user": "在吗", "assistant": "在的在的！"},
+    ]
 
 
 # ------------------------------------------------------- tools / persona 命令

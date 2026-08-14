@@ -90,15 +90,20 @@ def ensure_schema() -> None:
 def _migrate_missing_columns(target_engine) -> None:
     """create_all 不会给已存在的表补列：对旧库幂等补齐后续新增的列。"""
     with target_engine.connect() as conn:
-        cols = {
-            row[1]
-            for row in conn.exec_driver_sql("PRAGMA table_info(ai_tasks)").fetchall()
-        }
-        if cols and "adapter_name" not in cols:
-            conn.exec_driver_sql(
-                "ALTER TABLE ai_tasks ADD COLUMN adapter_name TEXT NOT NULL DEFAULT ''"
-            )
-            conn.commit()
+        _ensure_column(conn, "ai_tasks", "adapter_name")
+        _ensure_column(conn, "ai_personas", "begin_dialogs")
+
+
+def _ensure_column(conn, table: str, column: str) -> None:
+    """幂等补列（SQLite ALTER TABLE ADD COLUMN）。"""
+    cols = {
+        row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+    }
+    if cols and column not in cols:
+        conn.exec_driver_sql(
+            f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+        )
+        conn.commit()
 
 
 @on_serial_startup
@@ -996,7 +1001,12 @@ def list_scope_tool_bindings(scope_key: str, surface: str) -> list[dict[str, Any
 
 
 class AIPersona(Base):
-    """命名 persona。prompt 由特征模板生成，也可手动覆盖。"""
+    """命名 persona。prompt 由特征模板生成，也可手动覆盖。
+
+    ``begin_dialogs`` 存 JSON 数组（``[{"user": "...", "assistant": "..."}]`），
+    是人格的 few-shot 对话示例：注入 system prompt 的「参考对话风格」段，锚定
+    说话方式（AstrBot begin_dialogs / shebot mes_example 同思路）。
+    """
 
     __tablename__ = "ai_personas"
 
@@ -1007,6 +1017,7 @@ class AIPersona(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     traits_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    begin_dialogs: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_by: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
@@ -1041,10 +1052,32 @@ def _persona_to_dict(row: AIPersona) -> dict[str, Any]:
         "description": row.description,
         "prompt": row.prompt,
         "traits_json": row.traits_json,
+        "begin_dialogs": _parse_begin_dialogs(row.begin_dialogs),
         "created_by": row.created_by,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
+
+
+def _parse_begin_dialogs(raw: str) -> list[dict[str, str]]:
+    """解析 begin_dialogs JSON；非法/为空返回空列表。"""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    result = []
+    for item in data:
+        if (
+            isinstance(item, dict)
+            and isinstance(item.get("user"), str)
+            and isinstance(item.get("assistant"), str)
+        ):
+            result.append({"user": item["user"], "assistant": item["assistant"]})
+    return result
 
 
 def list_personas() -> list[dict[str, Any]]:
@@ -1075,6 +1108,7 @@ def create_persona(
     description: str = "",
     prompt: str = "",
     traits_json: str = "{}",
+    begin_dialogs_json: str = "[]",
     created_by: str = "",
 ) -> dict[str, Any]:
     """创建 persona；prompt 为空时由调用方（persona.py）生成模板。"""
@@ -1086,6 +1120,7 @@ def create_persona(
             description=description,
             prompt=prompt,
             traits_json=traits_json,
+            begin_dialogs=begin_dialogs_json,
             created_by=created_by,
         )
         session.add(row)
@@ -1102,6 +1137,7 @@ def update_persona(
     description: str | None = None,
     prompt: str | None = None,
     traits_json: str | None = None,
+    begin_dialogs_json: str | None = None,
 ) -> dict[str, Any] | None:
     """更新 persona 特征并刷新 prompt；不存在返回 None。"""
     with Session() as session:
@@ -1120,6 +1156,8 @@ def update_persona(
             row.prompt = prompt
         if traits_json is not None:
             row.traits_json = traits_json
+        if begin_dialogs_json is not None:
+            row.begin_dialogs = begin_dialogs_json
         row.updated_at = time.time()
         session.commit()
         return _persona_to_dict(row)

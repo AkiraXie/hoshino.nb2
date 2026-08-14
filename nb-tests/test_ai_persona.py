@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from hoshino.ai.config import AIConfig
@@ -18,12 +20,12 @@ def test_build_prompt_template():
 
 
 def test_default_system_prompt_persona_and_style():
-    """默认人格是元气少女，且带简洁高效 + 禁止奇怪对比句与黑话的风格约束。"""
+    """默认人格是元气少女（朋友式口吻），且带简洁 + 禁止奇怪对比句与黑话的约束。"""
     from hoshino.ai.prompts import DEFAULT_SYSTEM_PROMPT
 
-    for keyword in ("乐观开朗", "阳光明媚", "少女", "好奇心", "元气"):
+    for keyword in ("乐观开朗", "阳光明媚", "少女", "好奇心", "元气", "朋友"):
         assert keyword in DEFAULT_SYSTEM_PROMPT
-    assert "简洁高效" in DEFAULT_SYSTEM_PROMPT
+    assert "简洁" in DEFAULT_SYSTEM_PROMPT
     assert "不是xxx而是yyy" in DEFAULT_SYSTEM_PROMPT
     assert "黑话" in DEFAULT_SYSTEM_PROMPT
 
@@ -59,7 +61,7 @@ def test_persona_system_prompt_appends_output_rules(tmp_store):
 
     prompt = asyncio.run(providers._persona_system_prompt(ctx))
     assert prompt.startswith("人格")
-    assert "必须严格遵守" in prompt
+    assert providers.OUTPUT_STYLE_HEADER in prompt  # 自然过渡句拼接输出规范
     assert prompts.OUTPUT_STYLE_RULES in prompt
 
 
@@ -157,6 +159,172 @@ def test_missing_traits():
 
     assert missing_traits("", "", "") == "创建人格需补充：性别、性格、简介"
     assert missing_traits("女", "温", "d") == ""
+
+
+def test_dialogs_to_json_filters_invalid():
+    from hoshino.ai.persona import dialogs_to_json
+
+    assert dialogs_to_json(None) == "[]"
+    assert dialogs_to_json([]) == "[]"
+    raw = dialogs_to_json(
+        [{"user": "早啊", "assistant": "早呀！"}, {"user": "", "assistant": "x"}]
+    )
+    assert json.loads(raw) == [{"user": "早啊", "assistant": "早呀！"}]
+
+
+def test_parse_dialogs_text_alternating():
+    from hoshino.ai.persona import parse_dialogs_text
+
+    text = (
+        "用户: 早啊\n"
+        "爱丽丝: 早呀早呀！\n"
+        "用户: 报错了\n"
+        "我: 我康康！\n"
+        "用户: 没配对的尾巴\n"
+    )
+    dialogs = parse_dialogs_text(text, "爱丽丝")
+    assert dialogs == [
+        {"user": "早啊", "assistant": "早呀早呀！"},
+        {"user": "报错了", "assistant": "我康康！"},
+    ]
+    assert parse_dialogs_text("", "爱丽丝") == []
+
+
+def test_resolve_dialogs_hierarchy(tmp_store):
+    from hoshino.ai import persona as persona_domain
+    from hoshino.ai import prompts
+
+    # 无任何绑定 → 默认内置示例
+    assert persona_domain.resolve_dialogs(None) == list(prompts.DEFAULT_BEGIN_DIALOGS)
+    assert persona_domain.resolve_dialogs("milky:1") == list(
+        prompts.DEFAULT_BEGIN_DIALOGS
+    )
+
+    # 全局 persona 带示例 → 全局生效
+    persona_domain.create_persona(
+        "全局人格",
+        begin_dialogs=[{"user": "hi", "assistant": "hello~"}],
+    )
+    persona_domain.set_global("全局人格")
+    assert persona_domain.resolve_dialogs("milky:1") == [
+        {"user": "hi", "assistant": "hello~"}
+    ]
+
+    # scope persona 带示例 → scope 覆盖全局
+    persona_domain.create_persona(
+        "群人格",
+        begin_dialogs=[{"user": "在吗", "assistant": "在的在的！"}],
+    )
+    assert persona_domain.bind_scope("milky:1", "群人格")
+    assert persona_domain.resolve_dialogs("milky:1") == [
+        {"user": "在吗", "assistant": "在的在的！"}
+    ]
+
+    # scope persona 无示例 → 回退全局
+    persona_domain.create_persona("无示例人格")
+    assert persona_domain.bind_scope("milky:2", "无示例人格")
+    assert persona_domain.resolve_dialogs("milky:2") == [
+        {"user": "hi", "assistant": "hello~"}
+    ]
+
+
+def test_persona_crud_with_dialogs(tmp_store):
+    from hoshino.ai import persona as persona_domain
+
+    p = persona_domain.create_persona(
+        "带示例",
+        begin_dialogs=[{"user": "a", "assistant": "b"}],
+    )
+    assert p["begin_dialogs"] == [{"user": "a", "assistant": "b"}]
+
+    updated = persona_domain.update_persona(
+        "带示例", begin_dialogs=[{"user": "c", "assistant": "d"}]
+    )
+    assert updated["begin_dialogs"] == [{"user": "c", "assistant": "d"}]
+
+
+def test_persona_system_prompt_includes_dialogs(tmp_store):
+    """chat surface：system prompt 追加「参考对话风格」默认示例对话。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai import prompts, providers
+
+    config = AIConfig(system_prompt="人格")
+    deps = SimpleNamespace(task=None, scope_key=None, config=config)
+    ctx = SimpleNamespace(deps=deps)
+
+    prompt = asyncio.run(providers._persona_system_prompt(ctx))
+    assert prompt.startswith("人格")
+    assert "参考对话风格" in prompt
+    assert "用户: 早啊" in prompt  # 默认示例对话注入
+    assert prompts.OUTPUT_STYLE_RULES in prompt
+
+
+def test_persona_system_prompt_dialogs_not_injected_for_task(tmp_store):
+    """task surface：冻结 persona_prompt，不注入示例对话。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai import providers
+
+    deps = SimpleNamespace(
+        task=SimpleNamespace(persona_prompt="任务人格"),
+        scope_key=None,
+        config=AIConfig(),
+    )
+    ctx = SimpleNamespace(deps=deps)
+    prompt = asyncio.run(providers._persona_system_prompt(ctx))
+    assert prompt.startswith("任务人格")
+    assert "参考对话风格" not in prompt
+
+
+def test_render_persona_variables():
+    from hoshino.ai.persona import render_persona
+
+    text = "我是{{name}}，今天{{date}}在{{group_name}}"
+    out = render_persona(
+        text, {"name": "小夏", "date": "2026-08-14", "group_name": "摸鱼群"}
+    )
+    assert out == "我是小夏，今天2026-08-14在摸鱼群"
+    # 空值变量渲染为空串
+    assert render_persona("在{{group_name}}", {"group_name": ""}) == "在"
+    # 无变量原文直通
+    assert render_persona("你好", {}) == "你好"
+
+
+def test_render_persona_unknown_variable_raises():
+    from hoshino.ai.persona import render_persona
+
+    with pytest.raises(ValueError):
+        render_persona("{{foo}}", {"date": "x"})
+    with pytest.raises(ValueError):
+        render_persona("{{Bad Name}}", {})
+
+
+def test_persona_system_prompt_renders_builtin_variables(tmp_store):
+    """chat surface：内置 {{date}} 等模板变量被渲染，未知变量回退原文。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai import providers
+
+    config = AIConfig(system_prompt="今天是{{date}}，在{{group_name}}说话")
+    deps = SimpleNamespace(
+        task=None, scope_key=None, config=config, event=None, bot=None
+    )
+    ctx = SimpleNamespace(deps=deps)
+
+    prompt = asyncio.run(providers._persona_system_prompt(ctx))
+    assert "今天是20" in prompt  # {{date}} 已渲染为日期
+    assert "{{date}}" not in prompt
+    assert "在说话" in prompt  # {{group_name}} 无 event → 空串
+
+    # 未知变量：渲染失败回退原文，不打断对话
+    bad = AIConfig(system_prompt="{{typo_variable}}你好")
+    deps2 = SimpleNamespace(task=None, scope_key=None, config=bad, event=None, bot=None)
+    prompt2 = asyncio.run(providers._persona_system_prompt(SimpleNamespace(deps=deps2)))
+    assert "{{typo_variable}}你好" in prompt2
 
 
 def test_create_duplicate_persona_raises(tmp_store):

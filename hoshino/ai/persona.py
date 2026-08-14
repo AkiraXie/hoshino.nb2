@@ -1,19 +1,71 @@
-"""persona 领域层：三级解析、CRUD 与绑定。
+"""persona 领域层：三级解析、CRUD 与绑定、模板变量渲染。
 
 优先级：scope 级（scope 绑定）> 全局级 > 默认级（``AIConfig.system_prompt``）。
 persona 与绑定全部存 DB（``ai_personas`` / ``ai_scope_personas`` / ``ai_globals``）。
 本模块是领域函数；LLM tool（``persona_manage``）与 admin command 都是薄入口，共用这里
 的函数，互不调用对方 handler。
+
+persona 文本支持 ``{{variable}}`` 严格模板插值（对齐 DeepSeek Harness 的
+dsh-persona）：作用域解析后、注入模型前渲染；未知变量 fail loud（ValueError），
+由调用方捕获回退原文并记日志。
 """
 
 from __future__ import annotations
 
 import json
+import re
+import time
 
-from . import store
+from . import prompts, store
 from .config import AIConfig
 
 GLOBAL_PERSONA_KEY = "global_persona"
+
+# 模板变量名：小写字母开头，字母数字下划线（与 dsh 的 VARIABLE_NAME 一致）。
+_VARIABLE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+_GROUP_AT = re.compile(r"\{\{([^{}]*)\}\}")
+
+# 内置变量集（固定集合；集合外的引用 fail loud，集合内解析失败渲染为空串）。
+BUILTIN_VARIABLES = frozenset(
+    {"date", "time", "weekday", "scope", "group_name", "user_name"}
+)
+
+
+def _builtin_variables(scope_key: str | None) -> dict[str, str]:
+    """内置模板变量：日期/时间/星期/scope 稳定可用，群名/昵称尽力而为。"""
+    now = time.localtime()
+    return {
+        "date": time.strftime("%Y-%m-%d", now),
+        "time": time.strftime("%H:%M", now),
+        "weekday": time.strftime("%A", now),
+        "scope": scope_key or "",
+        "group_name": "",
+        "user_name": "",
+    }
+
+
+def render_persona(text: str, variables: dict[str, str]) -> str:
+    """渲染 persona 模板：替换 ``{{variable}}``，未知变量抛 ValueError。
+
+    集合外的变量名 fail loud（对齐 dsh 语义，尽早暴露模板笔误）；集合内的
+    变量由调用方填值，值为空串时渲染为空（可选变量，如解析不到的群名）。
+    """
+    result = ""
+    last = 0
+    for match in _GROUP_AT.finditer(text):
+        name = match.group(1)
+        if not _VARIABLE_NAME.match(name):
+            raise ValueError(
+                f"persona 模板变量名非法：{{{{{name}}}}}（须匹配 {_VARIABLE_NAME.pattern}）"
+            )
+        if name not in variables:
+            raise ValueError(
+                f"persona 模板引用了未知变量 {{{{ {name} }}}}；"
+                f"可用内置变量：{', '.join(sorted(BUILTIN_VARIABLES))}"
+            )
+        result += text[last : match.start()] + variables[name]
+        last = match.end()
+    return result + text[last:]
 
 
 def build_prompt(
@@ -69,6 +121,7 @@ def create_persona(
     gender: str = "",
     personality: str = "",
     description: str = "",
+    begin_dialogs: list[dict[str, str]] | None = None,
     created_by: str = "",
 ) -> dict:
     """创建 persona；prompt 由特征模板生成。重名抛 ValueError（由入口层转提示）。"""
@@ -90,6 +143,7 @@ def create_persona(
         description=description,
         prompt=prompt,
         traits_json=traits,
+        begin_dialogs_json=dialogs_to_json(begin_dialogs),
         created_by=created_by,
     )
 
@@ -100,6 +154,7 @@ def update_persona(
     gender: str | None = None,
     personality: str | None = None,
     description: str | None = None,
+    begin_dialogs: list[dict[str, str]] | None = None,
 ) -> dict | None:
     """更新特征并重新生成 prompt；persona 不存在返回 None。"""
     current = store.get_persona_by_name(name)
@@ -115,6 +170,9 @@ def update_persona(
         personality=new_personality,
         description=new_description,
         prompt=prompt,
+        begin_dialogs_json=(
+            dialogs_to_json(begin_dialogs) if begin_dialogs is not None else None
+        ),
     )
 
 
@@ -146,6 +204,62 @@ def set_global(name: str) -> bool:
 
 def clear_global() -> bool:
     return store.clear_global_value(GLOBAL_PERSONA_KEY)
+
+
+def dialogs_to_json(dialogs: list[dict[str, str]] | None) -> str:
+    """示例对话 → JSON 存储（只保留 user/assistant 字段）。"""
+    if not dialogs:
+        return "[]"
+    cleaned = [
+        {"user": d.get("user", ""), "assistant": d.get("assistant", "")}
+        for d in dialogs
+        if isinstance(d, dict) and d.get("user") and d.get("assistant")
+    ]
+    return json.dumps(cleaned, ensure_ascii=False)
+
+
+def parse_dialogs_text(text: str, char_name: str) -> list[dict[str, str]]:
+    """把交替的「用户: … <名字>: …」文本解析成示例对话对。
+
+    按角色前缀切分（支持同一行内多轮，聊天输入没有换行）；user 侧前缀为
+    ``用户:`` / ``user:``，assistant 侧为 ``<char_name>:`` / ``assistant:`` /
+    ``你:`` / ``我:``。不完整的轮丢弃。供 ``ai persona create/update --dialogs`` 使用。
+    """
+    pattern = re.compile(
+        rf"(用户|user|assistant|你|我|{re.escape(char_name)})\s*:\s*",
+        re.IGNORECASE,
+    )
+    matches = list(pattern.finditer(text))
+    dialogs: list[dict[str, str]] = []
+    user_part: str | None = None
+    for index, match in enumerate(matches):
+        role = match.group(1).lower()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        content = text[match.end() : end].strip()
+        if not content:
+            continue
+        if role in ("用户", "user"):
+            user_part = content
+        elif user_part is not None:
+            dialogs.append({"user": user_part, "assistant": content})
+            user_part = None
+    return dialogs
+
+
+def resolve_dialogs(scope_key: str | None) -> list[dict[str, str]]:
+    """解析当前 scope 的示例对话：scope 级 persona > 全局 > 默认内置。"""
+    if scope_key:
+        persona_id = store.get_scope_persona_id(scope_key)
+        if persona_id is not None:
+            persona = store.get_persona_by_id(persona_id)
+            if persona and persona["begin_dialogs"]:
+                return persona["begin_dialogs"]
+    global_name = store.get_global_value(GLOBAL_PERSONA_KEY)
+    if global_name:
+        persona = store.get_persona_by_name(global_name)
+        if persona and persona["begin_dialogs"]:
+            return persona["begin_dialogs"]
+    return list(prompts.DEFAULT_BEGIN_DIALOGS)
 
 
 def missing_traits(gender: str, personality: str, description: str) -> str:

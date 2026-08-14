@@ -7,6 +7,8 @@
 - ``ai provider reset``：清除当前群 scope 绑定。群内 ADMIN+，私聊拒绝。
 - ``ai provider add <id> [--url ... --key ... --kind ... --model ... --vision-model ...]``：
   新增/更新 provider（DB）。SUPERUSER。
+- ``ai provider alter <id> [--url ... --key ... --kind ... --model ... --vision-model ...]``：
+  部分更新 provider 属性（未传字段保持不变，传空值清空）。SUPERUSER。
 - ``ai provider remove <id>``：删除 provider 及其 model-list，先清理 scope 绑定；
   默认 provider 不允许直接删除。SUPERUSER。
 - ``ai provider model-list <id>``：查看 provider 的 model-list。ADMIN。
@@ -80,11 +82,14 @@ _PERSONA_USAGE = (
     "  ai persona list\n"
     "  ai persona show <name>\n"
     "  ai persona create <name> [--gender <g>] [--personality <p>] [--description <d>]\n"
+    "             [--dialogs <示例对话文本>]\n"
     "  ai persona update <name> [--gender <g>] [--personality <p>] [--description <d>]\n"
+    "             [--dialogs <示例对话文本>]\n"
     "  ai persona use <name>   绑定当前 scope（ADMIN）\n"
     "  ai persona reset        解除当前 scope 绑定（ADMIN）\n"
     "  ai persona global <name>|off   设置/清除全局（SUPERUSER）\n"
-    "  ai persona delete <name>       删除（SUPERUSER）"
+    "  ai persona delete <name>       删除（SUPERUSER）\n"
+    "--dialogs 格式：交替的「用户: …」与「<名字>: …」行，作为人格的参考对话风格（few-shot）。"
 )
 
 _ADD_USAGE = (
@@ -135,16 +140,26 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
 
 
 def _parse_flags(args: list[str]) -> dict[str, str]:
-    """把 ``--key value`` 解析成 dict。值缺失时记空串。"""
+    """把 ``--key value`` 解析成 dict。
+
+    值缺失（flag 在末尾或后跟另一个 flag）记空串；字面 ``""`` / ``''`` 归一化为
+    空串（聊天文本里的空引号），供 alter 等命令表达"清空"。
+    """
     opts: dict[str, str] = {}
     index = 0
     while index < len(args):
         arg = args[index]
         if arg.startswith("--"):
             key = arg[2:].replace("-", "_")
-            value = args[index + 1] if index + 1 < len(args) else ""
+            if index + 1 < len(args) and not args[index + 1].startswith("--"):
+                value = args[index + 1]
+                index += 2
+            else:
+                value = ""
+                index += 1
+            if value in ('""', "''"):
+                value = ""
             opts[key] = value
-            index += 2
         else:
             index += 1
     return opts
@@ -171,6 +186,8 @@ async def _handle_provider(bot: Bot, event: Event, args: list[str]) -> None:
         await _provider_reset(bot, event)
     elif action == "add":
         await _provider_add(bot, event, rest)
+    elif action == "alter":
+        await _provider_alter(bot, event, rest)
     elif action == "remove":
         await _provider_remove(bot, event, rest, config)
     elif action == "model-list":
@@ -294,6 +311,83 @@ async def _provider_add(bot: Bot, event: Event, args: list[str]) -> None:
     providers.clear_agent_cache()
     verb = "更新" if existed else "新增"
     await send_to_event(bot, event, f"已{verb} provider `{pid}`（kind={kind}）。")
+
+
+_ALTER_USAGE = (
+    "用法：ai provider alter <id> [--url <u>] [--key <k>] [--kind <kind>] "
+    "[--model <m>] [--vision-model <m>] [--temperature <t>] [--max-tokens <n>] "
+    "[--timeout <s>]\n"
+    "只变更显式传入的属性，其余保持不变；传空值表示清空该项。"
+)
+
+
+async def _provider_alter(bot: Bot, event: Event, args: list[str]) -> None:
+    """部分更新 provider 属性：未显式传入的字段保持原值，空值清空。"""
+    if not _require_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可变更 provider。")
+        return
+    if not args:
+        await send_to_event(bot, event, _ALTER_USAGE)
+        return
+    pid = args[0]
+    record = provider.get_provider(pid)
+    if record is None:
+        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
+        return
+    opts = _parse_flags(args[1:])
+    kind = opts["kind"] if "kind" in opts else record.kind
+    if kind not in provider.KNOWN_KINDS:
+        await send_to_event(
+            bot, event, "kind 必须是 openai_chat / openai_responses / anthropic。"
+        )
+        return
+    try:
+        if "temperature" in opts:
+            temperature = float(opts["temperature"]) if opts["temperature"] else None
+        else:
+            temperature = record.temperature
+        if "max_tokens" in opts:
+            max_tokens = int(opts["max_tokens"]) if opts["max_tokens"] else None
+        else:
+            max_tokens = record.max_tokens
+        if "timeout" in opts:
+            timeout_seconds = float(opts["timeout"]) if opts["timeout"] else None
+        else:
+            timeout_seconds = record.timeout_seconds
+    except ValueError:
+        await send_to_event(
+            bot, event, "temperature / max-tokens / timeout 必须是数字。"
+        )
+        return
+    provider.upsert_provider(
+        ProviderRecord(
+            id=pid,
+            url=opts["url"] if "url" in opts else record.url,
+            key=opts["key"] if "key" in opts else record.key,
+            kind=kind,
+            default_text_model=(
+                opts["model"] if "model" in opts else record.default_text_model
+            ),
+            default_vision_model=(
+                opts["vision_model"]
+                if "vision_model" in opts
+                else record.default_vision_model
+            ),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout_seconds=timeout_seconds,
+        )
+    )
+    # 变更的默认模型自动注册进 model-list（已注册的不覆盖其能力标记）。
+    if opts.get("model") and store.get_provider_model(pid, opts["model"]) is None:
+        store.upsert_provider_model(pid, opts["model"], "text")
+    if (
+        opts.get("vision_model")
+        and store.get_provider_model(pid, opts["vision_model"]) is None
+    ):
+        store.upsert_provider_model(pid, opts["vision_model"], "multimodal")
+    providers.clear_agent_cache()
+    await send_to_event(bot, event, f"已变更 provider `{pid}` 的属性（kind={kind}）。")
 
 
 async def _provider_remove(bot: Bot, event: Event, args: list[str], config) -> None:
@@ -733,6 +827,8 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
         if store.get_global_value("global_persona") == p["name"]:
             binds.append("全局")
         lines = [f"persona `{p['name']}`", f"prompt：{p['prompt']}"]
+        if p["begin_dialogs"]:
+            lines.append(f"示例对话：{len(p['begin_dialogs'])} 组")
         if binds:
             lines.append("绑定：" + "、".join(binds))
         await send_to_event(bot, event, "\n".join(lines))
@@ -748,18 +844,27 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
             return
         name = rest[0]
         opts = _parse_persona_args(rest[1:])
+        dialogs = (
+            persona.parse_dialogs_text(opts["dialogs"], name)
+            if opts.get("dialogs")
+            else None
+        )
         try:
             p = persona.create_persona(
                 name,
                 gender=opts.get("gender", ""),
                 personality=opts.get("personality", ""),
                 description=opts.get("description", ""),
+                begin_dialogs=dialogs,
                 created_by=user,
             )
         except ValueError as exc:
             await send_to_event(bot, event, str(exc))
             return
-        await send_to_event(bot, event, f"已创建 persona `{p['name']}`：{p['prompt']}")
+        reply = f"已创建 persona `{p['name']}`：{p['prompt']}"
+        if dialogs:
+            reply += f"\n示例对话 {len(dialogs)} 组。"
+        await send_to_event(bot, event, reply)
         return
 
     if action == "update":
@@ -772,16 +877,25 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
             return
         name = rest[0]
         opts = _parse_persona_args(rest[1:])
+        dialogs = (
+            persona.parse_dialogs_text(opts["dialogs"], name)
+            if opts.get("dialogs")
+            else None
+        )
         p = persona.update_persona(
             name,
             gender=opts.get("gender"),
             personality=opts.get("personality"),
             description=opts.get("description"),
+            begin_dialogs=dialogs,
         )
         if p is None:
             await send_to_event(bot, event, f"persona `{name}` 不存在。")
             return
-        await send_to_event(bot, event, f"已更新 persona `{p['name']}`：{p['prompt']}")
+        reply = f"已更新 persona `{p['name']}`：{p['prompt']}"
+        if dialogs:
+            reply += f"\n示例对话 {len(dialogs)} 组。"
+        await send_to_event(bot, event, reply)
         return
 
     if action in ("use", "reset"):

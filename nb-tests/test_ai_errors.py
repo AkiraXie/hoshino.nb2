@@ -142,5 +142,82 @@ def test_redact_args_shapes():
     assert redact_args(42) == "int"
 
 
+# ------------------------------------------------------- 观测日志素材
+
+
+def test_summarize_content_truncates_and_marks_binary():
+    from hoshino.ai.runner import summarize_content
+
+    assert summarize_content(None) == ""
+    assert summarize_content("short") == "short"
+    long_text = "长" * 500
+    assert summarize_content(long_text).endswith("…")
+    assert len(summarize_content(long_text)) <= 201
+    assert summarize_content(b"\x89PNG") == "<bytes:4>"
+    assert summarize_content(["a", "b"]) == "a | b"
+    binary = type("BC", (), {"data": b"abc", "media_type": "image/png"})()
+    assert summarize_content(binary) == "<image/png:3B>"
+
+
+def test_last_message_summary_extracts_parts():
+    from types import SimpleNamespace
+
+    from pydantic_ai.messages import (
+        ModelRequest,
+        RetryPromptPart,
+        ToolReturnPart,
+        UserPromptPart,
+    )
+
+    from hoshino.ai.runner import _last_message_summary
+
+    user_state = SimpleNamespace(
+        message_history=[ModelRequest(parts=[UserPromptPart(content="你好")])]
+    )
+    assert "user: 你好" in _last_message_summary(user_state)
+
+    tool_state = SimpleNamespace(
+        message_history=[
+            ModelRequest(
+                parts=[
+                    ToolReturnPart(
+                        tool_name="web_search", content="搜索结果 " + "x" * 300
+                    )
+                ]
+            )
+        ]
+    )
+    summary = _last_message_summary(tool_state)
+    assert "tool web_search →" in summary
+    assert summary.endswith("…")  # 长结果截断
+
+    retry_state = SimpleNamespace(
+        message_history=[ModelRequest(parts=[RetryPromptPart(content="参数不合法")])]
+    )
+    assert "retry: 参数不合法" in _last_message_summary(retry_state)
+
+    assert _last_message_summary(SimpleNamespace(message_history=[])) == ""
+    assert _last_message_summary(SimpleNamespace()) == ""
+
+
+def test_response_introspection_extracts_thinking_and_text():
+    from types import SimpleNamespace
+
+    from pydantic_ai.messages import TextPart, ThinkingPart
+
+    from hoshino.ai.runner import _response_introspection
+
+    node = SimpleNamespace(
+        model_response=SimpleNamespace(
+            parts=[ThinkingPart(content="先查一下再答"), TextPart(content="我用工具")]
+        )
+    )
+    intro = _response_introspection(node)
+    assert "先查一下再答" in intro
+    assert "我用工具" in intro
+    assert _response_introspection(SimpleNamespace(model_response=None)) == ""
+    assert _response_introspection(object()) == ""
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-q"])

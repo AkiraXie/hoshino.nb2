@@ -100,21 +100,67 @@ def build_model(
     raise ValueError(f"未知 provider kind: {provider.kind}")
 
 
-OUTPUT_STYLE_HEADER = "\n\n【Markdown 输出规范（必须严格遵守）】\n"
+OUTPUT_STYLE_HEADER = "\n\n（对了，回复的时候记得按下面的小习惯来：）\n"
 
 
 async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
     """每 run 解析 persona：Task 用冻结快照，chat 用三级解析。
 
-    最后统一追加 Markdown 输出规范（``output.md``），使其对所有 persona / surface
-    强制生效（chat 与 task 回复都遵守同一份格式约束）。
+    最后统一追加「参考对话风格」（示例对话，锚定说话方式）与 Markdown 输出规范
+    （``output.md``），使其对所有 persona / surface 强制生效。
     """
     task = getattr(ctx.deps, "task", None)
     if task is not None:
         base = getattr(task, "persona_prompt", None) or ctx.deps.config.system_prompt
+        # Task 是结构化产出（research/plan），不注入示例对话与模板变量。
+        dialogs_prompt = ""
     else:
         base = persona.resolve_prompt(ctx.deps.scope_key, ctx.deps.config)
-    return f"{base}{OUTPUT_STYLE_HEADER}{prompts.OUTPUT_STYLE_RULES}"
+        base = _render_persona_safe(
+            base,
+            await _persona_variables(ctx),
+            scope_key=ctx.deps.scope_key,
+        )
+        dialogs_prompt = prompts.build_dialogs_prompt(
+            persona.resolve_dialogs(ctx.deps.scope_key)
+        )
+    style = f"{OUTPUT_STYLE_HEADER}{prompts.OUTPUT_STYLE_RULES}"
+    if dialogs_prompt:
+        return f"{base}\n\n{dialogs_prompt}{style}"
+    return f"{base}{style}"
+
+
+async def _persona_variables(ctx: RunContext[AgentDeps]) -> dict[str, str]:
+    """构造 persona 模板变量：内置 + 尽力解析群名/发消息人昵称。"""
+    variables = persona._builtin_variables(ctx.deps.scope_key)
+    event = getattr(ctx.deps, "event", None)
+    if event is None:
+        return variables
+    try:
+        from nonebot_plugin_uninfo import get_session
+
+        session = await get_session(bot=ctx.deps.bot, event=event)
+        if session is not None:
+            group = getattr(session, "group", None)
+            if group is not None and getattr(group, "group_name", None):
+                variables["group_name"] = str(group.group_name)
+            member = getattr(session, "member", None)
+            if member is not None and getattr(member, "user_name", None):
+                variables["user_name"] = str(member.user_name)
+    except Exception:
+        pass  # 群名/昵称解析失败 → 保留空串，不阻塞主流程
+    return variables
+
+
+def _render_persona_safe(text: str, variables: dict[str, str], *, scope_key) -> str:
+    """渲染 persona 模板；未知变量 fail loud 但回退原文并记日志。"""
+    try:
+        return persona.render_persona(text, variables)
+    except ValueError as exc:
+        from hoshino.ai.base import sv
+
+        sv.logger.warning(f"AI persona 模板渲染失败 scope={scope_key} error={exc}")
+        return text
 
 
 def _resolve_toolset(ctx: RunContext[AgentDeps]) -> FunctionToolset | None:

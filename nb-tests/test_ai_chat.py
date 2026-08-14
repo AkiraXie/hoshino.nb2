@@ -777,6 +777,144 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     assert len(sent) == 1
 
 
+# ------------------------------------------------------- 观测日志
+
+
+def test_format_run_trace_lines():
+    """RunLog.nodes 格式化为可读轨迹行：step/tools（脱敏参数+思考）/end。"""
+    from hoshino.ai.runner import RunLog
+
+    from hoshino.modules.ai.chat import _format_run_trace
+
+    run_log = RunLog(started_at=100.0)
+    run_log.nodes = [
+        {"type": "model_request", "ts": 101.0, "detail": "user: 你好"},
+        {
+            "type": "tools",
+            "ts": 102.0,
+            "detail": {
+                "calls": [{"name": "web_search", "args_summary": "{q=<4>}"}],
+                "introspection": "用户想查天气",
+            },
+        },
+        {
+            "type": "model_request",
+            "ts": 103.5,
+            "detail": "tool web_search → 找到 3 条结果",
+        },
+        {"type": "end", "ts": 104.0},
+    ]
+    lines = _format_run_trace(run_log)
+    assert len(lines) == 4
+    assert lines[0].startswith("step 1 model_request") and "user: 你好" in lines[0]
+    assert "web_search" in lines[1] and "思考: 用户想查天气" in lines[1]
+    assert lines[2].startswith("step 2 model_request")
+    assert "找到 3 条结果" in lines[2]
+    assert lines[3] == "end · 0.5s"
+
+
+def test_format_run_trace_empty():
+    from hoshino.ai.runner import RunLog
+
+    from hoshino.modules.ai.chat import _format_run_trace
+
+    assert _format_run_trace(RunLog()) == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_success_logs_step_trace_and_reply(monkeypatch, tmp_store):
+    """成功路径：运行日志逐行输出 step/tools 轨迹与回复摘要，便于观测。"""
+    from loguru import logger as loguru_logger
+
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch, tmp_store)
+
+    class TracedRun(FakeAgentRun):
+        """产出带名字的假图节点（ModelRequestNode/CallToolsNode/End）。"""
+
+        def __init__(self, result):
+            super().__init__(result)
+            self._nodes = [
+                type("ModelRequestNode", (), {})(),
+                type(
+                    "CallToolsNode",
+                    (),
+                    {
+                        "model_response": type(
+                            "ModelResponse",
+                            (),
+                            {
+                                "parts": [
+                                    type(
+                                        "ThinkingPart", (), {"content": "我先查一下"}
+                                    )(),
+                                    type(
+                                        "ToolCallPart",
+                                        (),
+                                        {
+                                            "tool_name": "web_search",
+                                            "args": {"q": "secret-keyword"},
+                                        },
+                                    )(),
+                                ]
+                            },
+                        )()
+                    },
+                )(),
+                type("End", (), {})(),
+            ]
+            self._index = 0
+
+        async def __anext__(self):
+            if self._index < len(self._nodes):
+                node = self._nodes[self._index]
+                self._index += 1
+                return node
+            self.result = self._result
+            raise StopAsyncIteration
+
+    class TracedAgent(FakeAgent):
+        def iter(self, prompt, **kwargs):
+            self.prompt = prompt
+            return TracedRun(self._result)
+
+    agent = TracedAgent(FakeResult("**查到了**"))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+
+    async def fake_render(md, cfg):
+        return b"FAKEPNG"
+
+    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
+    sent = _stub_send(monkeypatch)
+
+    records: list[str] = []
+    sink_id = loguru_logger.add(records.append, format="{message}", level="INFO")
+    try:
+        bot, event = _milky_group("#查一下", user_id=7)
+        await bot.handle_event(event)
+    finally:
+        loguru_logger.remove(sink_id)
+
+    joined = "\n".join(records)
+    # 汇总行：steps / tokens / 耗时
+    assert "AI 请求成功" in joined
+    assert "steps=1" in joined  # 假图里只有一个 ModelRequestNode
+    assert "耗时=" in joined
+    # 轨迹行：模型请求（含上一动作）→ 工具调用（脱敏参数 + 思考）→ end
+    assert "AI trace" in joined
+    assert "step 1 model_request" in joined
+    assert "web_search" in joined
+    assert "{q=<14>}" in joined  # secret-keyword 脱敏为长度
+    assert "思考: 我先查一下" in joined
+    assert "end ·" in joined
+    # 回复摘要行
+    assert "AI 回复" in joined
+    assert "摘要「**查到了**」" in joined
+    assert len(sent) == 1
+
+
 # ------------------------------------------------------- run_agent 契约
 
 

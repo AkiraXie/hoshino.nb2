@@ -366,6 +366,14 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         run_log.reason = "timeout" if isinstance(exc, TimeoutError) else "max-requests"
         manager.append_prompt_only(scope_key, prompt, provider_id, run_log)
         reason = "超时" if isinstance(exc, TimeoutError) else "超出步数限制"
+        _log_run_trace(
+            run_log,
+            provider_id=provider_id,
+            scope_key=scope_key,
+            conv_name=conv.name,
+            model_name=model_name,
+            level="WARNING",
+        )
         sv.logger.warning(
             f"AI 请求{reason} provider={provider_id} scope={scope_key} conv={conv.name}"
         )
@@ -381,6 +389,14 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         run_log.reason = "error"
         detail = errors.format_exception_detail(exc)
         agent_deps.telemetry.record_error(detail)
+        _log_run_trace(
+            run_log,
+            provider_id=provider_id,
+            scope_key=scope_key,
+            conv_name=conv.name,
+            model_name=model_name,
+            level="WARNING",
+        )
         tools = ",".join(c["name"] for c in run_log.tool_calls) or "-"
         sv.logger.warning(
             f"AI 请求失败 provider={provider_id} scope={scope_key} conv={conv.name} "
@@ -403,16 +419,95 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     # 避免重复记录历史（pydantic-ai 已验证该前缀对齐语义）。
     new_messages = list(result.all_messages())[len(history) :]
     manager.commit_turn(scope_key, new_messages, provider_id, run_log)
+    elapsed = run_log.ended_at - run_log.started_at
+    usage = metrics.snapshot_from_result(result)
     sv.logger.info(
         f"AI 请求成功 provider={provider_id} scope={scope_key} "
-        f"conv={conv.name} tokens={metrics.snapshot_from_result(result).total_tokens}"
+        f"conv={conv.name} model={model_name} steps={run_log.steps} "
+        f"tokens={usage.total_tokens} 耗时={elapsed:.1f}s"
+    )
+    _log_run_trace(
+        run_log,
+        provider_id=provider_id,
+        scope_key=scope_key,
+        conv_name=conv.name,
+        model_name=model_name,
     )
 
     raw = result.output
     if images and not use_vision:
         # 含图但当前没有多模态模型：回复开头提示本次未看图。
         raw = "（目前未启用多模态模型，请用文字描述图片内容或直接提问。）\n\n" + raw
+    sv.logger.info(
+        f"AI 回复 provider={provider_id} scope={scope_key} conv={conv.name} "
+        f"model={model_name} 字数={len(raw)} "
+        f"摘要「{_log_safe(runner.summarize_content(raw, 120))}」"
+    )
     await _send_result(bot, event, raw, config, provider_id)
+
+
+def _log_safe(text: str) -> str:
+    """转义 loguru 颜色标签语法（``<tag>``），避免日志内容被误解析为颜色指令。
+
+    工具参数摘要（如 ``{q=<14>}``）与网页/模型文本摘要都可能含尖括号，不转义
+    会在 colorize 时抛 ``ValueError`` 中断整条日志链。
+    """
+    return text.replace("<", "\\<")
+
+
+def _format_run_trace(run_log) -> list[str]:
+    """把 RunLog.nodes 格式化为可读轨迹行（观测日志用）。
+
+    每行含节点相对上一节点的耗时；model_request 行含上一动作摘要（提问/工具
+    结果/重试），tools 行含脱敏参数与模型思考/中间文本摘要。
+    """
+    lines: list[str] = []
+    nodes = run_log.nodes
+    if not nodes:
+        return lines
+    prev_ts = run_log.started_at or nodes[0]["ts"]
+    step = 0
+    for node in nodes:
+        delta = node["ts"] - prev_ts
+        prev_ts = node["ts"]
+        ntype = node["type"]
+        if ntype == "model_request":
+            step += 1
+            detail = node.get("detail") or ""
+            suffix = f" · {delta:.1f}s" if delta >= 0.05 else ""
+            lines.append(f"step {step} model_request · {detail}{suffix}".rstrip(" ·"))
+        elif ntype == "tools":
+            detail = node.get("detail") or {}
+            calls = (
+                " | ".join(
+                    f"{c['name']}{{{c['args_summary']}}}"
+                    for c in detail.get("calls", [])
+                )
+                or "-"
+            )
+            intro = detail.get("introspection") or ""
+            lines.append(f"step {step} tools · {calls} · 思考: {intro} · {delta:.1f}s")
+        elif ntype == "end":
+            lines.append(f"end · {delta:.1f}s")
+    return lines
+
+
+def _log_run_trace(
+    run_log,
+    *,
+    provider_id: str,
+    scope_key: str,
+    conv_name: str,
+    model_name: str,
+    level: str = "INFO",
+) -> None:
+    """把一次 run 的节点轨迹逐行打进运行日志（chat/task 观测用）。"""
+    log = sv.logger.warning if level == "WARNING" else sv.logger.info
+    for line in _format_run_trace(run_log):
+        log(
+            f"AI trace provider={provider_id} scope={scope_key} conv={conv_name} "
+            f"model={model_name} {_log_safe(line)}"
+        )
 
 
 async def _event_images(bot: Bot, event: Event) -> list:
