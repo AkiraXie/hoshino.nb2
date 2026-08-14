@@ -27,7 +27,8 @@ from hoshino.platform.superuser import is_superuser
 
 from hoshino.ai import deps as ai_deps
 from hoshino.ai import persona, provider, skills, tools
-from hoshino.ai.base import get_config, resolve_provider, sv
+from hoshino.ai.base import get_config, resolve_provider
+from hoshino.modules.ai.ai_admin import sv
 from hoshino.ai.task import events as task_events
 from hoshino.ai.task import (
     policy,

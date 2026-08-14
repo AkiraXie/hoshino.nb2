@@ -9,6 +9,8 @@ system_prompt：persona 与工具都通过动态注入解析，不随 scope/绑�
 from __future__ import annotations
 
 import asyncio
+
+from loguru import logger
 from typing import Any
 
 import httpx
@@ -157,9 +159,7 @@ def _render_persona_safe(text: str, variables: dict[str, str], *, scope_key) -> 
     try:
         return persona.render_persona(text, variables)
     except ValueError as exc:
-        from hoshino.ai.base import sv
-
-        sv.logger.warning(f"AI persona 模板渲染失败 scope={scope_key} error={exc}")
+        logger.warning(f"AI persona 模板渲染失败 scope={scope_key} error={exc}")
         return text
 
 

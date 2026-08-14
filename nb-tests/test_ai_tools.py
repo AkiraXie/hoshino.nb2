@@ -241,16 +241,20 @@ async def test_send_message_length_limit(monkeypatch):
 
 
 async def test_service_manage_requires_admin_and_flips_state(tmp_store, monkeypatch):
-    from hoshino.ai import base
+    from types import SimpleNamespace
+
+    from hoshino.core.service import Service
+
     from hoshino.ai.tools.bot.service_manage import service_manage
 
+    # 工具按名字查 aichat 服务；用假对象避免与 chat.py 的真实服务名冲突
     calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(
-        base.sv, "set_enable", lambda scope: calls.append(("enable", scope))
+    fake_sv = SimpleNamespace(
+        check_enabled=lambda scope: True,
+        set_enable=lambda scope: calls.append(("enable", scope)),
+        set_disable=lambda scope: calls.append(("disable", scope)),
     )
-    monkeypatch.setattr(
-        base.sv, "set_disable", lambda scope: calls.append(("disable", scope))
-    )
+    monkeypatch.setattr(Service, "get_loaded_services", lambda: {"aichat": fake_sv})
 
     # member → 拒绝，不翻转
     member = _deps(

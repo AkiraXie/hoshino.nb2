@@ -23,8 +23,11 @@ async def service_manage(
 
     仅作用于当前会话所在群/会话。
     """
-    from ...base import sv
+    from hoshino.core.service import Service
 
+    sv = Service.get_loaded_services().get("aichat")
+    if sv is None:
+        return "aichat 服务未加载。"
     scope_key = ctx.deps.scope_key
     if not scope_key:
         return "无法解析当前 scope。"

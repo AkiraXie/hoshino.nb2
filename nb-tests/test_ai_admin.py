@@ -182,6 +182,7 @@ def _stub_env(monkeypatch, tmp_store, *, superuser: bool = True, **overrides):
     monkeypatch.setattr(
         ai_admin.sv, "save_config", lambda new_config: saved.append(new_config)
     )
+    # 全局默认 provider 已改由 DB 持久化（store.AIGlobal["default_provider"]）
 
     sent: list[tuple[int, object]] = []
 
@@ -239,10 +240,7 @@ async def test_provider_default_success(monkeypatch, tmp_store):
     bot, event = _milky_group("ai provider default anthropic")
     await bot.handle_event(event)
 
-    assert len(saved) == 1
-    new_config = saved[0]
-    assert isinstance(new_config, AIConfig)
-    assert new_config.default == "anthropic"
+    assert tmp_store.get_global_value("default_provider") == "anthropic"
     assert "已设置全局默认 provider" in sent[0][1].extract_plain_text()
 
 
@@ -754,7 +752,7 @@ async def test_setup_one_shot_configures_provider(monkeypatch, tmp_store):
     assert row["default_text_model"] == "deepseek-v3"
     assert row["default_vision_model"] == "gpt-4o"
     assert tmp_store.get_scope_provider("milky:123456") == "myllm"
-    assert saved and saved[0].default == "myllm"
+    assert tmp_store.get_global_value("default_provider") == "myllm"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

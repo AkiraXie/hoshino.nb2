@@ -5,8 +5,6 @@ store 层测试不启动 NoneBot；``tmp_store`` 把 store.engine/Session 指向
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 
@@ -182,97 +180,63 @@ def test_scope_model_override_set_and_clear(tmp_store):
 # ------------------------------------------------------------ JSON 迁移
 
 
-def _write_json_config(path, providers):
-    path.write_text(
-        json.dumps({"default": "deepseek", "providers": providers}, ensure_ascii=False),
+# ------------------------------------------------------------ AIConfig env 挂载
+
+
+def test_ai_config_from_env_file_and_vars(tmp_path):
+    """AI_* env（文件 + 环境变量）→ AIConfig：默认 provider、代理、数值/布尔强转。"""
+    from hoshino.ai.config import load_ai_config_from_env
+
+    env_file = tmp_path / ".env.prod"
+    env_file.write_text(
+        "# AI 配置\n"
+        "AI_DEFAULT_PROVIDER=opencode-go\n"
+        "AI_PROXY=http://127.0.0.1:7890\n"
+        "AI_MAX_HISTORY_MESSAGES=40\n"
+        "AI_WEB_SEARCH_NATIVE=false\n"
+        "OTHER=ignored\n",
         encoding="utf-8",
     )
-
-
-def test_migrate_json_providers_imports_and_clears(tmp_store, tmp_path):
-    from hoshino.ai.base import migrate_json_providers
-
-    cfg = tmp_path / "aichat.json"
-    _write_json_config(
-        cfg,
-        {
-            "deepseek": {
-                "url": "https://api.deepseek.com/anthropic",
-                "key": "sk-abc",
-                "config": {"kind": "anthropic", "model": "deepseek-v4-flash"},
-            },
-            "opencode-go": {
-                "url": "https://opencode.ai/zen/go/v1",
-                "key": "sk-def",
-                "config": {"kind": "openai_chat", "model": "deepseek-v4-flash"},
-            },
-        },
+    cfg = load_ai_config_from_env(
+        env={"AI_TOOL_MAX_RETRIES": "5"}, env_file=str(env_file)
     )
-    assert migrate_json_providers(str(cfg)) == 2
-    # provider 行
-    ds = tmp_store.get_provider_row("deepseek")
-    assert ds["kind"] == "anthropic"
-    assert ds["default_text_model"] == "deepseek-v4-flash"
-    assert ds["default_vision_model"] == ""  # 现有两个 provider 多模态模型为空
-    assert ds["key"] == "sk-abc"
-    oc = tmp_store.get_provider_row("opencode-go")
-    assert oc["kind"] == "openai_chat"
-    # model-list 自动注册为 text
-    assert (
-        tmp_store.get_provider_model("deepseek", "deepseek-v4-flash")["capabilities"]
-        == "text"
+    assert cfg.default == "opencode-go"
+    assert cfg.proxy == "http://127.0.0.1:7890"
+    assert cfg.max_history_messages == 40
+    assert cfg.web_search_native is False  # 布尔强转
+    assert cfg.tool_max_retries == 5  # 环境变量覆盖文件
+    # 未配置字段用代码默认
+    assert cfg.render_theme == "light"
+    # env 显式置空会覆盖文件值 → 字段视为未设置，落代码默认
+    cfg2 = load_ai_config_from_env(
+        env={"AI_DEFAULT_PROVIDER": ""}, env_file=str(env_file)
     )
-    # JSON providers 被清空
-    raw = json.loads(cfg.read_text(encoding="utf-8"))
-    assert raw["providers"] == {}
-    assert raw["default"] == "deepseek"  # 其它字段保留
+    assert cfg2.default == ""
 
 
-def test_migrate_json_providers_idempotent(tmp_store, tmp_path):
-    from hoshino.ai.base import migrate_json_providers
+def test_hsnconfig_ai_mounted_from_env(tmp_path, monkeypatch):
+    """config.ai 惰性挂载：从 .env.prod 构建 AIConfig；DB 默认覆盖 env 默认。"""
+    import hoshino.ai.config as ai_config
+    from hoshino.ai.base import get_config
 
-    cfg = tmp_path / "aichat.json"
-    _write_json_config(
-        cfg,
-        {
-            "p": {
-                "url": "u",
-                "key": "k",
-                "config": {"kind": "openai_chat", "model": "m"},
-            }
-        },
-    )
-    assert migrate_json_providers(str(cfg)) == 1
-    # 再跑一次：DB 已有，不重复插入；JSON 已空直接返回 0
-    assert migrate_json_providers(str(cfg)) == 0
-    assert len(tmp_store.list_provider_rows()) == 1
+    # 直接测挂载函数（避免全局 config 实例依赖真实 .env.prod）
+    class _FakeHsn:
+        pass
 
+    ai_config.mount_into_hsnconfig(_FakeHsn)
+    assert "ai" in _FakeHsn.__dict__  # property 已挂
+    # 幂等
+    ai_config.mount_into_hsnconfig(_FakeHsn)
+    assert len([k for k in _FakeHsn.__dict__ if k == "ai"]) == 1
 
-def test_migrate_json_providers_keeps_existing_db(tmp_store, tmp_path):
-    """DB 已有同名 provider 时不覆盖（DB 是事实源）。"""
-    from hoshino.ai.base import migrate_json_providers
-
-    tmp_store.upsert_provider_row(
-        provider_id="p", default_text_model="db-model", kind="openai_responses"
-    )
-    cfg = tmp_path / "aichat.json"
-    _write_json_config(
-        cfg,
-        {
-            "p": {
-                "url": "u",
-                "key": "k",
-                "config": {"kind": "openai_chat", "model": "json-model"},
-            }
-        },
-    )
-    assert migrate_json_providers(str(cfg)) == 0
-    row = tmp_store.get_provider_row("p")
-    assert row["default_text_model"] == "db-model"
-    assert row["kind"] == "openai_responses"
-
-
-def test_migrate_json_providers_missing_file(tmp_store):
-    from hoshino.ai.base import migrate_json_providers
-
-    assert migrate_json_providers("/nonexistent/aichat.json") == 0
+    # get_config：env 默认 + DB 覆盖
+    cfg = get_config()
+    assert cfg.default  # 来自真实 .env.prod（AI_DEFAULT_PROVIDER）
+    assert cfg.proxy == "http://127.0.0.1:7890"
+    assert cfg.max_history_messages == 40
+    tmp_store_global = __import__("hoshino.ai.store", fromlist=["set_global_value"])
+    tmp_store_global.set_global_value("default_provider", "other")
+    try:
+        assert get_config().default == "other"
+    finally:
+        tmp_store_global.clear_global_value("default_provider")

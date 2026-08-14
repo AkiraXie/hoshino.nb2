@@ -60,8 +60,11 @@ from hoshino.ai.base import (
     get_config,
     provider_error_message,
     resolve_provider,
-    sv,
 )
+from hoshino.core.service import Service
+
+# aichat 服务仅属于聊天插件（# 触发）：默认关闭，按 scope 启用后才应答。
+sv = Service("aichat", enable_on_default=False, visible=False)
 
 
 async def _ai_chat_rule(bot: Bot, event: Event) -> bool:

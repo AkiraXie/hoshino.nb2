@@ -1,14 +1,16 @@
-"""AI 模块配置数据模型。
+"""AI 模块配置数据模型与 hsnconfig 挂载机制。
 
-配置由 ``hoshino/core/service.py`` 的 ``Service(config_type=AIConfig)`` 管理，
-首次加载自动生成 ``hoshino/service_config/aichat.json``。provider 数据已迁至
+``AIConfig`` 仍在本模块定义（不在 ``hoshino/core/config.py`` 写任何 AI 字段）；
+通过 ``mount_into_hsnconfig`` 把字段动态挂载到 ``HoshinoConfig`` 上（字段名
+``ai_<name>``、env 名 ``AI_<NAME>``，读自 ``.env.prod`` / ``.env.prod.example``），
+挂载发生在 HoshinoConfig 实例化之前，因此 env 值正常生效。provider 数据存
 SQLite（``hoshino/ai/store.py`` 的 ``ai_providers`` 等表），本模型只保留非
-provider 的全局配置与默认 provider 指针（``default``）。
+provider 的全局配置与默认 provider 指针（``default``，运行时可用
+``ai provider default`` 覆盖到 DB）。
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, fields
 from typing import Literal
 
 from .prompts import DEFAULT_SYSTEM_PROMPT
@@ -78,3 +80,78 @@ def mask_url(url: str) -> str:
     if len(cleaned) <= 48:
         return cleaned
     return f"{cleaned[:44]}...{cleaned[-4:]}"
+
+
+# ------------------------------------------------------------ hsnconfig 挂载
+#
+# 字段定义留在本模块（core/config 不写 AI 字段）：通过 ``mount_into_hsnconfig``
+# 把 ``config.ai`` 挂为惰性属性——首次访问时从 ``AI_*`` 环境变量与
+# ``.env.prod`` 构建 AIConfig（环境变量优先于文件）。不做 pydantic 动态字段：
+# model_rebuild 后的动态字段对 pydantic-settings 的 env 读取不可靠。
+
+AI_ENV_PREFIX = "AI_"
+# AIConfig 字段 → env 名（default 用语义化命名）
+_HSN_ENV_NAMES = {"default": "AI_DEFAULT_PROVIDER"}
+
+
+def _env_name(field_name: str) -> str:
+    return _HSN_ENV_NAMES.get(field_name, f"{AI_ENV_PREFIX}{field_name.upper()}")
+
+
+def _coerce(field_type, raw: str):
+    if field_type is bool:
+        return raw.strip().lower() in ("1", "true", "yes", "on")
+    if field_type is int:
+        return int(raw)
+    if field_type is float:
+        return float(raw)
+    return raw  # str / str | None / Literal
+
+
+def _iter_env_file(path: str):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                yield key.strip(), value.strip().strip('"').strip("'")
+    except OSError:
+        return
+
+
+def load_ai_config_from_env(
+    env: dict[str, str] | None = None,
+    env_file: str = ".env.prod",
+) -> AIConfig:
+    """从 AI_* 环境变量 + .env.prod 构建 AIConfig（env 变量优先于文件）。
+
+    未配置的字段用 AIConfig 代码默认值；空值视为未设置。
+    """
+    values: dict[str, str] = {}
+    for key, value in _iter_env_file(env_file):
+        if key.startswith(AI_ENV_PREFIX):
+            values[key] = value
+    source = env if env is not None else os.environ
+    for key, value in source.items():
+        if key.startswith(AI_ENV_PREFIX):
+            values[key] = value
+
+    kwargs: dict = {}
+    for field in fields(AIConfig):
+        raw = values.get(_env_name(field.name))
+        if raw is None or raw == "":
+            continue
+        kwargs[field.name] = _coerce(field.type, raw)
+    return AIConfig(**kwargs)
+
+
+def mount_into_hsnconfig(hsn_cls) -> None:
+    """把 ``ai`` 属性挂到 HoshinoConfig（惰性：``config.ai`` 从 env 构建 AIConfig）。
+
+    幂等；不修改 pydantic 字段 schema，避免动态字段的 env 读取问题。
+    """
+    if "ai" in hsn_cls.__dict__:
+        return
+    hsn_cls.ai = property(lambda self: load_ai_config_from_env())

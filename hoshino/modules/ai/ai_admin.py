@@ -22,8 +22,6 @@ provider 管理语义：
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 from nonebot.adapters import Bot, Event
 
 from hoshino.core.permission import SUPERUSER
@@ -48,9 +46,13 @@ from hoshino.ai import (
     store,
     tools,
 )
-from hoshino.ai.base import get_config, sv
+from hoshino.ai.base import get_config
 from hoshino.ai.config import mask_url
 from hoshino.ai.provider import ProviderRecord
+from hoshino.core.service import Service
+
+# ai_admin 服务：管理命令（ai / ai task）统一挂此服务，默认开启（仅 SUPERUSER 可用）。
+sv = Service("ai_admin", enable_on_default=True, visible=False)
 
 USAGE = (
     "AI 管理（仅超级用户可用）：\n"
@@ -239,7 +241,7 @@ async def _provider_default(bot: Bot, event: Event, args: list[str], config) -> 
     if not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
-    sv.save_config(replace(config, default=pid))
+    store.set_global_value("default_provider", pid)
     await send_to_event(bot, event, f"已设置全局默认 provider：`{pid}`")
 
 
@@ -302,7 +304,7 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
     providers.clear_agent_cache()
 
     lines = [f"已{'更新' if existed else '新增'} provider `{pid}`。"]
-    sv.save_config(replace(get_config(), default=pid))
+    store.set_global_value("default_provider", pid)
     lines.append("已设为全局默认 provider。")
     gid = get_group_id(event)
     if gid is not None:

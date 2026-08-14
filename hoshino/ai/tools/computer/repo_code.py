@@ -115,7 +115,7 @@ _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
 - 人格/口吻：prompts.py 的 DEFAULT_SYSTEM_PROMPT / DEFAULT_BEGIN_DIALOGS
 - 输出格式/禁用词：hoshino/ai/output.md（改动注意保留测试断言的关键词）
 - 新增工具：tools/<category>/xxx.py 写函数 + tools/__init__.py 注册一行
-- 新增配置：config.py AIConfig 字段 + service_config/aichat.json
+- 新增配置：hoshino/ai/config.py AIConfig 字段（挂载进 HoshinoConfig，env AI_*，写 .env.prod）
 
 验证：uv run pytest nb-tests/test_ai_persona.py nb-tests/test_ai_chat.py -q；
 uv run ruff check hoshino/ai；真实 provider 人格探针：

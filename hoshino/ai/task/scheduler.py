@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from loguru import logger
+
 import asyncio
 import hashlib
 import json
@@ -18,7 +20,7 @@ from hoshino.core.hooks import on_post_startup, on_shutdown
 
 from .. import errors
 from .. import metrics
-from ..base import get_config, sv
+from ..base import get_config
 from . import events as task_events
 from . import store as task_store
 from .models import TaskContext, TaskOutput
@@ -104,12 +106,12 @@ async def _scheduler_loop() -> None:
         try:
             await _tick()
         except Exception as exc:
-            sv.logger.warning(
+            logger.warning(
                 f"task scheduler tick error={type(exc).__name__} "
                 f"detail={errors.format_exception_detail(exc)}"
             )
         await asyncio.sleep(_TICK_INTERVAL)
-    sv.logger.info("task scheduler stopped")
+    logger.info("task scheduler stopped")
 
 
 async def _tick() -> None:
@@ -131,7 +133,7 @@ async def _tick() -> None:
         task_store.update_task_status(
             run["task_id"], "failed", failure_reason="bad_context"
         )
-        sv.logger.warning(
+        logger.warning(
             f"task {task['id']} context 解析失败 error={type(exc).__name__} "
             f"detail={errors.format_exception_detail(exc)}"
         )
@@ -234,7 +236,7 @@ async def _execute_claimed(run: dict, task: dict, ctx: TaskContext) -> None:
             "summary": outcome.output.summary,
         },
     )
-    sv.logger.info(
+    logger.info(
         f"task completed id={task['id']} run={run['id']} "
         f"tokens={outcome.usage.get('total_tokens')}"
     )
@@ -318,7 +320,7 @@ async def _handle_failure(
                 "error": type(exc).__name__,
             },
         )
-        sv.logger.info(
+        logger.info(
             f"task retry scheduled id={task['id']} retry={retries + 1} "
             f"error={type(exc).__name__} detail={detail}"
         )
@@ -336,7 +338,7 @@ async def _handle_failure(
                 "to_attempt": created["attempt"] if created else None,
             },
         )
-        sv.logger.warning(
+        logger.warning(
             f"task attempt advanced id={task['id']} "
             f"from={run['attempt']} error={type(exc).__name__} detail={detail}"
         )
@@ -358,11 +360,11 @@ async def _handle_failure(
         task,
         {"status": "failed", "reason": f"run_error:{type(exc).__name__}"},
     )
-    sv.logger.warning(
+    logger.warning(
         f"task failed id={task['id']} run={run['id']} error={type(exc).__name__} "
         f"detail={detail}"
     )
-    sv.logger.debug(
+    logger.debug(
         f"task failed traceback id={task['id']} run={run['id']}\n"
         f"{traceback.format_exc()}"
     )
@@ -378,7 +380,7 @@ def _notify(event_type: str, task: dict, payload: dict) -> None:
             payload=payload,
         )
     except Exception as exc:
-        sv.logger.warning(
+        logger.warning(
             f"task notification enqueue failed id={task['id']} error={type(exc).__name__}"
         )
 
@@ -508,7 +510,7 @@ async def _outbox_loop() -> None:
         try:
             items = task_store.outbox_pending(limit=10)
         except Exception as exc:
-            sv.logger.warning(f"task outbox scan error={type(exc).__name__}")
+            logger.warning(f"task outbox scan error={type(exc).__name__}")
             await asyncio.sleep(5.0)
             continue
         for item in items:
@@ -561,7 +563,7 @@ async def _deliver(item: dict) -> bool:
         await send_to_target(bot, target, text)
         return True
     except Exception as exc:
-        sv.logger.warning(
+        logger.warning(
             f"task outbox deliver failed id={item['id']} error={type(exc).__name__}"
         )
         return False
@@ -579,7 +581,7 @@ async def _start_scheduler() -> None:
     _expire_stale_approvals()
     _running.add(asyncio.create_task(_scheduler_loop()))
     _running.add(asyncio.create_task(_outbox_loop()))
-    sv.logger.info("task scheduler started")
+    logger.info("task scheduler started")
 
 
 @on_shutdown

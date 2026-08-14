@@ -21,8 +21,6 @@ aichat.json + data/db/aichat.db 的 provider 行）向真实模型发起单轮�
 from __future__ import annotations
 
 import asyncio
-import dataclasses
-import json
 import sys
 import time
 from types import SimpleNamespace
@@ -74,11 +72,10 @@ QUESTIONS: list[dict[str, str]] = [
 
 
 def load_config() -> AIConfig:
-    """读 service_config/aichat.json，只取 AIConfig 字段（providers 已迁 DB）。"""
-    with open("hoshino/service_config/aichat.json", encoding="utf-8") as fh:
-        raw = json.load(fh)
-    fields = {f.name for f in dataclasses.fields(AIConfig)}
-    return AIConfig(**{k: v for k, v in raw.items() if k in fields})
+    """从 HoshinoConfig 读取 AI 配置（挂载字段 AI_*，读自 .env.prod）。"""
+    from hoshino.ai.base import get_config
+
+    return get_config()
 
 
 def build_deps(config: AIConfig, provider_id: str, model: str) -> AgentDeps:
