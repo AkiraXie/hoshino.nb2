@@ -29,13 +29,17 @@ _MAX_CHARS = 50_000
 _ALLOWED_SCHEMES = ("http", "https")
 
 
-async def web_fetch(ctx: RunContext[AgentDeps], url: str) -> str:
-    """抓取指定网址的网页正文并转为 markdown。
+async def fetch_url_to_markdown(
+    url: str,
+    *,
+    verify_ssl: bool = False,
+    max_chars: int = _MAX_CHARS,
+) -> str:
+    """抓取网页正文转 markdown（供 web_fetch 工具与 zssm 插件复用）。
 
-    仅当你已经知道某个具体网址、需要它的全文时才用；只是想了解信息请优先用
-    duckduckgo_search。禁止访问私有/内网地址。
+    ``verify_ssl``：HTTPS 证书校验开关（默认 False，与仓库其它下载路径一致）；
+    SSRF 防护（拒绝私有/回环/保留地址）内建于本函数。
     """
-    config = ctx.deps.config
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
         return "仅支持 http/https 网址。"
@@ -45,7 +49,7 @@ async def web_fetch(ctx: RunContext[AgentDeps], url: str) -> str:
     headers = {"Accept": "text/markdown, text/html;q=0.9, */*;q=0.8"}
     async with httpx.AsyncClient(
         trust_env=False,
-        verify=config.web_fetch_verify_ssl,
+        verify=verify_ssl,
         timeout=httpx.Timeout(30.0),
         follow_redirects=True,
     ) as client:
@@ -66,9 +70,20 @@ async def web_fetch(ctx: RunContext[AgentDeps], url: str) -> str:
     else:
         content = text
 
-    if len(content) > _MAX_CHARS:
-        content = content[:_MAX_CHARS] + "\n\n[内容已截断]"
+    if len(content) > max_chars:
+        content = content[:max_chars] + "\n\n[内容已截断]"
     return content.strip() or "（空内容）"
+
+
+async def web_fetch(ctx: RunContext[AgentDeps], url: str) -> str:
+    """抓取指定网址的网页正文并转为 markdown。
+
+    仅当你已经知道某个具体网址、需要它的全文时才用；只是想了解信息请优先用
+    duckduckgo_search。禁止访问私有/内网地址。
+    """
+    return await fetch_url_to_markdown(
+        url, verify_ssl=ctx.deps.config.web_fetch_verify_ssl
+    )
 
 
 # markdownify 缺失时置 None：注册表据此跳过注入（与其它可选依赖工具一致）。
