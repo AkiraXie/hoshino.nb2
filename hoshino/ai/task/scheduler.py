@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from loguru import logger
 
+from pydantic_ai.tools import DeferredToolResults
+
 import asyncio
 import hashlib
 import json
@@ -72,8 +74,6 @@ def _deferred_from_ctx(ctx: TaskContext):
     pending = ctx.extra.get("pending_deferred")
     if not pending:
         return None
-    from pydantic_ai.tools import DeferredToolResults
-
     return DeferredToolResults(approvals=dict(pending))
 
 

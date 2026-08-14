@@ -22,8 +22,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from httpx import TransportError
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import ModelHTTPError, UsageLimitExceeded
 from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.run import AgentRunResult
 from pydantic_ai.tools import DeferredToolResults
@@ -304,9 +305,6 @@ def is_transient_error(exc: Exception) -> bool:
     只覆盖限流（429）与服务端 5xx / 传输层错误 / 连接错误；不覆盖护栏异常
     （``TimeoutError``/``UsageLimitExceeded``，由调用方在重试前排除）。
     """
-    from httpx import TransportError
-    from pydantic_ai.exceptions import ModelHTTPError
-
     if isinstance(exc, ModelHTTPError):
         status = getattr(exc, "status_code", None)
         return status == 429 or (isinstance(status, int) and status >= 500)
