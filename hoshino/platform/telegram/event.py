@@ -121,6 +121,25 @@ def get_reply_message(event: Event, default: Any = None) -> Any:
     return getattr(reply, "message", default)
 
 
+def get_reply_sender_id(event: Event, default: str | None = None) -> str | None:
+    """回复目标的发送者 id（str）；非回复事件返回 default。"""
+    reply = getattr(event, "reply_to_message", None)
+    if reply is None:
+        return default
+    sender = getattr(reply, "from_", None)
+    uid = getattr(sender, "id", None)
+    return str(uid) if uid is not None else default
+
+
+def get_reply_message_id(event: Event, default: Any = None) -> Any:
+    """回复目标的消息 id。"""
+    reply = getattr(event, "reply_to_message", None)
+    if reply is None:
+        return default
+    message_id = getattr(reply, "message_id", None)
+    return str(message_id) if message_id is not None else default
+
+
 def is_message_event(event: Event) -> bool:
     return isinstance(event, (MessageEvent, EditedMessageEvent))
 

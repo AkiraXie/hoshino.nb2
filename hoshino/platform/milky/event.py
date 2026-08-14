@@ -102,6 +102,24 @@ def get_reply_message(event: Event, default: Any = None) -> Any:
     return getattr(reply, "message", reply)
 
 
+def get_reply_sender_id(event: Event, default: str | None = None) -> str | None:
+    """回复目标的发送者 id（str）；非回复事件返回 default。"""
+    reply = getattr(event, "reply", None)
+    if reply is None:
+        return default
+    sender_id = getattr(reply, "sender_id", None)
+    return str(sender_id) if sender_id is not None else default
+
+
+def get_reply_message_id(event: Event, default: Any = None) -> Any:
+    """回复目标的消息序列号（Milky 会话内序列）。"""
+    reply = getattr(event, "reply", None)
+    if reply is None:
+        return default
+    seq = getattr(reply, "message_seq", None)
+    return str(seq) if seq is not None else default
+
+
 def is_message_event(event: Event) -> bool:
     return isinstance(event, MessageEvent)
 

@@ -11,12 +11,12 @@ from nonebot.adapters.telegram.event import MessageEvent as TelegramMessageEvent
 
 
 def ob11_group_message(
-    text: str, *, to_me: bool, user_id: int = 42
+    text: str, *, to_me: bool, user_id: int = 42, reply: dict | None = None
 ) -> tuple[OB11Bot, OB11GroupMessageEvent]:
     adapter = OB11Adapter(get_driver())
     bot = OB11Bot(adapter, self_id="10000")
     message = OB11Message(OB11MessageSegment.text(text))
-    event = OB11GroupMessageEvent(
+    data = dict(
         time=1,
         self_id=10000,
         post_type="message",
@@ -32,6 +32,9 @@ def ob11_group_message(
         group_id=123456,
         to_me=to_me,
     )
+    if reply is not None:
+        data["reply"] = reply
+    event = OB11GroupMessageEvent(**data)
     return bot, event
 
 

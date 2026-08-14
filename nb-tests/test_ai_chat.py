@@ -40,6 +40,7 @@ def _milky_group(
     user_id: int = 42,
     role: str = "admin",
     group_id: int = 123456,
+    reply: dict | None = None,
 ) -> tuple[MilkyBot, MilkyGroupMessageEvent]:
     from nonebot import get_adapters
     from nonebot.adapters.milky import Adapter as MilkyAdapter
@@ -78,6 +79,7 @@ def _milky_group(
                     "last_sent_time": 1,
                 },
             },
+            **({"reply": reply} if reply is not None else {}),
         }
     )
     assert isinstance(event, MilkyGroupMessageEvent)
@@ -1493,3 +1495,233 @@ def test_describe_node():
 
     # 无内容的节点（End 等）返回 None
     assert runner.describe_node(object(), SimpleNamespace()) is None
+
+
+# -------------------------------------------------- 引用回复：触发与内容识别
+
+
+def _milky_reply(sender_id: int, text: str, seq: int = 77) -> dict:
+    """构造 Milky 引用消息对象（IncomingMessage 字典）。"""
+    return {
+        "message_scene": "group",
+        "peer_id": 123456,
+        "message_seq": seq,
+        "sender_id": sender_id,
+        "time": 1,
+        "segments": [{"type": "text", "data": {"text": text}}],
+    }
+
+
+def test_get_reply_helpers_milky():
+    from hoshino.platform import (
+        get_reply_message_id,
+        get_reply_sender_id,
+        is_reply_to_bot,
+    )
+
+    bot, event = _milky_group("hi", reply=_milky_reply(10000, "bot 发的"))
+    assert get_reply_sender_id(event) == "10000"
+    assert get_reply_message_id(event) == "77"
+    assert is_reply_to_bot(bot, event) is True
+    # 非回复事件
+    _, event2 = _milky_group("hi")
+    assert get_reply_sender_id(event2) is None
+    assert is_reply_to_bot(bot, event2) is False
+    # 回复其他用户不触发
+    _, event3 = _milky_group("hi", reply=_milky_reply(42, "别人发的"))
+    assert is_reply_to_bot(bot, event3) is False
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_reply_to_bot_without_hash_triggers(monkeypatch, tmp_store):
+    """回复 bot 自己的消息无需 ``#`` 即触发对话。"""
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group(
+        "继续说说", user_id=7, reply=_milky_reply(10000, "之前的 AI 消息")
+    )
+    await bot.handle_event(event)
+
+    # 触发成功且引用内容注入 prompt
+    assert agent.prompt is not None
+    assert "继续说说" in agent.prompt
+    assert "用户引用了上一条消息" in agent.prompt
+    assert "之前的 AI 消息" in agent.prompt
+    assert len(sent) == 1  # AI 回复（渲染为图片）已发出
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_reply_to_other_user_not_triggered(monkeypatch, tmp_store):
+    """回复他人消息（非 bot）不触发 AI 对话。"""
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("你好啊", user_id=7, reply=_milky_reply(42, "别人的话"))
+    await bot.handle_event(event)
+
+    assert getattr(agent, "prompt", None) is None
+    assert sent == []
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_reply_context_injected_into_prompt(monkeypatch, tmp_store):
+    """``#`` 提问时，回复指向的内容（文字/转发）注入模型 prompt。"""
+    agent, sent = _chat_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group(
+        "#看看这个", user_id=7, reply=_milky_reply(10000, "之前发的一段聊天记录")
+    )
+    await bot.handle_event(event)
+
+    assert agent.prompt is not None
+    assert "用户引用了上一条消息" in agent.prompt
+    assert "之前发的一段聊天记录" in agent.prompt
+    assert "看看这个" in agent.prompt
+
+
+def _ob11_group_event(text: str, reply: dict | None = None):
+    from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
+
+    data = dict(
+        time=1,
+        self_id=10000,
+        post_type="message",
+        message_type="group",
+        sub_type="normal",
+        user_id=42,
+        message_id=7,
+        group_id=123456,
+        raw_message=text,
+        font=0,
+        message=Message(text),
+        original_message=Message(text),
+        sender={"user_id": 42, "nickname": "Alice", "role": "admin"},
+        to_me=False,
+    )
+    if reply is not None:
+        data["reply"] = reply
+    return GroupMessageEvent(**data)
+
+
+def _ob11_reply(sender_id: int, message: list | None = None) -> dict:
+    return {
+        "time": 1,
+        "message_type": "group",
+        "message_id": 9001,
+        "real_id": 9001,
+        "sender": {
+            "user_id": sender_id,
+            "nickname": "x",
+            "sex": "unknown",
+            "age": 0,
+        },
+        "message": message or [],
+    }
+
+
+def test_get_reply_helpers_ob11():
+    from hoshino.platform import get_reply_message_id, get_reply_sender_id
+
+    event = _ob11_group_event("hi", reply=_ob11_reply(10000))
+    assert get_reply_sender_id(event) == "10000"
+    assert get_reply_message_id(event) == 9001
+
+
+def test_get_reply_helpers_telegram():
+    from hoshino.platform import get_reply_message_id, get_reply_sender_id
+
+    from nonebot.adapters.telegram.event import MessageEvent as TelegramMessageEvent
+
+    event = TelegramMessageEvent.parse_event(
+        {
+            "message_id": 7,
+            "date": 1,
+            "chat": {"id": -100123456, "type": "supergroup", "title": "test group"},
+            "from": {"id": 42, "is_bot": False, "first_name": "Alice"},
+            "text": "hi",
+            "reply_to_message": {
+                "message_id": 555,
+                "date": 1,
+                "chat": {"id": -100123456, "type": "supergroup"},
+                "from": {"id": 10000, "is_bot": True, "first_name": "bot"},
+                "text": "被引用",
+            },
+        }
+    )
+    assert get_reply_sender_id(event) == "10000"
+    assert get_reply_message_id(event) == "555"
+
+
+class _GetMsgDelegatingBot:
+    """真实 OB11Bot 的委托包装：只覆盖 get_msg，adapter/self_id 走原 bot。"""
+
+    def __init__(self, bot, response):
+        self._bot = bot
+        self._response = response
+
+    @property
+    def adapter(self):
+        return self._bot.adapter
+
+    @property
+    def self_id(self):
+        return self._bot.self_id
+
+    async def get_msg(self, message_id):
+        return self._response
+
+
+def _ob11_reply_bot(response):
+    from adapter_events import ob11_group_message
+
+    bot, event = ob11_group_message("hi", to_me=False, reply=_ob11_reply(10000))
+    return _GetMsgDelegatingBot(bot, response), event
+
+
+def test_ob11_reply_content_fetched_via_get_msg():
+    """OB11 reply 段只带 id：get_reply_content 经 get_msg 拉取原文。"""
+    from hoshino.platform import get_reply_content
+
+    bot, event = _ob11_reply_bot(
+        {
+            "time": 1,
+            "message_type": "group",
+            "message_id": 9001,
+            "real_id": 9001,
+            "sender": {"user_id": 10000},
+            "message": [{"type": "text", "data": {"text": "被引用的原文"}}],
+        }
+    )
+    content = asyncio_run(get_reply_content(bot, event))
+    assert content is not None
+    assert "被引用的原文" in str(content)
+
+
+def test_ob11_reply_image_extracted_via_get_msg():
+    """OB11 回复里的图片：经 get_msg 拉取后由 media 收集（修复回复图片识别）。"""
+    from hoshino.util.media import get_event_media_segments
+    from nonebot_plugin_alconna.uniseg import Image as UniImage
+
+    bot, event = _ob11_reply_bot(
+        {
+            "time": 1,
+            "message_type": "group",
+            "message_id": 9001,
+            "real_id": 9001,
+            "sender": {"user_id": 10000},
+            "message": [
+                {
+                    "type": "image",
+                    "data": {"file": "abc.png", "url": "https://x/abc.png"},
+                }
+            ],
+        }
+    )
+    segments = asyncio_run(get_event_media_segments(bot, event, UniImage))
+    assert len(segments) == 1
+    assert segments[0].url == "https://x/abc.png"
+
+
+def asyncio_run(coro):
+    import asyncio
+
+    return asyncio.run(coro)

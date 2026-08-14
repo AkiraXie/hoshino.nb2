@@ -1,12 +1,14 @@
-"""AI 聊天插件：以 ``#`` 开头触发对话，支持每 scope 多对话（上下文）管理。
+"""AI 聊天插件：``#`` 前缀或回复 bot 自己的消息触发对话，支持多对话（上下文）管理。
 
-- 群聊/私聊均可用，不要求 @机器人；只感知 ``#`` 前缀消息。
-- ``#`` 命名空间保留词为控制命令（整词精确匹配）：
-  ``#new [name]`` 新建并切换 / ``#switch|sw <name>`` 切换 / ``#list|ls`` 列出 /
-  ``#clear`` 清空当前对话 / ``#goal ...`` 查看与管理跨轮目标；其余内容一律按聊天
-  处理（``#new 特性介绍`` 是提问）。
+- 群聊/私聊均可用，不要求 @机器人。触发条件：
+  - ``#`` 前缀消息（``#`` 命名空间保留词为控制命令，整词精确匹配：
+    ``#new [name]`` / ``#switch|sw <name>`` / ``#list|ls`` / ``#clear`` /
+    ``#goal ...``；其余内容一律按聊天处理）；
+  - 对机器人自己消息的引用回复（无需 ``#``，如回复 AI 发的图片消息继续追问）。
+- 引用识别：触发后会把回复指向的内容一并交给模型——聊天记录文字、转发消息文字、
+  回复/转发里的图片（多模态路径），而不仅是当前消息本体。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
-  见 ``sessions.py``；轮次按 scope 锁串行化，run 进行中再收 ``#`` 回忙提示。
+  见 ``sessions.py``；轮次按 scope 锁串行化，run 进行中再收消息回忙提示。
 - 执行护栏（持久化不替代超时，见 aichat-context-timeout-plan.md §3）：
   run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
   超时/超限把本轮提问写入上下文可续问；provider 异常不写。
@@ -24,14 +26,18 @@ import traceback
 from collections.abc import Callable
 
 from nonebot.adapters import Bot, Event
+from nonebot.rule import Rule
 from nonebot_plugin_alconna.uniseg import UniMessage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from hoshino.platform import (
     event_scope_key,
+    get_forwarded_messages,
     get_group_id,
     get_plaintext,
+    get_reply_content,
+    is_reply_to_bot,
     send_to_event,
 )
 
@@ -48,6 +54,7 @@ from hoshino.ai import (
     rendering,
     runner,
     sessions,
+    vision,
 )
 from hoshino.ai.base import (
     get_config,
@@ -56,9 +63,21 @@ from hoshino.ai.base import (
     sv,
 )
 
-# 默认 block=True，避免 ``#`` 消息继续命中其他 on_message 规则。
-chat = sv.on_startswith(
-    "#", only_group=False, only_to_me=False, priority=10, block=True
+
+async def _ai_chat_rule(bot: Bot, event: Event) -> bool:
+    """``#`` 前缀，或对机器人自己消息的引用回复（无需 ``#``）。"""
+    if get_plaintext(event).lstrip().startswith("#"):
+        return True
+    return is_reply_to_bot(bot, event)
+
+
+# 默认 block=True，避免命中消息继续落到其他 on_message 规则。
+chat = sv.on_message(
+    rule=Rule(_ai_chat_rule),
+    only_group=False,
+    only_to_me=False,
+    priority=10,
+    block=True,
 )
 
 
@@ -278,6 +297,10 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     """单轮聊天：解析 provider/双模型 → 读当前对话上下文 → run（带护栏）→ 渲染回复。"""
     manager = sessions.conversation_manager
     config = get_config()
+    # 引用内容注入：回复指向的聊天记录/转发文字一并交给模型理解（图片走多模态）。
+    reply_ctx = await _reply_context_text(bot, event)
+    if reply_ctx:
+        prompt = f"{reply_ctx}\n\n{prompt}"
     provider_id = resolve_provider(scope_key, config)
     if provider_id is None:
         await send_to_event(bot, event, provider_error_message(config))
@@ -287,17 +310,33 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
         return
     text_model, vision_model = provider.resolve_models(scope_key, provider_id)
-
-    # 多模态选择：事件含图且 scope/provider 配了多模态模型 → vision 模型 + 图片内容；
-    # 否则 text 模型（含图但无 vision 时保留 mask 提示，见 _send_result）。
-    images = await _event_images(bot, event)
-    use_vision = bool(images and vision_model)
-    model_name = vision_model if use_vision else text_model
-    if not model_name:
+    if not text_model:
         await send_to_event(
             bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。"
         )
         return
+
+    # 图片识别：vision 模型"看"图产出文字描述 → 交给默认 text 模型作答。
+    # 无图或图解析失败时走纯文本；有图但无 vision 模型时保留 mask 提示。
+    images = await _event_images(bot, event)
+    no_vision_mask = bool(images and not vision_model)
+    if images and vision_model:
+        image_content = ai_media.image_segments_to_content(images)
+        if image_content:
+            try:
+                description = await vision.describe_images(
+                    record, vision_model, image_content, proxy=config.proxy
+                )
+            except Exception as exc:
+                sv.logger.warning(
+                    f"AI 图片描述失败 provider={provider_id} error={type(exc).__name__}"
+                )
+                description = ""
+            if description:
+                prompt = f"[图片描述]\n{description}\n\n[用户消息]\n{prompt}"
+        if not prompt.startswith("[图片描述]"):
+            no_vision_mask = True  # 描述失败，退回提示
+    model_name = text_model
 
     conv = manager.get_active(scope_key)
     history = context.prepare_history(scope_key, conv.messages, config)
@@ -331,10 +370,8 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     if pre.action == "rewrite" and pre.prompt is not None:
         prompt = pre.prompt
 
-    # 多模态输入：文本 + 图片内容（ImageUrl / BinaryContent）；无图或全失败回退纯文本。
-    prompt_arg: str | list = prompt
-    if use_vision:
-        prompt_arg = ai_media.build_multimodal_prompt(prompt, images)
+    # 纯文本作答（图片已由 vision 模型转成文字描述注入 prompt）。
+    prompt_arg: str = prompt
 
     agent = providers.build_agent(
         provider_id,
@@ -420,9 +457,12 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     raw = result.output
     # 结尾总结行确定性兜底（prompt 层已禁用，模型偶发用「一句话版本：」等变体收尾）。
     raw = rendering.strip_trailing_summary(raw)
-    if images and not use_vision:
-        # 含图但当前没有多模态模型：回复开头提示本次未看图。
-        raw = "（目前未启用多模态模型，请用文字描述图片内容或直接提问。）\n\n" + raw
+    if no_vision_mask:
+        # 含图但未配置 vision 模型（或描述失败）：回复开头提示本次未看图。
+        raw = (
+            "（目前未配置 vision 模型，图片暂无法识别，请用文字描述图片内容。）\n\n"
+            + raw
+        )
     sv.logger.info(
         f"AI 回复 provider={provider_id} scope={scope_key} conv={conv.name} "
         f"model={model_name} 字数={len(raw)} "
@@ -465,6 +505,35 @@ def _make_stream_logger(
         )
 
     return on_event
+
+
+def _message_text(message) -> str:
+    """提取消息对象的纯文本（duck-typed：优先 extract_plain_text）。"""
+    extract = getattr(message, "extract_plain_text", None)
+    if callable(extract):
+        try:
+            return str(extract())
+        except Exception:
+            pass
+    return str(message)
+
+
+async def _reply_context_text(bot: Bot, event: Event) -> str:
+    """收集引用内容的文本：回复目标（含 OB11 经 get_msg 拉取）+ 转发消息。
+
+    图片类引用由 ``_event_images`` 走多模态路径，这里只取文字部分。
+    """
+    parts: list[str] = []
+    reply = await get_reply_content(bot, event)
+    if reply is not None:
+        text = _message_text(reply)
+        if text:
+            parts.append(f"用户引用了上一条消息：{text}")
+    for msg in await get_forwarded_messages(bot, event):
+        text = _message_text(msg)
+        if text:
+            parts.append(f"转发消息：{text}")
+    return "\n".join(parts)
 
 
 async def _event_images(bot: Bot, event: Event) -> list:

@@ -93,7 +93,7 @@ def test_build_multimodal_prompt_falls_back_to_text():
 # ------------------------------------------------------------ image_view 工具
 
 
-def _tool_ctx(config=None):
+def _tool_ctx(config=None, provider_id: str = ""):
     from nonebot_plugin_alconna.uniseg import Target
 
     from hoshino.ai.config import AIConfig
@@ -108,7 +108,7 @@ def _tool_ctx(config=None):
             permissions=PermissionSnapshot(),
             bot=None,
             event=None,
-            telemetry=Telemetry(provider_id="", scope_key="", model=""),
+            telemetry=Telemetry(provider_id=provider_id, scope_key="", model=""),
         )
     )
 
@@ -149,10 +149,32 @@ class _FakeAsyncClient:
         return self._response
 
 
+def _seed_vision_provider(tmp_store):
+    """预置带 vision 模型的 provider 行，返回默认文本模型名。"""
+    tmp_store.upsert_provider_row(
+        provider_id="openai",
+        url="https://api.example.com/v1",
+        key="sk-abcdefghij",
+        kind="openai_chat",
+        default_text_model="gpt-4o-mini",
+        default_vision_model="gpt-4o",
+    )
+    tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
+    tmp_store.upsert_provider_model("openai", "gpt-4o", "multimodal")
+
+
 @pytest.mark.asyncio
-async def test_image_view_returns_binary_content(monkeypatch):
+async def test_image_view_delegates_to_vision_model(monkeypatch, tmp_store):
     from hoshino.ai.tools.web import image_view as iv
 
+    _seed_vision_provider(tmp_store)
+    calls: list = []
+
+    async def fake_describe(record, vision_model, content, *, proxy=None, prompt=None):
+        calls.append((record.id, vision_model, content))
+        return "图里有一只猫"
+
+    monkeypatch.setattr(iv.vision, "describe_images", fake_describe)
     monkeypatch.setattr(
         iv.httpx,
         "AsyncClient",
@@ -160,10 +182,38 @@ async def test_image_view_returns_binary_content(monkeypatch):
             _FakeResponse(b"\x89PNG data", {"content-type": "image/png"})
         ),
     )
-    out = await iv.image_view(_tool_ctx(), "https://example.com/a.png")
-    assert isinstance(out, BinaryContent)
-    assert out.data == b"\x89PNG data"
-    assert out.media_type == "image/png"
+    out = await iv.image_view(
+        _tool_ctx(provider_id="openai"), "https://example.com/a.png"
+    )
+    assert out == "图里有一只猫"
+    assert calls[0][0] == "openai"
+    assert calls[0][1] == "gpt-4o"
+    content = calls[0][2]
+    assert isinstance(content[0], BinaryContent)
+    assert content[0].data == b"\x89PNG data"
+
+
+@pytest.mark.asyncio
+async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
+    from hoshino.ai.tools.web import image_view as iv
+
+    _seed_vision_provider(tmp_store)
+    monkeypatch.setattr(
+        iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x"))
+    )
+    # 单独一个无 vision 模型的 provider
+    tmp_store.upsert_provider_row(
+        provider_id="textonly",
+        url="https://api.example.com/v1",
+        key="sk",
+        kind="openai_chat",
+        default_text_model="gpt-4o-mini",
+    )
+    tmp_store.upsert_provider_model("textonly", "gpt-4o-mini", "text")
+    out = await iv.image_view(
+        _tool_ctx(provider_id="textonly"), "https://example.com/a.png"
+    )
+    assert "未配置 vision 模型" in out
 
 
 @pytest.mark.asyncio
@@ -186,8 +236,16 @@ async def test_image_view_rejects_bad_scheme():
 
 
 @pytest.mark.asyncio
-async def test_image_view_size_limit(monkeypatch):
+async def test_image_view_size_limit(monkeypatch, tmp_store):
     from hoshino.ai.tools.web import image_view as iv
+
+    _seed_vision_provider(tmp_store)
+    monkeypatch.setattr(iv.vision, "describe_images", lambda *a, **k: "x")
+
+    async def _noop(*a, **k):
+        return "x"
+
+    monkeypatch.setattr(iv.vision, "describe_images", _noop)
 
     big = b"x" * (15 * 1024 * 1024 + 1)
     monkeypatch.setattr(
@@ -197,20 +255,30 @@ async def test_image_view_size_limit(monkeypatch):
             _FakeResponse(big, {"content-type": "image/png"})
         ),
     )
-    out = await iv.image_view(_tool_ctx(), "https://example.com/big.png")
+    out = await iv.image_view(
+        _tool_ctx(provider_id="openai"), "https://example.com/big.png"
+    )
     assert "大小限制" in out
 
 
 @pytest.mark.asyncio
-async def test_image_view_fetch_error(monkeypatch):
+async def test_image_view_fetch_error(monkeypatch, tmp_store):
     from hoshino.ai.tools.web import image_view as iv
 
+    _seed_vision_provider(tmp_store)
+
+    async def _noop(*a, **k):
+        return "x"
+
+    monkeypatch.setattr(iv.vision, "describe_images", _noop)
     monkeypatch.setattr(
         iv.httpx,
         "AsyncClient",
         lambda **kw: _FakeAsyncClient(_FakeResponse(b"", status=404)),
     )
-    out = await iv.image_view(_tool_ctx(), "https://example.com/missing.png")
+    out = await iv.image_view(
+        _tool_ctx(provider_id="openai"), "https://example.com/missing.png"
+    )
     assert "抓取失败" in out
 
 
@@ -377,15 +445,24 @@ class _FakeAgent:
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_image_with_vision_uses_vision_model(monkeypatch, tmp_store):
+async def test_chat_image_with_vision_describes_and_answers_with_text(
+    monkeypatch, tmp_store
+):
+    """含图 + vision 模型：vision 模型描述图片，text 模型作答。"""
     from hoshino.modules.ai import chat
 
     _, sent = _stub_env(monkeypatch, tmp_store, vision_model="gpt-4o")
     monkeypatch.setattr(chat, "_event_images", _fake_image_segments)
+
+    async def fake_describe(record, vision_model, content, *, proxy=None):
+        return "图里有一只猫"
+
+    monkeypatch.setattr(chat.vision, "describe_images", fake_describe)
     captured: dict = {}
 
     def fake_build(provider_id, record, model, **kwargs):
         captured["model"] = model
+        captured["record"] = record
         return _FakeAgent(_FakeResult("看到了"))
 
     monkeypatch.setattr(chat.providers, "build_agent", fake_build)
@@ -393,18 +470,23 @@ async def test_chat_image_with_vision_uses_vision_model(monkeypatch, tmp_store):
     bot, event = _milky_group("#这是什么")
     await bot.handle_event(event)
 
-    assert captured["model"] == "gpt-4o"  # vision 模型被选中
+    assert captured["model"] == "gpt-4o-mini"  # 作答始终用 text 模型
     assert len(sent) == 1
-    assert "未启用多模态" not in sent[0][1].extract_plain_text()
+    assert "未配置 vision 模型" not in sent[0][1].extract_plain_text()
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_image_with_vision_prompt_contains_image(monkeypatch, tmp_store):
-    """有图 + vision 模型：prompt 是 UserContent 序列，含文本与图片内容。"""
+async def test_chat_image_with_vision_injects_description(monkeypatch, tmp_store):
+    """vision 模型描述被注入 prompt，text 模型据此作答。"""
     from hoshino.modules.ai import chat
 
     _stub_env(monkeypatch, tmp_store, vision_model="gpt-4o")
     monkeypatch.setattr(chat, "_event_images", _fake_image_segments)
+
+    async def fake_describe(record, vision_model, content, *, proxy=None):
+        return "图里有一只猫"
+
+    monkeypatch.setattr(chat.vision, "describe_images", fake_describe)
     agent = _FakeAgent(_FakeResult("看到了"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
 
@@ -412,16 +494,15 @@ async def test_chat_image_with_vision_prompt_contains_image(monkeypatch, tmp_sto
     await bot.handle_event(event)
 
     prompt = agent.prompt
-    assert isinstance(prompt, list)
-    assert isinstance(prompt[0], TextContent)
-    assert prompt[0].content == "这是什么"
-    assert isinstance(prompt[1], ImageUrl)
-    assert prompt[1].url == "https://example.com/a.png"
+    assert isinstance(prompt, str)
+    assert "[图片描述]" in prompt
+    assert "图里有一只猫" in prompt
+    assert "这是什么" in prompt
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_image_without_vision_uses_text_and_mask(monkeypatch, tmp_store):
-    """有图但无 vision 模型：text 模型 + 回复带"未启用多模态"提示。"""
+    """有图但无 vision 模型：text 模型 + 回复带"未配置 vision 模型"提示。"""
     from hoshino.modules.ai import chat
 
     _, sent = _stub_env(monkeypatch, tmp_store, render_error=True)  # 回退纯文本
@@ -439,7 +520,7 @@ async def test_chat_image_without_vision_uses_text_and_mask(monkeypatch, tmp_sto
 
     assert captured["model"] == "gpt-4o-mini"  # text 模型
     assert len(sent) == 1
-    assert "未启用多模态" in sent[0][1].extract_plain_text()
+    assert "未配置 vision 模型" in sent[0][1].extract_plain_text()
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

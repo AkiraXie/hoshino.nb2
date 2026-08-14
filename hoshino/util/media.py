@@ -20,7 +20,7 @@ from hoshino import fav_dir, img_dir, video_dir
 from hoshino.platform import (
     get_event_message,
     get_forwarded_messages,
-    get_reply_message,
+    get_reply_content,
     to_unimessage,
 )
 from hoshino.types import MessageLike
@@ -49,7 +49,10 @@ async def get_event_media_segments(
     event: Event,
     segment_type: type[UniImage] | type[UniVideo],
 ) -> list[UniImage | UniVideo]:
-    messages = [get_event_message(event), get_reply_message(event)]
+    messages = [get_event_message(event)]
+    reply = await get_reply_content(bot, event)
+    if reply is not None:
+        messages.append(reply)
     messages.extend(await get_forwarded_messages(bot, event))
     segments = []
     seen = set()
