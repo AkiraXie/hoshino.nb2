@@ -498,6 +498,16 @@ async def test_hoshino_nb2_code_read_rejects_unsafe(tmp_path):
 # ------------------------------------------------------- core/provider_choose
 
 
+def _stub_fetch_models(monkeypatch, models):
+    """stub provider.fetch_available_models（None 表示网络失败）。"""
+    from hoshino.ai import provider as provider_domain
+
+    async def fake_fetch(record, *, proxy=None, verify=None, timeout=None):
+        return models
+
+    monkeypatch.setattr(provider_domain, "fetch_available_models", fake_fetch)
+
+
 def _seed_provider_pair(tmp_store):
     tmp_store.upsert_provider_row(
         provider_id="openai",
@@ -524,9 +534,10 @@ async def test_provider_choose_requires_superuser(tmp_store):
     assert tmp_store.get_scope_provider("milky:1") is None
 
 
-async def test_provider_choose_status_and_provider(tmp_store):
+async def test_provider_choose_status_and_provider(tmp_store, monkeypatch):
     from hoshino.ai.tools.core.provider_choose import provider_choose
 
+    _stub_fetch_models(monkeypatch, ["gpt-4o", "gpt-4o-mini"])
     _seed_provider_pair(tmp_store)
     # _deps 的 AIConfig 无默认 provider：先绑定 scope 使 provider 生效
     tmp_store.set_scope_provider("milky:1", "openai")
@@ -535,7 +546,7 @@ async def test_provider_choose_status_and_provider(tmp_store):
 
     out = await provider_choose(ctx, "status")
     assert "gpt-4o-mini" in out
-    assert "gpt-4o" in out  # 可用模型清单含多模态
+    assert "gpt-4o" in out  # API 可用模型清单
 
     out = await provider_choose(ctx, "provider", value="openai")
     assert "已把当前会话切换到 provider" in out
@@ -546,9 +557,10 @@ async def test_provider_choose_status_and_provider(tmp_store):
     assert "不存在" in out
 
 
-async def test_provider_choose_text_and_vision_models(tmp_store):
+async def test_provider_choose_text_and_vision_models(tmp_store, monkeypatch):
     from hoshino.ai.tools.core.provider_choose import provider_choose
 
+    _stub_fetch_models(monkeypatch, ["gpt-4o", "gpt-4o-mini"])
     _seed_provider_pair(tmp_store)
     tmp_store.set_scope_provider("milky:1", "openai")
     ctx = _ctx(_deps(permissions=PermissionSnapshot(user_id="u1", is_superuser=True)))
@@ -561,13 +573,10 @@ async def test_provider_choose_text_and_vision_models(tmp_store):
     assert "视觉模型" in out
     assert tmp_store.get_scope_model_overrides("milky:1")["vision_model"] == "gpt-4o"
 
-    # 文本模型不能用作 vision（能力不匹配）
-    out = await provider_choose(ctx, "vision", value="gpt-4o-mini")
-    assert "不能用作多模态" in out or "能力" in out
-
-    # 未注册的模型
+    # 不在 API 可用列表 → 拒绝
     out = await provider_choose(ctx, "text", value="ghost-1")
-    assert "不在 provider" in out
+    assert "不在该 provider 的 API 可用列表中" in out
+    assert tmp_store.get_scope_model_overrides("milky:1")["text_model"] == "gpt-4o-mini"
 
     # vision none 禁用
     out = await provider_choose(ctx, "vision", value="none")

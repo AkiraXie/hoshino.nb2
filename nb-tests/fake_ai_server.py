@@ -42,28 +42,46 @@ ANTHROPIC_RESPONSE = {
 }
 
 
+MODELS_RESPONSE = {
+    "object": "list",
+    "data": [
+        {"id": "gpt-4o-mini", "object": "model"},
+        {"id": "gpt-4o", "object": "model"},
+    ],
+}
+
+
 class _FakeHandler(BaseHTTPRequestHandler):
-    """记录每个 POST 请求；按路径返回固定响应。"""
+    """记录每个 POST/GET 请求；按路径返回固定响应。"""
 
     protocol_version = "HTTP/1.1"
     requests: list[dict] = []
+
+    def _record(self, raw: bytes) -> dict:
+        return {
+            "path": self.path,
+            "stem": self.path.split("?")[0],
+            "headers": {k.lower(): v for k, v in self.headers.items()},
+            "body": json.loads(raw) if raw else {},
+        }
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
         stem = self.path.split("?")[0]
-        self.requests.append(
-            {
-                "path": self.path,
-                "stem": stem,
-                "headers": {k.lower(): v for k, v in self.headers.items()},
-                "body": json.loads(raw) if raw else {},
-            }
-        )
+        self.requests.append(self._record(raw))
         if stem == "/chat/completions":
             self._respond(200, OPENAI_RESPONSE)
         elif stem == "/v1/messages":
             self._respond(200, ANTHROPIC_RESPONSE)
+        else:
+            self._respond(404, {"error": "not found"})
+
+    def do_GET(self) -> None:
+        stem = self.path.split("?")[0]
+        self.requests.append(self._record(b""))
+        if stem == "/models":
+            self._respond(200, MODELS_RESPONSE)
         else:
             self._respond(404, {"error": "not found"})
 

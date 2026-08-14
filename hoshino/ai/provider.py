@@ -16,8 +16,6 @@ from typing import Any
 
 from . import store
 
-TEXT_CAPABILITIES = frozenset({"text", "both"})
-VISION_CAPABILITIES = frozenset({"multimodal", "both"})
 KNOWN_KINDS = ("openai_chat", "openai_responses", "anthropic")
 
 # vision 槽的显式禁用哨兵（scope 覆盖为 ``none`` 时强制关闭多模态）。
@@ -87,38 +85,67 @@ def remove_provider(provider_id: str) -> bool:
     return store.delete_provider_row(provider_id)
 
 
-# -------------------------------------------------------------- model-list
+# ------------------------------------------------------------ 可用模型（实时）
+
+# 本地不再维护 model-list（ai_provider_models 表仅作历史迁移用途）：可用模型
+# 一律调用 provider API 实时获取，避免与网关侧模型更新脱节。
 
 
-def list_models(provider_id: str) -> list[dict[str, str]]:
-    return store.list_provider_models(provider_id)
+def _normalize_proxy(proxy: str | None) -> str | None:
+    if proxy and proxy.startswith("socks://"):
+        return f"socks5://{proxy.removeprefix('socks://')}"
+    return proxy
 
 
-def add_model(provider_id: str, model: str, capabilities: str = "text") -> None:
-    store.upsert_provider_model(provider_id, model, capabilities)
+async def fetch_available_models(
+    record: ProviderRecord,
+    *,
+    proxy: str | None = None,
+    verify: bool = False,
+    timeout: float = 15.0,
+) -> list[str] | None:
+    """调用 provider API 获取真实可用模型列表（openai / anthropic 兼容端点）。
 
-
-def remove_model(provider_id: str, model: str) -> bool:
-    return store.delete_provider_model(provider_id, model)
-
-
-def validate_model_choice(provider_id: str, model: str, slot: str) -> str | None:
-    """校验模型在 provider 的 model-list 且能力匹配；返回错误提示或 None。
-
-    ``slot`` ∈ text | vision。vision 的 ``none`` 哨兵直接放行。
+    openai_chat / openai_responses 走 ``GET {url}/models``（Bearer 鉴权）；
+    anthropic 依次尝试 ``{url}/v1/models`` 与 ``{url}/models``（x-api-key）。
+    网络/鉴权/端点不支持等任何失败返回 None，由调用方给出提示。
     """
-    if slot == "vision" and model == VISION_DISABLED:
+    import httpx
+
+    if not record.url or not record.key:
         return None
-    entry = store.get_provider_model(provider_id, model)
-    if entry is None:
-        return (
-            f"模型 `{model}` 不在 provider `{provider_id}` 的 model-list 中，"
-            "请先执行 `ai provider model-add` 注册。"
-        )
-    allowed = TEXT_CAPABILITIES if slot == "text" else VISION_CAPABILITIES
-    if entry["capabilities"] not in allowed:
-        label = "纯文本" if slot == "text" else "多模态"
-        return f"模型 `{model}` 能力为 `{entry['capabilities']}`，不能用作{label}模型。"
+    base = record.url.rstrip("/")
+    if record.kind == "anthropic":
+        headers = {"x-api-key": record.key, "anthropic-version": "2023-06-01"}
+        candidates = (f"{base}/v1/models", f"{base}/models")
+    else:
+        headers = {"Authorization": f"Bearer {record.key}"}
+        candidates = (f"{base}/models",)
+
+    async with httpx.AsyncClient(
+        proxy=_normalize_proxy(proxy),
+        trust_env=False,
+        verify=verify,
+        timeout=httpx.Timeout(timeout),
+        follow_redirects=True,
+    ) as client:
+        for url in candidates:
+            try:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+            except (httpx.HTTPError, ValueError):
+                continue
+            rows = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(rows, list):
+                continue
+            ids = [
+                str(row.get("id"))
+                for row in rows
+                if isinstance(row, dict) and row.get("id")
+            ]
+            if ids:
+                return sorted(ids)
     return None
 
 

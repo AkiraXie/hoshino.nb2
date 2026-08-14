@@ -665,8 +665,8 @@ class TestScheduler:
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 class TestMatcher:
-    def test_task_command_registered_with_normal_permission(self):
-        from hoshino.platform.permission import NORMAL
+    def test_task_command_registered_with_superuser_permission(self):
+        from hoshino.core.permission import SUPERUSER
 
         from hoshino.modules.ai import task_commands
 
@@ -683,8 +683,8 @@ class TestMatcher:
 
         assert task_commands.taskcmd.priority == 0
         assert task_commands.taskcmd.block is True
-        # Permission 内容比较：task 命令挂 NORMAL（普通成员可触达），非 ADMIN
-        assert _perm_names(task_commands.taskcmd.permission) == _perm_names(NORMAL)
+        # 所有 ai 命令统一审批：task 命令挂 SUPERUSER，非超管不可达
+        assert _perm_names(task_commands.taskcmd.permission) == _perm_names(SUPERUSER)
 
     def test_task_matcher_present_in_nonebot_matchers(self):
         from nonebot import get_loaded_plugins

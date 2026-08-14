@@ -110,29 +110,43 @@ def test_resolve_text_model_uses_scope_override(tmp_store):
     assert provider_domain.resolve_text_model("scope:1", "p") == "override"
 
 
-def test_validate_model_choice_checks_capabilities(tmp_store):
-    """text 槽要 text/both；vision 槽要 multimodal/both；none 放行。"""
-    from hoshino.ai import provider as provider_domain
+def test_fetch_available_models_openai(fake_ai_server):
+    """fetch_available_models：GET {url}/models + Bearer 鉴权，返回排序后的 id 列表。"""
+    import asyncio
 
-    tmp_store.upsert_provider_model("p", "t", "text")
-    tmp_store.upsert_provider_model("p", "v", "multimodal")
-    tmp_store.upsert_provider_model("p", "b", "both")
+    from hoshino.ai.provider import ProviderRecord, fetch_available_models
 
-    assert provider_domain.validate_model_choice("p", "t", "text") is None
-    assert provider_domain.validate_model_choice("p", "v", "vision") is None
-    assert provider_domain.validate_model_choice("p", "b", "text") is None
-    assert provider_domain.validate_model_choice("p", "b", "vision") is None
-    assert provider_domain.validate_model_choice("p", "none", "vision") is None
-
-    # 能力不匹配
-    assert "不能用作多模态模型" in provider_domain.validate_model_choice(
-        "p", "t", "vision"
+    base_url, requests = fake_ai_server
+    record = ProviderRecord(
+        id="openai", url=base_url, key="sk-test", kind="openai_chat"
     )
-    assert "不能用作纯文本模型" in provider_domain.validate_model_choice(
-        "p", "v", "text"
+    models = asyncio.run(fetch_available_models(record, verify=False))
+    assert models == ["gpt-4o", "gpt-4o-mini"]  # 排序
+    assert requests[0]["stem"] == "/models"
+    assert requests[0]["headers"]["authorization"] == "Bearer sk-test"
+
+
+def test_fetch_available_models_failure_returns_none():
+    """端点不可达/无 key → 返回 None（调用方给提示，不抛异常）。"""
+    import asyncio
+
+    from hoshino.ai.provider import ProviderRecord, fetch_available_models
+
+    record = ProviderRecord(
+        id="x", url="http://127.0.0.1:1", key="k", kind="openai_chat"
     )
-    # 未注册
-    assert "不在" in provider_domain.validate_model_choice("p", "ghost", "text")
+    assert asyncio.run(fetch_available_models(record, verify=False)) is None
+    assert (
+        asyncio.run(
+            fetch_available_models(
+                ProviderRecord(
+                    id="x", url="http://127.0.0.1:1", key="", kind="openai_chat"
+                ),
+                verify=False,
+            )
+        )
+        is None
+    )
 
 
 def test_scope_model_overrides_default_empty(tmp_store):

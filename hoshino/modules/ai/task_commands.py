@@ -1,19 +1,18 @@
-"""AI Task 命令层：创建/状态/列表/审批/取消/workspace 管理。
+"""AI Task 命令层：创建/状态/列表/审批/取消/workspace 列表。
 
-用独立的 NORMAL permission matcher（``ai task`` 前缀，priority 0 先于 ai_admin 的
-``on_command("ai")`` 拦截），在 handler 内按 scope policy 执行权限（plan 5.1：
-不能挂到 ADMIN matcher 下，否则 ``all`` policy 对普通成员不可达）。workspace 管理
-命令在 handler 内要求 SUPERUSER。
+**全部 ``ai task`` 命令仅超级用户（SUPERUSER）可用**：独立 matcher（``ai task``
+前缀，priority 0 先于 ai_admin 的 ``on_command("ai")``），权限在 matcher 层拦截；
+handler 内保留创建者/ADMIN 复核作为纵深防御。
 """
 
 from __future__ import annotations
 
 import dataclasses
 import json
-import os
 import uuid
 
 from nonebot.adapters import Bot, Event
+from hoshino.core.permission import SUPERUSER
 
 from hoshino.platform import (
     dump_target,
@@ -40,7 +39,7 @@ from hoshino.ai.task.models import CapabilitySnapshot, TaskContext, TaskOutput
 from hoshino.ai.task.store import new_id
 
 _USAGE = (
-    "AI Task 命令：\n"
+    "AI Task 命令（仅超级用户）：\n"
     "  ai task research [--workspace <name>] <topic>\n"
     "  ai task plan [--workspace <name>] <goal>\n"
     "  ai task status <task_id>\n"
@@ -48,14 +47,14 @@ _USAGE = (
     "  ai task approve <task_id>\n"
     "  ai task deny <task_id>\n"
     "  ai task cancel <task_id>\n"
-    "  ai task workspaces\n"
-    "  ai task workspace add <name> <absolute_path> [read_only|read_write]（SUPERUSER）\n"
-    "  ai task workspace remove <name>（SUPERUSER）\n"
-    "  ai task workspace default <name>（SUPERUSER）"
+    "  ai task workspaces"
 )
 
-# priority=0 先于 ai_admin 的 on_command("ai")（默认 1）拦截 "ai task ..."。
-taskcmd = sv.on_startswith("ai task", priority=0, only_group=False, block=True)
+# priority=0 先于 ai_admin 的 on_command("ai")（默认 1）拦截 "ai task ..."；
+# 仅 SUPERUSER 可用（所有 ai 命令统一审批）。
+taskcmd = sv.on_startswith(
+    "ai task", priority=0, only_group=False, block=True, permission=SUPERUSER
+)
 
 
 @taskcmd.handle()
@@ -81,8 +80,6 @@ async def _(bot: Bot, event: Event):
         await _cancel(bot, event, subargs)
     elif sub == "workspaces":
         await _workspaces(bot, event)
-    elif sub == "workspace":
-        await _workspace_manage(bot, event, subargs)
     else:
         await send_to_event(bot, event, _USAGE)
 
@@ -451,53 +448,3 @@ async def _workspaces(bot: Bot, event: Event) -> None:
         root = f" {ws['root']}" if show_root else ""
         lines.append(f"- {ws['name']}{root} [{ws['mode']}]{mark}")
     await send_to_event(bot, event, "\n".join(lines))
-
-
-async def _workspace_manage(bot: Bot, event: Event, args: list[str]) -> None:
-    if not args:
-        await send_to_event(bot, event, _USAGE)
-        return
-    if not _is_superuser(bot, event):
-        await send_to_event(bot, event, "仅 SUPERUSER 可管理 workspace。")
-        return
-    scope_key = event_scope_key(bot, event)
-    if scope_key is None:
-        await send_to_event(bot, event, "无法确定当前 scope。")
-        return
-    user_id = get_user_id(event)
-    updated_by = str(user_id) if user_id is not None else ""
-    action = args[0]
-
-    if action == "add" and len(args) >= 3:
-        name, path = args[1], args[2]
-        mode = args[3] if len(args) > 3 else "read_write"
-        if mode not in ("read_only", "read_write"):
-            await send_to_event(bot, event, "mode 必须是 read_only 或 read_write。")
-            return
-        root = os.path.abspath(os.path.expanduser(path))
-        error = task_store.add_workspace(
-            scope_key, name, root, mode, updated_by=updated_by
-        )
-        if error:
-            await send_to_event(bot, event, error)
-        else:
-            await send_to_event(
-                bot, event, f"已添加 workspace `{name}`（{root} [{mode}]）。"
-            )
-        return
-
-    if action == "remove" and len(args) == 2:
-        removed = task_store.remove_workspace(scope_key, args[1])
-        await send_to_event(
-            bot, event, "已删除该 workspace。" if removed else "workspace 不存在。"
-        )
-        return
-
-    if action == "default" and len(args) == 2:
-        ok = task_store.set_default_workspace(scope_key, args[1])
-        await send_to_event(
-            bot, event, "已设为默认 workspace。" if ok else "workspace 不存在。"
-        )
-        return
-
-    await send_to_event(bot, event, _USAGE)

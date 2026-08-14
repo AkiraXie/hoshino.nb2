@@ -49,7 +49,7 @@ def resolve_provider(scope_key: str | None, config: AIConfig) -> str | None:
 def provider_error_message(config: AIConfig) -> str:
     """未配置可用 provider 时的错误提示（用于聊天回复）。"""
     if not store.list_provider_rows():
-        return "AI 服务未配置任何 provider，请联系管理员执行 `ai provider add`。"
+        return "AI 服务未配置任何 provider，请联系超级用户执行 `ai setup`。"
     if config.default and store.has_provider_row(config.default):
         return "当前会话未绑定 provider 且默认 provider 无效，请联系管理员。"
     return "当前会话未绑定 provider，也没有全局默认 provider，请联系管理员。"

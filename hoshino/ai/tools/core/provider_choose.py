@@ -1,8 +1,8 @@
 """core/provider_choose：超级用户调整当前 scope 的 provider / 文本模型 / 视觉模型。
 
-把 ``ai provider use`` / ``ai model set text|vision`` 等管理员命令的语义做成 LLM
-工具：superuser 可以直接让模型帮自己切换 provider、设定文本/视觉模型（含校验
-model-list 与多模态能力）。非超级用户调用一律拒绝。
+把 ``ai provider set`` / ``ai model set text|vision`` 等管理员命令的语义做成 LLM
+工具：superuser 可以直接让模型帮自己切换 provider、设定文本/视觉模型。可用模型
+一律调用 provider API 实时获取校验（本地不维护 model-list）。
 
 只写 scope 级覆盖（``ai_scope_providers`` / ``ai_scope_models``），不动全局默认。
 """
@@ -29,7 +29,19 @@ def _effective_provider_id(ctx: RunContext[AgentDeps]) -> str:
     return default if default and provider.has_provider(default) else ""
 
 
-def _status_text(ctx: RunContext[AgentDeps], pid: str) -> str:
+async def _available_models(ctx: RunContext[AgentDeps], pid: str) -> list[str] | None:
+    """实时获取 provider 的可用模型；失败返回 None。"""
+    record = provider.get_provider(pid)
+    if record is None:
+        return None
+    return await provider.fetch_available_models(
+        record,
+        proxy=ctx.deps.config.proxy,
+        verify=ctx.deps.config.web_fetch_verify_ssl,
+    )
+
+
+async def _status_text(ctx: RunContext[AgentDeps], pid: str) -> str:
     scope_key = ctx.deps.scope_key or ""
     lines = [f"当前 scope：`{scope_key or '（未绑定）'}`"]
     if not pid:
@@ -40,17 +52,27 @@ def _status_text(ctx: RunContext[AgentDeps], pid: str) -> str:
     text_model, vision_model = provider.resolve_models(scope_key, pid)
     lines.append(f"纯文本模型：`{text_model or '（未配置）'}`")
     lines.append(f"视觉模型：`{vision_model or '（无，无法看图）'}`")
-    models = provider.list_models(pid)
+    models = await _available_models(ctx, pid)
     if models:
-        cap = {"text": "文本", "multimodal": "多模态", "both": "文本+多模态"}
         lines.append(
-            "该 provider 可用模型："
-            + "；".join(
-                f"`{m['model']}`（{cap.get(m['capabilities'], m['capabilities'])}）"
-                for m in models
-            )
+            "该 provider 可用模型（API 实时获取）："
+            + "、".join(f"`{m}`" for m in models)
         )
+    else:
+        lines.append("可用模型获取失败（网络或端点不支持）。")
     return "\n".join(lines)
+
+
+async def _validate_model(
+    ctx: RunContext[AgentDeps], pid: str, model: str
+) -> tuple[bool, str]:
+    """实时校验模型：返回 (ok, 附加信息)。网络失败放行并附警告。"""
+    available = await _available_models(ctx, pid)
+    if available is None:
+        return True, "（无法连接 provider 校验，已直接设置）"
+    if model not in available:
+        return False, f"模型 `{model}` 不在该 provider 的 API 可用列表中。"
+    return True, ""
 
 
 async def provider_choose(
@@ -60,10 +82,10 @@ async def provider_choose(
 ) -> str:
     """管理当前会话的 provider / 文本模型 / 视觉模型（仅超级用户可用）。
 
-    - status：查看当前 provider 与生效的文本/视觉模型、可用模型清单
+    - status：查看当前 provider 与生效的文本/视觉模型、API 可用模型清单
     - provider <id>：把当前会话切换到指定 provider
-    - text <model>：设置文本模型（须在 provider 的 model-list 中）
-    - vision <model>：设置视觉（多模态）模型（须注册为 multimodal）
+    - text <model>：设置文本模型（实时校验在 API 可用列表内）
+    - vision <model>：设置视觉（多模态）模型（实时校验，需真正支持多模态）
     - vision none：显式禁用多模态
     - reset [text|vision]：清除模型覆盖，回退 provider 默认
     """
@@ -73,7 +95,7 @@ async def provider_choose(
     actor = ctx.deps.permissions.user_id or ""
 
     if action == "status":
-        return _status_text(ctx, _effective_provider_id(ctx))
+        return await _status_text(ctx, _effective_provider_id(ctx))
 
     if action == "provider":
         if not value:
@@ -89,12 +111,12 @@ async def provider_choose(
 
     if action == "text":
         if not value:
-            return "用法：text <model>。"
-        error = provider.validate_model_choice(pid, value, "text")
-        if error:
-            return error
+            return "用法：text <model>（可用模型见 status）。"
+        ok, note = await _validate_model(ctx, pid, value)
+        if not ok:
+            return note
         store.set_scope_model_override(scope_key, "text", value, updated_by=actor)
-        return f"已把文本模型设为 `{value}`（覆盖 provider 默认）。"
+        return f"已把文本模型设为 `{value}`（覆盖 provider 默认）{note}".rstrip()
 
     if action == "vision":
         if not value:
@@ -104,11 +126,14 @@ async def provider_choose(
                 scope_key, "vision", "none", updated_by=actor
             )
             return "已显式禁用多模态（vision）。"
-        error = provider.validate_model_choice(pid, value, "vision")
-        if error:
-            return error
+        ok, note = await _validate_model(ctx, pid, value)
+        if not ok:
+            return note
         store.set_scope_model_override(scope_key, "vision", value, updated_by=actor)
-        return f"已把视觉模型设为 `{value}`（覆盖 provider 默认）。"
+        base = f"已把视觉模型设为 `{value}`（覆盖 provider 默认）"
+        if note:
+            return f"{base}{note}；该模型需真正支持多模态，若识别失败请换模型"
+        return f"{base}。该模型需真正支持多模态，若识别失败请换模型"
 
     if action == "reset":
         if value and value not in ("text", "vision"):
