@@ -14,6 +14,7 @@ from hoshino.command import (
     UniMessage,
     UniMsg,
     on_alconna,
+    CommandMeta
 )
 from hoshino.platform.permission import ADMIN
 from hoshino.platform import (
@@ -25,6 +26,8 @@ from hoshino.platform import (
     platform_key,
 )
 from hoshino.service import Service
+
+compact_meta = CommandMeta(compact=True)
 
 lssv = on_alconna(
     Alconna(
@@ -40,14 +43,14 @@ lssv = on_alconna(
     block=True,
 )
 enable = on_alconna(
-    Alconna("enable", Args["items", MultiVar(str, "*")], Option("--all|-a")),
+    Alconna("enable", Args["items", MultiVar(str, "*")], Option("--all|-a"),meta=compact_meta),
     rule=to_me(),
     aliases={"开启", "打开", "启用"},
     permission=ADMIN,
     block=True,
 )
 disable = on_alconna(
-    Alconna("disable", Args["items", MultiVar(str, "*")], Option("--all|-a")),
+    Alconna("disable", Args["items", MultiVar(str, "*")], Option("--all|-a"),meta=compact_meta),
     rule=to_me(),
     aliases={"关闭", "停用", "禁用"},
     permission=ADMIN,

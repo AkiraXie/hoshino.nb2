@@ -21,6 +21,7 @@ from nonebot_plugin_alconna import Reply as Reply
 from nonebot_plugin_alconna import Subcommand as Subcommand
 from nonebot_plugin_alconna import UniMsg as UniMsg
 from nonebot_plugin_alconna import on_alconna as on_alconna
+from nonebot_plugin_alconna import CommandMeta as CommandMeta
 from nonebot_plugin_alconna.uniseg import UniMessage
 
 UniTarget = MsgTarget

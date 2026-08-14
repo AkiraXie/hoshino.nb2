@@ -393,6 +393,7 @@ class Service(Generic[ConfigT]):
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
+        kwargs["block"] = kwargs.get("block", True)
         matcher = on_alconna(command, aliases=aliases, **kwargs)
         matcher.__hoshino_info__ = {
             "service": self.name,
