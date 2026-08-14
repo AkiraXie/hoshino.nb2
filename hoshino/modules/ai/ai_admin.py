@@ -1,25 +1,21 @@
 """AI 管理插件：provider / model-list / scope 模型、scope provider 切换、用量查询。
 
-命令与权限（全部平台无关）：
-- ``ai provider list``：列出 provider 信息（url 掩码，不显示 key）。ADMIN。
-- ``ai provider default <id>``：设置全局默认 provider。SUPERUSER。
-- ``ai provider use <id>``：把当前群 scope 绑定到指定 provider。群内 ADMIN+，私聊拒绝。
-- ``ai provider reset``：清除当前群 scope 绑定。群内 ADMIN+，私聊拒绝。
-- ``ai provider add <id> [--url ... --key ... --kind ... --model ... --vision-model ...]``：
-  新增/更新 provider（DB）。SUPERUSER。
-- ``ai provider alter <id> [--url ... --key ... --kind ... --model ... --vision-model ...]``：
-  部分更新 provider 属性（未传字段保持不变，传空值清空）。SUPERUSER。
-- ``ai provider remove <id>``：删除 provider 及其 model-list，先清理 scope 绑定；
-  默认 provider 不允许直接删除。SUPERUSER。
-- ``ai provider model-list <id>``：查看 provider 的 model-list。ADMIN。
-- ``ai provider model-add <id> <model> [--capabilities text|multimodal|both]``。SUPERUSER。
-- ``ai provider model-remove <id> <model>``：被默认模型引用时拒绝。SUPERUSER。
-- ``ai model show`` / ``ai model set text|vision <model>`` / ``ai model reset [text|vision]``：
-  查看/设置/清除当前群 scope 的模型覆盖（继承 provider 默认）。群内 ADMIN+，私聊拒绝。
-- ``ai status``：显示默认 provider、当前绑定与有效模型、历史限制、渲染配置。ADMIN。
-- ``ai stats [provider_id]``：显示 token / 缓存 / 延迟统计（总体 + 按模型明细）。ADMIN。
-- ``ai clear [scope]``：清空当前或指定 scope 的当前激活对话。ADMIN。
-- ``ai contexts [scope]``：只读查看 scope 的对话清单（多对话模型）。ADMIN。
+**全部 ``ai`` 管理命令仅超级用户（SUPERUSER）可用**，其他人无法触发（matcher 层
+拦截）。命令（平台无关）：
+- ``ai setup <id> --url <url> --key <key> [--text <m>] [--vision <m>]``：
+  一键配置：新增/更新 provider + 自动注册文本/视觉模型 + 设为全局默认 + 绑定当前群。
+- ``ai status``：显示默认 provider、当前绑定与有效模型、历史限制、渲染配置、看图引导。
+- ``ai provider list``：列出 provider（url 掩码，不显示 key）。
+- ``ai provider default <id>`` / ``use <id>`` / ``reset``：
+  设置全局默认 / 绑定当前群 / 清除绑定。
+- ``ai provider add/alter/remove <id>``：新增/部分更新/删除 provider。
+- ``ai provider model-list <id>`` / ``model-add <id> <m>`` / ``model-remove <id> <m>``。
+- ``ai model show`` / ``set text|vision <m>|none`` / ``reset [text|vision]``：
+  查看/设置/清除当前群 scope 模型覆盖；未注册的模型会自动注册（text→文本，
+  vision→多模态）。
+- ``ai stats [provider_id]``：token / 缓存 / 延迟统计（总体 + 按模型明细）。
+- ``ai clear [scope]`` / ``ai contexts [scope]``：清空/查看对话。
+- ``ai tools list/on/off``、``ai persona ...``：工具类别与人格管理。
 """
 
 from __future__ import annotations
@@ -28,6 +24,7 @@ from dataclasses import replace
 
 from nonebot.adapters import Bot, Event
 
+from hoshino.core.permission import SUPERUSER
 from hoshino.platform import (
     event_scope_key,
     get_group_id,
@@ -37,7 +34,6 @@ from hoshino.platform import (
     send_to_event,
 )
 from hoshino.platform.depends import ParamText
-from hoshino.platform.permission import ADMIN
 from hoshino.platform.superuser import is_superuser
 
 from hoshino.ai import (
@@ -55,20 +51,34 @@ from hoshino.ai.config import mask_url
 from hoshino.ai.provider import ProviderRecord
 
 USAGE = (
-    "AI 管理命令：\n"
-    "  ai provider list / default <id> / use <id> / reset / add <id> / remove <id>\n"
-    "  ai provider model-list <id> / model-add <id> <model> / model-remove <id> <model>\n"
-    "  ai model show / set text|vision <model> / reset [text|vision]\n"
-    "  ai status / stats [provider_id] / clear [scope] / contexts [scope]\n"
-    "  ai tools list [scope] [chat|task] / ai tools on|off <cat> <chat|task> [scope]\n"
-    "  ai persona list/show/create/update/use/reset/global/delete\n"
-    "用 ai provider add / ai persona create 查看参数说明。"
+    "AI 管理（仅超级用户可用）：\n"
+    "快速上手：\n"
+    "  ai setup <id> --url <url> --key <key> [--text <m>] [--vision <m>]\n"
+    "      一键新增 provider + 自动注册模型 + 设为全局默认 + 绑定本群\n"
+    "  ai status    查看当前配置与看图引导\n"
+    "  ai model set text|vision <模型>   设置本群模型（未注册会自动注册）\n"
+    "其他命令：\n"
+    "  ai provider list / default <id> / use <id> / reset / add / alter / remove\n"
+    "  ai provider model-list <id> / model-add <id> <模型> / model-remove <id> <模型>\n"
+    "  ai model show / set text|vision <m>|none / reset [text|vision]\n"
+    "  ai stats [provider_id] / clear [scope] / contexts [scope]\n"
+    "  ai tools list/on/off / ai persona list/show/create/update/use/reset/global/delete\n"
+    "用 ai setup / ai provider add / ai persona create 查看参数说明。"
+)
+
+_SETUP_USAGE = (
+    "用法：ai setup <provider_id> --url <url> --key <key> [选项]\n"
+    "选项：--kind openai_chat|openai_responses|anthropic（默认 openai_chat）\n"
+    "      --text <文本模型> --vision <视觉模型>（自动注册进 model-list）\n"
+    "      --no-default（不设为全局默认） --no-bind（不绑定当前群）\n"
+    "一步完成：新增/更新 provider、注册模型、设为默认并绑定当前群；"
+    "之后 ai status 即可看到生效配置。"
 )
 
 _TOOLS_USAGE = (
-    "AI 工具管理：\n"
-    "  ai tools list [chat|task]           查看可用工具（管理员）\n"
-    "  ai tools on|off <类别> [chat|task]  开启/关闭类别（超管，默认 chat）\n"
+    "AI 工具管理（仅超级用户）：\n"
+    "  ai tools list [chat|task]           查看可用工具\n"
+    "  ai tools on|off <类别> [chat|task]  开启/关闭类别（默认 chat）\n"
     "类别：core / computer / bot / web / skill"
 )
 
@@ -85,10 +95,10 @@ _PERSONA_USAGE = (
     "             [--dialogs <示例对话文本>]\n"
     "  ai persona update <name> [--gender <g>] [--personality <p>] [--description <d>]\n"
     "             [--dialogs <示例对话文本>]\n"
-    "  ai persona use <name>   绑定当前 scope（ADMIN）\n"
-    "  ai persona reset        解除当前 scope 绑定（ADMIN）\n"
-    "  ai persona global <name>|off   设置/清除全局（SUPERUSER）\n"
-    "  ai persona delete <name>       删除（SUPERUSER）\n"
+    "  ai persona use <name>   绑定当前 scope\n"
+    "  ai persona reset        解除当前 scope 绑定\n"
+    "  ai persona global <name>|off   设置/清除全局\n"
+    "  ai persona delete <name>       删除\n"
     "--dialogs 格式：交替的「用户: …」与「<名字>: …」行，作为人格的参考对话风格（few-shot）。"
 )
 
@@ -104,22 +114,30 @@ _MODEL_USAGE = (
     "  ai model show\n"
     "  ai model set text <model> | vision <model> | vision none\n"
     "  ai model reset [text|vision]\n"
-    "模型须存在于当前群 provider 的 model-list；vision 的 none 表示显式禁用多模态。"
+    "未注册的模型会自动注册（text→文本，vision→多模态），无需先 model-add；\n"
+    "vision 的 none 表示显式禁用多模态。\n"
+    "示例：ai model set vision gpt-5.6-luna"
 )
 
-# only_group=False：让私聊也能触发，从而在 handler 内对 use/reset 给出
-# “私聊不允许”的明确提示，而不是静默无响应。
-aicmd = sv.on_command("ai", permission=ADMIN, compact=False, only_group=False)
+# 全部 ai 管理命令仅 SUPERUSER 可用；only_group=False 让私聊也能触发，从而在
+# handler 内给出“私聊不允许”的明确提示，而不是静默无响应。
+aicmd = sv.on_command("ai", permission=SUPERUSER, compact=False, only_group=False)
 
 
 @aicmd.handle()
 async def _(bot: Bot, event: Event, text: str = ParamText()):
     args = text.strip().split()
     if not args:
-        await send_to_event(bot, event, USAGE)
+        # 裸 `ai`：直接给状态总览（含看图引导），比命令清单更自然。
+        await _handle_status(bot, event)
+        await send_to_event(bot, event, "更多命令：`ai help` 查看完整说明。")
         return
     sub, rest = args[0], args[1:]
-    if sub == "provider":
+    if sub in ("help", "?"):
+        await send_to_event(bot, event, USAGE)
+    elif sub == "setup":
+        await _handle_setup(bot, event, rest)
+    elif sub == "provider":
         await _handle_provider(bot, event, rest)
     elif sub == "model":
         await _handle_model(bot, event, rest)
@@ -311,6 +329,66 @@ async def _provider_add(bot: Bot, event: Event, args: list[str]) -> None:
     providers.clear_agent_cache()
     verb = "更新" if existed else "新增"
     await send_to_event(bot, event, f"已{verb} provider `{pid}`（kind={kind}）。")
+
+
+async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
+    """一键配置：新增/更新 provider + 自动注册模型 + 设全局默认 + 绑定当前群。"""
+    if not _require_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可配置 provider。")
+        return
+    if not args:
+        await send_to_event(bot, event, _SETUP_USAGE)
+        return
+    pid = args[0]
+    opts = _parse_flags(args[1:])
+    kind = opts.get("kind", "openai_chat")
+    if kind not in provider.KNOWN_KINDS:
+        await send_to_event(
+            bot, event, "kind 必须是 openai_chat / openai_responses / anthropic。"
+        )
+        return
+    if not opts.get("url") or not opts.get("key"):
+        await send_to_event(bot, event, "setup 需要 --url 与 --key。")
+        return
+
+    existed = provider.has_provider(pid)
+    provider.upsert_provider(
+        ProviderRecord(
+            id=pid,
+            url=opts.get("url", ""),
+            key=opts.get("key", ""),
+            kind=kind,
+            default_text_model=opts.get("text", ""),
+            default_vision_model=opts.get("vision", ""),
+        )
+    )
+    if opts.get("text") and store.get_provider_model(pid, opts["text"]) is None:
+        store.upsert_provider_model(pid, opts["text"], "text")
+    if opts.get("vision") and store.get_provider_model(pid, opts["vision"]) is None:
+        store.upsert_provider_model(pid, opts["vision"], "multimodal")
+    providers.clear_agent_cache()
+
+    lines = [f"已{'更新' if existed else '新增'} provider `{pid}`（kind={kind}）。"]
+    if "no_default" not in opts:
+        sv.save_config(replace(get_config(), default=pid))
+        lines.append("已设为全局默认 provider。")
+    gid = get_group_id(event)
+    if gid is not None and "no_bind" not in opts:
+        scope_key = group_scope_key(gid, platform=platform_key(bot))
+        store.set_scope_provider(
+            scope_key, pid, updated_by=str(get_user_id(event) or "")
+        )
+        lines.append("已绑定当前群。")
+    if opts.get("text"):
+        lines.append(f"文本模型：`{opts['text']}`（已注册）。")
+    if opts.get("vision"):
+        lines.append(f"视觉模型：`{opts['vision']}`（已注册为 multimodal，可看图）。")
+    else:
+        lines.append(
+            "视觉模型未设置：看图需配置 vision 模型，可 `ai model set vision <模型>`（自动注册）。"
+        )
+    lines.append("用 `ai status` 查看生效配置。")
+    await send_to_event(bot, event, "\n".join(lines))
 
 
 _ALTER_USAGE = (
@@ -547,6 +625,18 @@ async def _model_show(bot: Bot, event: Event) -> None:
         f"纯文本模型：`{text_model or '（未配置）'}`（{source_text}）",
         f"多模态模型：`{vision_model or '（无）'}`（{source_vision}）",
     ]
+    models = provider.list_models(pid)
+    if models:
+        cap = {"text": "文本", "multimodal": "多模态", "both": "文本+多模态"}
+        lines.append(
+            "可用模型："
+            + "；".join(
+                f"`{m['model']}`（{cap.get(m['capabilities'], m['capabilities'])}）"
+                for m in models
+            )
+        )
+    if not vision_model:
+        lines.append("提示：看图需先注册多模态模型，见 `ai model` 用法说明。")
     await send_to_event(bot, event, "\n".join(lines))
 
 
@@ -562,16 +652,32 @@ async def _model_set(bot: Bot, event: Event, scope_key: str, args: list[str]) ->
             bot, event, "本群没有可用 provider，请先 `ai provider use <id>`。"
         )
         return
+    # 未注册的模型自动注册（text→文本 / vision→多模态），省去手动 model-add。
+    existing = store.get_provider_model(pid, model)
+    if existing is None:
+        capability = "multimodal" if slot == "vision" else "text"
+        store.upsert_provider_model(pid, model, capability)
+        providers.clear_agent_cache()
     error = provider.validate_model_choice(pid, model, slot)
     if error:
-        await send_to_event(bot, event, error)
+        # 已注册但能力不匹配（如把纯文本模型设为 vision）
+        models = provider.list_models(pid)
+        hint = ""
+        if models:
+            cap = {"text": "文本", "multimodal": "多模态", "both": "文本+多模态"}
+            hint = "\n当前 provider 可用模型：\n" + "\n".join(
+                f"- `{m['model']}`（{cap.get(m['capabilities'], m['capabilities'])}）"
+                for m in models
+            )
+        await send_to_event(bot, event, error + hint)
         return
     store.set_scope_model_override(
         scope_key, slot, model, updated_by=str(get_user_id(event) or "")
     )
     label = "纯文本" if slot == "text" else "多模态"
     display = "none（禁用）" if model == provider.VISION_DISABLED else f"`{model}`"
-    await send_to_event(bot, event, f"本群{label}模型已设为 {display}（覆盖默认）。")
+    registered = "" if existing is not None else "（已自动注册）"
+    await send_to_event(bot, event, f"本群{label}模型已设为 {display}{registered}。")
 
 
 async def _model_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
@@ -625,6 +731,18 @@ async def _handle_status(bot: Bot, event: Event) -> None:
         f"（工具重试预算 {config.tool_max_retries} 次）",
         f"provider 数量：{len(provider.list_providers())}",
     ]
+    if vision_model:
+        lines.append(f"看图：已启用（vision 模型 `{vision_model}`）")
+    else:
+        lines.extend(
+            [
+                "看图：未启用",
+                "配置多模态（看图）三步：",
+                "1. 注册多模态模型：`ai provider model-add <id> <模型> --capabilities multimodal`（可用模型见 `ai provider model-list <id>`）",
+                "2. 确认本群用该 provider：`ai provider use <id>`",
+                "3. 设置视觉模型：`ai model set vision <模型>`（或让超级用户用 provider-choose 工具直接调）",
+            ]
+        )
     await send_to_event(bot, event, "\n".join(lines))
 
 
