@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from markdown_it import MarkdownIt
@@ -143,6 +144,29 @@ _THEMES: dict[str, dict[str, str]] = {
         "pre_bg": "#161b22",
     },
 }
+
+
+# 结尾收束词：prompt 层已禁用总结句，但模型偶发用近似变体收尾
+# （「一句话总结」→「一句话：」→「一句话版本：」），这里是渲染前的确定性兜底。
+_TRAILING_SUMMARY_RE = re.compile(
+    r"^\s*(?:[-*]\s+)?(?:\*\*)?(一句话[\S]*|总结一下|总的来说|综上所述|"
+    r"说到底|总之|总而言之|简而言之|重点来了|先给结论)\s*[:：，,]?(?:\*\*)?"
+)
+
+
+def strip_trailing_summary(text: str) -> str:
+    """裁掉回复末尾的总结行（仅当该行以收束词开头且是最后一行）。
+
+    chat 回复渲染前调用；task 结构化产出不走此清洗。整篇只有一行时不动手，
+    避免裁成空回复。
+    """
+    lines = text.rstrip("\n").split("\n")
+    if len(lines) <= 1:
+        return text
+    last = lines[-1].strip()
+    if last and _TRAILING_SUMMARY_RE.match(last):
+        lines.pop()
+    return "\n".join(lines)
 
 
 def _make_highlight_css(theme: str) -> str:

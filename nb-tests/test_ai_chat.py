@@ -1395,3 +1395,18 @@ async def test_goal_clear_requires_admin_in_group(monkeypatch, tmp_store):
     bot, event = _milky_group("#goal clear", user_id=7, role="admin")
     await bot.handle_event(event)
     assert "已清除" in sent[-1][1].extract_plain_text()
+
+
+def test_strip_trailing_summary():
+    """结尾总结行确定性裁剪：只裁以收束词开头的最后一行，单行不动。"""
+    from hoshino.ai.rendering import strip_trailing_summary
+
+    assert strip_trailing_summary("第一行\n一句话版本：xxx") == "第一行"
+    assert strip_trailing_summary("第一行\n一句话总结：xxx") == "第一行"
+    assert strip_trailing_summary("第一行\n总结一下：a、b、c") == "第一行"
+    assert strip_trailing_summary("第一行\n**一句话总结：xxx**") == "第一行"
+    assert strip_trailing_summary("第一行\n- 总之，就这样") == "第一行"
+    assert strip_trailing_summary("第一行\n正常结尾") == "第一行\n正常结尾"
+    assert strip_trailing_summary("第一行\n第二行\n 总结一下：x") == "第一行\n第二行"
+    # 整篇只有一行时不动手，避免裁成空回复
+    assert strip_trailing_summary("一句话总结：只有一行") == "一句话总结：只有一行"

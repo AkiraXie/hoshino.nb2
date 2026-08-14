@@ -435,6 +435,8 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     )
 
     raw = result.output
+    # 结尾总结行确定性兜底（prompt 层已禁用，模型偶发用「一句话版本：」等变体收尾）。
+    raw = rendering.strip_trailing_summary(raw)
     if images and not use_vision:
         # 含图但当前没有多模态模型：回复开头提示本次未看图。
         raw = "（目前未启用多模态模型，请用文字描述图片内容或直接提问。）\n\n" + raw
