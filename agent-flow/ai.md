@@ -15,7 +15,8 @@ hoshino/ai/            基建包（非插件）：config / store / providers / p
                       media / vision / errors
 hoshino/modules/ai/    插件层（NoneBot 插件，被 bootstrap 按 modules 配置加载）：
                       chat.py（# 对话）、ai_admin.py（provider/model/persona/tools
-                      管理，SUPERUSER）、task_commands.py（ai task 命令，SUPERUSER）
+                      管理，SUPERUSER）、task_commands.py（ai task 命令，SUPERUSER）、
+                      zssm.py（zssm 解释命令）
 ```
 
 `hoshino/ai/` 不会被 `nonebot.load_plugins` 扫描（扫描路径固定为

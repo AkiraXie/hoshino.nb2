@@ -102,7 +102,7 @@ _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
 - tools/：注册表 tools/__init__.py REGISTRATIONS（分类/风险/surface）与实现
   （core/computer/bot/web/skill）；computer 默认不注入，需管理员显式开启
 - task/：后台任务运行时（TaskContext/审批/调度）
-- modules/ai/：chat.py（# 对话入口）、ai_admin.py（管理命令）
+- modules/ai/：chat.py（# 对话入口）、ai_admin.py（管理命令）、zssm.py（解释命令）
 - 模块结构、pydantic-ai 能力使用与自有扩展见 agent-flow/ai.md；工具系统完整说明见
   agent-flow/ai-tools.md
 
