@@ -944,3 +944,40 @@ async def test_task_list_visibility_matrix(monkeypatch, tmp_store):
     text = sent[-1][1].extract_plain_text()
     assert "t_mine" in text
     assert "t_other" in text
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_stats_shows_model_breakdown(monkeypatch, tmp_store):
+    tmp_store.record_usage_event(
+        provider_id="openai",
+        scope_key="milky:1",
+        model="gpt-4o",
+        request_tokens=10,
+        response_tokens=5,
+        cache_read_tokens=30,
+    )
+    tmp_store.record_usage_event(
+        provider_id="openai",
+        scope_key="milky:1",
+        model="gpt-4o-mini",
+        request_tokens=1,
+        response_tokens=1,
+    )
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai stats")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "按模型统计" in text
+    assert "openai/gpt-4o" in text
+    assert "openai/gpt-4o-mini" in text
+    assert "命中率 75.0%" in text
+
+    bot, event = _milky_group("ai stats openai")
+    await bot.handle_event(event)
+
+    text = sent[1][1].extract_plain_text()
+    assert "按模型统计" in text
+    assert "gpt-4o" in text
+    assert "openai/gpt-4o" not in text  # 单 provider 时省略前缀

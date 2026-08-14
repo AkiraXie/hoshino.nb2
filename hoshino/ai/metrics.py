@@ -110,13 +110,50 @@ def format_stats(
     """把 aggregate_usage 的结果格式化为可读文本。"""
     label = f"provider `{provider_id}`" if provider_id else "全部 provider"
     hit = cache_hit_ratio(aggregate["request_tokens"], aggregate["cache_read_tokens"])
+    cache_line = (
+        f"缓存：read {aggregate['cache_read_tokens']} / "
+        f"write {aggregate['cache_write_tokens']}，命中率 {hit:.1%}"
+    )
+    if aggregate["events"] and not (
+        aggregate["cache_read_tokens"] or aggregate["cache_write_tokens"]
+    ):
+        cache_line += "（provider 未上报缓存）"
     lines = [
         f"AI 用量统计（{label}）：",
         f"事件数：{aggregate['events']}（成功 {aggregate['success_count']} / 失败 {aggregate['error_count']}）",
         f"总 token：{aggregate['total_tokens']}（输入 {aggregate['request_tokens']} / 输出 {aggregate['response_tokens']}）",
-        f"缓存：read {aggregate['cache_read_tokens']} / write {aggregate['cache_write_tokens']}，命中率 {hit:.1%}",
+        cache_line,
         f"平均延迟：{aggregate['avg_latency_ms']:.0f} ms",
     ]
     if model_name:
         lines.insert(1, f"模型：{model_name}")
+    return "\n".join(lines)
+
+
+def format_model_stats(
+    rows: list[dict],
+    *,
+    provider_id: str | None = None,
+) -> str:
+    """把 aggregate_usage_by_model 的结果格式化为模型级明细行。
+
+    ``provider_id`` 非空时行内省略 provider 前缀（命令已限定单 provider）。
+    """
+    lines = ["按模型统计："]
+    for row in rows:
+        label = (
+            f"{row['provider_id']}/{row['model']}" if not provider_id else row["model"]
+        )
+        cache = (
+            f"缓存 read {row['cache_read_tokens']} / write "
+            f"{row['cache_write_tokens']}（命中率 {row['cache_hit_ratio']:.1%}）"
+            if row["cache_read_tokens"] or row["cache_write_tokens"]
+            else "缓存未上报"
+        )
+        lines.append(
+            f"- {label}：{row['events']} 事件（成功 {row['success_count']} / "
+            f"失败 {row['error_count']}），总 token {row['total_tokens']}"
+            f"（in {row['request_tokens']} / out {row['response_tokens']}），"
+            f"{cache}，平均延迟 {row['avg_latency_ms']:.0f} ms"
+        )
     return "\n".join(lines)

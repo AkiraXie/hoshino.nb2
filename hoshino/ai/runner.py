@@ -189,6 +189,27 @@ def tool_call_events_from_node(node: Any) -> list[dict]:
     return events
 
 
+def describe_node(node: Any, ctx: GraphRunContext) -> str | None:
+    """把单个图节点转成实时日志描述；无内容的节点返回 None。
+
+    供 chat 的实时日志回调使用（每步即时打印，不再攒到最后）：
+    - ModelRequestNode → 上一步动作摘要（用户提问 / 工具结果 / 重试）；
+    - CallToolsNode → 本步发起的工具调用清单（脱敏参数）。
+    """
+    name = type(node).__name__
+    if name == "ModelRequestNode":
+        state = getattr(ctx, "state", None)
+        detail = _last_message_summary(state)
+        return f"model_request · {detail}" if detail else "model_request"
+    if name == "CallToolsNode":
+        calls = tool_call_events_from_node(node)
+        if not calls:
+            return None
+        joined = " | ".join(f"{c['name']}{c['args_summary']}" for c in calls)
+        return f"tools · {joined}"
+    return None
+
+
 async def run_agent(
     agent: Agent[AgentDeps, Any],
     prompt: UserContent | None,

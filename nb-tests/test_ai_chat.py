@@ -780,47 +780,6 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
 # ------------------------------------------------------- 观测日志
 
 
-def test_format_run_trace_lines():
-    """RunLog.nodes 格式化为可读轨迹行：step/tools（脱敏参数+思考）/end。"""
-    from hoshino.ai.runner import RunLog
-
-    from hoshino.modules.ai.chat import _format_run_trace
-
-    run_log = RunLog(started_at=100.0)
-    run_log.nodes = [
-        {"type": "model_request", "ts": 101.0, "detail": "user: 你好"},
-        {
-            "type": "tools",
-            "ts": 102.0,
-            "detail": {
-                "calls": [{"name": "web_search", "args_summary": "{q=<4>}"}],
-                "introspection": "用户想查天气",
-            },
-        },
-        {
-            "type": "model_request",
-            "ts": 103.5,
-            "detail": "tool web_search → 找到 3 条结果",
-        },
-        {"type": "end", "ts": 104.0},
-    ]
-    lines = _format_run_trace(run_log)
-    assert len(lines) == 4
-    assert lines[0].startswith("step 1 model_request") and "user: 你好" in lines[0]
-    assert "web_search" in lines[1] and "思考: 用户想查天气" in lines[1]
-    assert lines[2].startswith("step 2 model_request")
-    assert "找到 3 条结果" in lines[2]
-    assert lines[3] == "end · 0.5s"
-
-
-def test_format_run_trace_empty():
-    from hoshino.ai.runner import RunLog
-
-    from hoshino.modules.ai.chat import _format_run_trace
-
-    assert _format_run_trace(RunLog()) == []
-
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_success_logs_step_trace_and_reply(monkeypatch, tmp_store):
     """成功路径：运行日志逐行输出 step/tools 轨迹与回复摘要，便于观测。"""
@@ -898,17 +857,16 @@ async def test_chat_success_logs_step_trace_and_reply(monkeypatch, tmp_store):
         loguru_logger.remove(sink_id)
 
     joined = "\n".join(records)
-    # 汇总行：steps / tokens / 耗时
+    # 实时轨迹行：每步即时打印（AI 实时），不再攒到最后
+    assert "AI 实时" in joined
+    assert "model_request" in joined
+    assert "web_search{q=<14>}" in joined  # secret-keyword 脱敏为长度，单层括号
+    # 汇总行：steps / tokens（含缓存）/ 耗时
     assert "AI 请求成功" in joined
     assert "steps=1" in joined  # 假图里只有一个 ModelRequestNode
+    assert "缓存读" in joined
+    assert "命中率" in joined
     assert "耗时=" in joined
-    # 轨迹行：模型请求（含上一动作）→ 工具调用（脱敏参数 + 思考）→ end
-    assert "AI trace" in joined
-    assert "step 1 model_request" in joined
-    assert "web_search" in joined
-    assert "{q=<14>}" in joined  # secret-keyword 脱敏为长度
-    assert "思考: 我先查一下" in joined
-    assert "end ·" in joined
     # 回复摘要行
     assert "AI 回复" in joined
     assert "摘要「**查到了**」" in joined
@@ -1410,3 +1368,128 @@ def test_strip_trailing_summary():
     assert strip_trailing_summary("第一行\n第二行\n 总结一下：x") == "第一行\n第二行"
     # 整篇只有一行时不动手，避免裁成空回复
     assert strip_trailing_summary("一句话总结：只有一行") == "一句话总结：只有一行"
+
+
+# ------------------------------------------------------------ 用量统计与实时日志
+
+
+def test_aggregate_usage_model_filter(tmp_store):
+    tmp_store.record_usage_event(
+        provider_id="openai",
+        scope_key="s",
+        model="gpt-4o",
+        request_tokens=10,
+        response_tokens=5,
+        cache_read_tokens=30,
+    )
+    tmp_store.record_usage_event(
+        provider_id="openai",
+        scope_key="s",
+        model="gpt-4o-mini",
+        request_tokens=1,
+        response_tokens=1,
+    )
+    tmp_store.record_usage_event(
+        provider_id="anthropic",
+        scope_key="s",
+        model="claude-3-5-sonnet",
+        request_tokens=100,
+        response_tokens=50,
+    )
+
+    agg = tmp_store.aggregate_usage(model="gpt-4o")
+    assert agg["events"] == 1
+    assert agg["total_tokens"] == 15
+    assert agg["cache_hit_ratio"] == pytest.approx(30 / 40)
+
+    rows = tmp_store.aggregate_usage_by_model()
+    assert {r["model"] for r in rows} == {"gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet"}
+    assert {r["provider_id"] for r in rows} == {"openai", "anthropic"}
+    row = next(r for r in rows if r["model"] == "gpt-4o")
+    assert row["total_tokens"] == 15
+    assert row["cache_hit_ratio"] == pytest.approx(30 / 40)
+    assert row["success_count"] == 1
+
+    only_openai = tmp_store.aggregate_usage_by_model(provider_id="openai")
+    assert len(only_openai) == 2
+    assert {r["model"] for r in only_openai} == {"gpt-4o", "gpt-4o-mini"}
+
+
+def test_format_model_stats():
+    from hoshino.ai import metrics
+
+    rows = [
+        {
+            "provider_id": "openai",
+            "model": "gpt-4o",
+            "events": 2,
+            "success_count": 2,
+            "error_count": 0,
+            "total_tokens": 15,
+            "request_tokens": 10,
+            "response_tokens": 5,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "cache_hit_ratio": 0.0,
+            "avg_latency_ms": 100.0,
+        }
+    ]
+    text = metrics.format_model_stats(rows)
+    assert "按模型统计" in text
+    assert "openai/gpt-4o" in text
+    assert "缓存未上报" in text
+    # 单 provider 时行内省略 provider 前缀
+    text = metrics.format_model_stats(rows, provider_id="openai")
+    assert "openai/gpt-4o" not in text
+    assert "gpt-4o" in text
+
+
+def test_format_stats_cache_not_reported_hint():
+    from hoshino.ai import metrics
+
+    agg = {
+        "events": 3,
+        "request_tokens": 100,
+        "response_tokens": 50,
+        "total_tokens": 150,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cache_hit_ratio": 0.0,
+        "avg_latency_ms": 10.0,
+        "error_count": 0,
+        "success_count": 3,
+    }
+    assert "未上报缓存" in metrics.format_stats(agg)
+
+
+def test_describe_node():
+    """runner.describe_node：model_request / tools 节点转实时日志行，其余返回 None。"""
+    from types import SimpleNamespace
+
+    from hoshino.ai import runner
+
+    class ModelRequestNode:
+        pass
+
+    class CallToolsNode:
+        pass
+
+    class UserPromptPart:
+        def __init__(self, content):
+            self.content = content
+
+    state = SimpleNamespace(
+        message_history=[SimpleNamespace(parts=[UserPromptPart("你好")])]
+    )
+    desc = runner.describe_node(ModelRequestNode(), SimpleNamespace(state=state))
+    assert desc == "model_request · user: 你好"
+
+    node = CallToolsNode()
+    node.model_response = SimpleNamespace(
+        parts=[SimpleNamespace(tool_name="web_fetch", args={"url": "https://x"})]
+    )
+    desc = runner.describe_node(node, SimpleNamespace())
+    assert "tools · web_fetch{url=<9>}" in desc
+
+    # 无内容的节点（End 等）返回 None
+    assert runner.describe_node(object(), SimpleNamespace()) is None

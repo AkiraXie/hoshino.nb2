@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import time
 import traceback
+from collections.abc import Callable
 
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_alconna.uniseg import UniMessage
@@ -346,6 +347,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     # 失败可观测性：RunLog 记录本轮发起过的工具调用（含超时前），异常时随日志
     # 输出定位是模型侧问题还是工具侧问题（如 web_search）。
     run_log = runner.RunLog()
+    stream_logger = _make_stream_logger(provider_id, scope_key, conv.name, model_name)
 
     try:
         result = await asyncio.wait_for(
@@ -356,6 +358,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
                 message_history=history,
                 usage_limits=UsageLimits(request_limit=config.chat_max_requests),
                 run_log=run_log,
+                on_event=stream_logger,
             ),
             timeout=config.chat_run_timeout_seconds,
         )
@@ -366,14 +369,6 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         run_log.reason = "timeout" if isinstance(exc, TimeoutError) else "max-requests"
         manager.append_prompt_only(scope_key, prompt, provider_id, run_log)
         reason = "超时" if isinstance(exc, TimeoutError) else "超出步数限制"
-        _log_run_trace(
-            run_log,
-            provider_id=provider_id,
-            scope_key=scope_key,
-            conv_name=conv.name,
-            model_name=model_name,
-            level="WARNING",
-        )
         sv.logger.warning(
             f"AI 请求{reason} provider={provider_id} scope={scope_key} conv={conv.name}"
         )
@@ -389,14 +384,6 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         run_log.reason = "error"
         detail = errors.format_exception_detail(exc)
         agent_deps.telemetry.record_error(detail)
-        _log_run_trace(
-            run_log,
-            provider_id=provider_id,
-            scope_key=scope_key,
-            conv_name=conv.name,
-            model_name=model_name,
-            level="WARNING",
-        )
         tools = ",".join(c["name"] for c in run_log.tool_calls) or "-"
         sv.logger.warning(
             f"AI 请求失败 provider={provider_id} scope={scope_key} conv={conv.name} "
@@ -421,17 +408,13 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     manager.commit_turn(scope_key, new_messages, provider_id, run_log)
     elapsed = run_log.ended_at - run_log.started_at
     usage = metrics.snapshot_from_result(result)
+    hit = metrics.cache_hit_ratio(usage.request_tokens, usage.cache_read_tokens)
     sv.logger.info(
         f"AI 请求成功 provider={provider_id} scope={scope_key} "
         f"conv={conv.name} model={model_name} steps={run_log.steps} "
-        f"tokens={usage.total_tokens} 耗时={elapsed:.1f}s"
-    )
-    _log_run_trace(
-        run_log,
-        provider_id=provider_id,
-        scope_key=scope_key,
-        conv_name=conv.name,
-        model_name=model_name,
+        f"tokens={usage.total_tokens}（in {usage.request_tokens} / "
+        f"out {usage.response_tokens} / 缓存读 {usage.cache_read_tokens} / "
+        f"写 {usage.cache_write_tokens} / 命中率 {hit:.1%}）耗时={elapsed:.1f}s"
     )
 
     raw = result.output
@@ -457,59 +440,31 @@ def _log_safe(text: str) -> str:
     return text.replace("<", "\\<")
 
 
-def _format_run_trace(run_log) -> list[str]:
-    """把 RunLog.nodes 格式化为可读轨迹行（观测日志用）。
+def _make_stream_logger(
+    provider_id: str, scope_key: str, conv_name: str, model_name: str
+) -> Callable[[runner.RunEvent], None]:
+    """构造实时日志回调：每个模型请求/工具调用节点即时打印，不再攒到最后。
 
-    每行含节点相对上一节点的耗时；model_request 行含上一动作摘要（提问/工具
-    结果/重试），tools 行含脱敏参数与模型思考/中间文本摘要。
+    供 ``run_agent_with_retry(on_event=...)`` 使用；每行带相对上一节点的耗时。
+    思考/中间文本（introspection）不落日志（原始设计也不落）。
     """
-    lines: list[str] = []
-    nodes = run_log.nodes
-    if not nodes:
-        return lines
-    prev_ts = run_log.started_at or nodes[0]["ts"]
-    step = 0
-    for node in nodes:
-        delta = node["ts"] - prev_ts
-        prev_ts = node["ts"]
-        ntype = node["type"]
-        if ntype == "model_request":
-            step += 1
-            detail = node.get("detail") or ""
-            suffix = f" · {delta:.1f}s" if delta >= 0.05 else ""
-            lines.append(f"step {step} model_request · {detail}{suffix}".rstrip(" ·"))
-        elif ntype == "tools":
-            detail = node.get("detail") or {}
-            calls = (
-                " | ".join(
-                    f"{c['name']}{{{c['args_summary']}}}"
-                    for c in detail.get("calls", [])
-                )
-                or "-"
-            )
-            intro = detail.get("introspection") or ""
-            lines.append(f"step {step} tools · {calls} · 思考: {intro} · {delta:.1f}s")
-        elif ntype == "end":
-            lines.append(f"end · {delta:.1f}s")
-    return lines
+    prev = time.time()
 
-
-def _log_run_trace(
-    run_log,
-    *,
-    provider_id: str,
-    scope_key: str,
-    conv_name: str,
-    model_name: str,
-    level: str = "INFO",
-) -> None:
-    """把一次 run 的节点轨迹逐行打进运行日志（chat/task 观测用）。"""
-    log = sv.logger.warning if level == "WARNING" else sv.logger.info
-    for line in _format_run_trace(run_log):
-        log(
-            f"AI trace provider={provider_id} scope={scope_key} conv={conv_name} "
-            f"model={model_name} {_log_safe(line)}"
+    def on_event(ev: runner.RunEvent) -> None:
+        nonlocal prev
+        now = time.time()
+        delta = now - prev
+        prev = now
+        desc = runner.describe_node(ev.node, ev.ctx)
+        if desc is None:
+            return
+        suffix = f" · {delta:.1f}s" if delta >= 0.05 else ""
+        sv.logger.info(
+            f"AI 实时 provider={provider_id} scope={scope_key} conv={conv_name} "
+            f"model={model_name} {_log_safe(desc)}{suffix}"
         )
+
+    return on_event
 
 
 async def _event_images(bot: Bot, event: Event) -> list:

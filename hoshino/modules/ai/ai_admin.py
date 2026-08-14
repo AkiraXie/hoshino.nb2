@@ -17,7 +17,7 @@
 - ``ai model show`` / ``ai model set text|vision <model>`` / ``ai model reset [text|vision]``：
   查看/设置/清除当前群 scope 的模型覆盖（继承 provider 默认）。群内 ADMIN+，私聊拒绝。
 - ``ai status``：显示默认 provider、当前绑定与有效模型、历史限制、渲染配置。ADMIN。
-- ``ai stats [provider_id]``：显示 token / 缓存 / 延迟统计。ADMIN。
+- ``ai stats [provider_id]``：显示 token / 缓存 / 延迟统计（总体 + 按模型明细）。ADMIN。
 - ``ai clear [scope]``：清空当前或指定 scope 的当前激活对话。ADMIN。
 - ``ai contexts [scope]``：只读查看 scope 的对话清单（多对话模型）。ADMIN。
 """
@@ -634,7 +634,12 @@ async def _handle_stats(bot: Bot, event: Event, args: list[str]) -> None:
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
     aggregate = store.aggregate_usage(provider_id=pid)
-    await send_to_event(bot, event, metrics.format_stats(aggregate, provider_id=pid))
+    lines = [metrics.format_stats(aggregate, provider_id=pid)]
+    rows = store.aggregate_usage_by_model(provider_id=pid)
+    if rows:
+        lines.append("")
+        lines.append(metrics.format_model_stats(rows, provider_id=pid))
+    await send_to_event(bot, event, "\n".join(lines))
 
 
 async def _handle_clear(bot: Bot, event: Event, args: list[str]) -> None:

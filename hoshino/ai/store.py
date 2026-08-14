@@ -867,16 +867,20 @@ def record_usage_event(
 
 def aggregate_usage(
     provider_id: str | None = None,
+    model: str | None = None,
     since_ts: float | None = None,
 ) -> dict[str, Any]:
     """聚合用量指标。
 
-    provider_id 为空时聚合全部 provider；since_ts 为空时统计全部时间。
+    provider_id / model 为空时分别表示全部 provider / 全部模型；
+    since_ts 为空时统计全部时间。
     返回：事件数、总 token、平均延迟、缓存命中率、错误数等。
     """
     filters = []
     if provider_id:
         filters.append(AIUsageEvent.provider_id == provider_id)
+    if model:
+        filters.append(AIUsageEvent.model == model)
     if since_ts is not None:
         filters.append(AIUsageEvent.ts >= since_ts)
 
@@ -914,6 +918,67 @@ def aggregate_usage(
             "error_count": error_count,
             "success_count": (row[0] or 0) - error_count,
         }
+
+
+def aggregate_usage_by_model(
+    provider_id: str | None = None,
+    since_ts: float | None = None,
+) -> list[dict[str, Any]]:
+    """按 (provider, model) 分组的用量统计，供 ``ai stats`` 展示模型级明细。
+
+    行字段与 ``aggregate_usage`` 对齐（含 cache_hit_ratio / success_count），
+    另带 provider_id / model。provider_id 为空时列出全部 provider。
+    """
+    filters = []
+    if provider_id:
+        filters.append(AIUsageEvent.provider_id == provider_id)
+    if since_ts is not None:
+        filters.append(AIUsageEvent.ts >= since_ts)
+    stmt = select(
+        AIUsageEvent.provider_id,
+        AIUsageEvent.model,
+        func.count(AIUsageEvent.id),
+        func.sum(AIUsageEvent.request_tokens),
+        func.sum(AIUsageEvent.response_tokens),
+        func.sum(AIUsageEvent.cache_read_tokens),
+        func.sum(AIUsageEvent.cache_write_tokens),
+        func.avg(AIUsageEvent.latency_ms),
+        func.sum(case((AIUsageEvent.error.is_not(None), 1), else_=0)),
+    ).group_by(AIUsageEvent.provider_id, AIUsageEvent.model)
+    if filters:
+        stmt = stmt.where(*filters)
+
+    rows: list[dict[str, Any]] = []
+    with Session() as session:
+        for pid, model, count, req, resp, cache_r, cache_w, lat, err in session.execute(
+            stmt
+        ):
+            req = req or 0
+            resp = resp or 0
+            cache_r = cache_r or 0
+            cache_w = cache_w or 0
+            count = count or 0
+            err = err or 0
+            denominator = cache_r + req
+            rows.append(
+                {
+                    "provider_id": pid,
+                    "model": model or "（未记录）",
+                    "events": count,
+                    "request_tokens": req,
+                    "response_tokens": resp,
+                    "total_tokens": req + resp,
+                    "cache_read_tokens": cache_r,
+                    "cache_write_tokens": cache_w,
+                    "cache_hit_ratio": (
+                        (cache_r / denominator) if denominator > 0 else 0.0
+                    ),
+                    "avg_latency_ms": lat or 0.0,
+                    "error_count": err,
+                    "success_count": count - err,
+                }
+            )
+    return rows
 
 
 # ------------------------------------------------------------ tool bindings
