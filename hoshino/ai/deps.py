@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.adapters import Bot, Event
-from nonebot_plugin_alconna.uniseg import Target
 
 from . import metrics
 from .config import AIConfig
+
+if TYPE_CHECKING:
+    # Target 仅用于类型注解（from __future__ import annotations 下求值推迟）；
+    # 运行时导入会经 tools→deps 链在 NoneBot 加载 alconna 插件前触发
+    # "Module nonebot_plugin_alconna is not loaded as a plugin!"。
+    from nonebot_plugin_alconna.uniseg import Target
 
 RuntimeSurface = Literal["chat", "task"]
 

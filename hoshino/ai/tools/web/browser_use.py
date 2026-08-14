@@ -26,6 +26,41 @@ _BROWSER_TIMEOUT_SECONDS = 45.0
 _VIEWPORT = {"width": 1280, "height": 900}
 
 
+async def browse_page_description(
+    url: str,
+    *,
+    proxy: str | None,
+    record,
+    vision_model: str,
+    prompt: str = "这是网页截图，请描述页面主要内容与关键文字。",
+) -> str:
+    """Playwright 打开网页 → 截图 → vision 描述（供 browser_use 工具与 zssm 复用）。
+
+    校验协议/SSRF → 截图 → vision.describe_images。失败返回错误提示字符串。
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
+        return "仅支持 http/https 网页 URL。"
+    if is_private_host(parsed.hostname):
+        return "拒绝访问私有/内网地址。"
+
+    png = await _screenshot(url)
+    if isinstance(png, str):
+        return png  # 错误提示
+    content = [BinaryContent(data=png, media_type="image/png")]
+    try:
+        description = await vision.describe_images(
+            record,
+            vision_model,
+            content,
+            proxy=proxy,
+            prompt=f"网页 {url}\n{prompt}",
+        )
+    except Exception as exc:
+        return f"网页识别失败（{type(exc).__name__}）。"
+    return description or "（网页截图暂无可识别内容）"
+
+
 async def browser_use(
     ctx: RunContext[AgentDeps],
     url: str,
@@ -47,22 +82,13 @@ async def browser_use(
         return "provider 配置异常。"
     if not vision_model:
         return "当前 provider 未配置 vision 模型，无法识别网页截图。"
-
-    png = await _screenshot(url)
-    if isinstance(png, str):
-        return png  # 错误提示
-    content = [BinaryContent(data=png, media_type="image/png")]
-    try:
-        description = await vision.describe_images(
-            record,
-            vision_model,
-            content,
-            proxy=ctx.deps.config.proxy,
-            prompt=f"网页 {url}\n{prompt}",
-        )
-    except Exception as exc:
-        return f"网页识别失败（{type(exc).__name__}）。"
-    return description or "（网页截图暂无可识别内容）"
+    return await browse_page_description(
+        url,
+        proxy=ctx.deps.config.proxy,
+        record=record,
+        vision_model=vision_model,
+        prompt=prompt,
+    )
 
 
 async def _screenshot(url: str) -> bytes | str:

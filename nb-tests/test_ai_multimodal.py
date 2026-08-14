@@ -165,7 +165,7 @@ def _seed_vision_provider(tmp_store):
 
 @pytest.mark.asyncio
 async def test_image_view_delegates_to_vision_model(monkeypatch, tmp_store):
-    from hoshino.ai.tools.web import image_view as iv
+    from hoshino.ai.tools.core import image_view as iv
 
     _seed_vision_provider(tmp_store)
     calls: list = []
@@ -195,7 +195,7 @@ async def test_image_view_delegates_to_vision_model(monkeypatch, tmp_store):
 
 @pytest.mark.asyncio
 async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
-    from hoshino.ai.tools.web import image_view as iv
+    from hoshino.ai.tools.core import image_view as iv
 
     _seed_vision_provider(tmp_store)
     monkeypatch.setattr(
@@ -218,7 +218,7 @@ async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
 
 @pytest.mark.asyncio
 async def test_image_view_rejects_private_host(monkeypatch):
-    from hoshino.ai.tools.web import image_view as iv
+    from hoshino.ai.tools.core import image_view as iv
 
     monkeypatch.setattr(
         iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x"))
@@ -229,7 +229,7 @@ async def test_image_view_rejects_private_host(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_image_view_rejects_bad_scheme():
-    from hoshino.ai.tools.web import image_view as iv
+    from hoshino.ai.tools.core import image_view as iv
 
     out = await iv.image_view(_tool_ctx(), "file:///etc/passwd")
     assert "仅支持 http/https" in out
@@ -237,7 +237,7 @@ async def test_image_view_rejects_bad_scheme():
 
 @pytest.mark.asyncio
 async def test_image_view_size_limit(monkeypatch, tmp_store):
-    from hoshino.ai.tools.web import image_view as iv
+    from hoshino.ai.tools.core import image_view as iv
 
     _seed_vision_provider(tmp_store)
     monkeypatch.setattr(iv.vision, "describe_images", lambda *a, **k: "x")
@@ -263,7 +263,7 @@ async def test_image_view_size_limit(monkeypatch, tmp_store):
 
 @pytest.mark.asyncio
 async def test_image_view_fetch_error(monkeypatch, tmp_store):
-    from hoshino.ai.tools.web import image_view as iv
+    from hoshino.ai.tools.core import image_view as iv
 
     _seed_vision_provider(tmp_store)
 

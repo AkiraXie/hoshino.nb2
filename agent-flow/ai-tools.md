@@ -52,7 +52,7 @@ Tool`，注册在 `hoshino/ai/tools/__init__.py` 的 `REGISTRATIONS`；模型"�
 | `send_message` | bot | medium | chat | 单向发消息（需 live event） |
 | `duckduckgo_search` | web | low | chat/task | 搜索 |
 | `web_fetch` | web | low | chat/task | 网页转 Markdown |
-| `image_view` | web | low | chat/task | 抓图片 URL → vision 模型识别 → 返回文字描述 |
+| `image_view` | core | low | chat/task | 抓图片 URL → vision 模型识别 → 返回文字描述 |
 | `browser_use` | web | medium | chat/task | Playwright 浏览网页 → 截图 → vision 模型识别 |
 | `skill_read` | skill | low | chat/task | 读技能说明 |
 | `skill_manage` | skill | medium | chat | 技能启停 |

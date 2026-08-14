@@ -249,36 +249,66 @@ async def test_zssm_fetches_links(monkeypatch, tmp_store):
     async def fake_fetch(url, *, verify_ssl=False):
         return f"[{url} 的正文]"
 
-    monkeypatch.setattr(zssm, "fetch_url_to_markdown", fake_fetch)
+    monkeypatch.setattr(zssm.link, "fetch_url_to_markdown", fake_fetch)
 
     bot, event = _milky_group("zssm 看看 https://example.com/page 是什么 --text")
     await bot.handle_event(event)
 
     payload = _user_payload(fake)
     assert payload["resources"][0]["url"] == "https://example.com/page"
+    assert payload["resources"][0]["kind"] == "web"
     assert payload["resources"][0]["content"] == "[https://example.com/page 的正文]"
     assert "关键词：显卡" in sent[0][1].extract_plain_text()
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_zssm_link_fetch_failure_recorded(monkeypatch, tmp_store):
-    """链接抓取异常时记 error resource，不阻断解释。"""
+async def test_zssm_link_web_fail_falls_back_to_browser(monkeypatch, tmp_store):
+    """web_fetch 失败时回退 browser_use 渲染截图描述（kind=browser）。"""
     from hoshino.modules.ai import zssm
 
-    fake, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=True)
 
     async def fail_fetch(url, *, verify_ssl=False):
-        raise RuntimeError("boom")
+        return "抓取失败（ConnectError）。"
 
-    monkeypatch.setattr(zssm, "fetch_url_to_markdown", fail_fetch)
+    monkeypatch.setattr(zssm.link, "fetch_url_to_markdown", fail_fetch)
+
+    async def fake_browse(url, *, proxy=None, record=None, vision_model="", prompt=""):
+        return "页面渲染后的内容描述"
+
+    monkeypatch.setattr(zssm.link, "browse_page_description", fake_browse)
 
     bot, event = _milky_group("zssm https://example.com/x --text")
     await bot.handle_event(event)
 
     payload = _user_payload(fake)
-    assert payload["resources"][0]["kind"] == "error"
-    assert "读取失败" in payload["resources"][0]["content"]
+    assert payload["resources"][0]["kind"] == "browser"
+    assert payload["resources"][0]["content"] == "页面渲染后的内容描述"
     assert "关键词：显卡" in sent[0][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_zssm_link_both_fail_report_error(monkeypatch, tmp_store):
+    """web_fetch 与 browser_use 都失败：直接报错，不再继续解释。"""
+    from hoshino.modules.ai import zssm
+
+    fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=True)
+
+    async def fail_fetch(url, *, verify_ssl=False):
+        return "抓取失败（ConnectError）。"
+
+    monkeypatch.setattr(zssm.link, "fetch_url_to_markdown", fail_fetch)
+
+    async def fail_browse(url, *, proxy=None, record=None, vision_model="", prompt=""):
+        return "网页加载超时。"
+
+    monkeypatch.setattr(zssm.link, "browse_page_description", fail_browse)
+
+    bot, event = _milky_group("zssm https://example.com/x --text")
+    await bot.handle_event(event)
+
+    assert "无法获取页面内容" in sent[0][1].extract_plain_text()
+    assert fake.messages is None  # 未请求模型
 
 
 # ------------------------------------------------------- 图片（原图直传）
@@ -294,18 +324,21 @@ async def test_zssm_image_with_vision_describes(monkeypatch, tmp_store):
     async def fake_images(bot, event):
         return [SimpleNamespace(url="https://x/a.png")]
 
-    monkeypatch.setattr(zssm, "_event_images", fake_images)
+    monkeypatch.setattr(zssm.image, "event_images", fake_images)
 
-    async def fake_describe(record, model, content, *, proxy=None, prompt=""):
+    async def fake_describe_url(
+        url, *, verify_ssl=False, proxy=None, record=None, vision_model=""
+    ):
         return "图片里有一张显卡"
 
-    monkeypatch.setattr(zssm.vision, "describe_images", fake_describe)
+    monkeypatch.setattr(zssm.image, "describe_image_url", fake_describe_url)
 
     bot, event = _milky_group("zssm 这图是啥 --text")
     await bot.handle_event(event)
 
     payload = _user_payload(fake)
-    assert payload["image_descriptions"] == "图片里有一张显卡"
+    # 描述按图片序号分块（对齐 djkcyl 的占位符-描述对应）
+    assert payload["image_descriptions"] == "图片1：图片里有一张显卡"
     assert "关键词：显卡" in sent[0][1].extract_plain_text()
 
 
@@ -319,7 +352,7 @@ async def test_zssm_image_without_vision_hints(monkeypatch, tmp_store):
     async def fake_images(bot, event):
         return [SimpleNamespace(url="https://x/a.png")]
 
-    monkeypatch.setattr(zssm, "_event_images", fake_images)
+    monkeypatch.setattr(zssm.image, "event_images", fake_images)
 
     bot, event = _milky_group("zssm --text")
     await bot.handle_event(event)
