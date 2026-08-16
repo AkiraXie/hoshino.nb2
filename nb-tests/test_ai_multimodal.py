@@ -6,18 +6,16 @@ NoneBot dispatch 路径（milky 事件 + stub build_agent/render/send）。
 
 from __future__ import annotations
 
-import itertools
 from types import SimpleNamespace
 
 import pytest
 from pydantic_ai import BinaryContent, ImageUrl
 from pydantic_ai.messages import TextContent
 
+from conftest import next_seq
 from hoshino.ai.deps import AgentDeps, PermissionSnapshot, Telemetry
 
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
-
-_seq = itertools.count(500000)
 
 
 # ------------------------------------------------------------ media 转换
@@ -114,9 +112,7 @@ def _tool_ctx(config=None, provider_id: str = ""):
 
 
 class _FakeResponse:
-    def __init__(
-        self, content: bytes = b"", headers: dict | None = None, status: int = 200
-    ):
+    def __init__(self, content: bytes = b"", headers: dict | None = None, status: int = 200):
         self.content = content
         self.headers = headers or {}
         self._status = status
@@ -182,9 +178,7 @@ async def test_image_view_delegates_to_vision_model(monkeypatch, tmp_store):
             _FakeResponse(b"\x89PNG data", {"content-type": "image/png"})
         ),
     )
-    out = await iv.image_view(
-        _tool_ctx(provider_id="openai"), "https://example.com/a.png"
-    )
+    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/a.png")
     assert out == "图里有一只猫"
     assert calls[0][0] == "openai"
     assert calls[0][1] == "gpt-4o"
@@ -198,9 +192,7 @@ async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
     from hoshino.ai.tools.core import image_view as iv
 
     _seed_vision_provider(tmp_store)
-    monkeypatch.setattr(
-        iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x"))
-    )
+    monkeypatch.setattr(iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x")))
     # 单独一个无 vision 模型的 provider
     tmp_store.upsert_provider_row(
         provider_id="textonly",
@@ -210,9 +202,7 @@ async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
         default_text_model="gpt-4o-mini",
     )
     tmp_store.upsert_provider_model("textonly", "gpt-4o-mini", "text")
-    out = await iv.image_view(
-        _tool_ctx(provider_id="textonly"), "https://example.com/a.png"
-    )
+    out = await iv.image_view(_tool_ctx(provider_id="textonly"), "https://example.com/a.png")
     assert "未配置 vision 模型" in out
 
 
@@ -220,9 +210,7 @@ async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
 async def test_image_view_rejects_private_host(monkeypatch):
     from hoshino.ai.tools.core import image_view as iv
 
-    monkeypatch.setattr(
-        iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x"))
-    )
+    monkeypatch.setattr(iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x")))
     out = await iv.image_view(_tool_ctx(), "http://127.0.0.1/secret.png")
     assert "拒绝访问私有" in out
 
@@ -251,13 +239,9 @@ async def test_image_view_size_limit(monkeypatch, tmp_store):
     monkeypatch.setattr(
         iv.httpx,
         "AsyncClient",
-        lambda **kw: _FakeAsyncClient(
-            _FakeResponse(big, {"content-type": "image/png"})
-        ),
+        lambda **kw: _FakeAsyncClient(_FakeResponse(big, {"content-type": "image/png"})),
     )
-    out = await iv.image_view(
-        _tool_ctx(provider_id="openai"), "https://example.com/big.png"
-    )
+    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/big.png")
     assert "大小限制" in out
 
 
@@ -276,9 +260,7 @@ async def test_image_view_fetch_error(monkeypatch, tmp_store):
         "AsyncClient",
         lambda **kw: _FakeAsyncClient(_FakeResponse(b"", status=404)),
     )
-    out = await iv.image_view(
-        _tool_ctx(provider_id="openai"), "https://example.com/missing.png"
-    )
+    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/missing.png")
     assert "抓取失败" in out
 
 
@@ -307,7 +289,7 @@ def _milky_group(
             "data": {
                 "message_scene": "group",
                 "peer_id": group_id,
-                "message_seq": next(_seq),
+                "message_seq": next_seq(),
                 "sender_id": user_id,
                 "time": 1,
                 "segments": [{"type": "text", "data": {"text": text}}],
@@ -336,9 +318,7 @@ def _milky_group(
     return bot, event
 
 
-def _stub_env(
-    monkeypatch, tmp_store, *, vision_model: str = "", render_error: bool = False
-):
+def _stub_env(monkeypatch, tmp_store, *, vision_model: str = "", render_error: bool = False):
     """配置 openai provider（可选 vision 默认模型）+ stub render/send。
 
     ``render_error`` 让渲染抛错（chat 回退纯文本，便于断言 mask 文案）。
@@ -445,9 +425,7 @@ class _FakeAgent:
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_image_with_vision_describes_and_answers_with_text(
-    monkeypatch, tmp_store
-):
+async def test_chat_image_with_vision_describes_and_answers_with_text(monkeypatch, tmp_store):
     """含图 + vision 模型：vision 模型描述图片，text 模型作答。"""
     from hoshino.modules.ai import chat
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.model.api import MessageResponse
-from test_milky_adapter import _milky_group_message
+
+from _helpers import _milky_group_message
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

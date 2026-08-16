@@ -6,7 +6,7 @@ import importlib
 import json
 import time
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +60,7 @@ def _tweet(tweet_id: int, *, content: str = "", username: str = "alice") -> Twee
         username=username,
         displayname=username.title(),
         rawDescription="",
-        created=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        created=datetime(2020, 1, 1, tzinfo=UTC),
         followersCount=0,
         friendsCount=0,
         statusesCount=0,
@@ -74,7 +74,7 @@ def _tweet(tweet_id: int, *, content: str = "", username: str = "alice") -> Twee
         id=tweet_id,
         id_str=str(tweet_id),
         url=f"https://x.com/{username}/status/{tweet_id}",
-        date=datetime.now(timezone.utc),
+        date=datetime.now(UTC),
         user=user,
         lang="en",
         rawContent=content,
@@ -276,9 +276,7 @@ async def test_x_list_subscription_lifecycle_and_purge(tmp_path: Path):
             list_id=555,
             name="555",
         )
-    await store.enqueue_list_posts(
-        555, [post_module.XPost(uid="alice", id="101", content="")]
-    )
+    await store.enqueue_list_posts(555, [post_module.XPost(uid="alice", id="101", content="")])
     await store.set_cursor(source, 101)
 
     assert await store.list_source_keys() == ["list:555"]
@@ -412,9 +410,7 @@ async def test_x_list_fetch_rate_limit_defers_source(
             return None
 
         async def fetch_list_recent(self, list_id, limit):
-            raise client_module.XRateLimited(
-                client_module.LIST_TWEETS_ENDPOINT, 9999999999
-            )
+            raise client_module.XRateLimitedError(client_module.LIST_TWEETS_ENDPOINT, 9999999999)
 
     monkeypatch.setattr(runtime_module, "XClient", LimitedClient)
     runtime = runtime_module.XRuntime(store)
@@ -496,9 +492,7 @@ async def test_fake_telegram_http_boundary_covers_required_apis(
             result = _telegram_message(10)
         else:
             result = _telegram_message(8)
-        return Response(
-            200, content=json.dumps({"ok": True, "result": result}).encode()
-        )
+        return Response(200, content=json.dumps({"ok": True, "result": result}).encode())
 
     monkeypatch.setattr(bot.adapter, "request", fake_request)
     await bot.get_updates(timeout=0)
@@ -645,14 +639,14 @@ async def test_non_telegram_reaction_forward_rebuilds_locally(
     adapter_name: str,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    from _helpers import _milky_group_message
+    from adapter_events import ob11_group_message
     from hoshino.platform import (
         ReactionInfo,
         RetrievedMessage,
         forward_reacted_message,
         private_target,
     )
-    from adapter_events import ob11_group_message
-    from test_milky_adapter import _milky_group_message
 
     calls: list[tuple[str, dict[str, Any]]] = []
     if adapter_name == "ob11":
@@ -667,9 +661,7 @@ async def test_non_telegram_reaction_forward_rebuilds_locally(
         bot, _ = _milky_group_message("ignored", to_me=False)
 
         async def fake_private(self, *, user_id: int, message):
-            calls.append(
-                ("send_private_message", {"user_id": user_id, "message": message})
-            )
+            calls.append(("send_private_message", {"user_id": user_id, "message": message}))
             from nonebot.adapters.milky.model.api import MessageResponse
 
             return MessageResponse(message_seq=8, time=1)
@@ -771,7 +763,7 @@ async def test_x_workflow_first_fetch_cookie_redaction_and_429(
             return None
 
         async def resolve_user_id(self, username):
-            raise client_module.XRateLimited("UserByScreenName", 9999999999)
+            raise client_module.XRateLimitedError("UserByScreenName", 9999999999)
 
     monkeypatch.setattr(
         runtime_module,
@@ -807,9 +799,7 @@ async def test_x_workflow_rejects_expired_cookie_without_logging_values(
     monkeypatch.setattr(
         runtime_module,
         "get_cookies_with_ts",
-        lambda name: _async_result(
-            ({"auth_token": "auth-value", "ct0": "ct0-value"}, 1)
-        ),
+        lambda name: _async_result(({"auth_token": "auth-value", "ct0": "ct0-value"}, 1)),
     )
     runtime = runtime_module.XRuntime(store)
     await runtime.bootstrap()
@@ -1162,7 +1152,7 @@ async def test_x_user_not_found_is_removed_only_when_error_queue_consumes(
             return None
 
         async def resolve_user_id(self, username):
-            raise client_module.XUserNotFound("missing")
+            raise client_module.XUserNotFoundError("missing")
 
     monkeypatch.setattr(
         runtime_module,
@@ -1245,7 +1235,7 @@ async def test_x_user_not_found_notification_retry_does_not_repeat_deletion(
     monkeypatch.setattr(runtime_module, "send_to_superuser", flaky_sender)
     monkeypatch.setattr(runtime_module.sv, "logger", RecordingLogger())
     queue = runtime_module.XErrorQueue(store, uid_manager)
-    await queue.enqueue("alice", client_module.XUserNotFound("missing"))
+    await queue.enqueue("alice", client_module.XUserNotFoundError("missing"))
 
     assert not await queue.process_next()
     assert await queue.process_next()
@@ -1268,9 +1258,7 @@ async def test_x_media_download_error_enters_runtime_error_queue(
 
     monkeypatch.setattr(media_store.client, "stream", failed_stream)
     try:
-        result = await media_store._download(
-            post, "https://img.invalid/image.jpg", False
-        )
+        result = await media_store._download(post, "https://img.invalid/image.jpg", False)
     finally:
         await media_store.close()
 
@@ -1300,9 +1288,7 @@ async def _seed_outbox(db, post_module, tmp_path: Path, username: str = "alice")
         username=username,
         name=username,
     )
-    await store.enqueue_posts(
-        username, [post_module.XPost(uid=username, id="101", content="")]
-    )
+    await store.enqueue_posts(username, [post_module.XPost(uid=username, id="101", content="")])
     return store
 
 
@@ -1370,9 +1356,7 @@ async def test_x_remove_subscription_purges_state_only_when_last_scope_gone(
             username="alice",
             name="alice",
         )
-    await store.enqueue_posts(
-        "alice", [post_module.XPost(uid="alice", id="101", content="")]
-    )
+    await store.enqueue_posts("alice", [post_module.XPost(uid="alice", id="101", content="")])
     await store.get_account_state("alice")
     await store.set_cursor("alice", 101)
 

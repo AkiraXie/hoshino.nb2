@@ -11,8 +11,8 @@ from nonebot.adapters.milky import Adapter as MilkyAdapter
 from nonebot.adapters.onebot.v11 import Message as OB11Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OB11MessageSegment
 
-from hoshino.platform.depends import get_light_app_json_payload
 from adapter_events import ob11_group_message
+from hoshino.platform.depends import get_light_app_json_payload
 
 
 def _mini_program_payload(url: str) -> dict[str, Any]:

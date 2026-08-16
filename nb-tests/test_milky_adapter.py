@@ -9,8 +9,6 @@ from arclet.alconna import command_manager
 from nonebot import get_adapters
 from nonebot.adapters.milky import Adapter as MilkyAdapter
 from nonebot.adapters.milky import Bot as MilkyBot
-from nonebot.adapters.milky.config import ClientInfo
-from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.event import (
     GroupMessageReactionEvent as MilkyReactionEvent,
 )
@@ -24,51 +22,7 @@ from nonebot.rule import TrieRule
 from nonebot_plugin_alconna.uniseg import UniMessage
 from nonebug import App
 
-
-def _milky_group_message(
-    text: str,
-    *,
-    to_me: bool,
-    user_id: int = 42,
-) -> tuple[MilkyBot, MilkyGroupMessageEvent]:
-    adapter = get_adapters()[MilkyAdapter.get_name()]
-    bot = MilkyBot(adapter, self_id="10000", info=ClientInfo())
-    event = adapter.json_to_event(
-        {
-            "event_type": "message_receive",
-            "time": 1,
-            "self_id": 10000,
-            "data": {
-                "message_scene": "group",
-                "peer_id": 123456,
-                "message_seq": 7,
-                "sender_id": user_id,
-                "time": 1,
-                "segments": [{"type": "text", "data": {"text": text}}],
-                "group": {
-                    "group_id": 123456,
-                    "group_name": "test group",
-                    "member_count": 2,
-                    "max_member_count": 100,
-                },
-                "group_member": {
-                    "user_id": user_id,
-                    "nickname": "Alice",
-                    "sex": "unknown",
-                    "group_id": 123456,
-                    "card": "Alice member",
-                    "title": "",
-                    "level": 1,
-                    "role": "admin",
-                    "join_time": 1,
-                    "last_sent_time": 1,
-                },
-            },
-        }
-    )
-    assert isinstance(event, MilkyGroupMessageEvent)
-    event.to_me = to_me
-    return bot, event
+from _helpers import _milky_group_message
 
 
 def _milky_reaction(
@@ -133,9 +87,7 @@ def _matcher_for_handler(handler):
         for matcher in matcher_group:
             if any(dependent.call is handler for dependent in matcher.handlers):
                 return matcher
-    raise AssertionError(
-        f"No matcher registered for {handler.__module__}.{handler.__name__}"
-    )
+    raise AssertionError(f"No matcher registered for {handler.__module__}.{handler.__name__}")
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -154,7 +106,8 @@ async def test_milky_event_accessors_and_native_command_rule():
     bot, event = _milky_group_message("删图 example.jpg", to_me=True)
     assert get_group_id(event) == 123456
     assert get_user_id(event) == 42
-    assert get_message_id(event) == 7
+    # message_id 与事件自身的 message_seq 一致（不再假设具体数值）
+    assert get_message_id(event) == event.data.message_seq
     assert get_plaintext(event) == "删图 example.jpg"
     assert is_message_event(event)
     assert is_group_event(event)
@@ -304,9 +257,7 @@ async def test_reaction_di_normalizes_ob11_and_milky(app: App, event):
         message_id=7,
         group_id=123456,
         user_id=42,
-        reaction_type=(
-            "emoji" if event.__class__.__name__.endswith("EmojiLikeEvent") else "face"
-        ),
+        reaction_type=("emoji" if event.__class__.__name__.endswith("EmojiLikeEvent") else "face"),
     )
     async with app.test_dependent(
         reaction_value,

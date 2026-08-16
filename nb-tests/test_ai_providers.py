@@ -34,9 +34,7 @@ def test_provider_row_upsert_and_get(tmp_store):
 
 def test_provider_row_upsert_updates_existing(tmp_store):
     tmp_store.upsert_provider_row(provider_id="p", default_text_model="a")
-    tmp_store.upsert_provider_row(
-        provider_id="p", default_text_model="b", kind="openai_responses"
-    )
+    tmp_store.upsert_provider_row(provider_id="p", default_text_model="b", kind="openai_responses")
     row = tmp_store.get_provider_row("p")
     assert row["default_text_model"] == "b"
     assert row["kind"] == "openai_responses"
@@ -100,9 +98,7 @@ def test_resolve_models_inherit_and_override(tmp_store):
 def test_resolve_text_model_uses_scope_override(tmp_store):
     from hoshino.ai import provider as provider_domain
 
-    tmp_store.upsert_provider_row(
-        provider_id="p", kind="openai_chat", default_text_model="default"
-    )
+    tmp_store.upsert_provider_row(provider_id="p", kind="openai_chat", default_text_model="default")
     assert provider_domain.resolve_text_model("scope:1", "p") == "default"
     tmp_store.set_scope_model_override("scope:1", "text", "override")
     assert provider_domain.resolve_text_model("scope:1", "p") == "override"
@@ -115,9 +111,7 @@ def test_fetch_available_models_openai(fake_ai_server):
     from hoshino.ai.provider import ProviderRecord, fetch_available_models
 
     base_url, requests = fake_ai_server
-    record = ProviderRecord(
-        id="openai", url=base_url, key="sk-test", kind="openai_chat"
-    )
+    record = ProviderRecord(id="openai", url=base_url, key="sk-test", kind="openai_chat")
     models = asyncio.run(fetch_available_models(record, verify=False))
     assert models == ["gpt-4o", "gpt-4o-mini"]  # 排序
     assert requests[0]["stem"] == "/models"
@@ -130,16 +124,12 @@ def test_fetch_available_models_failure_returns_none():
 
     from hoshino.ai.provider import ProviderRecord, fetch_available_models
 
-    record = ProviderRecord(
-        id="x", url="http://127.0.0.1:1", key="k", kind="openai_chat"
-    )
+    record = ProviderRecord(id="x", url="http://127.0.0.1:1", key="k", kind="openai_chat")
     assert asyncio.run(fetch_available_models(record, verify=False)) is None
     assert (
         asyncio.run(
             fetch_available_models(
-                ProviderRecord(
-                    id="x", url="http://127.0.0.1:1", key="", kind="openai_chat"
-                ),
+                ProviderRecord(id="x", url="http://127.0.0.1:1", key="", kind="openai_chat"),
                 verify=False,
             )
         )
@@ -197,9 +187,7 @@ def test_ai_config_from_env_file_and_vars(tmp_path):
         "OTHER=ignored\n",
         encoding="utf-8",
     )
-    cfg = load_ai_config_from_env(
-        env={"AI_TOOL_MAX_RETRIES": "5"}, env_file=str(env_file)
-    )
+    cfg = load_ai_config_from_env(env={"AI_TOOL_MAX_RETRIES": "5"}, env_file=str(env_file))
     assert cfg.default == "opencode-go"
     assert cfg.proxy == "http://127.0.0.1:7890"
     assert cfg.max_history_messages == 40
@@ -208,16 +196,22 @@ def test_ai_config_from_env_file_and_vars(tmp_path):
     # 未配置字段用代码默认
     assert cfg.render_theme == "light"
     # env 显式置空会覆盖文件值 → 字段视为未设置，落代码默认
-    cfg2 = load_ai_config_from_env(
-        env={"AI_DEFAULT_PROVIDER": ""}, env_file=str(env_file)
-    )
+    cfg2 = load_ai_config_from_env(env={"AI_DEFAULT_PROVIDER": ""}, env_file=str(env_file))
     assert cfg2.default == ""
 
 
-def test_hsnconfig_ai_mounted_from_env(tmp_path, monkeypatch):
-    """config.ai 惰性挂载：从 .env.prod 构建 AIConfig；DB 默认覆盖 env 默认。"""
+def test_hsnconfig_ai_mounted_from_env(monkeypatch):
+    """config.ai 惰性挂载：从注入的 AI_* env 构建 AIConfig；DB 默认覆盖 env 默认。
+
+    注入的 AI_* 环境变量优先于 ``.env.prod``（见 hoshino/ai/config.py），
+    断言注入的测试值，不依赖本机 ``.env.prod``。
+    """
     import hoshino.ai.config as ai_config
     from hoshino.ai.base import get_config
+
+    monkeypatch.setenv("AI_DEFAULT_PROVIDER", "test-provider")
+    monkeypatch.setenv("AI_PROXY", "http://127.0.0.1:7890")
+    monkeypatch.setenv("AI_MAX_HISTORY_MESSAGES", "40")
 
     # 直接测挂载函数（避免全局 config 实例依赖真实 .env.prod）
     class _FakeHsn:
@@ -229,9 +223,9 @@ def test_hsnconfig_ai_mounted_from_env(tmp_path, monkeypatch):
     ai_config.mount_into_hsnconfig(_FakeHsn)
     assert len([k for k in _FakeHsn.__dict__ if k == "ai"]) == 1
 
-    # get_config：env 默认 + DB 覆盖
+    # get_config：注入的 env 默认 + DB 覆盖
     cfg = get_config()
-    assert cfg.default  # 来自真实 .env.prod（AI_DEFAULT_PROVIDER）
+    assert cfg.default == "test-provider"
     assert cfg.proxy == "http://127.0.0.1:7890"
     assert cfg.max_history_messages == 40
     tmp_store_global = __import__("hoshino.ai.store", fromlist=["set_global_value"])

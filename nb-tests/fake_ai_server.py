@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import ClassVar
 
 OPENAI_RESPONSE = {
     "id": "chatcmpl-fake",
@@ -55,7 +56,7 @@ class _FakeHandler(BaseHTTPRequestHandler):
     """记录每个 POST/GET 请求；按路径返回固定响应。"""
 
     protocol_version = "HTTP/1.1"
-    requests: list[dict] = []
+    requests: ClassVar[list[dict]] = []
 
     def _record(self, raw: bytes) -> dict:
         return {

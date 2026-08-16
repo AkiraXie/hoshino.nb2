@@ -5,11 +5,22 @@ from nonebug import App
 
 from adapter_events import ob11_group_message, telegram_group_message
 
+#: 与 ``_native_commands()`` 的返回顺序一致；用显式命名参数代替 range(N) 隐式
+#: 索引，命令列表变动时不会错位。
+_NATIVE_PLUGIN_NAMES = (
+    "black",
+    "cookies",
+    "ls",
+    "zai",
+    "broadcast",
+    "test",
+    "server_info",
+)
+
 
 def _native_commands():
     # Imports must follow the shared NoneBot bootstrap fixture.
-    from hoshino.base import broadcast, cookies, ls, test, zai
-    from hoshino.base import black
+    from hoshino.base import black, broadcast, cookies, ls, test, zai
     from hoshino.modules.develop import server_info
 
     return (
@@ -34,9 +45,7 @@ def _matcher_for_handler(handler):
         for matcher in matcher_group:
             if any(dependent.call is handler for dependent in matcher.handlers):
                 return matcher
-    raise AssertionError(
-        f"No matcher registered for {handler.__module__}.{handler.__name__}"
-    )
+    raise AssertionError(f"No matcher registered for {handler.__module__}.{handler.__name__}")
 
 
 def _fake_bot(ctx, bot):
@@ -57,7 +66,7 @@ def _prepare_response(plugin, monkeypatch):
     if plugin == "black":
         return "请输入要拉黑的id,并用空格隔开~\n在群聊中，还支持直接at哦~", "reject"
     if plugin == "cookies":
-        monkeypatch.setattr(cookies, "check_all_cookies", lambda: {})
+        monkeypatch.setattr(cookies, "check_all_cookies", dict)
         return "没有可用的cookies", None
     if plugin == "ls":
         expected = ["该bot注册的matcher_wrapper如下:"]
@@ -73,7 +82,8 @@ def _prepare_response(plugin, monkeypatch):
             return []
 
         monkeypatch.setattr(broadcast, "get_group_list", empty_group_list)
-        return "广播完成,投递成功0个群", "finish"
+        # 群列表为空时 handler 明确降级（Telegram 等平台无法枚举已加入的聊天）。
+        return "没有可广播的群（Telegram 等平台无法枚举机器人加入的聊天）", "finish"
     if plugin == "test":
         monkeypatch.setattr(test, "get_bot_list", lambda: ["test-bot"])
         return "['test-bot']", "finish"
@@ -89,11 +99,12 @@ def _prepare_response(plugin, monkeypatch):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 @pytest.mark.parametrize("factory", (ob11_group_message, telegram_group_message))
-@pytest.mark.parametrize("case_index", range(7))
+@pytest.mark.parametrize("plugin_name", _NATIVE_PLUGIN_NAMES)
 async def test_native_command_rule_accepts_both_adapters(
-    app: App, factory, case_index, monkeypatch
+    app: App, factory, plugin_name, monkeypatch
 ):
-    plugin, matcher, sample = _native_commands()[case_index]
+    cases = {name: (name, matcher, sample) for name, matcher, sample in _native_commands()}
+    plugin, matcher, sample = cases[plugin_name]
     bot, event = factory(sample, to_me=True)
 
     async with app.test_matcher(matcher) as ctx:
@@ -102,9 +113,7 @@ async def test_native_command_rule_accepts_both_adapters(
         ctx.receive_event(bot, event)
         ctx.should_ignore_permission(matcher)
         ctx.should_pass_rule(matcher)
-        send_kwargs = (
-            {"call_header": False, "at_sender": False} if plugin == "cookies" else {}
-        )
+        send_kwargs = {"call_header": False, "at_sender": False} if plugin == "cookies" else {}
         ctx.should_call_send(event, response, bot=bot, **send_kwargs)
         if action == "reject":
             ctx.should_rejected(matcher)

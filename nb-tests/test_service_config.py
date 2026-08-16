@@ -1,7 +1,7 @@
 """Structured Service configuration behavior."""
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 
 import pytest
 
@@ -19,9 +19,7 @@ def test_typed_service_config_generates_default_file(tmp_path, monkeypatch):
 
     service_name = "typed_config_default_test"
     monkeypatch.setattr(service_module, "_service_dir", tmp_path / "service")
-    monkeypatch.setattr(
-        service_module, "_service_config_dir", tmp_path / "service_config"
-    )
+    monkeypatch.setattr(service_module, "_service_config_dir", tmp_path / "service_config")
     try:
         service = service_module.Service(service_name, config_type=ExampleSettings)
 
@@ -94,8 +92,6 @@ def test_save_config_writes_validated_json(tmp_path, monkeypatch):
         raw = json.loads(config_file.read_text(encoding="utf8"))
         assert raw["limit"] == 99
         assert raw["name"] == "saved"
-        assert service.get_config() == ExampleSettings(
-            enabled=False, limit=99, name="saved"
-        )
+        assert service.get_config() == ExampleSettings(enabled=False, limit=99, name="saved")
     finally:
         service_module._loaded_services.pop(service_name, None)

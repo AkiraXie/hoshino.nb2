@@ -14,9 +14,7 @@ def _matcher_for_handler(handler):
         for matcher in matcher_group:
             if any(dependent.call is handler for dependent in matcher.handlers):
                 return matcher
-    raise AssertionError(
-        f"No matcher registered for {handler.__module__}.{handler.__name__}"
-    )
+    raise AssertionError(f"No matcher registered for {handler.__module__}.{handler.__name__}")
 
 
 async def _native_command_rule_matches(matcher, bot, event) -> bool:
@@ -50,9 +48,7 @@ async def test_resolve_rule_recognizes_bilibili_links_on_both_adapters(factory):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 @pytest.mark.parametrize("factory", (ob11_group_message, telegram_group_message))
-async def test_listenmeta_bot_connect_notifies_superusers_on_both_adapters(
-    factory, monkeypatch
-):
+async def test_listenmeta_bot_connect_notifies_superusers_on_both_adapters(factory, monkeypatch):
     """The bot-connect lifecycle hook emits the expected private notification."""
     from hoshino.base import listenmeta
 
@@ -85,9 +81,7 @@ async def test_healthcheck_reports_adapter_bot_connectivity(factory, monkeypatch
         return []
 
     expected_bot, _event = factory("ignored", to_me=False)
-    monkeypatch.setattr(
-        healthchecker.nonebot, "get_bot", lambda _bot_id=None: expected_bot
-    )
+    monkeypatch.setattr(healthchecker.nonebot, "get_bot", lambda _bot_id=None: expected_bot)
     monkeypatch.setattr(healthchecker, "get_group_list", fake_group_list)
 
     response = await healthchecker.bot_check("10000")

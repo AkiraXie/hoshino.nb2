@@ -88,9 +88,9 @@ async def test_ob11_forwarded_messages_expose_images_and_videos(monkeypatch):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_milky_forwarded_messages_expose_images_and_videos(monkeypatch):
+    from _helpers import _milky_group_message
     from hoshino.platform import get_forwarded_messages
     from hoshino.util.media import get_event_media_segments
-    from test_milky_adapter import _milky_group_message
 
     bot, event = _milky_group_message("ignored", to_me=False)
     forward_elements = [

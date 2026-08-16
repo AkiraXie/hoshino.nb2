@@ -77,9 +77,7 @@ async def test_weibo_dispatch_failure_dead_letters_without_retry(
 
     assert dispatched == 0
     conn = sqlite3.connect(tmp_path / "outbox.db")
-    row = conn.execute(
-        "SELECT status, attempts FROM weibo_outbox WHERE id = 1"
-    ).fetchone()
+    row = conn.execute("SELECT status, attempts FROM weibo_outbox WHERE id = 1").fetchone()
     conn.close()
     assert row == ("dead", 0)
     assert await store.due_outbox() == []

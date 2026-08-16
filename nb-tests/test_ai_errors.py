@@ -21,7 +21,8 @@ def _make_group(*exceptions: BaseException) -> BaseException:
     """跨版本构造 ExceptionGroup：3.11+ 用内置，3.10 用 exceptiongroup 回退包。"""
     group_cls = getattr(builtins, "BaseExceptionGroup", None)
     if group_cls is None:
-        from exceptiongroup import BaseExceptionGroup as group_cls  # type: ignore
+        # 3.11 以下回退包；别名与上方 group_cls 保持一致（本项目 Python>=3.12，该分支不执行）。
+        from exceptiongroup import BaseExceptionGroup as group_cls  # type: ignore  # noqa: N813
 
     return group_cls("group", exceptions)
 
@@ -73,12 +74,12 @@ def test_format_wrapped_tool_error_name():
     class _Wrapped:
         tool_name = "duckduckgo_search"
 
-    class _ToolErr(Exception):
+    class _ToolError(Exception):
         def __init__(self):
             self.tool_failed = _Wrapped()
             super().__init__("search failed")
 
-    detail = format_exception_detail(_ToolErr())
+    detail = format_exception_detail(_ToolError())
     assert "tool=duckduckgo_search" in detail
     assert "search failed" in detail
 
@@ -179,11 +180,7 @@ def test_last_message_summary_extracts_parts():
     tool_state = SimpleNamespace(
         message_history=[
             ModelRequest(
-                parts=[
-                    ToolReturnPart(
-                        tool_name="web_search", content="搜索结果 " + "x" * 300
-                    )
-                ]
+                parts=[ToolReturnPart(tool_name="web_search", content="搜索结果 " + "x" * 300)]
             )
         ]
     )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 import json
 from types import SimpleNamespace
 
@@ -13,12 +12,10 @@ from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageE
 from nonebot.adapters.milky.model.api import MessageResponse
 from pydantic_ai.messages import ModelResponse, TextPart
 
+from conftest import next_seq
 from hoshino.ai.config import AIConfig
 
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
-
-# 递增 message_seq 保证 alconna 全局 unimsg_cache 键不跨测试碰撞。
-_seq = itertools.count(310000)
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +50,7 @@ def _milky_group(
             "data": {
                 "message_scene": "group",
                 "peer_id": group_id,
-                "message_seq": next(_seq),
+                "message_seq": next_seq(),
                 "sender_id": user_id,
                 "time": 1,
                 "segments": [{"type": "text", "data": {"text": text}}],
@@ -108,22 +105,6 @@ class FakeModel:
         return ModelResponse(parts=[TextPart(content=self._text)])
 
 
-@pytest.fixture
-def tmp_store(tmp_path, monkeypatch):
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    from hoshino.ai import store
-
-    eng = create_engine(f"sqlite:///{tmp_path / 'zssm.db'}")
-    store.Base.metadata.create_all(eng)
-    monkeypatch.setattr(store, "engine", eng)
-    monkeypatch.setattr(
-        store, "Session", sessionmaker(bind=eng, expire_on_commit=False)
-    )
-    return store
-
-
 def _stub_env(
     monkeypatch,
     tmp_store,
@@ -169,9 +150,7 @@ def _user_payload(fake_model) -> dict:
     part = request.parts[-1]
     content = part.content
     if isinstance(content, list):
-        content = next(
-            item.content for item in content if type(item).__name__ == "TextContent"
-        )
+        content = next(item.content for item in content if type(item).__name__ == "TextContent")
     return json.loads(content)
 
 
@@ -200,9 +179,7 @@ async def test_zssm_reply_target_and_focus(monkeypatch, tmp_store):
     """回复某条消息 + `zssm <focus>`：target 是回复内容，focus 是命令参数。"""
     fake, sent = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group(
-        "zssm 显卡 --text", reply=_milky_reply(7, "RTX 4090 好贵啊")
-    )
+    bot, event = _milky_group("zssm 显卡 --text", reply=_milky_reply(7, "RTX 4090 好贵啊"))
     await bot.handle_event(event)
 
     payload = _user_payload(fake)
@@ -326,9 +303,7 @@ async def test_zssm_image_with_vision_describes(monkeypatch, tmp_store):
 
     monkeypatch.setattr(zssm.image, "event_images", fake_images)
 
-    async def fake_describe_url(
-        url, *, verify_ssl=False, proxy=None, record=None, vision_model=""
-    ):
+    async def fake_describe_url(url, *, verify_ssl=False, proxy=None, record=None, vision_model=""):
         return "图片里有一张显卡"
 
     monkeypatch.setattr(zssm.image, "describe_image_url", fake_describe_url)

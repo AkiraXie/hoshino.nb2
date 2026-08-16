@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 import os
 
 import pytest
@@ -12,15 +11,12 @@ from nonebot.adapters.milky.event import FriendMessageEvent as MilkyPrivateMessa
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 
+from conftest import next_seq
 from hoshino.ai.config import AIConfig
 
 # 本文件复用同一（群、用户）组合做不同 role 的权限断言，必须清 uninfo 会话
 # 缓存，见 conftest 中 _clear_uninfo_cache 的说明。
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
-
-# 递增 message_seq 保证 alconna 全局 unimsg_cache 键不跨测试碰撞。起点取
-# 300000，高于仓库其他测试的硬编码 seq，避免同 (group, seq) 缓存碰撞。
-_seq = itertools.count(300000)
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +52,7 @@ def _milky_group(
             "data": {
                 "message_scene": "group",
                 "peer_id": group_id,
-                "message_seq": next(_seq),
+                "message_seq": next_seq(),
                 "sender_id": user_id,
                 "time": 1,
                 "segments": [{"type": "text", "data": {"text": text}}],
@@ -86,9 +82,7 @@ def _milky_group(
     return bot, event
 
 
-def _milky_private(
-    text: str, *, user_id: int = 42
-) -> tuple[MilkyBot, MilkyPrivateMessageEvent]:
+def _milky_private(text: str, *, user_id: int = 42) -> tuple[MilkyBot, MilkyPrivateMessageEvent]:
     from nonebot import get_adapters
     from nonebot.adapters.milky import Adapter as MilkyAdapter
 
@@ -102,7 +96,7 @@ def _milky_private(
             "data": {
                 "message_scene": "friend",
                 "peer_id": 999,
-                "message_seq": next(_seq),
+                "message_seq": next_seq(),
                 "sender_id": user_id,
                 "time": 1,
                 "segments": [{"type": "text", "data": {"text": text}}],
@@ -120,22 +114,6 @@ def _milky_private(
     assert isinstance(event, MilkyPrivateMessageEvent)
     event.to_me = False
     return bot, event
-
-
-@pytest.fixture
-def tmp_store(tmp_path, monkeypatch):
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-
-    from hoshino.ai import store
-
-    eng = create_engine(f"sqlite:///{tmp_path / 'aichat.db'}")
-    store.Base.metadata.create_all(eng)
-    monkeypatch.setattr(store, "engine", eng)
-    monkeypatch.setattr(
-        store, "Session", sessionmaker(bind=eng, expire_on_commit=False)
-    )
-    return store
 
 
 def _stub_env(monkeypatch, tmp_store, *, superuser: bool = True, **overrides):
@@ -157,7 +135,7 @@ def _stub_env(monkeypatch, tmp_store, *, superuser: bool = True, **overrides):
     # check_service rule 会拦截所有命令；测试里显式开启。
     monkeypatch.setattr(ai_admin.sv, "check_enabled", lambda scope: True)
 
-    defaults = dict(default="openai")
+    defaults = {"default": "openai"}
     defaults.update(overrides)
     config = AIConfig(**defaults)
     monkeypatch.setattr(ai_admin, "get_config", lambda: config)
@@ -181,9 +159,7 @@ def _stub_env(monkeypatch, tmp_store, *, superuser: bool = True, **overrides):
     tmp_store.upsert_provider_model("anthropic", "claude-3-5-sonnet", "text")
 
     saved: list[object] = []
-    monkeypatch.setattr(
-        ai_admin.sv, "save_config", lambda new_config: saved.append(new_config)
-    )
+    monkeypatch.setattr(ai_admin.sv, "save_config", lambda new_config: saved.append(new_config))
     # 全局默认 provider 已改由 DB 持久化（store.AIGlobal["default_provider"]）
 
     sent: list[tuple[int, object]] = []
@@ -414,9 +390,7 @@ async def test_model_set_vision_and_disable(monkeypatch, tmp_store):
     await bot.handle_event(event)
     text = sent[0][1].extract_plain_text()
     assert "多模态模型：`gpt-4o`" in text
-    assert (
-        tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == "gpt-4o"
-    )
+    assert tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == "gpt-4o"
 
     bot, event = _milky_group("ai model set vision none")
     await bot.handle_event(event)
@@ -445,9 +419,7 @@ async def test_model_set_member_rejected(monkeypatch, tmp_store):
     # role=member 且非 SUPERUSER → 不满足 SUPERUSER permission → matcher 不执行
     _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
 
-    bot, event = _milky_group(
-        "ai model set text gpt-4o-mini", user_id=42, role="member"
-    )
+    bot, event = _milky_group("ai model set text gpt-4o-mini", user_id=42, role="member")
     await bot.handle_event(event)
 
     assert len(sent) == 0  # SUPERUSER matcher 直接拦截，非超管无响应
@@ -583,7 +555,7 @@ async def test_tools_on_binds_category(monkeypatch, tmp_store):
 
     assert "已开启" in sent[0][1].extract_plain_text()
     bindings = tmp_store.list_scope_tool_bindings("milky:123456", "chat")
-    assert {"computer": True} == {b["category"]: b["enabled"] for b in bindings}
+    assert {b["category"]: b["enabled"] for b in bindings} == {"computer": True}
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -649,7 +621,7 @@ async def test_task_commands_require_superuser(monkeypatch, tmp_store):
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_task_list_superuser_sees_all(monkeypatch, tmp_store):
     """ai task 命令仅超管可用；超管能看到全部 Task。"""
-    from test_ai_task import _create_task
+    from _helpers import _create_task
 
     _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=True)
     _create_task(tmp_store, task_id="t_mine", creator_id="43")
@@ -717,9 +689,12 @@ async def test_bare_ai_shows_status(monkeypatch, tmp_store):
     bot, event = _milky_group("ai")
     await bot.handle_event(event)
 
+    # 裸 `ai` 只发送一条状态总览（当前 provider + 双模型槽位），不带命令清单。
+    assert len(sent) == 1
     text = sent[0][1].extract_plain_text()
     assert "当前 provider" in text
-    assert "ai help" in sent[1][1].extract_plain_text()  # 入口附带指引
+    assert "文本模型" in text
+    assert "多模态模型" in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -835,9 +810,7 @@ async def test_config_set_preserves_unrelated_lines(monkeypatch, tmp_store, tmp_
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_set_rejects_non_render_proxy_keys(
-    monkeypatch, tmp_store, tmp_path
-):
+async def test_config_set_rejects_non_render_proxy_keys(monkeypatch, tmp_store, tmp_path):
     """白名单外参数（如历史条数）拒绝修改，不写盘。"""
     env_file = _stub_env_file(monkeypatch, tmp_path)
     _, sent, _ = _stub_env(monkeypatch, tmp_store)

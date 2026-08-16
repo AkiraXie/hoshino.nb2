@@ -14,9 +14,7 @@ def _x_module(name: str):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_write_metadata_creates_message_json(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+async def test_write_metadata_creates_message_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     media_module = _x_module("media")
     post_module = _x_module("post")
 
@@ -53,9 +51,7 @@ async def test_write_metadata_creates_message_json(
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_write_metadata_includes_repost(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+async def test_write_metadata_includes_repost(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     media_module = _x_module("media")
     post_module = _x_module("post")
 
@@ -80,9 +76,7 @@ async def test_write_metadata_includes_repost(
         )
         await media_store.write_metadata(post)
 
-        data = json.loads(
-            (tmp_path / "alice" / "202" / "message.json").read_text(encoding="utf-8")
-        )
+        data = json.loads((tmp_path / "alice" / "202" / "message.json").read_text(encoding="utf-8"))
         assert data["repost"] is not None
         assert data["repost"]["uid"] == "bob"
         assert data["repost"]["id"] == "100"
@@ -92,36 +86,28 @@ async def test_write_metadata_includes_repost(
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_write_metadata_idempotent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+async def test_write_metadata_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     media_module = _x_module("media")
     post_module = _x_module("post")
 
     media_store = media_module.XMediaStore()
     monkeypatch.setattr(media_store, "root", tmp_path)
     try:
-        post = post_module.XPost(
-            uid="alice", id="301", content="first", nickname="Alice"
-        )
+        post = post_module.XPost(uid="alice", id="301", content="first", nickname="Alice")
         await media_store.write_metadata(post)
 
         # Modify content and write again — should NOT overwrite
         post.content = "modified"
         await media_store.write_metadata(post)
 
-        data = json.loads(
-            (tmp_path / "alice" / "301" / "message.json").read_text(encoding="utf-8")
-        )
+        data = json.loads((tmp_path / "alice" / "301" / "message.json").read_text(encoding="utf-8"))
         assert data["content"] == "first"
     finally:
         await media_store.close()
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_write_metadata_filters_http_urls(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+async def test_write_metadata_filters_http_urls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """HTTP URLs (not yet downloaded) are excluded from metadata filenames."""
     media_module = _x_module("media")
     post_module = _x_module("post")
@@ -142,9 +128,7 @@ async def test_write_metadata_filters_http_urls(
         )
         await media_store.write_metadata(post)
 
-        data = json.loads(
-            (tmp_path / "alice" / "401" / "message.json").read_text(encoding="utf-8")
-        )
+        data = json.loads((tmp_path / "alice" / "401" / "message.json").read_text(encoding="utf-8"))
         assert data["images"] == ["local.jpg"]
         assert data["videos"] == []
     finally:
@@ -238,7 +222,7 @@ async def test_persist_saves_original_media_once_across_retweets(
 
     monkeypatch.setattr(media_store.client, "stream", fake_stream)
 
-    def retweet(tweet_id: str) -> "post_module.XPost":
+    def retweet(tweet_id: str) -> post_module.XPost:
         original = post_module.XPost(
             uid="bob",
             id="100",

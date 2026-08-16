@@ -8,23 +8,16 @@ provider，让 ``#你好`` 事件真正经 ``build_agent`` 向 ``fake_ai_server`
 
 from __future__ import annotations
 
-import itertools
-
 import pytest
 from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 
+from conftest import next_seq
 from hoshino.ai.config import AIConfig
 
 # 本文件会触发 uninfo 会话缓存，见 conftest 中 _clear_uninfo_cache 的说明。
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
-
-# 与 test_ai_chat.py 同一约定：递增 message_seq 避免 alconna 全局缓存碰撞。
-# 起点取 400000，与 test_ai_admin（300000）错开——两者同 (group, seq) 时
-# alconna 的 unimsg_cache 键会跨文件碰撞，先跑 chat_http 会让 admin 的
-# "ai provider list" 等命令解析到缓存里的旧消息而不响应。
-_seq = itertools.count(400000)
 
 
 def _milky_group(
@@ -48,7 +41,7 @@ def _milky_group(
             "data": {
                 "message_scene": "group",
                 "peer_id": group_id,
-                "message_seq": next(_seq),
+                "message_seq": next_seq(),
                 "sender_id": user_id,
                 "time": 1,
                 "segments": [{"type": "text", "data": {"text": text}}],
@@ -135,9 +128,7 @@ async def test_chat_full_http_roundtrip(fake_ai_server, monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_http_agent_error_falls_back_to_text(
-    fake_ai_server, monkeypatch, tmp_store
-):
+async def test_chat_http_agent_error_falls_back_to_text(fake_ai_server, monkeypatch, tmp_store):
     """fake server 返回 404（模拟 provider 异常）→ chat 回复失败提示而不是崩溃。"""
     base_url, requests = fake_ai_server
     from hoshino.modules.ai import chat

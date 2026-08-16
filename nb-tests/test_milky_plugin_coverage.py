@@ -25,17 +25,11 @@ from nonebot.adapters.milky.event import GroupMessageReactionEvent
 from nonebot.adapters.milky.utils import clean_params
 from PIL import Image as PILImage
 
+from conftest import next_seq
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
-
-_seq = 100000
-
-
-def _next_seq() -> int:
-    global _seq
-    _seq += 1
-    return _seq
 
 
 def _loaded_module(name: str) -> Any:
@@ -62,7 +56,7 @@ def _make_message(
     segments: list[dict[str, Any]] | None = None,
 ) -> MilkyGroupMessageEvent | MilkyFriendMessageEvent:
     adapter = get_adapters()[MilkyAdapter.get_name()]
-    seq = seq or _next_seq()
+    seq = seq or next_seq()
     if segments is None:
         segments = [{"type": "text", "data": {"text": text}}]
     event = adapter.json_to_event(
@@ -116,7 +110,7 @@ def _make_message(
             },
         }
     )
-    assert isinstance(event, (MilkyFriendMessageEvent, MilkyGroupMessageEvent))
+    assert isinstance(event, MilkyFriendMessageEvent | MilkyGroupMessageEvent)
     return event
 
 
@@ -169,6 +163,11 @@ def _at_bot_msg(text: str, **kw) -> MilkyGroupMessageEvent:
 
 
 def _superuser_id() -> int:
+    """从注入的 superusers 配置取一个 Milky 超管 id。
+
+    配置来源是 conftest 的 ``NONEBOT_INIT_KWARGS["superusers"]``（默认注入
+    ``milky:10086``）；本机 ``.env.prod`` 已被 pytest_configure 隔离，不再读取。
+    """
     adapter = get_adapters()[MilkyAdapter.get_name()]
     for value in adapter.config.superusers:
         text = str(value)
@@ -176,7 +175,10 @@ def _superuser_id() -> int:
             return int(text.removeprefix("milky:"))
         if ":" not in text:
             return int(text)
-    raise AssertionError("No Milky superuser is configured for the test")
+    raise AssertionError(
+        "未配置 Milky 超管：请在 conftest.pytest_configure 的 "
+        "NONEBOT_INIT_KWARGS['superusers'] 中注入形如 'milky:10086' 的测试超管"
+    )
 
 
 def _stub_all_api(
@@ -205,7 +207,7 @@ def _stub_all_api(
         p = clean_params(dict(params or {}))
         calls.append({"action": action, "params": p})
         if action in ("send_group_message", "send_private_message"):
-            return {"message_seq": _next_seq(), "time": 1}
+            return {"message_seq": next_seq(), "time": 1}
         if action == "get_group_member_info":
             return {
                 "user_id": p.get("user_id", 0),
@@ -294,6 +296,29 @@ def _enable_svc(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
             "enable_scope",
             set(svc.enable_scope) | {"milky:123456"},
         )
+
+
+def _ensure_business_db_schema() -> None:
+    """为依赖 ``on_serial_startup`` 建表的插件显式建表。
+
+    测试会话中 driver startup（nonebug 的 session autouse lifespan）发生在插件
+    加载（``_nonebot_bootstrap``）之前，这些 serial startup DDL hook 不会执行，
+    weibo/bilireq/pushlive 的查询会报 "no such table: ..."。这里直接调用各模块
+    的 ``_ensure_schema`` 建表（幂等）。
+    """
+    from hoshino.modules.information.bilireq.utils import (
+        _ensure_schema as ensure_bili_schema,
+    )
+    from hoshino.modules.information.pushlive.db import (
+        _ensure_schema as ensure_live_schema,
+    )
+    from hoshino.modules.information.weibo.db import (
+        _ensure_schema as ensure_weibo_schema,
+    )
+
+    ensure_weibo_schema()
+    ensure_bili_schema()
+    ensure_live_schema()
 
 
 def _send_calls(calls, action="send_group_message"):
@@ -402,7 +427,7 @@ class TestBasePlugins:
     async def test_check_cookies_superuser_mention_reports_empty(self, monkeypatch):
         """cookies: native superuser command reports deterministic empty state."""
         cookies_module = _loaded_module("hoshino.base.cookies")
-        monkeypatch.setattr(cookies_module, "check_all_cookies", lambda: {})
+        monkeypatch.setattr(cookies_module, "check_all_cookies", dict)
         bot = _make_bot()
         event = _at_bot_msg(" check_cookies all", sender_id=_superuser_id())
         calls = _stub_all_api(monkeypatch)
@@ -499,9 +524,7 @@ class TestBasePlugins:
         assert captured["segments"][0].url == "https://example.com/image.jpg"
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_image_short_delete_alias_remains_available(
-        self, monkeypatch, tmp_path
-    ):
+    async def test_image_short_delete_alias_remains_available(self, monkeypatch, tmp_path):
         """image: the whitespace-qualified ``st`` alias still deletes a file."""
         image_module = _loaded_module("hoshino.base.image")
         image_dir = tmp_path / "images"
@@ -520,9 +543,7 @@ class TestBasePlugins:
 
         assert not image_path.exists()
         message = _assert_one_send(calls)
-        assert message == [
-            {"type": "text", "data": {"text": "删除图片example.jpg成功"}}
-        ]
+        assert message == [{"type": "text", "data": {"text": "删除图片example.jpg成功"}}]
 
 
 # ===================================================================
@@ -657,9 +678,7 @@ class TestInteractivePlugins:
             target_key="user_id",
             target_id=42,
         )
-        assert message[0]["data"]["text"].startswith(
-            "让我看看选什么好呢：\n1. a\n2. b\n"
-        )
+        assert message[0]["data"]["text"].startswith("让我看看选什么好呢：\n1. a\n2. b\n")
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_foods_enabled_text_image(self, monkeypatch, tmp_path):
@@ -727,12 +746,10 @@ class TestInteractivePlugins:
         assert message == [{"type": "text", "data": {"text": "======steam======\n"}}]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_steam_schedule_without_api_key_returns_before_update(
-        self, monkeypatch
-    ):
+    async def test_steam_schedule_without_api_key_returns_before_update(self, monkeypatch):
         """steam: the scheduled poll is inert when no API key is configured."""
         steam_module = _loaded_module("hoshino.modules.info-x.steam")
-        monkeypatch.setattr(steam_module.sv, "get_config", lambda: {})
+        monkeypatch.setattr(steam_module.sv, "get_config", dict)
 
         async def unexpected_update(*args, **kwargs):
             pytest.fail("update_game_status must not run without a Steam API key")
@@ -858,9 +875,7 @@ class TestInformationPlugins:
         )
         _enable_svc(monkeypatch, "weibo")
         appended: list[tuple[str, str]] = []
-        monkeypatch.setattr(
-            weibo_resolve, "get_cached_weibo_uid_id", lambda _: "123_abc"
-        )
+        monkeypatch.setattr(weibo_resolve, "get_cached_weibo_uid_id", lambda _: "123_abc")
         monkeypatch.setattr(
             weibo_resolve,
             "append_fav",
@@ -892,6 +907,7 @@ class TestInformationPlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_weibo_enabled_empty_list_responds(self, monkeypatch):
         """weibo: enabled service reports an empty subscription list."""
+        _ensure_business_db_schema()
         _enable_svc(monkeypatch, "weibo")
         bot = _make_bot()
         event = _make_group_msg("微博订阅")
@@ -908,6 +924,7 @@ class TestInformationPlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_bilireq_enabled_empty_list_responds(self, monkeypatch):
         """bilireq: a longer alias is not consumed as a compact add command."""
+        _ensure_business_db_schema()
         _enable_svc(monkeypatch, "bilireq")
         bot = _make_bot()
         event = _make_group_msg("订阅动态列表")
@@ -924,6 +941,7 @@ class TestInformationPlugins:
     @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_pushlive_enabled_empty_list_responds(self, monkeypatch):
         """pushlive: enabled service reports an empty subscription list."""
+        _ensure_business_db_schema()
         _enable_svc(monkeypatch, "pushlive")
         bot = _make_bot()
         event = _make_group_msg("直播订阅")

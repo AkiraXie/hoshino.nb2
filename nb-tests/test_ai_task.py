@@ -17,75 +17,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from _helpers import _create_task, _make_ctx
+
 pytestmark = pytest.mark.usefixtures("_nonebot_bootstrap")
-
-_ctx_defaults = dict(
-    task_kind="research",
-    scope_key="milky:123456",
-    creator_id="42",
-    target_json=json.dumps({"scene": "group", "peer": "123456"}),
-    bot_self_id="10000",
-    adapter_name="Milky",
-    provider_id="openai",
-    model="gpt-4o-mini",
-    prompt="测试主题",
-    approval_mode="never",
-)
-
-
-def _make_ctx(task_id: str = "t1", task_run_id: str = "r1", **overrides):
-    from hoshino.ai.task.models import TaskContext
-
-    data = {
-        **_ctx_defaults,
-        "task_id": task_id,
-        "task_run_id": task_run_id,
-        **overrides,
-    }
-    return TaskContext(**data)
-
-
-def _create_task(
-    tmp_store,
-    *,
-    task_id: str = "t1",
-    creator_id: str = "42",
-    kind: str = "research",
-    ctx=None,
-):
-    """建一个最小 Task，返回 (task_id, task_run_id)。"""
-    from hoshino.ai.task import store as task_store
-    from hoshino.ai.task import events as task_events
-
-    ctx = ctx or _make_ctx(task_id=task_id, creator_id=creator_id)
-    created = task_store.create_task(
-        task_id=task_id,
-        kind=kind,
-        prompt=ctx.prompt,
-        scope_key=ctx.scope_key,
-        creator_id=creator_id,
-        target_json=ctx.target_json,
-        provider_id=ctx.provider_id,
-        model=ctx.model,
-        context_json=json.dumps(ctx.to_json(), ensure_ascii=False),
-        snapshot_json="{}",
-        event_payloads=[
-            {
-                "event_type": task_events.CREATED,
-                "payload": json.dumps({"kind": kind}),
-            },
-            {"event_type": task_events.QUEUED, "payload": "{}"},
-        ],
-        outbox_payloads=[
-            {
-                "event_type": task_events.CREATED,
-                "sequence": 1,
-                "payload": json.dumps({"kind": kind, "status": "accepted"}),
-            }
-        ],
-    )
-    assert "cooldown" not in created, created
-    return created["task_id"], created["task_run_id"]
 
 
 # ------------------------------------------------------------ TaskContext
@@ -99,9 +33,7 @@ class TestTaskContextRoundTrip:
             conversation_id="conv-x",
             agent_run_id="agent-x",
             persona_prompt="你是研究员",
-            permission_json=json.dumps(
-                {"user_id": "42", "is_superuser": False, "is_admin": True}
-            ),
+            permission_json=json.dumps({"user_id": "42", "is_superuser": False, "is_admin": True}),
             tool_profile=frozenset({("bash", 1), ("web_fetch", 1)}),
             extra={"message_history_json": "[]", "pending_deferred": {"c1": True}},
             workdir="/tmp/ws",
@@ -262,9 +194,7 @@ class TestStore:
         from hoshino.ai.task import store as task_store
         from hoshino.ai.task.models import TaskContext
 
-        ctx = _make_ctx(
-            task_id="t_atomic", task_run_id="r_atomic", conversation_id="conv_atomic"
-        )
+        ctx = _make_ctx(task_id="t_atomic", task_run_id="r_atomic", conversation_id="conv_atomic")
         created = task_store.create_task(
             task_id="t_atomic",
             kind="research",
@@ -299,12 +229,8 @@ class TestPolicyWorkspace:
         from hoshino.ai.task import policy
 
         assert policy.get_creation_policy("milky:123456") == "superuser"
-        assert policy.policy_allows_creation(
-            "superuser", is_superuser=True, is_admin=False
-        )
-        assert not policy.policy_allows_creation(
-            "superuser", is_superuser=False, is_admin=True
-        )
+        assert policy.policy_allows_creation("superuser", is_superuser=True, is_admin=False)
+        assert not policy.policy_allows_creation("superuser", is_superuser=False, is_admin=True)
         assert policy.policy_allows_creation("admin", is_superuser=False, is_admin=True)
         assert policy.policy_allows_creation("all", is_superuser=False, is_admin=False)
 
@@ -325,13 +251,9 @@ class TestPolicyWorkspace:
     def test_workspace_crud_and_default(self, tmp_store):
         from hoshino.ai.task import store as task_store
 
+        assert task_store.add_workspace("milky:123456", "ws", "/tmp/ws", "read_write") == ""
         assert (
-            task_store.add_workspace("milky:123456", "ws", "/tmp/ws", "read_write")
-            == ""
-        )
-        assert (
-            task_store.add_workspace("milky:123456", "ws", "/tmp/other", "read_write")
-            != ""
+            task_store.add_workspace("milky:123456", "ws", "/tmp/other", "read_write") != ""
         )  # 重名拒绝
         assert task_store.set_default_workspace("milky:123456", "ws") is True
         assert task_store.get_default_workspace("milky:123456")["name"] == "ws"
@@ -414,16 +336,10 @@ class TestOutbox:
             payload="{}",
         )
         item = task_store.outbox_pending(limit=1)[0]
-        task_store.outbox_mark_retry(
-            item["id"], "send failed", next_retry_at=1.0, max_attempts=3
-        )
-        task_store.outbox_mark_retry(
-            item["id"], "send failed", next_retry_at=1.0, max_attempts=3
-        )
+        task_store.outbox_mark_retry(item["id"], "send failed", next_retry_at=1.0, max_attempts=3)
+        task_store.outbox_mark_retry(item["id"], "send failed", next_retry_at=1.0, max_attempts=3)
         assert len(task_store.outbox_pending(limit=1)) == 1  # 未达上限仍可重试
-        task_store.outbox_mark_retry(
-            item["id"], "send failed", next_retry_at=1.0, max_attempts=3
-        )
+        task_store.outbox_mark_retry(item["id"], "send failed", next_retry_at=1.0, max_attempts=3)
         assert task_store.outbox_pending(limit=1) == []  # 达到上限：放弃
 
 
@@ -432,11 +348,11 @@ class TestOutbox:
 
 class TestScheduler:
     async def test_tick_success_path(self, tmp_store, monkeypatch):
+        from hoshino.ai.task import events as task_events
         from hoshino.ai.task import scheduler
         from hoshino.ai.task import store as task_store
-        from hoshino.ai.task import events as task_events
-        from hoshino.ai.task.runtime import RunOutcome
         from hoshino.ai.task.models import TaskOutput
+        from hoshino.ai.task.runtime import RunOutcome
 
         task_id, run_id = _create_task(tmp_store)
 
@@ -477,9 +393,9 @@ class TestScheduler:
         assert task_store.claim_next_run("scheduler") is None
 
     async def test_tick_internal_retry(self, tmp_store, monkeypatch):
+        from hoshino.ai.task import events as task_events
         from hoshino.ai.task import scheduler
         from hoshino.ai.task import store as task_store
-        from hoshino.ai.task import events as task_events
         from hoshino.ai.task.runtime import TaskRuntimeError
 
         task_id, run_id = _create_task(tmp_store)
@@ -618,7 +534,7 @@ class TestScheduler:
         assert scheduler._pick_bot("Telegram") is tg_bot
         assert scheduler._pick_bot("OneBot V11") is None
         assert scheduler._pick_bot("") is milky_bot  # 无 adapter 记录退回首个在线
-        monkeypatch.setattr(nonebot, "get_bots", lambda: {})
+        monkeypatch.setattr(nonebot, "get_bots", dict)
         assert scheduler._pick_bot("Milky") is None
 
     def test_approval_expire(self, tmp_store):
@@ -667,7 +583,6 @@ class TestScheduler:
 class TestMatcher:
     def test_task_command_registered_with_superuser_permission(self):
         from hoshino.core.permission import SUPERUSER
-
         from hoshino.modules.ai import task_commands
 
         def _perm_names(perm):

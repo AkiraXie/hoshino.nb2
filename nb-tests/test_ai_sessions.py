@@ -123,9 +123,7 @@ def test_lru_evicts_non_active(monkeypatch, tmp_store):
     """驻留上限内只保留 active + 最近对话；写穿策略下逐出仅丢缓存。"""
     from hoshino.ai import base
 
-    monkeypatch.setattr(
-        base, "get_config", lambda: AIConfig(chat_memory_conversations=2)
-    )
+    monkeypatch.setattr(base, "get_config", lambda: AIConfig(chat_memory_conversations=2))
     manager = sessions.ConversationManager()
     manager.get_active("milky:1")  # 默认
     manager.create("milky:1", "甲")
@@ -173,12 +171,8 @@ def test_migrate_sessions_to_conversations(tmp_store):
 def _tool_round(question: str, answer: str) -> list:
     return [
         _user(question),
-        ModelResponse(
-            parts=[ToolCallPart(tool_name="now", args={}, tool_call_id="c1")]
-        ),
-        ModelRequest(
-            parts=[ToolReturnPart(tool_name="now", content="ok", tool_call_id="c1")]
-        ),
+        ModelResponse(parts=[ToolCallPart(tool_name="now", args={}, tool_call_id="c1")]),
+        ModelRequest(parts=[ToolReturnPart(tool_name="now", content="ok", tool_call_id="c1")]),
         _asst(answer),
     ]
 
@@ -273,9 +267,7 @@ def test_replay_across_manager_rebuild_with_tools(manager, tmp_store):
 
     fresh = sessions.ConversationManager()
     conv = fresh.get_active("milky:1")
-    assert context.serialize_messages(conv.messages) == context.serialize_messages(
-        messages
-    )
+    assert context.serialize_messages(conv.messages) == context.serialize_messages(messages)
 
 
 def test_clear_active_removes_events(manager, tmp_store):
@@ -326,7 +318,7 @@ def test_legacy_messages_json_migrates_to_events(tmp_store):
 # ------------------------------------------------------- log-only 事件
 
 
-def _make_run_log(**kwargs) -> "runner.RunLog":
+def _make_run_log(**kwargs) -> runner.RunLog:
     run_log = runner.RunLog(started_at=1.0, ended_at=2.0, steps=1, step_at=[1.5])
     for key, value in kwargs.items():
         setattr(run_log, key, value)

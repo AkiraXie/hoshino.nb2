@@ -88,23 +88,17 @@ def build_deps(config: AIConfig, provider_id: str, model: str) -> AgentDeps:
         permissions=PermissionSnapshot(),
         bot=None,
         event=None,
-        telemetry=Telemetry(
-            provider_id=provider_id, scope_key=PROBE_SCOPE, model=model
-        ),
+        telemetry=Telemetry(provider_id=provider_id, scope_key=PROBE_SCOPE, model=model),
     )
 
 
 async def effective_system_prompt(config: AIConfig) -> str:
     """取模型实际看到的 system prompt（persona + 示例对话 + 输出规范）。"""
-    ctx = SimpleNamespace(
-        deps=SimpleNamespace(task=None, scope_key=PROBE_SCOPE, config=config)
-    )
+    ctx = SimpleNamespace(deps=SimpleNamespace(task=None, scope_key=PROBE_SCOPE, config=config))
     return await providers._persona_system_prompt(ctx)
 
 
-async def ask(
-    agent, deps: AgentDeps, question: str, config: AIConfig
-) -> dict[str, Any]:
+async def ask(agent, deps: AgentDeps, question: str, config: AIConfig) -> dict[str, Any]:
     """单轮对话：与 chat.py 相同的 run 路径与护栏。"""
     run_log = runner.RunLog()
     started = time.perf_counter()

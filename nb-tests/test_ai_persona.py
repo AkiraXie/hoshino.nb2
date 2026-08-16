@@ -166,22 +166,14 @@ def test_dialogs_to_json_filters_invalid():
 
     assert dialogs_to_json(None) == "[]"
     assert dialogs_to_json([]) == "[]"
-    raw = dialogs_to_json(
-        [{"user": "早啊", "assistant": "早呀！"}, {"user": "", "assistant": "x"}]
-    )
+    raw = dialogs_to_json([{"user": "早啊", "assistant": "早呀！"}, {"user": "", "assistant": "x"}])
     assert json.loads(raw) == [{"user": "早啊", "assistant": "早呀！"}]
 
 
 def test_parse_dialogs_text_alternating():
     from hoshino.ai.persona import parse_dialogs_text
 
-    text = (
-        "用户: 早啊\n"
-        "爱丽丝: 早呀早呀！\n"
-        "用户: 报错了\n"
-        "我: 我康康！\n"
-        "用户: 没配对的尾巴\n"
-    )
+    text = "用户: 早啊\n爱丽丝: 早呀早呀！\n用户: 报错了\n我: 我康康！\n用户: 没配对的尾巴\n"
     dialogs = parse_dialogs_text(text, "爱丽丝")
     assert dialogs == [
         {"user": "早啊", "assistant": "早呀早呀！"},
@@ -196,9 +188,7 @@ def test_resolve_dialogs_hierarchy(tmp_store):
 
     # 无任何绑定 → 默认内置示例
     assert persona_domain.resolve_dialogs(None) == list(prompts.DEFAULT_BEGIN_DIALOGS)
-    assert persona_domain.resolve_dialogs("milky:1") == list(
-        prompts.DEFAULT_BEGIN_DIALOGS
-    )
+    assert persona_domain.resolve_dialogs("milky:1") == list(prompts.DEFAULT_BEGIN_DIALOGS)
 
     # 全局 persona 带示例 → 全局生效
     persona_domain.create_persona(
@@ -206,9 +196,7 @@ def test_resolve_dialogs_hierarchy(tmp_store):
         begin_dialogs=[{"user": "hi", "assistant": "hello~"}],
     )
     persona_domain.set_global("全局人格")
-    assert persona_domain.resolve_dialogs("milky:1") == [
-        {"user": "hi", "assistant": "hello~"}
-    ]
+    assert persona_domain.resolve_dialogs("milky:1") == [{"user": "hi", "assistant": "hello~"}]
 
     # scope persona 带示例 → scope 覆盖全局
     persona_domain.create_persona(
@@ -223,9 +211,7 @@ def test_resolve_dialogs_hierarchy(tmp_store):
     # scope persona 无示例 → 回退全局
     persona_domain.create_persona("无示例人格")
     assert persona_domain.bind_scope("milky:2", "无示例人格")
-    assert persona_domain.resolve_dialogs("milky:2") == [
-        {"user": "hi", "assistant": "hello~"}
-    ]
+    assert persona_domain.resolve_dialogs("milky:2") == [{"user": "hi", "assistant": "hello~"}]
 
 
 def test_persona_crud_with_dialogs(tmp_store):
@@ -283,9 +269,7 @@ def test_render_persona_variables():
     from hoshino.ai.persona import render_persona
 
     text = "我是{{name}}，今天{{date}}在{{group_name}}"
-    out = render_persona(
-        text, {"name": "小夏", "date": "2026-08-14", "group_name": "摸鱼群"}
-    )
+    out = render_persona(text, {"name": "小夏", "date": "2026-08-14", "group_name": "摸鱼群"})
     assert out == "我是小夏，今天2026-08-14在摸鱼群"
     # 空值变量渲染为空串
     assert render_persona("在{{group_name}}", {"group_name": ""}) == "在"
@@ -310,9 +294,7 @@ def test_persona_system_prompt_renders_builtin_variables(tmp_store):
     from hoshino.ai import providers
 
     config = AIConfig(system_prompt="今天是{{date}}，在{{group_name}}说话")
-    deps = SimpleNamespace(
-        task=None, scope_key=None, config=config, event=None, bot=None
-    )
+    deps = SimpleNamespace(task=None, scope_key=None, config=config, event=None, bot=None)
     ctx = SimpleNamespace(deps=deps)
 
     prompt = asyncio.run(providers._persona_system_prompt(ctx))
@@ -331,11 +313,7 @@ def test_create_duplicate_persona_raises(tmp_store):
     """重名创建抛 ValueError 且不覆盖原 persona（由入口层转为提示，不崩 matcher）。"""
     from hoshino.ai import persona
 
-    persona.create_persona(
-        "小爱", gender="女性", personality="温柔", description="原版"
-    )
+    persona.create_persona("小爱", gender="女性", personality="温柔", description="原版")
     with pytest.raises(ValueError, match="已存在"):
-        persona.create_persona(
-            "小爱", gender="女性", personality="急躁", description="覆盖"
-        )
+        persona.create_persona("小爱", gender="女性", personality="急躁", description="覆盖")
     assert persona.get_persona("小爱")["description"] == "原版"

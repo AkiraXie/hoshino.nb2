@@ -16,22 +16,22 @@ def ob11_group_message(
     adapter = OB11Adapter(get_driver())
     bot = OB11Bot(adapter, self_id="10000")
     message = OB11Message(OB11MessageSegment.text(text))
-    data = dict(
-        time=1,
-        self_id=10000,
-        post_type="message",
-        sub_type="normal",
-        user_id=user_id,
-        message_type="group",
-        message_id=7,
-        message=message,
-        original_message=message,
-        raw_message=text,
-        font=0,
-        sender={"user_id": user_id, "nickname": "Alice", "role": "admin"},
-        group_id=123456,
-        to_me=to_me,
-    )
+    data = {
+        "time": 1,
+        "self_id": 10000,
+        "post_type": "message",
+        "sub_type": "normal",
+        "user_id": user_id,
+        "message_type": "group",
+        "message_id": 7,
+        "message": message,
+        "original_message": message,
+        "raw_message": text,
+        "font": 0,
+        "sender": {"user_id": user_id, "nickname": "Alice", "role": "admin"},
+        "group_id": 123456,
+        "to_me": to_me,
+    }
     if reply is not None:
         data["reply"] = reply
     event = OB11GroupMessageEvent(**data)

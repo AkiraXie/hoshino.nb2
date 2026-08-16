@@ -13,11 +13,14 @@ from nonebot.adapters.onebot.v11 import Message as OB11Message
 from nonebot.adapters.onebot.v11 import MessageSegment as OB11MessageSegment
 from nonebot.adapters.telegram import Bot as TelegramBot
 from nonebot_plugin_alconna.uniseg import UniMessage
+
+from _helpers import _milky_group_message
 from adapter_events import (
     ob11_group_message as _ob11_group_message,
+)
+from adapter_events import (
     telegram_group_message as _telegram_group_message,
 )
-from test_milky_adapter import _milky_group_message
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -221,9 +224,7 @@ async def test_milky_private_constructed_forward_uses_native_forward_segment(
 
     assert len(receipts) == 1
     assert sent[0][0].type == "forward"
-    assert (
-        sent[0][0].data["messages"][0].segments.extract_plain_text() == "private node"
-    )
+    assert sent[0][0].data["messages"][0].segments.extract_plain_text() == "private node"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

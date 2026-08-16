@@ -15,8 +15,8 @@ from nonebot_plugin_alconna.uniseg import Target
 from pydantic_ai.toolsets import ApprovalRequiredToolset, DynamicToolset
 
 from hoshino.ai.config import AIConfig
-from hoshino.ai.provider import ProviderRecord
 from hoshino.ai.deps import AgentDeps, PermissionSnapshot, Telemetry
+from hoshino.ai.provider import ProviderRecord
 
 
 @pytest.fixture(autouse=True)
@@ -49,9 +49,7 @@ def test_build_agent_toolsets_wraps_dynamic():
     """ApprovalRequiredToolset 必须包装 DynamicToolset，而不是单独实例化。"""
     from hoshino.ai.providers import build_agent
 
-    record = ProviderRecord(
-        id="openai", url="http://127.0.0.1:1", key="k", kind="openai_chat"
-    )
+    record = ProviderRecord(id="openai", url="http://127.0.0.1:1", key="k", kind="openai_chat")
     agent = build_agent("openai", record, "gpt-4o-mini")
 
     wrappers = [t for t in agent.toolsets if isinstance(t, ApprovalRequiredToolset)]
@@ -64,9 +62,7 @@ def test_build_agent_cached_per_provider():
     """缓存 key 含 provider_config：不同 provider 不同 agent，同 provider 复用。"""
     from hoshino.ai.providers import build_agent
 
-    record1 = ProviderRecord(
-        id="openai", url="http://127.0.0.1:1", key="k1", kind="openai_chat"
-    )
+    record1 = ProviderRecord(id="openai", url="http://127.0.0.1:1", key="k1", kind="openai_chat")
     record2 = ProviderRecord(
         id="anthropic",
         url="http://127.0.0.1:1",
@@ -128,9 +124,7 @@ def test_anthropic_roundtrip(fake_ai_server, tmp_store):
         default_text_model="claude-3-5-sonnet",
     )
     agent = build_agent("anthropic", record, "claude-3-5-sonnet")
-    result = agent.run_sync(
-        "你好", deps=_make_deps(base_url, "anthropic", "claude-3-5-sonnet")
-    )
+    result = agent.run_sync("你好", deps=_make_deps(base_url, "anthropic", "claude-3-5-sonnet"))
 
     assert result.output == "你好，我是 Claude 回复"
     assert result.usage.total_tokens == 15  # input 10 + output 5
@@ -194,9 +188,7 @@ def test_native_web_search_disabled_omits_tool(fake_ai_server, tmp_store):
         kind="anthropic",
         default_text_model="deepseek-v4-flash",
     )
-    agent = build_agent(
-        "anthropic", record, "deepseek-v4-flash", web_search_native=False
-    )
+    agent = build_agent("anthropic", record, "deepseek-v4-flash", web_search_native=False)
     agent.run_sync("你好", deps=_make_deps(base_url, "anthropic", "deepseek-v4-flash"))
 
     assert _native_search_tool(_tools_in(requests)) is None
@@ -221,9 +213,7 @@ def test_openai_chat_no_native_web_search_tool(fake_ai_server, tmp_store):
     assert _native_search_tool(_tools_in(requests)) is None
 
 
-def test_anthropic_web_search_tool_result_parses(
-    fake_ai_server, tmp_store, monkeypatch
-):
+def test_anthropic_web_search_tool_result_parses(fake_ai_server, tmp_store, monkeypatch):
     """服务端 web_search_tool_result 内容块可解析，最终输出取 text 块。
 
     DeepSeek 原生搜索的响应会在 content 里带 ``web_search_tool_result``
@@ -289,9 +279,7 @@ def test_anthropic_web_search_tool_result_parses(
         default_text_model="deepseek-v4-flash",
     )
     agent = build_agent("anthropic", record, "deepseek-v4-flash")
-    result = agent.run_sync(
-        "查天气", deps=_make_deps(base_url, "anthropic", "deepseek-v4-flash")
-    )
+    result = agent.run_sync("查天气", deps=_make_deps(base_url, "anthropic", "deepseek-v4-flash"))
 
     assert result.output == "查到了：今天 25 度"
     assert _native_search_tool(_tools_in(requests)) is not None

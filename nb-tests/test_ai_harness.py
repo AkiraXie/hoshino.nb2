@@ -46,9 +46,7 @@ def _model_one_tool_call(tool_name: str = "add_task", args=None):
         ]
         if not tool_returns:
             return ModelResponse(
-                parts=[
-                    ToolCallPart(tool_name=tool_name, args=args or {"content": "任务A"})
-                ]
+                parts=[ToolCallPart(tool_name=tool_name, args=args or {"content": "任务A"})]
             )
         return ModelResponse(parts=[TextPart("完成")])
 
@@ -120,12 +118,8 @@ class TestPlanningInjection:
         assert b == 0
 
     def test_resolver_isolates_by_deps_task_id(self, tmp_store):
-        ctx_a = SimpleNamespace(
-            deps=SimpleNamespace(task=SimpleNamespace(task_id="t_a"))
-        )
-        ctx_b = SimpleNamespace(
-            deps=SimpleNamespace(task=SimpleNamespace(task_id="t_b"))
-        )
+        ctx_a = SimpleNamespace(deps=SimpleNamespace(task=SimpleNamespace(task_id="t_a")))
+        ctx_b = SimpleNamespace(deps=SimpleNamespace(task=SimpleNamespace(task_id="t_b")))
         store_a = harness._plan_store_resolver(ctx_a)
         store_b = harness._plan_store_resolver(ctx_b)
         assert type(store_a).__name__ == "SqlitePlanStore"
@@ -207,12 +201,10 @@ class TestTaskRuntimeWiring:
                 conversation_id="c1",
                 output=None,
                 usage=None,
-                all_messages=lambda: [],
+                all_messages=list,
             )
 
-        monkeypatch.setattr(
-            task_runtime.providers, "build_agent", lambda *a, **k: object()
-        )
+        monkeypatch.setattr(task_runtime.providers, "build_agent", lambda *a, **k: object())
         monkeypatch.setattr(task_runtime.runner, "run_agent_with_retry", fake_run_agent)
 
         # provider 存 DB：run_task_run 从 DB 解析 provider 记录

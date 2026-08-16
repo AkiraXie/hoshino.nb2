@@ -60,9 +60,7 @@ def test_blocked_requires_reason(svc, tmp_store):
     svc.create("milky:1", "目标")
     with pytest.raises(ValueError, match="阻塞原因"):
         svc.update("milky:1", GoalRef("milky:1", 1), "blocked", blocked_reason="   ")
-    g = svc.update(
-        "milky:1", GoalRef("milky:1", 1), "blocked", blocked_reason="等待审批"
-    )
+    g = svc.update("milky:1", GoalRef("milky:1", 1), "blocked", blocked_reason="等待审批")
     assert g.phase == "blocked"
     assert g.blocked_reason == "等待审批"
 

@@ -5,23 +5,17 @@
 
 from __future__ import annotations
 
-import itertools
 import pytest
 from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 from pydantic_ai.usage import RunUsage
 
+from conftest import next_seq
 from hoshino.ai.config import AIConfig
 
 # 本文件会触发 uninfo 会话缓存，见 conftest 中 _clear_uninfo_cache 的说明。
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
-
-# 每个事件用递增 message_seq，保证 alconna 的全局 unimsg_cache 键（按
-# msg_id = f"{message_seq}@{scene}:{peer_id}"）不跨测试碰撞。起点取 200000，
-# 高于仓库其他测试用到的所有硬编码 seq（1、7、1000/1001、7001、100000+），
-# 避免同 (group, seq) 命中他人缓存的 UniMessage。
-_seq = itertools.count(200000)
 
 
 @pytest.fixture(autouse=True)
@@ -57,13 +51,11 @@ def _milky_group(
             "data": {
                 "message_scene": "group",
                 "peer_id": group_id,
-                "message_seq": next(_seq),
+                "message_seq": next_seq(),
                 "sender_id": user_id,
                 "time": 1,
                 "segments": (
-                    segments
-                    if segments is not None
-                    else [{"type": "text", "data": {"text": text}}]
+                    segments if segments is not None else [{"type": "text", "data": {"text": text}}]
                 ),
                 "group": {
                     "group_id": group_id,
@@ -110,7 +102,7 @@ class FakeResult:
         # 对齐真实 pydantic-ai：all_messages = message_history + 新增。
         return [*self._prefix, *self._messages]
 
-    def with_prefix(self, prefix: list) -> "FakeResult":
+    def with_prefix(self, prefix: list) -> FakeResult:
         """返回一个等价结果，其 all_messages 前置 message_history。"""
         return FakeResult(self.data, self._usage, self._messages, prefix)
 
@@ -204,9 +196,7 @@ class RetryAgent(FakeAgent):
         self.message_history = kwargs.get("message_history")
         self._calls += 1
         if self._calls == 1:
-            return FakeAgentRun(
-                FakeResult("x"), self._first_error, kwargs.get("message_history")
-            )
+            return FakeAgentRun(FakeResult("x"), self._first_error, kwargs.get("message_history"))
         return FakeAgentRun(self._result, None, kwargs.get("message_history"))
 
 
@@ -216,8 +206,11 @@ class _RetryDeps:
     scope_key = "milky:1"
     surface = "chat"
 
-    class telemetry:
+    class Telemetry:
         provider_id = "openai"
+
+    # runner.RequestErrorContext 以属性名 ``deps.telemetry`` 访问，保留小写别名。
+    telemetry = Telemetry
 
 
 @pytest.fixture
@@ -233,13 +226,13 @@ def _reset_hooks():
 def _stub_config(monkeypatch, tmp_store, *, seed_providers: bool = True, **overrides):
     from hoshino.modules.ai import chat
 
-    defaults = dict(
-        default="openai",
-        system_prompt="你是测试助手。",
-        max_history_messages=40,
-        render_timeout_seconds=30.0,
-        render_theme="light",
-    )
+    defaults = {
+        "default": "openai",
+        "system_prompt": "你是测试助手。",
+        "max_history_messages": 40,
+        "render_timeout_seconds": 30.0,
+        "render_theme": "light",
+    }
     defaults.update(overrides)
     config = AIConfig(**defaults)
     monkeypatch.setattr(chat, "get_config", lambda: config)
@@ -286,7 +279,7 @@ def test_ai_config_defaults():
     assert config.web_search_native is True
     assert config.tool_max_retries == 3
     # web_fetch 证书校验与渲染清晰度/emoji 默认值
-    assert config.web_fetch_verify_ssl is False
+    assert config.web_fetch_verify_ssl is True
     assert config.render_device_scale == 2.0
     assert config.render_emoji is True
 
@@ -766,9 +759,7 @@ async def test_chat_agent_error_logs_detail_and_tools(monkeypatch, tmp_store):
     _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(
         FakeResult("x"),
-        error=UnexpectedModelBehavior(
-            "模型返回了非法工具调用", body='{"tool": "web_search"}'
-        ),
+        error=UnexpectedModelBehavior("模型返回了非法工具调用", body='{"tool": "web_search"}'),
     )
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
@@ -886,9 +877,7 @@ async def test_chat_success_logs_step_trace_and_reply(monkeypatch, tmp_store):
                             (),
                             {
                                 "parts": [
-                                    type(
-                                        "ThinkingPart", (), {"content": "我先查一下"}
-                                    )(),
+                                    type("ThinkingPart", (), {"content": "我先查一下"})(),
                                     type(
                                         "ToolCallPart",
                                         (),
@@ -1175,9 +1164,7 @@ async def test_conv_persists_across_manager_rebuild(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     # 模拟进程重启：全新 manager，缓存为空，从 DB 惰性载入
-    monkeypatch.setattr(
-        sessions, "conversation_manager", sessions.ConversationManager()
-    )
+    monkeypatch.setattr(sessions, "conversation_manager", sessions.ConversationManager())
     conv = sessions.conversation_manager.get_active("milky:123456")
     assert conv.name == "默认"
     assert len(conv.messages) == 1
@@ -1335,8 +1322,7 @@ async def test_chat_usage_limit_keeps_prompt(monkeypatch, tmp_store):
 @pytest.mark.usefixtures("_nonebot_bootstrap", "_reset_hooks")
 async def test_chat_pre_step_reject_blocks_run(monkeypatch, tmp_store):
     """pre-step reject：回固定文案、不跑模型、不写事件。"""
-    from hoshino.ai import hooks
-    from hoshino.ai import sessions
+    from hoshino.ai import hooks, sessions
     from hoshino.modules.ai import chat
 
     _stub_config(monkeypatch, tmp_store)
@@ -1363,9 +1349,7 @@ async def test_chat_pre_step_rewrite_changes_model_prompt(monkeypatch, tmp_store
 
     agent, sent = _chat_env(monkeypatch, tmp_store)
 
-    hooks.register_pre_step(
-        lambda ctx: hooks.PreStepDecision.rewrite(ctx.prompt + "（系统注入）")
-    )
+    hooks.register_pre_step(lambda ctx: hooks.PreStepDecision.rewrite(ctx.prompt + "（系统注入）"))
 
     bot, event = _milky_group("#你好", user_id=7)
     await bot.handle_event(event)
@@ -1605,9 +1589,7 @@ def test_describe_node():
         def __init__(self, content):
             self.content = content
 
-    state = SimpleNamespace(
-        message_history=[SimpleNamespace(parts=[UserPromptPart("你好")])]
-    )
+    state = SimpleNamespace(message_history=[SimpleNamespace(parts=[UserPromptPart("你好")])])
     desc = runner.describe_node(ModelRequestNode(), SimpleNamespace(state=state))
     assert desc == "model_request · user: 你好"
 
@@ -1662,9 +1644,7 @@ async def test_chat_reply_to_bot_without_hash_triggers(monkeypatch, tmp_store):
     """回复 bot 自己的消息无需 ``#`` 即触发对话。"""
     agent, sent = _chat_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group(
-        "继续说说", user_id=7, reply=_milky_reply(10000, "之前的 AI 消息")
-    )
+    bot, event = _milky_group("继续说说", user_id=7, reply=_milky_reply(10000, "之前的 AI 消息"))
     await bot.handle_event(event)
 
     # 触发成功且引用内容注入 prompt
@@ -1706,22 +1686,22 @@ async def test_chat_reply_context_injected_into_prompt(monkeypatch, tmp_store):
 def _ob11_group_event(text: str, reply: dict | None = None):
     from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 
-    data = dict(
-        time=1,
-        self_id=10000,
-        post_type="message",
-        message_type="group",
-        sub_type="normal",
-        user_id=42,
-        message_id=7,
-        group_id=123456,
-        raw_message=text,
-        font=0,
-        message=Message(text),
-        original_message=Message(text),
-        sender={"user_id": 42, "nickname": "Alice", "role": "admin"},
-        to_me=False,
-    )
+    data = {
+        "time": 1,
+        "self_id": 10000,
+        "post_type": "message",
+        "message_type": "group",
+        "sub_type": "normal",
+        "user_id": 42,
+        "message_id": 7,
+        "group_id": 123456,
+        "raw_message": text,
+        "font": 0,
+        "message": Message(text),
+        "original_message": Message(text),
+        "sender": {"user_id": 42, "nickname": "Alice", "role": "admin"},
+        "to_me": False,
+    }
     if reply is not None:
         data["reply"] = reply
     return GroupMessageEvent(**data)
@@ -1752,9 +1732,9 @@ def test_get_reply_helpers_ob11():
 
 
 def test_get_reply_helpers_telegram():
-    from hoshino.platform import get_reply_message_id, get_reply_sender_id
-
     from nonebot.adapters.telegram.event import MessageEvent as TelegramMessageEvent
+
+    from hoshino.platform import get_reply_message_id, get_reply_sender_id
 
     event = TelegramMessageEvent.parse_event(
         {
@@ -1823,8 +1803,9 @@ def test_ob11_reply_content_fetched_via_get_msg():
 
 def test_ob11_reply_image_extracted_via_get_msg():
     """OB11 回复里的图片：经 get_msg 拉取后由 media 收集（修复回复图片识别）。"""
-    from hoshino.util.media import get_event_media_segments
     from nonebot_plugin_alconna.uniseg import Image as UniImage
+
+    from hoshino.util.media import get_event_media_segments
 
     bot, event = _ob11_reply_bot(
         {

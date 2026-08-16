@@ -46,10 +46,7 @@ def _ctx(deps: AgentDeps) -> SimpleNamespace:
 
 def _names(tools) -> set[str]:
     """收集工具可读名：函数取 __name__，pydantic_ai Tool 取 .name。"""
-    return {
-        getattr(t, "__name__", None) or getattr(t, "name", type(t).__name__)
-        for t in tools
-    }
+    return {getattr(t, "__name__", None) or getattr(t, "name", type(t).__name__) for t in tools}
 
 
 # ------------------------------------------------------- resolve_tools
@@ -154,12 +151,8 @@ async def test_persona_manage_use_requires_admin(tmp_store):
     from hoshino.ai import persona
     from hoshino.ai.tools.core.persona_manage import persona_manage
 
-    persona.create_persona(
-        "爱丽丝", gender="女性", personality="温柔", description="测试"
-    )
-    deps = _deps(
-        permissions=PermissionSnapshot(user_id="u1", is_superuser=False, is_admin=False)
-    )
+    persona.create_persona("爱丽丝", gender="女性", personality="温柔", description="测试")
+    deps = _deps(permissions=PermissionSnapshot(user_id="u1", is_superuser=False, is_admin=False))
     out = await persona_manage(_ctx(deps), "use", name="爱丽丝")
     assert "需要群管理员权限" in out
 
@@ -168,9 +161,7 @@ async def test_persona_manage_use_admin_binds(tmp_store):
     from hoshino.ai import persona
     from hoshino.ai.tools.core.persona_manage import persona_manage
 
-    persona.create_persona(
-        "爱丽丝", gender="女性", personality="温柔", description="测试"
-    )
+    persona.create_persona("爱丽丝", gender="女性", personality="温柔", description="测试")
     out = await persona_manage(_ctx(_deps()), "use", name="爱丽丝")
     assert "已绑定" in out
     assert tmp_store.get_scope_persona_id("milky:1") is not None
@@ -184,9 +175,7 @@ async def test_persona_manage_global_delete_rejected(tmp_store):
     from hoshino.ai import persona
     from hoshino.ai.tools.core.persona_manage import persona_manage
 
-    persona.create_persona(
-        "爱丽丝", gender="女性", personality="温柔", description="测试"
-    )
+    persona.create_persona("爱丽丝", gender="女性", personality="温柔", description="测试")
     out = await persona_manage(_ctx(_deps()), "global", name="爱丽丝")
     assert "仅可通过" in out
     out = await persona_manage(_ctx(_deps()), "delete", name="爱丽丝")
@@ -243,9 +232,8 @@ async def test_send_message_length_limit(monkeypatch):
 async def test_service_manage_requires_admin_and_flips_state(tmp_store, monkeypatch):
     from types import SimpleNamespace
 
-    from hoshino.core.service import Service
-
     from hoshino.ai.tools.bot.service_manage import service_manage
+    from hoshino.core.service import Service
 
     # 工具按名字查 aichat 服务；用假对象避免与 chat.py 的真实服务名冲突
     calls: list[tuple[str, str]] = []
@@ -257,17 +245,13 @@ async def test_service_manage_requires_admin_and_flips_state(tmp_store, monkeypa
     monkeypatch.setattr(Service, "get_loaded_services", lambda: {"aichat": fake_sv})
 
     # member → 拒绝，不翻转
-    member = _deps(
-        permissions=PermissionSnapshot(user_id="u", is_superuser=False, is_admin=False)
-    )
+    member = _deps(permissions=PermissionSnapshot(user_id="u", is_superuser=False, is_admin=False))
     out = await service_manage(_ctx(member), "enable")
     assert "需要群管理员权限" in out
     assert calls == []
 
     # admin → 放行
-    admin = _deps(
-        permissions=PermissionSnapshot(user_id="u", is_superuser=False, is_admin=True)
-    )
+    admin = _deps(permissions=PermissionSnapshot(user_id="u", is_superuser=False, is_admin=True))
     out = await service_manage(_ctx(admin), "disable")
     assert "已停用" in out
     assert calls == [("disable", "milky:1")]
@@ -477,20 +461,12 @@ async def test_hoshino_nb2_code_read_rejects_unsafe(tmp_path):
 
     ctx = _ctx(_deps())
     # 绝对路径 / 越界（.. 段在 containment 前即被相对路径校验拦截）
-    assert "只接受仓库内的相对路径" in await hoshino_nb2_code(
-        ctx, "read", path="/etc/passwd"
-    )
-    assert "只接受仓库内的相对路径" in await hoshino_nb2_code(
-        ctx, "read", path="../outside.txt"
-    )
+    assert "只接受仓库内的相对路径" in await hoshino_nb2_code(ctx, "read", path="/etc/passwd")
+    assert "只接受仓库内的相对路径" in await hoshino_nb2_code(ctx, "read", path="../outside.txt")
     # 敏感路径
     assert "敏感路径不允许访问" in await hoshino_nb2_code(ctx, "read", path=".env.prod")
-    assert "敏感路径不允许访问" in await hoshino_nb2_code(
-        ctx, "read", path="data/db/aichat.db"
-    )
-    assert "敏感路径不允许访问" in await hoshino_nb2_code(
-        ctx, "read", path="logs/info/x.log"
-    )
+    assert "敏感路径不允许访问" in await hoshino_nb2_code(ctx, "read", path="data/db/aichat.db")
+    assert "敏感路径不允许访问" in await hoshino_nb2_code(ctx, "read", path="logs/info/x.log")
     # 不存在
     assert "文件不存在" in await hoshino_nb2_code(ctx, "read", path="no/such/file.py")
     # 缺 path
@@ -529,9 +505,7 @@ async def test_provider_choose_requires_superuser(tmp_store):
     from hoshino.ai.tools.core.provider_choose import provider_choose
 
     _seed_provider_pair(tmp_store)
-    deps = _deps(
-        permissions=PermissionSnapshot(user_id="u1", is_superuser=False, is_admin=True)
-    )
+    deps = _deps(permissions=PermissionSnapshot(user_id="u1", is_superuser=False, is_admin=True))
     out = await provider_choose(_ctx(deps), "provider", value="openai")
     assert "仅超级用户可用" in out
     # 管理员也改不了 scope provider
