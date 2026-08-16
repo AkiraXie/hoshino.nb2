@@ -1,6 +1,7 @@
 import json
 import random
 import re
+from itertools import batched
 from typing import TYPE_CHECKING
 
 from hoshino import data_dir
@@ -159,16 +160,14 @@ def _build_favorite_search_messages(
         summary = _summarize_favorite_content(item["content"])
         lines.append(f"UID: {item['uid']} ID: {item['id']} 内容: {summary}")
 
-    chunks = [lines[index : index + 10] for index in range(0, len(lines), 10)]
+    batches = list(batched(lines, 10))
     messages: list[MessageLike] = []
     total = len(results)
     scope = f" UID: {target_uid}" if target_uid else ""
-    for index, chunk in enumerate(chunks, start=1):
-        header = (
-            f"微博收藏搜索结果{scope}: 关键词 {keyword}，共 {total} 条，第 {index}/{len(chunks)} 组"
-        )
+    for index, chunk in enumerate(batches, start=1):
+        header = f"微博收藏搜索结果{scope}: 关键词 {keyword}，共 {total} 条，第 {index}/{len(batches)} 组"
         text = "\n".join([header, *chunk])
-        if index == len(chunks):
+        if index == len(batches):
             text += "\n使用 查看微博收藏 ID"
             text += "\n或 查看微博收藏 UID_ID"
         messages.append(uni_text(text))

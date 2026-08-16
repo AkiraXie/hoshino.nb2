@@ -4,6 +4,7 @@ import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import batched
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -464,9 +465,9 @@ class _MessageRenderer:
             if len(image_paths) % divisor == 0:
                 chunk_size = divisor
                 break
-        for index in range(0, len(image_paths), chunk_size):
+        for batch in batched(image_paths, chunk_size):
             msg = UniMessage()
-            for image_path in image_paths[index : index + chunk_size]:
+            for image_path in batch:
                 msg += uni_image(image_path)
             messages.append(msg)
         return messages
