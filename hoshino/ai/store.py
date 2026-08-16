@@ -612,6 +612,24 @@ class AIScopeModel(Base):
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
 
 
+class AISearchProvider(Base):
+    """全局搜索 provider 配置（单行，id 恒为 ``default``；``ai search`` 管理）。
+
+    kind ∈ deepseek | tavily | bocha；url/key/model 为空时按 kind 回退默认
+    （deepseek 继承 anthropic 聊天 provider 凭据），见 ``search.resolve_search_config``。
+    """
+
+    __tablename__ = "ai_search_providers"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, default="deepseek")
+    url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    model: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_by: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+
+
 def _provider_to_dict(row: AIProvider) -> dict[str, Any]:
     return {
         "id": row.id,
@@ -830,6 +848,70 @@ def clear_scope_model_override(scope_key: str, slot: str | None = None) -> bool:
             row.updated_at = time.time()
         else:
             session.delete(row)
+        session.commit()
+        return True
+
+
+# ------------------------------------------------------------ search provider
+
+
+_SEARCH_CONFIG_ID = "default"
+
+
+def _search_to_dict(row: AISearchProvider) -> dict[str, Any]:
+    return {
+        "kind": row.kind,
+        "url": row.url,
+        "key": row.key,
+        "model": row.model,
+        "updated_by": row.updated_by,
+        "updated_at": row.updated_at,
+    }
+
+
+def get_search_provider_row() -> dict[str, Any] | None:
+    """全局搜索 provider 配置行；未配置返回 None（走默认 deepseek）。"""
+    with Session() as session:
+        row = session.get(AISearchProvider, _SEARCH_CONFIG_ID)
+        return _search_to_dict(row) if row is not None else None
+
+
+def set_search_provider(
+    kind: str, url: str = "", key: str = "", model: str = "", updated_by: str = ""
+) -> None:
+    """写入全局搜索 provider 配置（单行 upsert）。"""
+    now = time.time()
+    with Session() as session:
+        row = session.get(AISearchProvider, _SEARCH_CONFIG_ID)
+        if row is None:
+            session.add(
+                AISearchProvider(
+                    id=_SEARCH_CONFIG_ID,
+                    kind=kind,
+                    url=url,
+                    key=key,
+                    model=model,
+                    updated_by=updated_by,
+                    updated_at=now,
+                )
+            )
+        else:
+            row.kind = kind
+            row.url = url
+            row.key = key
+            row.model = model
+            row.updated_by = updated_by
+            row.updated_at = now
+        session.commit()
+
+
+def clear_search_provider() -> bool:
+    """清除全局搜索 provider 配置（回退默认 deepseek）；返回是否真的清除了。"""
+    with Session() as session:
+        row = session.get(AISearchProvider, _SEARCH_CONFIG_ID)
+        if row is None:
+            return False
+        session.delete(row)
         session.commit()
         return True
 

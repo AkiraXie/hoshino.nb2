@@ -244,47 +244,26 @@ def _resolve_toolset(ctx: RunContext[AgentDeps]) -> FunctionToolset | None:
     return FunctionToolset(tools, instructions=build_tool_instructions(ctx.deps))
 
 
-def _build_web_search_capability(provider: ProviderRecord) -> Any | None:
-    """按 provider kind 决定是否注入原生联网搜索能力。
-
-    pydantic-ai 的 ``WebSearch`` 原生工具只在支持服务端 web_search 的模型上可用：
-    anthropic（含 DeepSeek ``/anthropic`` 端点，服务端 ``web_search_20250305`` 工具）
-    与 openai_responses。openai_chat 会直接抛 ``UserError``，故返回 None，由既有的
-    duckduckgo_search / web_fetch 工具承担搜索。
-    """
-    if provider.kind not in ("anthropic", "openai_responses"):
-        return None
-    # 函数内导入：只在需要时拉取 capability 机制（openai_chat 等 kind 不加载）。
-    from pydantic_ai.capabilities import WebSearch
-
-    return WebSearch(local=False)
-
-
 def build_agent(
     provider_id: str,
     provider: ProviderRecord,
     model: str,
     *,
     proxy: str | None = None,
-    web_search_native: bool = True,
     tool_max_retries: int = 3,
 ) -> Agent:
     """构建并缓存 Agent。缓存 key 含 provider 快照、model 名与代理。
 
-    ``web_search_native``：注入服务端原生 web_search 能力（kind 不支持时自动跳过）；
     ``tool_max_retries``：工具调用失败重试预算，默认 3（pydantic-ai 默认 1，
     web_fetch 类抓取工具偶发失败会触发 "exceeded max retries" 杀掉整轮 run）。
+    联网搜索不在此注入 capability：统一走 ``web_search`` 工具（dsh 同款独立
+    原生搜索请求，见 ``tools/web/web_search.py``）。
     """
-    key = (provider_id, provider, model, proxy, web_search_native, tool_max_retries)
+    key = (provider_id, provider, model, proxy, tool_max_retries)
     agent = _agent_cache.get(key)
     if agent is None:
         model_obj = build_model(provider, model, proxy=proxy)
         model_settings = build_model_settings(provider)
-        capabilities: list[Any] = []
-        if web_search_native:
-            capability = _build_web_search_capability(provider)
-            if capability is not None:
-                capabilities.append(capability)
         agent = Agent(
             model=model_obj,
             model_settings=model_settings,
@@ -298,7 +277,6 @@ def build_agent(
                     approval_required_func=approval_required,
                 ),
             ],
-            capabilities=capabilities,
         )
         agent.system_prompt(dynamic=True)(_persona_system_prompt)
         _agent_cache[key] = agent

@@ -79,8 +79,12 @@ hoshino/modules/ai/    插件层（NoneBot 插件，被 bootstrap 按 modules �
   `takes_ctx`）；`DynamicToolset` 每 run 求值一次工具集（scope 工具类别在单次对话
   中不变，省 DB 查询）；`ApprovalRequiredToolset` 把高风险工具调用变成
   deferred approval。
-- **web 工具复用 common_tools**：`duckduckgo_search` 直接复用
-  `pydantic_ai.common_tools.duckduckgo`（web_fetch 因需要证书关闭等定制而自实现）。
+- **web 工具**：`web_search` 走独立搜索 provider（`ai search` 配置，
+  deepseek / tavily / 博查，默认 deepseek）：deepseek 用 dsh 同款的独立
+  原生搜索请求（Anthropic 兼容 Messages 端点 + 服务端 `web_search_20250305`
+  工具，解析结构化结果）；tavily / 博查走各自 REST API。不再用 pydantic-ai
+  common_tools 的 duckduckgo 客户端爬取；`web_fetch` 因需要证书关闭等定制而
+  自实现。
 
 Run 驱动（`runner.py`）：
 

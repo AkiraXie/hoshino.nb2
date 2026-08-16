@@ -16,7 +16,7 @@ TOOL_CALL_PROMPT = """【工具使用策略】
 你可以使用工具完成实际操作。请把握何时用、为何用，而非记忆 schema（schema 会随调用提供）。
 
 - core（基础，无副作用）：now 查询时间、memory 读写长期记忆、persona_manage 管理人设。
-- web（信息获取）：duckduckgo_search 搜索、web_fetch 抓取网页为 markdown。
+- web（信息获取）：web_search 原生联网搜索、web_fetch 抓取网页为 markdown。
 - skill（能力）：skill_manage 管理、skill_read 读取技能说明，清单见下方。
 - bot（机器人）：service_manage 管理本群服务、send_message 单向发消息。
 - computer（计算机操作）：bash/python/file。高风险，仅本群被管理员显式开启后才可用。

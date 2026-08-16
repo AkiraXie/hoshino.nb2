@@ -51,10 +51,6 @@ class AIConfig:
     # 上下文内存缓存（LRU）：驻留 scope 数与每 scope 驻留对话数，超限先 flush 再逐出。
     chat_memory_scopes: int = 256
     chat_memory_conversations: int = 4
-    # 原生联网搜索：anthropic / openai_responses kind 的 provider 通过服务端
-    # ``web_search_20250305`` 工具搜索（DeepSeek 的 ``/anthropic`` 端点支持），
-    # 不依赖 duckduckgo/web_fetch 的客户端抓取；openai_chat 不支持时自动跳过。
-    web_search_native: bool = True
     # 工具调用失败重试预算（pydantic-ai 默认 1）。web_fetch 等抓取工具偶发失败
     # 会触发 "exceeded max retries" 直接杀掉整轮 run，调高以容错。
     tool_max_retries: int = 3

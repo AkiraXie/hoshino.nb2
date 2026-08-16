@@ -112,7 +112,6 @@ async def run_task_run(
         record,
         ctx.model,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
-        web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
     )
     deps = build_task_deps(ctx, config)

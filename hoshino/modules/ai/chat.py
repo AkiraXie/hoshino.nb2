@@ -380,7 +380,6 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         record,
         model_name,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
-        web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
     )
     # 失败可观测性：RunLog 记录本轮发起过的工具调用（含超时前），异常时随日志

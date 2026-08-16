@@ -138,7 +138,7 @@ REGISTRATIONS: tuple[ToolRegistration, ...] = (
         requires_live_event=True,
     ),
     ToolRegistration(
-        "duckduckgo_search",
+        "web_search",
         1,
         _web_search.tool,
         "web",

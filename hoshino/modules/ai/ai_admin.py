@@ -14,6 +14,15 @@ vision 管理语义（独立 provider + 模型，与文本模型解耦）：
 - ``ai vision reset``：清除本群 vision 配置，回退全局默认。
 - ``ai vision default <provider> <模型>``：设置全局默认 vision（仅 SUPERUSER）。
 
+搜索管理语义（独立搜索 provider，与聊天 provider 解耦，默认 deepseek）：
+- ``ai search``：显示当前搜索 provider（kind/端点/模型，key 脱敏）。
+- ``ai search set deepseek [--url <u>] [--key <k>] [--model <m>]``：配置 deepseek
+  （省略项回退默认端点/模型，key 继承 anthropic 聊天 provider）。
+- ``ai search set tavily --key <k>`` / ``ai search set bocha --key <k>``：
+  配置 Tavily / 博查（默认端点 api.tavily.com / api.bocha.cn）。
+- ``ai search reset``：清除配置，回退默认 deepseek。
+- ``ai config`` 仅代理/渲染语义，不涉及搜索；搜索走 ``ai search``。
+
 provider 管理语义：
 - ``ai provider``：显示全局默认与当前群绑定 + 操作提示。
 - ``ai provider set <id>``（兼容 ``use``）：绑定当前群；``default <id>`` 设全局默认；
@@ -37,12 +46,13 @@ from hoshino.ai import (
     persona,
     provider,
     providers,
+    search,
     sessions,
     store,
     tools,
 )
 from hoshino.ai.base import get_config
-from hoshino.ai.config import mask_url, write_ai_config_env
+from hoshino.ai.config import mask_key, mask_url, write_ai_config_env
 from hoshino.ai.provider import ProviderRecord
 from hoshino.core.permission import SUPERUSER
 from hoshino.core.service import Service
@@ -68,15 +78,17 @@ USAGE = (
     "  ai model list         获取真实可用模型（provider API）\n"
     "  ai model set <模型>   设置文本模型（默认槽位）\n"
     "  ai vision             查看/设置看图模型（独立 provider + 模型）\n"
+    "  ai search             查看/设置搜索 provider（deepseek/tavily/博查，默认 deepseek）\n"
     "  ai provider           查看当前 provider\n"
     "  ai provider set <id>  绑定当前群到指定 provider\n"
     "其他：\n"
     "  ai provider list / default <id> / reset / remove\n"
-    "  ai model reset [text] / ai vision set|reset|default / ai status / ai stats\n"
+    "  ai model reset [text] / ai vision set|reset|default / ai search set|reset\n"
+    "  ai status / ai stats [provider_id]\n"
     "  ai clear [scope] / ai contexts [scope] / ai tools ... / ai persona ...\n"
     "  ai config [set <key> <value> | reset <key>]  在线改代理/渲染参数并写盘\n"
     "  ai task research|plan|status|list|approve|deny|cancel|workspaces\n"
-    "用 ai setup / ai vision / ai persona / ai config 查看参数说明。"
+    "用 ai setup / ai vision / ai search / ai persona / ai config 查看参数说明。"
 )
 
 _SETUP_USAGE = (
@@ -132,6 +144,17 @@ _VISION_USAGE = (
     "示例：ai vision set opencode-go mimo-v2.5；ai vision set opencode-go/mimo-v2.5"
 )
 
+_SEARCH_USAGE = (
+    "用法：\n"
+    "  ai search                       查看当前搜索 provider\n"
+    "  ai search set deepseek [--url <u>] [--key <k>] [--model <m>]  配置 deepseek\n"
+    "  ai search set tavily --key <k>  配置 Tavily（默认端点 api.tavily.com）\n"
+    "  ai search set bocha --key <k>   配置博查（默认端点 api.bocha.cn）\n"
+    "  ai search reset                 清除配置，回退默认（deepseek）\n"
+    "deepseek 省略 --url/--key/--model 时回退默认端点/模型，key 继承 anthropic\n"
+    "聊天 provider；tavily/bocha 必须提供 --key。"
+)
+
 # ai config 可在线修改并写盘的白名单：仅代理与渲染相关参数。
 CONFIG_EDITABLE = (
     "proxy",
@@ -183,6 +206,8 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
             await _handle_model(bot, event, rest)
         case "vision":
             await _handle_vision(bot, event, rest)
+        case "search":
+            await _handle_search(bot, event, rest)
         case "status":
             await _handle_status(bot, event)
         case "stats":
@@ -788,6 +813,99 @@ async def _vision_default(bot: Bot, event: Event, args: list[str]) -> None:
     store.set_global_value(provider.VISION_GLOBAL_PROVIDER, pid)
     store.set_global_value(provider.VISION_GLOBAL_MODEL, model)
     await send_to_event(bot, event, f"已设置全局默认 vision：`{pid}` / `{model}`{warning}")
+
+
+# ------------------------------------------------------------ search
+
+
+async def _handle_search(bot: Bot, event: Event, args: list[str]) -> None:
+    """``ai search``：查看/设置全局搜索 provider（deepseek/tavily/博查）。"""
+    if not args:
+        await _search_status(bot, event)
+        return
+    action, rest = args[0], args[1:]
+    if action in ("show", "status"):
+        await _search_status(bot, event)
+        return
+    if action == "set":
+        await _search_set(bot, event, rest)
+    elif action == "reset":
+        await _search_reset(bot, event)
+    else:
+        await send_to_event(bot, event, _SEARCH_USAGE)
+
+
+async def _search_status(bot: Bot, event: Event) -> None:
+    """`ai search`：当前搜索 provider（kind/端点/模型，key 脱敏）+ 来源。"""
+    config = get_config()
+    scope_key = event_scope_key(bot, event)
+    row = store.get_search_provider_row()
+    cfg = search.resolve_search_config(scope_key, config)
+    if cfg is None:
+        await send_to_event(
+            bot,
+            event,
+            "当前未配置搜索 provider：`ai search set <deepseek|tavily|bocha> ...`\n"
+            "（默认 deepseek 需 anthropic 兼容聊天 provider 或显式 --key）。",
+        )
+        return
+    source = "自定义" if row is not None else "默认（继承 anthropic 聊天 provider）"
+    lines = [
+        f"搜索 provider：`{cfg.kind}`（{source}）",
+        f"端点：{mask_url(cfg.url)}",
+        f"API key：{mask_key(cfg.key) or '（未设置）'}",
+    ]
+    if cfg.kind == "deepseek":
+        lines.append(f"模型：`{cfg.model}`")
+    lines.append(
+        "设置：ai search set <deepseek|tavily|bocha> [--url <u>] [--key <k>] [--model <m>]"
+    )
+    lines.append("恢复默认：ai search reset")
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _search_set(bot: Bot, event: Event, args: list[str]) -> None:
+    """`ai search set <kind> [--url <u>] [--key <k>] [--model <m>]`。"""
+    if not args:
+        await send_to_event(bot, event, _SEARCH_USAGE)
+        return
+    kind = args[0]
+    if kind not in search.SEARCH_KINDS:
+        await send_to_event(
+            bot, event, f"不支持的搜索 provider `{kind}`：可选 deepseek / tavily / bocha。"
+        )
+        return
+    opts = _parse_flags(args[1:])
+    if kind in ("tavily", "bocha") and not opts.get("key"):
+        await send_to_event(bot, event, f"`{kind}` 需要 --key（无继承来源）。")
+        return
+    store.set_search_provider(
+        kind,
+        url=opts.get("url", ""),
+        key=opts.get("key", ""),
+        model=opts.get("model", ""),
+        updated_by=str(get_user_id(event) or ""),
+    )
+    note = ""
+    if kind == "deepseek":
+        note = "（省略项回退默认端点/模型，key 继承 anthropic 聊天 provider）"
+    await send_to_event(
+        bot,
+        event,
+        f"已设置搜索 provider：`{kind}`{note}\n查看生效配置：ai search；恢复默认：ai search reset",
+    )
+
+
+async def _search_reset(bot: Bot, event: Event) -> None:
+    """`ai search reset`：清除自定义搜索配置，回退默认（deepseek）。"""
+    if store.clear_search_provider():
+        await send_to_event(
+            bot,
+            event,
+            "已清除搜索 provider 配置，回退默认（deepseek，继承 anthropic 聊天 provider）。",
+        )
+    else:
+        await send_to_event(bot, event, "当前没有自定义搜索 provider 配置。")
 
 
 async def _handle_stats(bot: Bot, event: Event, args: list[str]) -> None:

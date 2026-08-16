@@ -7,7 +7,7 @@ pydantic-ai 的 ``web_fetch_tool`` 用 httpx 默认客户端（``trust_env=True`
 并保留最基本的 SSRF 防护（拒绝私有/回环/保留地址）。
 
 工具语义：仅当模型已知具体网址、需要其全文时才用；一般了解信息优先用
-``duckduckgo_search``。
+``web_search``（provider 原生联网搜索）。
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ async def web_fetch(ctx: RunContext[AgentDeps], url: str) -> str:
     """抓取指定网址的网页正文并转为 markdown。
 
     仅当你已经知道某个具体网址、需要它的全文时才用；只是想了解信息请优先用
-    duckduckgo_search。禁止访问私有/内网地址。
+    web_search。禁止访问私有/内网地址。
     """
     return await fetch_url_to_markdown(
         url,
