@@ -70,22 +70,23 @@ async def _(bot: Bot, event: Event):
         return
     args = rest.split()
     sub, subargs = args[0], args[1:]
-    if sub in ("research", "plan"):
-        await _create(bot, event, sub, subargs)
-    elif sub == "status":
-        await _status(bot, event, subargs)
-    elif sub == "list":
-        await _list(bot, event)
-    elif sub == "approve":
-        await _approve(bot, event, subargs, "approved")
-    elif sub == "deny":
-        await _approve(bot, event, subargs, "denied")
-    elif sub == "cancel":
-        await _cancel(bot, event, subargs)
-    elif sub == "workspaces":
-        await _workspaces(bot, event)
-    else:
-        await send_to_event(bot, event, _USAGE)
+    match sub:
+        case "research" | "plan":
+            await _create(bot, event, sub, subargs)
+        case "status":
+            await _status(bot, event, subargs)
+        case "list":
+            await _list(bot, event)
+        case "approve":
+            await _approve(bot, event, subargs, "approved")
+        case "deny":
+            await _approve(bot, event, subargs, "denied")
+        case "cancel":
+            await _cancel(bot, event, subargs)
+        case "workspaces":
+            await _workspaces(bot, event)
+        case _:
+            await send_to_event(bot, event, _USAGE)
 
 
 def _split_flags(args: list[str]) -> tuple[dict[str, str], list[str]]:

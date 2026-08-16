@@ -158,47 +158,42 @@ async def _handle_control(
         await _handle_goal(bot, event, scope_key, action, arg)
         return
 
-    if action == "new":
-        try:
-            conv = manager.create(scope_key, arg)
-        except ValueError as exc:
-            await send_to_event(bot, event, str(exc))
-            return
-        await send_to_event(bot, event, f"已新建并切换到对话 `{conv.name}`。")
-        return
-
-    if action == "switch":
-        conv = manager.switch(scope_key, arg or "")
-        if conv is None:
-            names = "、".join(s["name"] for s in manager.list_summaries(scope_key))
-            await send_to_event(bot, event, f"对话 `{arg}` 不存在。可用：{names or '（无）'}")
-            return
-        await send_to_event(bot, event, f"已切换到对话 `{conv.name}`。")
-        return
-
-    if action == "list":
-        summaries = manager.list_summaries(scope_key)
-        if not summaries:
-            await send_to_event(bot, event, "当前会话还没有对话。")
-            return
-        lines = ["本会话的对话："]
-        for s in summaries:
-            mark = "* " if s["active"] else "- "
-            updated = time.strftime("%m-%d %H:%M", time.localtime(s["updated_at"]))
-            lines.append(f"{mark}{s['name']}（{s['count']} 条，{updated} 更新）")
-        await send_to_event(bot, event, "\n".join(lines))
-        return
-
-    if action == "clear":
-        if not await _can_clear(bot, event):
-            await send_to_event(bot, event, "清空对话历史需要管理员权限。")
-            return
-        cleared = manager.clear_active(scope_key)
-        await send_to_event(
-            bot,
-            event,
-            "已清空当前对话历史。" if cleared else "当前对话没有可清空的历史。",
-        )
+    match action:
+        case "new":
+            try:
+                conv = manager.create(scope_key, arg)
+            except ValueError as exc:
+                await send_to_event(bot, event, str(exc))
+                return
+            await send_to_event(bot, event, f"已新建并切换到对话 `{conv.name}`。")
+        case "switch":
+            conv = manager.switch(scope_key, arg or "")
+            if conv is None:
+                names = "、".join(s["name"] for s in manager.list_summaries(scope_key))
+                await send_to_event(bot, event, f"对话 `{arg}` 不存在。可用：{names or '（无）'}")
+                return
+            await send_to_event(bot, event, f"已切换到对话 `{conv.name}`。")
+        case "list":
+            summaries = manager.list_summaries(scope_key)
+            if not summaries:
+                await send_to_event(bot, event, "当前会话还没有对话。")
+                return
+            lines = ["本会话的对话："]
+            for s in summaries:
+                mark = "* " if s["active"] else "- "
+                updated = time.strftime("%m-%d %H:%M", time.localtime(s["updated_at"]))
+                lines.append(f"{mark}{s['name']}（{s['count']} 条，{updated} 更新）")
+            await send_to_event(bot, event, "\n".join(lines))
+        case "clear":
+            if not await _can_clear(bot, event):
+                await send_to_event(bot, event, "清空对话历史需要管理员权限。")
+                return
+            cleared = manager.clear_active(scope_key)
+            await send_to_event(
+                bot,
+                event,
+                "已清空当前对话历史。" if cleared else "当前对话没有可清空的历史。",
+            )
 
 
 async def _can_clear(bot: Bot, event: Event) -> bool:
@@ -219,6 +214,12 @@ _GOAL_PHASE_LABEL = {
     "complete": "已完成",
 }
 
+_GOAL_TRANSITION = {
+    "goal_pause": "pause",
+    "goal_resume": "resume",
+    "goal_done": "complete",
+}
+
 
 def _format_goal(g) -> str:
     phase = _GOAL_PHASE_LABEL.get(g.phase, g.phase)
@@ -234,51 +235,42 @@ async def _handle_goal(
 ) -> None:
     service = goal.GoalService()
 
-    if action == "goal_view":
-        current = service.get(scope_key)
-        if current is None:
-            await send_to_event(bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。")
-        else:
-            await send_to_event(bot, event, _format_goal(current))
-        return
-
-    if action == "goal_set":
-        if not arg:
-            await send_to_event(bot, event, "用法：`#goal set <目标>`。")
-            return
-        try:
-            created = service.create(scope_key, arg)
-        except ValueError as exc:
-            await send_to_event(bot, event, str(exc))
-            return
-        await send_to_event(bot, event, f"已设定目标：{created.objective}")
-        return
-
-    if action == "goal_clear":
-        if not await _can_clear(bot, event):
-            await send_to_event(bot, event, "清除目标需要管理员权限。")
-            return
-        await send_to_event(
-            bot, event, "已清除目标。" if service.clear(scope_key) else "当前没有目标。"
-        )
-        return
-
-    transition = {
-        "goal_pause": "pause",
-        "goal_resume": "resume",
-        "goal_done": "complete",
-    }.get(action)
-    if transition is not None:
-        await _goal_transition(bot, event, scope_key, transition)
-        return
-
-    # goal_help / 非法子命令
-    await send_to_event(
-        bot,
-        event,
-        "用法：`#goal` 查看 / `#goal set <目标>` 设定 / `#goal pause|resume|done` / "
-        "`#goal clear`。",
-    )
+    match action:
+        case "goal_view":
+            current = service.get(scope_key)
+            if current is None:
+                await send_to_event(bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。")
+            else:
+                await send_to_event(bot, event, _format_goal(current))
+        case "goal_set":
+            if not arg:
+                await send_to_event(bot, event, "用法：`#goal set <目标>`。")
+                return
+            try:
+                created = service.create(scope_key, arg)
+            except ValueError as exc:
+                await send_to_event(bot, event, str(exc))
+                return
+            await send_to_event(bot, event, f"已设定目标：{created.objective}")
+        case "goal_clear":
+            if not await _can_clear(bot, event):
+                await send_to_event(bot, event, "清除目标需要管理员权限。")
+                return
+            await send_to_event(
+                bot, event, "已清除目标。" if service.clear(scope_key) else "当前没有目标。"
+            )
+        case _:
+            transition = _GOAL_TRANSITION.get(action)
+            if transition is not None:
+                await _goal_transition(bot, event, scope_key, transition)
+                return
+            # goal_help / 非法子命令
+            await send_to_event(
+                bot,
+                event,
+                "用法：`#goal` 查看 / `#goal set <目标>` 设定 / `#goal pause|resume|done` / "
+                "`#goal clear`。",
+            )
 
 
 async def _goal_transition(bot: Bot, event: Event, scope_key: str, action: str) -> None:

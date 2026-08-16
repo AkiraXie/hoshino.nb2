@@ -153,30 +153,31 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         await _handle_status(bot, event)
         return
     sub, rest = args[0], args[1:]
-    if sub in ("help", "?"):
-        await send_to_event(bot, event, USAGE)
-    elif sub == "setup":
-        await _handle_setup(bot, event, rest)
-    elif sub == "provider":
-        await _handle_provider(bot, event, rest)
-    elif sub == "model":
-        await _handle_model(bot, event, rest)
-    elif sub == "status":
-        await _handle_status(bot, event)
-    elif sub == "stats":
-        await _handle_stats(bot, event, rest)
-    elif sub == "clear":
-        await _handle_clear(bot, event, rest)
-    elif sub == "contexts":
-        await _handle_contexts(bot, event, rest)
-    elif sub == "tools":
-        await _handle_tools(bot, event, rest)
-    elif sub == "persona":
-        await _handle_persona(bot, event, rest)
-    elif sub == "config":
-        await _handle_config(bot, event, rest)
-    else:
-        await send_to_event(bot, event, USAGE)
+    match sub:
+        case "help" | "?":
+            await send_to_event(bot, event, USAGE)
+        case "setup":
+            await _handle_setup(bot, event, rest)
+        case "provider":
+            await _handle_provider(bot, event, rest)
+        case "model":
+            await _handle_model(bot, event, rest)
+        case "status":
+            await _handle_status(bot, event)
+        case "stats":
+            await _handle_stats(bot, event, rest)
+        case "clear":
+            await _handle_clear(bot, event, rest)
+        case "contexts":
+            await _handle_contexts(bot, event, rest)
+        case "tools":
+            await _handle_tools(bot, event, rest)
+        case "persona":
+            await _handle_persona(bot, event, rest)
+        case "config":
+            await _handle_config(bot, event, rest)
+        case _:
+            await send_to_event(bot, event, USAGE)
 
 
 def _parse_flags(args: list[str]) -> dict[str, str]:
@@ -212,18 +213,19 @@ async def _handle_provider(bot: Bot, event: Event, args: list[str]) -> None:
         return
     action, rest = args[0], args[1:]
     config = get_config()
-    if action == "list":
-        await _provider_list(bot, event, config)
-    elif action in ("set", "use"):
-        await _provider_set(bot, event, rest)
-    elif action == "default":
-        await _provider_default(bot, event, rest, config)
-    elif action == "reset":
-        await _provider_reset(bot, event)
-    elif action == "remove":
-        await _provider_remove(bot, event, rest, config)
-    else:
-        await send_to_event(bot, event, USAGE)
+    match action:
+        case "list":
+            await _provider_list(bot, event, config)
+        case "set" | "use":
+            await _provider_set(bot, event, rest)
+        case "default":
+            await _provider_default(bot, event, rest, config)
+        case "reset":
+            await _provider_reset(bot, event)
+        case "remove":
+            await _provider_remove(bot, event, rest, config)
+        case _:
+            await send_to_event(bot, event, USAGE)
 
 
 async def _provider_status(bot: Bot, event: Event) -> None:
