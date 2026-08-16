@@ -2,9 +2,10 @@ import asyncio
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .auth import require_write_token
 from .jsonstore import load_json, save_json
 
 
@@ -40,7 +41,7 @@ def register_favorite_mutations(app: FastAPI, store: FavoritesStore) -> None:
     收藏的"读取"接口（list/ids）因序列化和黑名单差异保留在各 provider。
     """
 
-    @app.post("/api/favorites")
+    @app.post("/api/favorites", dependencies=[Depends(require_write_token)])
     async def api_add_favorite(body: FavBody):
         async with store.lock:
             favs = store.load()
@@ -52,7 +53,10 @@ def register_favorite_mutations(app: FastAPI, store: FavoritesStore) -> None:
             store.save(favs)
         return {"ok": True}
 
-    @app.delete("/api/favorites/{uid}/{post_id}")
+    @app.delete(
+        "/api/favorites/{uid}/{post_id}",
+        dependencies=[Depends(require_write_token)],
+    )
     async def api_remove_favorite(uid: str, post_id: str):
         async with store.lock:
             favs = store.load()

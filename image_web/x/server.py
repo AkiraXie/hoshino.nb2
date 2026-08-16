@@ -6,7 +6,10 @@
 
 import asyncio
 import hashlib
+import ipaddress
 import json
+import logging
+import socket
 import sqlite3
 import threading
 from collections import Counter
@@ -14,11 +17,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from PIL import Image
 
+from image_web.common.auth import require_proxy_token
 from image_web.common.env import read_env_data_dir
 from image_web.common.favorites import FavoritesStore, register_favorite_mutations
 from image_web.common.lifecycle import build_lifespan
@@ -26,13 +29,14 @@ from image_web.common.middleware import add_cache_headers_middleware, setup_cors
 from image_web.common.pagination import paginate
 from image_web.common.spa import mount_frontend
 
+logger = logging.getLogger(__name__)
+
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
 
 DATA_DIR = read_env_data_dir(PROJECT_ROOT)
 X_DB_PATH = DATA_DIR / "db" / "x.db"
 X_MEDIA_DIR = DATA_DIR / "x"
-THUMB_DIR = DATA_DIR / "x_thumbnails"
 MEDIA_CACHE_DIR = DATA_DIR / "x_media_cache"
 FAV_JSON = DATA_DIR / "x_favorite.json"
 FRONTEND_DIST = PROJECT_ROOT / "x_image_web" / "frontend" / "dist"
@@ -50,9 +54,10 @@ _fav_store = FavoritesStore(FAV_JSON)
 def _get_http_client() -> httpx.AsyncClient:
     global _http_client
     if _http_client is None:
+        # 重定向由 /media/proxy 手动跟进并对每一跳复检（防 SSRF），不自动跟随。
         _http_client = httpx.AsyncClient(
             timeout=30.0,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={"User-Agent": "Mozilla/5.0 (compatible; XImageWeb/1.0)"},
         )
     return _http_client
@@ -154,6 +159,7 @@ def _build_index() -> None:
             ).fetchall()
             conn.close()
         except (sqlite3.Error, OSError):
+            logger.exception("failed to build index from %s", X_DB_PATH)
             return
 
         for row in rows:
@@ -191,33 +197,95 @@ def _url_cache_key(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:32] + _url_suffix(url)
 
 
-def _generate_thumbnail(uid: str, post_id: str, image_url: str) -> str | None:
-    """Download and cache a thumbnail for a remote image. Returns local path or None."""
-    thumb_dir = THUMB_DIR / uid / post_id
-    thumb_dir.mkdir(parents=True, exist_ok=True)
-    webp_dest = thumb_dir / "cover.webp"
-    jpg_dest = thumb_dir / "cover.jpg"
+# ── /media/proxy SSRF 防护 ───────────────────────────────
 
-    if webp_dest.exists():
-        return str(webp_dest)
-    if jpg_dest.exists():
-        return str(jpg_dest)
+# 响应体上限：图片代理不得无限缓冲。
+_MAX_PROXY_BYTES = 50 * 1024 * 1024
+_MAX_PROXY_REDIRECTS = 5
 
-    # Check media cache first
-    cache_key = _url_cache_key(image_url)
-    cached = MEDIA_CACHE_DIR / cache_key
-    if cached.exists():
+# 明确的本地主机名：即使 DNS 解析失败也要直接拒绝。
+_LOCAL_HOST_NAMES = frozenset(
+    {"localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"}
+)
+
+
+def _is_blocked_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """私网/回环/链路本地等不可路由地址一律拒绝（含云元数据 169.254.169.254）。"""
+    return (
+        addr.is_unspecified
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_private
+        or addr.is_reserved
+        or addr.is_multicast
+        or (addr.version == 6 and addr.is_site_local)
+    )
+
+
+async def _validate_proxy_target(url: str) -> None:
+    """SSRF 校验：scheme、host、DNS 解析后的私网地址。
+
+    对初始 URL 与每一个重定向跳都调用一次；重定向时重新解析 DNS 并复检，
+    防止重定向把请求带进内网。公网域名不做白名单限制（可选 token 鉴权见
+    ``image_web/common/auth.py``）。
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(400, "Only http/https URLs are supported")
+    host = parsed.hostname or ""
+    if not host:
+        raise HTTPException(400, "URL is missing a host")
+
+    lowered = host.rstrip(".").lower()
+    if lowered in _LOCAL_HOST_NAMES or lowered.endswith(".local"):
+        raise HTTPException(403, "Host is not allowed")
+
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        # 端口解析失败的底层 ValueError 对调用方无意义，抑制异常链。
+        raise HTTPException(400, "Invalid port in URL") from None
+
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise HTTPException(502, "Failed to resolve host") from None
+
+    for _family, _type, _proto, _canonname, sockaddr in infos:
+        if _is_blocked_ip(ipaddress.ip_address(sockaddr[0])):
+            raise HTTPException(
+                403,
+                "Proxy target resolves to a private/loopback/link-local address",
+            )
+
+
+async def _fetch_proxy_body(url: str) -> tuple[bytes, str]:
+    """下载并返回 (body, content_type)，每跳复检目标、限制大小与跳数。"""
+    client = _get_http_client()
+    current = url
+    for _ in range(_MAX_PROXY_REDIRECTS + 1):
+        await _validate_proxy_target(current)
         try:
-            img = Image.open(cached)
-            img.thumbnail((600, 800))
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            img.save(webp_dest, "WEBP", quality=82)
-            return str(webp_dest)
-        except Exception:
-            pass
-
-    return None
+            async with client.stream("GET", current) as resp:
+                if resp.is_redirect:
+                    location = resp.headers.get("location")
+                    if not location:
+                        raise HTTPException(502, "Redirect response without Location")
+                    current = str(resp.url.join(location))
+                    continue
+                resp.raise_for_status()
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in resp.aiter_bytes():
+                    total += len(chunk)
+                    if total > _MAX_PROXY_BYTES:
+                        raise HTTPException(413, "Response exceeds the 50 MB proxy limit")
+                    chunks.append(chunk)
+                content_type = resp.headers.get("content-type", "application/octet-stream")
+                return b"".join(chunks), content_type
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, f"Failed to fetch {current}: {exc}") from exc
+    raise HTTPException(502, "Too many redirects")
 
 
 def _summary(p: dict) -> dict:
@@ -265,9 +333,7 @@ async def api_list_posts(page: int = 1, size: int = 20, uid: str = "", q: str = 
 
 @router.get("/api/posts/{uid}/{post_id}")
 async def api_get_post(uid: str, post_id: str):
-    entry = next(
-        (p for p in posts_index if p["uid"] == uid and p["id"] == post_id), None
-    )
+    entry = next((p for p in posts_index if p["uid"] == uid and p["id"] == post_id), None)
     if not entry:
         raise HTTPException(404, "Post not found")
     return entry
@@ -318,11 +384,15 @@ async def api_favorite_ids():
 # ── Media proxy ──────────────────────────────────────────
 
 
-@router.get("/media/proxy")
+@router.get("/media/proxy", dependencies=[Depends(require_proxy_token)])
 async def media_proxy(url: str):
-    """Proxy remote images to avoid CORS/hotlink issues and enable caching."""
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(400, "Invalid URL")
+    """Proxy remote images to avoid CORS/hotlink issues and enable caching.
+
+    SSRF 防护：仅 http/https；目标 host 解析后拒绝私网/回环/链路本地地址，并对每个
+    重定向跳复检；响应上限 50MB。公网域名不设白名单；可选配置
+    ``IMAGE_WEB_PROXY_TOKEN`` 要求请求携带 token（见 ``image_web/common/auth.py``）。
+    """
+    await _validate_proxy_target(url)
 
     cache_key = _url_cache_key(url)
     cached_path = MEDIA_CACHE_DIR / cache_key
@@ -335,19 +405,12 @@ async def media_proxy(url: str):
             media_type = "image/gif"
         return FileResponse(cached_path, media_type=media_type)
 
-    # Download and cache
-    try:
-        client = _get_http_client()
-        resp = await client.get(url)
-        resp.raise_for_status()
-    except Exception as e:
-        raise HTTPException(502, f"Failed to fetch image: {e}")
+    body, content_type = await _fetch_proxy_body(url)
 
-    content_type = resp.headers.get("content-type", "image/jpeg")
     MEDIA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cached_path.write_bytes(resp.content)
+    cached_path.write_bytes(body)
 
-    return Response(content=resp.content, media_type=content_type)
+    return Response(content=body, media_type=content_type)
 
 
 @router.post("/api/refresh")
@@ -362,9 +425,7 @@ async def api_refresh():
 def create_app() -> FastAPI:
     app = FastAPI(
         title="X Image Web",
-        lifespan=build_lifespan(
-            _build_index, AUTO_REFRESH_INTERVAL, on_shutdown=_shutdown_client
-        ),
+        lifespan=build_lifespan(_build_index, AUTO_REFRESH_INTERVAL, on_shutdown=_shutdown_client),
     )
     setup_cors(app)
     add_cache_headers_middleware(app, max_age=86400)
@@ -372,7 +433,6 @@ def create_app() -> FastAPI:
     app.include_router(router)
     register_favorite_mutations(app, _fav_store)
 
-    THUMB_DIR.mkdir(parents=True, exist_ok=True)
     MEDIA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     # Serve local X media (downloaded images/videos under data/x/)

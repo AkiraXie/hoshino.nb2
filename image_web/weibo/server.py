@@ -6,20 +6,25 @@
 """
 
 import asyncio
+import contextlib
 import json
+import logging
 import os
 import re
 import shutil
 import threading
 from collections import Counter
+from collections.abc import Coroutine
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
 
+from image_web.common.auth import require_write_token
 from image_web.common.env import read_env_data_dir
 from image_web.common.favorites import FavoritesStore, register_favorite_mutations
 from image_web.common.jsonstore import load_json, save_json
@@ -27,6 +32,8 @@ from image_web.common.lifecycle import build_lifespan
 from image_web.common.middleware import add_cache_headers_middleware, setup_cors
 from image_web.common.pagination import paginate
 from image_web.common.spa import mount_frontend
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
@@ -45,13 +52,13 @@ AUTO_REFRESH_INTERVAL = 30 * 60  # seconds
 
 posts_index: list[dict] = []
 uid_nickname_map: dict[str, str] = {}
-# {uid}_{post_id} -> dir mtime, used for incremental refresh
-_post_mtimes: dict[str, float] = {}
-# uid_dir mtime snapshot, detect which uid dirs changed
-_uid_dir_mtimes: dict[str, float] = {}
+# {uid}_{post_id} -> 帖子内容指纹（message.json mtime + 媒体文件名列表），增量刷新用
+_post_fingerprints: dict[str, str] = {}
 _build_lock = threading.RLock()
 _tags_lock = asyncio.Lock()
 _blacklist_lock = asyncio.Lock()
+# 持有 fire-and-forget 后台任务引用，防止任务被 GC 中途取消（RUF006）
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 _fav_store = FavoritesStore(FAV_JSON)
 
@@ -88,6 +95,9 @@ def _generate_thumbnails(uid: str, post_id: str, source_path: Path) -> bool:
         img.save(webp_dest, "WEBP", quality=82, optimize=True)
         return True
     except Exception:
+        logger.exception(
+            "failed to generate thumbnails for %s/%s from %s", uid, post_id, source_path
+        )
         return False
 
 
@@ -124,7 +134,7 @@ def _scan_post(uid: str, post_dir: Path) -> dict:
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            pass
+            logger.warning("failed to read %s; using defaults", meta_path)
 
     images_dir = post_dir / "images"
     image_count = len(list(images_dir.glob("*.jpg"))) if images_dir.is_dir() else 0
@@ -163,61 +173,79 @@ def _scan_post(uid: str, post_dir: Path) -> dict:
     }
 
 
-def _load_index_cache() -> tuple[list[dict], dict[str, float], dict[str, float]] | None:
-    """Load cached index from disk. Returns (entries, post_mtimes, uid_dir_mtimes) or None."""
+def _post_fingerprint(post_dir: Path) -> str:
+    """帖子内容指纹：message.json 的 mtime + 媒体文件名列表。
+
+    帖子目录/uid 目录的 mtime 在“原地编辑 message.json”时不会变化，仅按目录 mtime
+    判变更会漏掉内容更新；这里改用文件级 mtime 与文件名列表，能发现内容编辑以及
+    媒体的增删改名，且不读取文件内容（对每次请求的增量刷新足够廉价）。
+    """
+    parts: list[str] = []
+    meta_path = post_dir / "message.json"
+    try:
+        parts.append(f"meta:{meta_path.stat().st_mtime_ns}")
+    except OSError:
+        parts.append("meta:missing")
+    for sub in ("images", "videos"):
+        sub_dir = post_dir / sub
+        names: list[str] = []
+        if sub_dir.is_dir():
+            # 目录不可读时按空列表计入指纹（下次刷新会重试）。
+            with contextlib.suppress(OSError):
+                names = sorted(p.name for p in sub_dir.iterdir())
+        parts.append(f"{sub}:[{','.join(names)}]")
+    parts.append("shot:1" if (post_dir / "screenshot.jpg").exists() else "shot:0")
+    return "|".join(parts)
+
+
+def _load_index_cache() -> tuple[list[dict], dict[str, str]] | None:
+    """从磁盘加载索引缓存。返回 (entries, post_fingerprints) 或 None。"""
     if not INDEX_CACHE.exists():
         return None
     try:
         data = json.loads(INDEX_CACHE.read_text(encoding="utf-8"))
         entries = data["entries"]
-        p_mtimes = data.get("post_mtimes", {})
-        u_mtimes = data.get("uid_dir_mtimes", {})
-        return entries, p_mtimes, u_mtimes
+        p_fps = data.get("post_fingerprints")
+        if p_fps is None:
+            # 旧格式缓存（post_mtimes 语义）：指纹缺失，下次增量会全量重扫修正。
+            p_fps = {}
+        return entries, p_fps
     except (OSError, json.JSONDecodeError, KeyError):
+        logger.warning("index cache %s is unreadable; will rebuild", INDEX_CACHE)
         return None
 
 
 def _save_index_cache() -> None:
-    """Persist current index to disk for fast startup."""
+    """Persist current index to disk for fast startup（原子写）。"""
     data = {
         "entries": posts_index,
-        "post_mtimes": _post_mtimes,
-        "uid_dir_mtimes": _uid_dir_mtimes,
+        "post_fingerprints": _post_fingerprints,
     }
-    INDEX_CACHE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    save_json(INDEX_CACHE, data)
 
 
 def _build_index_full() -> None:
     """Full rebuild — scan everything from scratch."""
-    global posts_index, uid_nickname_map, _post_mtimes, _uid_dir_mtimes
+    global posts_index, uid_nickname_map, _post_fingerprints
 
     with _build_lock:
         index: list[dict] = []
         umap: dict[str, str] = {}
-        p_mtimes: dict[str, float] = {}
-        u_mtimes: dict[str, float] = {}
+        p_fps: dict[str, str] = {}
 
         if not WEIBO_MSG_DIR.is_dir():
             posts_index, uid_nickname_map = [], {}
-            _post_mtimes, _uid_dir_mtimes = {}, {}
+            _post_fingerprints = {}
             return
 
         for uid_dir in WEIBO_MSG_DIR.iterdir():
             if not uid_dir.is_dir():
                 continue
             uid = uid_dir.name
-            try:
-                u_mtimes[uid] = uid_dir.stat().st_mtime
-            except OSError:
-                continue
             for post_dir in uid_dir.iterdir():
                 if not post_dir.is_dir():
                     continue
-                post_id = post_dir.name
-                try:
-                    p_mtimes[f"{uid}_{post_id}"] = post_dir.stat().st_mtime
-                except OSError:
-                    continue
+                p_fps[f"{uid}_{post_dir.name}"] = _post_fingerprint(post_dir)
                 entry = _scan_post(uid, post_dir)
                 if entry["nickname"]:
                     umap.setdefault(uid, entry["nickname"])
@@ -226,116 +254,68 @@ def _build_index_full() -> None:
         index.sort(key=lambda e: e.get("timestamp") or 0, reverse=True)
         posts_index = index
         uid_nickname_map = umap
-        _post_mtimes = p_mtimes
-        _uid_dir_mtimes = u_mtimes
+        _post_fingerprints = p_fps
         _save_index_cache()
 
 
 def _build_index_incremental() -> int:
-    """Incremental refresh — only rescan changed uid directories.
+    """增量刷新：全量比对帖子内容指纹，仅重扫指纹变化的帖子。
 
     Returns the number of posts added/updated/removed.
     """
-    global posts_index, uid_nickname_map, _post_mtimes, _uid_dir_mtimes
+    global posts_index, uid_nickname_map, _post_fingerprints
 
     if not WEIBO_MSG_DIR.is_dir():
         if posts_index:
             posts_index, uid_nickname_map = [], {}
-            _post_mtimes, _uid_dir_mtimes = {}, {}
+            _post_fingerprints = {}
             _save_index_cache()
         return 0
 
     changes = 0
 
-    # 1. Discover current uid dirs on disk
-    current_uids: dict[str, float] = {}
+    # 1. 采集磁盘上所有帖子的内容指纹
+    current_fps: dict[str, str] = {}
     for uid_dir in WEIBO_MSG_DIR.iterdir():
         if not uid_dir.is_dir():
             continue
-        try:
-            current_uids[uid_dir.name] = uid_dir.stat().st_mtime
-        except OSError:
-            continue
-
-    # 2. Find removed uids
-    removed_uids = set(_uid_dir_mtimes.keys()) - set(current_uids.keys())
-    if removed_uids:
-        posts_index = [p for p in posts_index if p["uid"] not in removed_uids]
-        for uid in removed_uids:
-            _uid_dir_mtimes.pop(uid, None)
-            uid_nickname_map.pop(uid, None)
-        _post_mtimes = {
-            k: v
-            for k, v in _post_mtimes.items()
-            if k.split("_", 1)[0] not in removed_uids
-        }
-        changes += 1
-
-    # 3. Find uid dirs with changed mtime (new posts added/removed inside)
-    changed_uids: set[str] = set()
-    for uid, mtime in current_uids.items():
-        old_mtime = _uid_dir_mtimes.get(uid)
-        if old_mtime is None or mtime != old_mtime:
-            changed_uids.add(uid)
-
-    if not changed_uids and not removed_uids:
-        return 0  # nothing changed
-
-    # 4. For each changed uid dir, diff its posts
-    for uid in changed_uids:
-        uid_dir = WEIBO_MSG_DIR / uid
-        _uid_dir_mtimes[uid] = current_uids[uid]
-
-        # Current posts on disk
-        disk_posts: dict[str, float] = {}
+        uid = uid_dir.name
         for post_dir in uid_dir.iterdir():
             if not post_dir.is_dir():
                 continue
-            try:
-                disk_posts[post_dir.name] = post_dir.stat().st_mtime
-            except OSError:
-                continue
+            current_fps[f"{uid}_{post_dir.name}"] = _post_fingerprint(post_dir)
 
-        # Previously indexed posts for this uid
-        old_post_ids = {
-            k.split("_", 1)[1] for k in _post_mtimes if k.startswith(f"{uid}_")
+    # 2. 已删除的帖子
+    removed_keys = set(_post_fingerprints) - set(current_fps)
+    if removed_keys:
+        posts_index = [p for p in posts_index if f"{p['uid']}_{p['id']}" not in removed_keys]
+        for key in removed_keys:
+            _post_fingerprints.pop(key, None)
+        uid_nickname_map = {
+            uid: nick
+            for uid, nick in uid_nickname_map.items()
+            if any(k.startswith(f"{uid}_") for k in _post_fingerprints)
         }
+        changes += len(removed_keys)
 
-        # Removed posts
-        removed_ids = old_post_ids - set(disk_posts.keys())
-        if removed_ids:
-            remove_keys = {f"{uid}_{pid}" for pid in removed_ids}
-            posts_index = [
-                p for p in posts_index if f"{p['uid']}_{p['id']}" not in remove_keys
-            ]
-            for pid in removed_ids:
-                _post_mtimes.pop(f"{uid}_{pid}", None)
-            changes += len(removed_ids)
+    # 3. 新增或内容变化的帖子（原地编辑 message.json 也会被发现）
+    for key, fingerprint in current_fps.items():
+        if _post_fingerprints.get(key) == fingerprint:
+            continue
+        uid, post_id = key.split("_", 1)
+        entry = _scan_post(uid, WEIBO_MSG_DIR / uid / post_id)
+        _post_fingerprints[key] = fingerprint
 
-        # New or updated posts
-        for post_id, mtime in disk_posts.items():
-            key = f"{uid}_{post_id}"
-            old_mtime = _post_mtimes.get(key)
-            if old_mtime is not None and mtime == old_mtime:
-                continue  # unchanged
-            # Rescan this post
-            post_dir = uid_dir / post_id
-            entry = _scan_post(uid, post_dir)
-            _post_mtimes[key] = mtime
+        if entry["nickname"]:
+            uid_nickname_map.setdefault(uid, entry["nickname"])
 
-            if entry["nickname"]:
-                uid_nickname_map.setdefault(uid, entry["nickname"])
-
-            if old_mtime is not None:
-                # Updated — replace in-place
-                posts_index = [
-                    entry if (p["uid"] == uid and p["id"] == post_id) else p
-                    for p in posts_index
-                ]
-            else:
-                # New post
-                posts_index.append(entry)
-            changes += 1
+        for i, post in enumerate(posts_index):
+            if post["uid"] == uid and post["id"] == post_id:
+                posts_index[i] = entry  # Updated — replace in-place
+                break
+        else:
+            posts_index.append(entry)  # New post
+        changes += 1
 
     if changes:
         posts_index.sort(key=lambda e: e.get("timestamp") or 0, reverse=True)
@@ -346,16 +326,15 @@ def _build_index_incremental() -> int:
 
 def _build_index() -> None:
     """Smart index build: load cache on first call, then incremental."""
-    global posts_index, uid_nickname_map, _post_mtimes, _uid_dir_mtimes
+    global posts_index, uid_nickname_map, _post_fingerprints
 
     with _build_lock:
         if not posts_index:
             cached = _load_index_cache()
             if cached is not None:
-                entries, p_mtimes, u_mtimes = cached
+                entries, p_fps = cached
                 posts_index = entries
-                _post_mtimes = p_mtimes
-                _uid_dir_mtimes = u_mtimes
+                _post_fingerprints = p_fps
                 umap: dict[str, str] = {}
                 for e in entries:
                     if e.get("nickname"):
@@ -385,8 +364,24 @@ def _generate_all_missing_thumbnails() -> int:
     return generated
 
 
+def _spawn(coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
+    """Fire-and-forget 后台任务：持有引用防 GC 中途取消，异常记录日志。"""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_on_task_done)
+    return task
+
+
+def _on_task_done(task: asyncio.Task[Any]) -> None:
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    if (exc := task.exception()) is not None:
+        logger.error("background task %s failed", task.get_name(), exc_info=exc)
+
+
 async def _startup_thumbnails() -> None:
-    asyncio.create_task(asyncio.to_thread(_generate_all_missing_thumbnails))
+    _spawn(asyncio.to_thread(_generate_all_missing_thumbnails))
 
 
 # ── models ───────────────────────────────────────────────
@@ -408,9 +403,7 @@ router = APIRouter()
 
 
 @router.get("/api/posts")
-async def api_list_posts(
-    page: int = 1, size: int = 20, uid: str = "", q: str = "", date: str = ""
-):
+async def api_list_posts(page: int = 1, size: int = 20, uid: str = "", q: str = "", date: str = ""):
     await asyncio.to_thread(_build_index)
     blacklist = set(_load_blacklist())
     results = [p for p in posts_index if p["uid"] not in blacklist]
@@ -449,9 +442,7 @@ async def api_list_posts(
 
 @router.get("/api/posts/{uid}/{post_id}")
 async def api_get_post(uid: str, post_id: str):
-    entry = next(
-        (p for p in posts_index if p["uid"] == uid and p["id"] == post_id), None
-    )
+    entry = next((p for p in posts_index if p["uid"] == uid and p["id"] == post_id), None)
     if not entry:
         raise HTTPException(404, "Post not found")
 
@@ -474,9 +465,7 @@ async def api_get_post(uid: str, post_id: str):
         if videos_dir.is_dir()
         else []
     )
-    screenshot = (
-        f"/media/{uid}/{post_id}/screenshot.jpg" if entry["has_screenshot"] else None
-    )
+    screenshot = f"/media/{uid}/{post_id}/screenshot.jpg" if entry["has_screenshot"] else None
     return {**entry, "images": images, "videos": videos, "screenshot": screenshot}
 
 
@@ -550,9 +539,7 @@ async def api_list_favorites(page: int = 1, size: int = 20):
     blacklist = set(_load_blacklist())
     fav_set = {f"{uid}_{pid}" for uid, ids in favs.items() for pid in ids}
     fav_posts = [
-        p
-        for p in posts_index
-        if f"{p['uid']}_{p['id']}" in fav_set and p["uid"] not in blacklist
+        p for p in posts_index if f"{p['uid']}_{p['id']}" in fav_set and p["uid"] not in blacklist
     ]
     total, page_items = paginate(fav_posts, page, size)
     return {
@@ -567,12 +554,7 @@ async def api_list_favorites(page: int = 1, size: int = 20):
 async def api_favorite_ids():
     favs = _fav_store.load()
     blacklist = set(_load_blacklist())
-    return [
-        f"{uid}_{pid}"
-        for uid, ids in favs.items()
-        if uid not in blacklist
-        for pid in ids
-    ]
+    return [f"{uid}_{pid}" for uid, ids in favs.items() if uid not in blacklist for pid in ids]
 
 
 # ── Blacklist API ────────────────────────────────────────
@@ -585,7 +567,7 @@ async def api_list_blacklist():
     return [{"uid": uid, "nickname": uid_nickname_map.get(uid, uid)} for uid in uids]
 
 
-@router.post("/api/blacklist")
+@router.post("/api/blacklist", dependencies=[Depends(require_write_token)])
 async def api_add_blacklist(body: BlacklistBody):
     async with _blacklist_lock:
         bl = _load_blacklist()
@@ -595,7 +577,7 @@ async def api_add_blacklist(body: BlacklistBody):
     return {"ok": True}
 
 
-@router.delete("/api/blacklist/{uid}")
+@router.delete("/api/blacklist/{uid}", dependencies=[Depends(require_write_token)])
 async def api_remove_blacklist(uid: str):
     async with _blacklist_lock:
         bl = _load_blacklist()
@@ -642,9 +624,7 @@ async def api_tag_posts(tag: str, page: int = 1, size: int = 20):
     tag_set = {f"{uid}_{pid}" for uid, ids in uid_map.items() for pid in ids}
     blacklist = set(_load_blacklist())
     tag_posts = [
-        p
-        for p in posts_index
-        if f"{p['uid']}_{p['id']}" in tag_set and p["uid"] not in blacklist
+        p for p in posts_index if f"{p['uid']}_{p['id']}" in tag_set and p["uid"] not in blacklist
     ]
     total, page_items = paginate(tag_posts, page, size)
     return {
@@ -667,7 +647,7 @@ async def api_post_tags(uid: str, post_id: str):
     return result
 
 
-@router.post("/api/tags")
+@router.post("/api/tags", dependencies=[Depends(require_write_token)])
 async def api_add_tag(body: TagBody):
     """Add a tag to a post."""
     tag = body.tag.strip()
@@ -684,7 +664,10 @@ async def api_add_tag(body: TagBody):
     return {"ok": True}
 
 
-@router.delete("/api/tags/{tag}/{uid}/{post_id}")
+@router.delete(
+    "/api/tags/{tag}/{uid}/{post_id}",
+    dependencies=[Depends(require_write_token)],
+)
 async def api_remove_tag(tag: str, uid: str, post_id: str):
     """Remove a tag from a post."""
     async with _tags_lock:
@@ -706,7 +689,7 @@ async def api_remove_tag(tag: str, uid: str, post_id: str):
     return {"ok": True}
 
 
-@router.delete("/api/tags/{tag}")
+@router.delete("/api/tags/{tag}", dependencies=[Depends(require_write_token)])
 async def api_delete_tag(tag: str):
     """Delete an entire tag."""
     async with _tags_lock:
@@ -718,7 +701,7 @@ async def api_delete_tag(tag: str):
     return {"ok": True}
 
 
-@router.delete("/api/posts/{uid}/{post_id}")
+@router.delete("/api/posts/{uid}/{post_id}", dependencies=[Depends(require_write_token)])
 async def api_delete_post(uid: str, post_id: str):
     """Move a post directory to trash and remove from index / favorites."""
     if not re.fullmatch(r"[\w]+", uid) or not re.fullmatch(r"[\w]+", post_id):
@@ -738,12 +721,10 @@ async def api_delete_post(uid: str, post_id: str):
         await asyncio.to_thread(shutil.rmtree, dest)
     await asyncio.to_thread(shutil.move, str(post_dir), str(dest))
 
-    # Remove from in-memory index and mtime cache
+    # Remove from in-memory index and fingerprint cache
     global posts_index
-    posts_index = [
-        p for p in posts_index if not (p["uid"] == uid and p["id"] == post_id)
-    ]
-    _post_mtimes.pop(f"{uid}_{post_id}", None)
+    posts_index = [p for p in posts_index if not (p["uid"] == uid and p["id"] == post_id)]
+    _post_fingerprints.pop(f"{uid}_{post_id}", None)
 
     # Remove from favorites if present
     async with _fav_store.lock:

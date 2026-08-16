@@ -11,9 +11,7 @@ def setup_cors(app: FastAPI) -> None:
     )
 
 
-def add_cache_headers_middleware(
-    app: FastAPI, max_age: int, immutable: bool = False
-) -> None:
+def add_cache_headers_middleware(app: FastAPI, max_age: int, immutable: bool = False) -> None:
     """为 /media/ 响应添加 Cache-Control。"""
     value = f"public, max-age={max_age}"
     if immutable:

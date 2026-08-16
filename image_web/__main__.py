@@ -26,10 +26,9 @@ def main(argv: list[str] | None = None) -> int:
         choices=sorted(PROVIDERS),
         help="要启动的站点 provider",
     )
-    parser.add_argument("--host", default="0.0.0.0", help="监听地址 (默认 0.0.0.0)")
-    parser.add_argument(
-        "--port", type=int, default=None, help="监听端口 (默认取 provider 默认值)"
-    )
+    # 0.0.0.0 为远程开发约定（AGENTS.md §9），默认对所有网卡监听。
+    parser.add_argument("--host", default="0.0.0.0", help="监听地址 (默认 0.0.0.0)")  # noqa: S104
+    parser.add_argument("--port", type=int, default=None, help="监听端口 (默认取 provider 默认值)")
     parser.add_argument("--reload", action="store_true", help="开发模式热重载")
     args = parser.parse_args(argv)
 

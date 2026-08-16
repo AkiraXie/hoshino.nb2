@@ -20,9 +20,7 @@ def mount_frontend(app: FastAPI, dist_dir: Path) -> None:
     @app.get("/{path:path}")
     async def serve_spa(path: str):
         if not dist_dir.is_dir():
-            raise HTTPException(
-                404, "Frontend not built. Run: cd frontend && npm run build"
-            )
+            raise HTTPException(404, "Frontend not built. Run: cd frontend && npm run build")
         if ".." in path:
             raise HTTPException(400)
         file = (dist_dir / path).resolve()
