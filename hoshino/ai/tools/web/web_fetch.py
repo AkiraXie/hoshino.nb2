@@ -32,18 +32,18 @@ _ALLOWED_SCHEMES = ("http", "https")
 async def fetch_url_to_markdown(
     url: str,
     *,
-    verify_ssl: bool = False,
+    verify_ssl: bool = True,
     max_chars: int = _MAX_CHARS,
 ) -> str:
     """抓取网页正文转 markdown（供 web_fetch 工具与 zssm 插件复用）。
 
-    ``verify_ssl``：HTTPS 证书校验开关（默认 False，与仓库其它下载路径一致）；
-    SSRF 防护（拒绝私有/回环/保留地址）内建于本函数。
+    ``verify_ssl``：HTTPS 证书校验开关（默认校验）；SSRF 防护（拒绝私有/回环/
+    保留地址）内建于本函数。
     """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
         return "仅支持 http/https 网址。"
-    if is_private_host(parsed.hostname):
+    if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
     headers = {"Accept": "text/markdown, text/html;q=0.9, */*;q=0.8"}
@@ -59,9 +59,7 @@ async def fetch_url_to_markdown(
         except (httpx.HTTPError, ValueError) as exc:
             return f"抓取失败（{type(exc).__name__}）。"
 
-    content_type = (
-        response.headers.get("content-type", "").split(";")[0].strip().lower()
-    )
+    content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
     text = response.text
     if content_type in ("text/markdown", "text/x-markdown"):
         content = text
@@ -81,9 +79,7 @@ async def web_fetch(ctx: RunContext[AgentDeps], url: str) -> str:
     仅当你已经知道某个具体网址、需要它的全文时才用；只是想了解信息请优先用
     duckduckgo_search。禁止访问私有/内网地址。
     """
-    return await fetch_url_to_markdown(
-        url, verify_ssl=ctx.deps.config.web_fetch_verify_ssl
-    )
+    return await fetch_url_to_markdown(url, verify_ssl=ctx.deps.config.web_fetch_verify_ssl)
 
 
 # markdownify 缺失时置 None：注册表据此跳过注入（与其它可选依赖工具一致）。

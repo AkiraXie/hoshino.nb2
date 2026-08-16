@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 
 
-def is_private_host(host: str) -> bool:
-    """解析 host 是否指向私有/回环/保留地址；解析失败按私有处理（拒绝）。"""
+async def is_private_host(host: str) -> bool:
+    """解析 host 是否指向私有/回环/保留地址；解析失败按私有处理（拒绝）。
+
+    DNS 解析（``socket.getaddrinfo``）是阻塞调用，放线程池执行，避免卡住事件循环。
+    """
     try:
-        infos = socket.getaddrinfo(host, None)
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
         ip = infos[0][4][0] if infos else None
     except OSError:
         return True

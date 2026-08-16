@@ -91,11 +91,7 @@ def get_skill(name: str) -> SkillInfo | None:
 
 def list_enabled(scope_key: str) -> list[SkillInfo]:
     """返回当前 scope 已启用的技能（无行默认启用）。"""
-    return [
-        skill
-        for skill in list_skills()
-        if store.get_skill_enabled(scope_key, skill.name)
-    ]
+    return [skill for skill in list_skills() if store.get_skill_enabled(scope_key, skill.name)]
 
 
 def set_enabled(scope_key: str, name: str, enabled: bool) -> bool:

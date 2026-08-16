@@ -76,9 +76,7 @@ class AITask(ai_store.Base):
     output_json: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[float] = mapped_column(Float, nullable=False, default=_now)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=_now)
-    completed_at: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None
-    )
+    completed_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
 
 
 class AITaskRun(ai_store.Base):
@@ -98,9 +96,7 @@ class AITaskRun(ai_store.Base):
     next_retry_at: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     last_error: Mapped[str] = mapped_column(Text, nullable=False, default="")
     started_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
-    finished_at: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None
-    )
+    finished_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
 
 
 class AITaskApproval(ai_store.Base):
@@ -120,9 +116,7 @@ class AITaskApproval(ai_store.Base):
     creator_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[float] = mapped_column(Float, nullable=False, default=_now)
     expires_at: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    resolved_at: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None
-    )
+    resolved_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
 
 
 class AITaskEvent(ai_store.Base):
@@ -158,9 +152,7 @@ class AIScopeTaskPolicy(ai_store.Base):
     __tablename__ = "ai_scope_task_policies"
 
     scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
-    creation_policy: Mapped[str] = mapped_column(
-        Text, nullable=False, default="superuser"
-    )
+    creation_policy: Mapped[str] = mapped_column(Text, nullable=False, default="superuser")
     max_concurrent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_by: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=_now)
@@ -270,9 +262,7 @@ def create_task(
         )
         session.add_all([task, run])
         session.add(
-            AITaskCapabilitySnapshot(
-                task_id=task_id, snapshot_json=snapshot_json, created_at=now
-            )
+            AITaskCapabilitySnapshot(task_id=task_id, snapshot_json=snapshot_json, created_at=now)
         )
         for ev in event_payloads:
             session.add(
@@ -386,11 +376,7 @@ def request_cancel(task_id: str, cancelled_by: str) -> bool:
         row.failure_reason = "cancelled"
         row.updated_at = _now()
         row.completed_at = _now()
-        run = (
-            session.execute(select(AITaskRun).where(AITaskRun.task_id == task_id))
-            .scalars()
-            .all()
-        )
+        run = session.execute(select(AITaskRun).where(AITaskRun.task_id == task_id)).scalars().all()
         for r in run:
             if r.state not in ("succeeded", "failed", "cancelled"):
                 r.state = "cancelled"
@@ -431,9 +417,7 @@ def get_task_run(task_run_id: str) -> dict[str, Any] | None:
 def get_task_run_for_task(task_id: str) -> dict[str, Any] | None:
     with ai_store.Session() as session:
         stmt = (
-            select(AITaskRun)
-            .where(AITaskRun.task_id == task_id)
-            .order_by(AITaskRun.attempt.desc())
+            select(AITaskRun).where(AITaskRun.task_id == task_id).order_by(AITaskRun.attempt.desc())
         )
         row = session.execute(stmt).scalars().first()
         return _run_to_dict(row) if row is not None else None
@@ -535,9 +519,7 @@ def mark_interrupted_expired(now: float | None = None) -> int:
     """启动恢复：把 lease 过期的 running 标记为 interrupted。"""
     now = now or _now()
     with ai_store.Session() as session:
-        stmt = select(AITaskRun).where(
-            AITaskRun.state == "running", AITaskRun.lease_expiry < now
-        )
+        stmt = select(AITaskRun).where(AITaskRun.state == "running", AITaskRun.lease_expiry < now)
         rows = session.execute(stmt).scalars().all()
         for row in rows:
             row.state = "interrupted"
@@ -591,9 +573,7 @@ def create_next_attempt(task_id: str) -> dict[str, Any] | None:
         if prev is not None:
             try:
                 prev_ctx = json.loads(prev.context_json or "{}")
-                conversation_id = (
-                    prev_ctx.get("conversation_id") or prev.conversation_id
-                )
+                conversation_id = prev_ctx.get("conversation_id") or prev.conversation_id
             except (ValueError, TypeError):
                 conversation_id = prev.conversation_id
         run = AITaskRun(
@@ -808,9 +788,7 @@ def outbox_enqueue(
 def outbox_next_sequence(task_id: str) -> int:
     """返回该 task 下一个 outbox 序号（幂等键 (task_id, event_type, sequence)）。"""
     with ai_store.Session() as session:
-        stmt = select(func.max(AITaskOutbox.sequence)).where(
-            AITaskOutbox.task_id == task_id
-        )
+        stmt = select(func.max(AITaskOutbox.sequence)).where(AITaskOutbox.task_id == task_id)
         return (session.execute(stmt).scalar() or 0) + 1
 
 
@@ -865,9 +843,7 @@ def outbox_mark_retry(
                 row.next_retry_at = float("inf")
             else:
                 row.last_error = error
-                row.next_retry_at = (
-                    next_retry_at if next_retry_at is not None else _now() + 60.0
-                )
+                row.next_retry_at = next_retry_at if next_retry_at is not None else _now() + 60.0
         session.commit()
 
 
@@ -948,9 +924,7 @@ def get_workspace(scope_key: str, name: str) -> dict[str, Any] | None:
         return _ws_to_dict(row) if row is not None else None
 
 
-def add_workspace(
-    scope_key: str, name: str, root: str, mode: str, updated_by: str = ""
-) -> str:
+def add_workspace(scope_key: str, name: str, root: str, mode: str, updated_by: str = "") -> str:
     """新增 workspace；返回状态文案（空表示成功）。重复名返回提示。"""
     with ai_store.Session() as session:
         existing = (
@@ -1009,9 +983,7 @@ def set_default_workspace(scope_key: str, name: str) -> bool:
             return False
         for other in (
             session.execute(
-                select(AIScopeTaskWorkspace).where(
-                    AIScopeTaskWorkspace.scope_key == scope_key
-                )
+                select(AIScopeTaskWorkspace).where(AIScopeTaskWorkspace.scope_key == scope_key)
             )
             .scalars()
             .all()

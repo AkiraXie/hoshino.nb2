@@ -9,11 +9,11 @@ system_prompt：persona 与工具都通过动态注入解析，不随 scope/绑�
 from __future__ import annotations
 
 import asyncio
-
-from loguru import logger
+import contextlib
 from typing import Any
 
 import httpx
+from loguru import logger
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
@@ -34,6 +34,16 @@ from .tools import approval_required, build_tool_instructions, resolve_tools
 _agent_cache: dict[tuple[Any, ...], Agent] = {}
 # build_model 创建的 http client，供 clear_agent_cache 关闭，避免泄漏。
 _http_clients: list[httpx.AsyncClient] = []
+# 子请求 model 缓存（vision / zssm）注册到这里：它们与 Agent 共用 build_model
+# 创建的 http client，clear_agent_cache 关闭 client 后必须一并清空，否则缓存仍
+# 指向已关闭的 client，provider 变更后看图 / zssm 请求失败直至重启。
+_model_caches: list[dict] = []
+
+
+def register_model_cache(cache: dict) -> None:
+    """注册一个 model 实例缓存；``clear_agent_cache`` 时统一清空（幂等）。"""
+    if cache not in _model_caches:
+        _model_caches.append(cache)
 
 
 def _httpx_proxy(proxy: str | None) -> str | None:
@@ -70,9 +80,7 @@ def build_model_settings(record: ProviderRecord) -> ModelSettings | None:
     return ModelSettings(**settings) if settings else None
 
 
-def build_model(
-    provider: ProviderRecord, model: str, *, proxy: str | None = None
-) -> Any:
+def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = None) -> Any:
     """按 provider.kind 与显式 model 名构建 pydantic-ai model。"""
     if not model:
         raise ValueError("provider 未配置 model")
@@ -81,23 +89,17 @@ def build_model(
     if provider.kind == "openai_chat":
         return OpenAIChatModel(
             model,
-            provider=OpenAIProvider(
-                api_key=provider.key, base_url=url, http_client=http_client
-            ),
+            provider=OpenAIProvider(api_key=provider.key, base_url=url, http_client=http_client),
         )
     if provider.kind == "openai_responses":
         return OpenAIResponsesModel(
             model,
-            provider=OpenAIProvider(
-                api_key=provider.key, base_url=url, http_client=http_client
-            ),
+            provider=OpenAIProvider(api_key=provider.key, base_url=url, http_client=http_client),
         )
     if provider.kind == "anthropic":
         return AnthropicModel(
             model,
-            provider=AnthropicProvider(
-                api_key=provider.key, base_url=url, http_client=http_client
-            ),
+            provider=AnthropicProvider(api_key=provider.key, base_url=url, http_client=http_client),
         )
     raise ValueError(f"未知 provider kind: {provider.kind}")
 
@@ -123,9 +125,7 @@ async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
             await _persona_variables(ctx),
             scope_key=ctx.deps.scope_key,
         )
-        dialogs_prompt = prompts.build_dialogs_prompt(
-            persona.resolve_dialogs(ctx.deps.scope_key)
-        )
+        dialogs_prompt = prompts.build_dialogs_prompt(persona.resolve_dialogs(ctx.deps.scope_key))
     style = f"{OUTPUT_STYLE_HEADER}{prompts.OUTPUT_STYLE_RULES}"
     if dialogs_prompt:
         return f"{base}\n\n{dialogs_prompt}{style}"
@@ -134,7 +134,7 @@ async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
 
 async def _persona_variables(ctx: RunContext[AgentDeps]) -> dict[str, str]:
     """构造 persona 模板变量：内置 + 尽力解析群名/发消息人昵称。"""
-    variables = persona._builtin_variables(ctx.deps.scope_key)
+    variables = persona.builtin_variables(ctx.deps.scope_key)
     event = getattr(ctx.deps, "event", None)
     if event is None:
         return variables
@@ -150,7 +150,7 @@ async def _persona_variables(ctx: RunContext[AgentDeps]) -> dict[str, str]:
             if member is not None and getattr(member, "user_name", None):
                 variables["user_name"] = str(member.user_name)
     except Exception:
-        pass  # 群名/昵称解析失败 → 保留空串，不阻塞主流程
+        logger.debug("AI 群名/昵称解析失败，保留空串，不阻塞主流程", exc_info=True)
     return variables
 
 
@@ -233,11 +233,17 @@ def build_agent(
 
 
 def clear_agent_cache() -> None:
-    """清空 Agent 缓存并关闭已创建的 http client（配置变更或测试时使用）。"""
+    """清空 Agent / model 缓存并关闭已创建的 http client（配置变更或测试时使用）。
+
+    ``_model_caches`` 覆盖 vision / zssm 等子请求 model 缓存：它们与 Agent 共用
+    build_model 的 http client，client 关闭后必须同步失效，否则后续请求
+    “Cannot send a request, as the client has been closed” 直到重启。
+    """
     _agent_cache.clear()
+    for cache in _model_caches:
+        cache.clear()
     clients, _http_clients[:] = _http_clients, []
     for client in clients:
-        try:
+        # 无事件循环（脚本/部分测试）时忽略，交由 GC 处理。
+        with contextlib.suppress(RuntimeError):
             asyncio.get_running_loop().create_task(client.aclose())
-        except RuntimeError:
-            pass  # 无事件循环（脚本/部分测试），交由 GC 处理

@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import traceback
 from collections.abc import Callable
@@ -32,6 +33,29 @@ from nonebot_plugin_alconna.uniseg import UniMessage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
+from hoshino.ai import (
+    context,
+    deps,
+    errors,
+    goal,
+    hooks,
+    metrics,
+    provider,
+    providers,
+    rendering,
+    runner,
+    sessions,
+    vision,
+)
+from hoshino.ai import (
+    media as ai_media,
+)
+from hoshino.ai.base import (
+    get_config,
+    provider_error_message,
+    resolve_provider,
+)
+from hoshino.core.service import Service
 from hoshino.platform import (
     event_scope_key,
     get_event_message,
@@ -43,28 +67,6 @@ from hoshino.platform import (
     send_to_event,
     to_unimessage,
 )
-
-from hoshino.ai import (
-    context,
-    deps,
-    errors,
-    goal,
-    hooks,
-    media as ai_media,
-    metrics,
-    provider,
-    providers,
-    rendering,
-    runner,
-    sessions,
-    vision,
-)
-from hoshino.ai.base import (
-    get_config,
-    provider_error_message,
-    resolve_provider,
-)
-from hoshino.core.service import Service
 from hoshino.util.media import get_event_media_segments
 
 # aichat 服务仅属于聊天插件（# 触发）：默认关闭，按 scope 启用后才应答。
@@ -169,9 +171,7 @@ async def _handle_control(
         conv = manager.switch(scope_key, arg or "")
         if conv is None:
             names = "、".join(s["name"] for s in manager.list_summaries(scope_key))
-            await send_to_event(
-                bot, event, f"对话 `{arg}` 不存在。可用：{names or '（无）'}"
-            )
+            await send_to_event(bot, event, f"对话 `{arg}` 不存在。可用：{names or '（无）'}")
             return
         await send_to_event(bot, event, f"已切换到对话 `{conv.name}`。")
         return
@@ -222,11 +222,7 @@ _GOAL_PHASE_LABEL = {
 
 def _format_goal(g) -> str:
     phase = _GOAL_PHASE_LABEL.get(g.phase, g.phase)
-    rounds = (
-        f"{g.completed_rounds}/{g.max_rounds}"
-        if g.max_rounds
-        else str(g.completed_rounds)
-    )
+    rounds = f"{g.completed_rounds}/{g.max_rounds}" if g.max_rounds else str(g.completed_rounds)
     lines = [f"目标（{phase}）：{g.objective}", f"轮次：{rounds}"]
     if g.blocked_reason:
         lines.append(f"阻塞原因：{g.blocked_reason}")
@@ -241,9 +237,7 @@ async def _handle_goal(
     if action == "goal_view":
         current = service.get(scope_key)
         if current is None:
-            await send_to_event(
-                bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。"
-            )
+            await send_to_event(bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。")
         else:
             await send_to_event(bot, event, _format_goal(current))
         return
@@ -291,14 +285,10 @@ async def _goal_transition(bot: Bot, event: Event, scope_key: str, action: str) 
     service = goal.GoalService()
     current = service.get(scope_key)
     if current is None:
-        await send_to_event(
-            bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。"
-        )
+        await send_to_event(bot, event, "当前没有目标，用 `#goal set <目标>` 创建一个。")
         return
     try:
-        updated = service.update(
-            scope_key, goal.GoalRef(scope_key, current.revision), action
-        )
+        updated = service.update(scope_key, goal.GoalRef(scope_key, current.revision), action)
     except (goal.GoalConflict, ValueError) as exc:
         await send_to_event(bot, event, str(exc))
         return
@@ -326,9 +316,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         return
     text_model, vision_model = provider.resolve_models(scope_key, provider_id)
     if not text_model:
-        await send_to_event(
-            bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。"
-        )
+        await send_to_event(bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。")
         return
 
     # 图片识别：vision 模型"看"图产出文字描述 → 交给默认 text 模型作答。
@@ -336,7 +324,8 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     images = await _event_images(bot, event)
     no_vision_mask = bool(images and not vision_model)
     if images and vision_model:
-        image_content = ai_media.image_segments_to_content(images)
+        # 段转换含本地文件读取（最多 15MB），放线程池执行，避免阻塞事件循环。
+        image_content = await asyncio.to_thread(ai_media.image_segments_to_content, images)
         if image_content:
             try:
                 description = await vision.describe_images(
@@ -446,9 +435,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
             f"AI 请求失败 traceback provider={provider_id} scope={scope_key} "
             f"conv={conv.name}\n{traceback.format_exc()}"
         )
-        await send_to_event(
-            bot, event, f"AI 请求失败（{type(exc).__name__}），请稍后再试。"
-        )
+        await send_to_event(bot, event, f"AI 请求失败（{type(exc).__name__}），请稍后再试。")
         return
     if result is None:
         return
@@ -474,10 +461,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     raw = rendering.strip_trailing_summary(raw)
     if no_vision_mask:
         # 含图但未配置 vision 模型（或描述失败）：回复开头提示本次未看图。
-        raw = (
-            "（目前未配置 vision 模型，图片暂无法识别，请用文字描述图片内容。）\n\n"
-            + raw
-        )
+        raw = "（目前未配置 vision 模型，图片暂无法识别，请用文字描述图片内容。）\n\n" + raw
     sv.logger.info(
         f"AI 回复 provider={provider_id} scope={scope_key} conv={conv.name} "
         f"model={model_name} 字数={len(raw)} "
@@ -526,10 +510,8 @@ def _message_text(message) -> str:
     """提取消息对象的纯文本（duck-typed：优先 extract_plain_text）。"""
     extract = getattr(message, "extract_plain_text", None)
     if callable(extract):
-        try:
+        with contextlib.suppress(Exception):
             return str(extract())
-        except Exception:
-            pass
     return str(message)
 
 
@@ -560,9 +542,7 @@ async def _event_images(bot: Bot, event: Event) -> list:
         return []
 
 
-async def _send_result(
-    bot: Bot, event: Event, raw: str, config, provider_id: str
-) -> None:
+async def _send_result(bot: Bot, event: Event, raw: str, config, provider_id: str) -> None:
     """先渲染 Markdown 为图片，失败回退纯文本。"""
     try:
         png = await asyncio.wait_for(

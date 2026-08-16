@@ -50,9 +50,7 @@ def format_exception_detail(exc: BaseException, limit: int = _DEFAULT_LIMIT) -> 
         children = list(getattr(exc, "exceptions", []) or [])
         if children:
             return _truncate(
-                "; ".join(
-                    format_exception_detail(child, limit=limit) for child in children
-                ),
+                "; ".join(format_exception_detail(child, limit=limit) for child in children),
                 limit,
             )
 

@@ -20,20 +20,25 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 try:
     from pydantic_ai_harness.planning import (
         InMemoryPlanStore,
         PlanStore,
-        Planning as _HarnessPlanning,
         SqlitePlanStore,
     )
-    from pydantic_ai_harness.step_persistence import (
-        InMemoryStepStore,
-        StepPersistence as _HarnessStepPersistence,
+    from pydantic_ai_harness.planning import (
+        Planning as _HarnessPlanning,
     )
     from pydantic_ai_harness.skills import Skills as _HarnessSkills
+    from pydantic_ai_harness.step_persistence import (
+        InMemoryStepStore,
+    )
+    from pydantic_ai_harness.step_persistence import (
+        StepPersistence as _HarnessStepPersistence,
+    )
 
     _HARNESS_AVAILABLE = True
 except ImportError:  # pragma: no cover - 降级路径，按 __all__ 之外不可达

@@ -25,18 +25,6 @@ from __future__ import annotations
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_alconna.uniseg import Target
 
-from hoshino.core.permission import SUPERUSER
-from hoshino.platform import (
-    event_scope_key,
-    get_group_id,
-    get_user_id,
-    group_scope_key,
-    platform_key,
-    send_to_event,
-)
-from hoshino.platform.depends import ParamText
-from hoshino.platform.superuser import is_superuser
-
 from hoshino.ai import (
     deps,
     metrics,
@@ -50,7 +38,18 @@ from hoshino.ai import (
 from hoshino.ai.base import get_config
 from hoshino.ai.config import mask_url, write_ai_config_env
 from hoshino.ai.provider import ProviderRecord
+from hoshino.core.permission import SUPERUSER
 from hoshino.core.service import Service
+from hoshino.platform import (
+    event_scope_key,
+    get_group_id,
+    get_user_id,
+    group_scope_key,
+    platform_key,
+    send_to_event,
+)
+from hoshino.platform.depends import ParamText
+from hoshino.platform.superuser import is_superuser
 
 # ai_admin 服务：管理命令（ai / ai task）统一挂此服务，默认开启（仅 SUPERUSER 可用）。
 sv = Service("ai_admin", enable_on_default=True, visible=False)
@@ -232,9 +231,7 @@ async def _provider_status(bot: Bot, event: Event) -> None:
     scope_key = event_scope_key(bot, event)
     bound = store.get_scope_provider(scope_key) if scope_key else None
     lines = [
-        f"全局默认 provider：`{config.default}`"
-        if config.default
-        else "全局默认 provider：未设置",
+        f"全局默认 provider：`{config.default}`" if config.default else "全局默认 provider：未设置",
         f"本群绑定：`{bound}`" if bound else "本群绑定：无（回退全局默认）",
         "设本群：ai provider set <id>；设全局默认：ai provider default <id>",
         "看已配置：ai provider list；看模型：ai model list",
@@ -339,18 +336,14 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
     gid = get_group_id(event)
     if gid is not None:
         scope_key = group_scope_key(gid, platform=platform_key(bot))
-        store.set_scope_provider(
-            scope_key, pid, updated_by=str(get_user_id(event) or "")
-        )
+        store.set_scope_provider(scope_key, pid, updated_by=str(get_user_id(event) or ""))
         lines.append("已绑定当前群。")
     if opts.get("text"):
         lines.append(f"文本模型：`{opts['text']}`。")
     if opts.get("vision"):
         lines.append(f"视觉模型：`{opts['vision']}`（可看图）。")
     else:
-        lines.append(
-            "视觉模型未设置：看图需配置 vision 模型，可 `ai model set vision <模型>`。"
-        )
+        lines.append("视觉模型未设置：看图需配置 vision 模型，可 `ai model set vision <模型>`。")
     lines.append("用 `ai status` 查看生效配置。")
     await send_to_event(bot, event, "\n".join(lines))
 
@@ -364,9 +357,7 @@ async def _provider_remove(bot: Bot, event: Event, args: list[str], config) -> N
         return
     pid = args[0]
     if pid == config.default:
-        await send_to_event(
-            bot, event, "当前默认 provider 不允许直接删除，请先修改 default。"
-        )
+        await send_to_event(bot, event, "当前默认 provider 不允许直接删除，请先修改 default。")
         return
     if not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
@@ -434,9 +425,7 @@ async def _model_status(bot: Bot, event: Event) -> None:
         "本群覆盖"
         if overrides["vision_model"]
         else (
-            "显式禁用"
-            if overrides["vision_model"] == provider.VISION_DISABLED
-            else "provider 默认"
+            "显式禁用" if overrides["vision_model"] == provider.VISION_DISABLED else "provider 默认"
         )
     )
     lines = [
@@ -533,14 +522,8 @@ async def _model_set(bot: Bot, event: Event, scope_key: str, args: list[str]) ->
     else:
         warning = "（无法连接 provider 校验，已直接设置）"
 
-    store.set_scope_model_override(
-        scope_key, slot, model, updated_by=str(get_user_id(event) or "")
-    )
-    note = (
-        "（vision 模型需真正支持多模态，若识别失败请换模型）"
-        if slot == "vision"
-        else ""
-    )
+    store.set_scope_model_override(scope_key, slot, model, updated_by=str(get_user_id(event) or ""))
+    note = "（vision 模型需真正支持多模态，若识别失败请换模型）" if slot == "vision" else ""
     await _echo_models(bot, event, scope_key, pid, warning + note)
 
 
@@ -556,11 +539,7 @@ async def _model_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) 
             bot, event, "本群当前没有模型覆盖。" if slot is None else "该槽位没有覆盖。"
         )
         return
-    label = (
-        "纯文本模型"
-        if slot == "text"
-        else ("多模态模型" if slot == "vision" else "模型")
-    )
+    label = "纯文本模型" if slot == "text" else ("多模态模型" if slot == "vision" else "模型")
     config = get_config()
     pid = await _scope_provider_id(scope_key, config)
     if pid is not None:
@@ -571,9 +550,7 @@ async def _model_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) 
         await send_to_event(bot, event, f"已清除本群{label}覆盖。")
 
 
-async def _echo_models(
-    bot: Bot, event: Event, scope_key: str, pid: str, extra: str = ""
-) -> None:
+async def _echo_models(bot: Bot, event: Event, scope_key: str, pid: str, extra: str = "") -> None:
     """设置/重置后回显当前两个生效模型（含操作提示）。"""
     text_model, vision_model = provider.resolve_models(scope_key, pid)
     await send_to_event(
@@ -635,9 +612,7 @@ async def _handle_clear(bot: Bot, event: Event, args: list[str]) -> None:
             await send_to_event(bot, event, "无法解析当前会话 scope。")
             return
         cleared = manager.clear_active(scope_key)
-    await send_to_event(
-        bot, event, "已清理会话历史。" if cleared else "没有可清理的会话历史。"
-    )
+    await send_to_event(bot, event, "已清理会话历史。" if cleared else "没有可清理的会话历史。")
 
 
 async def _handle_contexts(bot: Bot, event: Event, args: list[str]) -> None:
@@ -717,8 +692,9 @@ async def _tools_list(bot: Bot, event: Event, args: list[str]) -> None:
         by_category.setdefault(tools.tool_category(tool), []).append(_tool_name(tool))
 
     lines = [f"{where}{surface_hint}可用工具："]
-    for category in sorted(by_category):
-        lines.append(f"  · {category}：{'、'.join(by_category[category])}")
+    lines.extend(
+        f"  · {category}：{'、'.join(by_category[category])}" for category in sorted(by_category)
+    )
     await send_to_event(bot, event, "\n".join(lines))
 
 
@@ -741,9 +717,7 @@ async def _tools_set(bot: Bot, event: Event, enabled: bool, args: list[str]) -> 
         scope_key = rest[0]
     valid = {"core", "computer", "bot", "web", "skill"}
     if category not in valid:
-        await send_to_event(
-            bot, event, "类别必须是：core / computer / bot / web / skill。"
-        )
+        await send_to_event(bot, event, "类别必须是：core / computer / bot / web / skill。")
         return
     if scope_key is None:
         scope_key = event_scope_key(bot, event)
@@ -778,10 +752,7 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
         if not rows:
             await send_to_event(bot, event, "暂无 persona。")
             return
-        lines = [
-            f"- {row['name']}：{row['description'] or row['prompt'][:40]}"
-            for row in rows
-        ]
+        lines = [f"- {row['name']}：{row['description'] or row['prompt'][:40]}" for row in rows]
         await send_to_event(bot, event, "\n".join(lines))
         return
 
@@ -816,9 +787,7 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
                 await send_to_event(bot, event, "无法解析当前 scope。")
                 return
             if persona.bind_scope(scope_key, rest[0], updated_by=user):
-                await send_to_event(
-                    bot, event, f"已绑定当前会话为 persona `{rest[0]}`。"
-                )
+                await send_to_event(bot, event, f"已绑定当前会话为 persona `{rest[0]}`。")
             else:
                 await send_to_event(bot, event, f"persona `{rest[0]}` 不存在。")
         else:
@@ -826,9 +795,7 @@ async def _handle_persona(bot: Bot, event: Event, args: list[str]) -> None:
                 await send_to_event(bot, event, "无法解析当前 scope。")
                 return
             if persona.clear_scope(scope_key):
-                await send_to_event(
-                    bot, event, "已解除当前会话的 persona 绑定，回退默认。"
-                )
+                await send_to_event(bot, event, "已解除当前会话的 persona 绑定，回退默认。")
             else:
                 await send_to_event(bot, event, "当前会话没有绑定 persona。")
         return

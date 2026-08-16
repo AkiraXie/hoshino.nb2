@@ -54,10 +54,9 @@ class AIConfig:
     # 工具调用失败重试预算（pydantic-ai 默认 1）。web_fetch 等抓取工具偶发失败
     # 会触发 "exceeded max retries" 直接杀掉整轮 run，调高以容错。
     tool_max_retries: int = 3
-    # web_fetch 抓取网页时的 HTTPS 证书校验开关。默认 False：与仓库其它下载路径
-    # （hoshino/util/playwrights.py 已全局 ssl._create_unverified_context）一致，
-    # 避免本环境证书链不完整导致抓取失败；可信环境可改为 True。
-    web_fetch_verify_ssl: bool = False
+    # web_fetch 抓取网页时的 HTTPS 证书校验开关。默认校验；个别证书异常的
+    # 站点/代理环境可改为 False 关闭校验以恢复可用。
+    web_fetch_verify_ssl: bool = True
     # Markdown 渲染清晰度：Playwright 截图 device scale factor（2.0 = 2x）。
     render_device_scale: float = 2.0
     # 渲染时是否启用彩色 emoji 字体（部分系统无 emoji 字体时关掉可避免方框）。
@@ -112,8 +111,8 @@ def _coerce(field_type, raw: str):
 def _iter_env_file(path: str):
     try:
         with open(path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
+            for raw_line in fh:
+                line = raw_line.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, _, value = line.partition("=")
@@ -130,14 +129,11 @@ def load_ai_config_from_env(
 
     未配置的字段用 AIConfig 代码默认值；空值视为未设置。
     """
-    values: dict[str, str] = {}
-    for key, value in _iter_env_file(env_file):
-        if key.startswith(AI_ENV_PREFIX):
-            values[key] = value
+    values: dict[str, str] = {
+        key: value for key, value in _iter_env_file(env_file) if key.startswith(AI_ENV_PREFIX)
+    }
     source = env if env is not None else os.environ
-    for key, value in source.items():
-        if key.startswith(AI_ENV_PREFIX):
-            values[key] = value
+    values.update({key: value for key, value in source.items() if key.startswith(AI_ENV_PREFIX)})
 
     kwargs: dict = {}
     for field in fields(AIConfig):

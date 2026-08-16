@@ -47,15 +47,10 @@ class RunEvent:
 class RunLog:
     """一次 turn 的进程内观测收集（可观测/审计，非持久化对象）。
 
-    ``run_agent`` 在迭代图节点时填充 steps / step_at / tool_calls / nodes；
+    ``run_agent`` 在迭代图节点时填充 steps / step_at / tool_calls；
     started_at 在首次进入时设置（跨 retry 尝试不重置），ended_at / reason 在
     退出或异常时设置。``reason`` 取值：completed | error | timeout |
     max-requests | aborted。
-
-    ``nodes`` 是节点级轨迹（观测日志用）：按执行顺序记录
-    ``{type: model_request|tools|end, ts, detail}``。model_request 的 detail
-    为上一动作摘要（用户提问 / 工具结果 / 重试）；tools 的 detail 为
-    ``{calls, introspection}``（脱敏参数 + 模型思考/中间文本摘要）。
     """
 
     started_at: float = 0.0
@@ -64,7 +59,6 @@ class RunLog:
     step_at: list[float] = field(default_factory=list)  # 每个 model request 完成时刻
     tool_calls: list[dict] = field(default_factory=list)  # {name, args_summary}
     reason: str = ""
-    nodes: list[dict] = field(default_factory=list)
 
 
 def summarize_content(content: Any, limit: int = 200) -> str:
@@ -99,18 +93,12 @@ def _last_message_summary(state: Any) -> str:
     for part in getattr(history[-1], "parts", None) or []:
         name = type(part).__name__
         if name == "UserPromptPart":
-            pieces.append(
-                f"user: {summarize_content(getattr(part, 'content', None), 120)}"
-            )
+            pieces.append(f"user: {summarize_content(getattr(part, 'content', None), 120)}")
         elif name == "ToolReturnPart":
             tool = getattr(part, "tool_name", "")
-            pieces.append(
-                f"tool {tool} → {summarize_content(getattr(part, 'content', None), 160)}"
-            )
+            pieces.append(f"tool {tool} → {summarize_content(getattr(part, 'content', None), 160)}")
         elif name == "RetryPromptPart":
-            pieces.append(
-                f"retry: {summarize_content(getattr(part, 'content', None), 120)}"
-            )
+            pieces.append(f"retry: {summarize_content(getattr(part, 'content', None), 120)}")
     return " ｜ ".join(pieces)
 
 
@@ -140,7 +128,7 @@ def redact_args(args: Any) -> str:
     if isinstance(args, dict):
         parts = []
         for key, value in args.items():
-            if isinstance(value, (str, bytes)):
+            if isinstance(value, str | bytes):
                 parts.append(f"{key}=<{len(value)}>")
             else:
                 parts.append(f"{key}={type(value).__name__}")
@@ -249,30 +237,8 @@ async def run_agent(
             if name == "ModelRequestNode":
                 run_log.steps += 1
                 run_log.step_at.append(now)
-                # GraphRunContext.state 可能缺失（测试替身），duck-typed 容错。
-                state = getattr(ctx, "state", None)
-                run_log.nodes.append(
-                    {
-                        "type": "model_request",
-                        "ts": now,
-                        "detail": _last_message_summary(state),
-                    }
-                )
             elif name == "CallToolsNode":
-                calls = tool_call_events_from_node(node)
-                run_log.tool_calls.extend(calls)
-                run_log.nodes.append(
-                    {
-                        "type": "tools",
-                        "ts": now,
-                        "detail": {
-                            "calls": calls,
-                            "introspection": _response_introspection(node),
-                        },
-                    }
-                )
-            elif name == "End":
-                run_log.nodes.append({"type": "end", "ts": now})
+                run_log.tool_calls.extend(tool_call_events_from_node(node))
         if on_event is not None:
             on_event(RunEvent(node=node, ctx=ctx))
 

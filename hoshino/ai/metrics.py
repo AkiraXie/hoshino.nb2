@@ -141,9 +141,7 @@ def format_model_stats(
     """
     lines = ["按模型统计："]
     for row in rows:
-        label = (
-            f"{row['provider_id']}/{row['model']}" if not provider_id else row["model"]
-        )
+        label = f"{row['provider_id']}/{row['model']}" if not provider_id else row["model"]
         cache = (
             f"缓存 read {row['cache_read_tokens']} / write "
             f"{row['cache_write_tokens']}（命中率 {row['cache_hit_ratio']:.1%}）"

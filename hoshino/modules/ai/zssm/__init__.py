@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 from typing import Any
@@ -86,18 +87,18 @@ _MAX_RESOURCES = 2  # 一次解释最多抓取的链接数
 _TIMEOUT_SECONDS = 60.0  # 单次解释请求超时
 
 # 解释用 model 实例缓存（key 含 provider 快照；http client 由
-# ``providers.clear_agent_cache`` 统一关闭）。
+# ``providers.clear_agent_cache`` 统一关闭）。注册到统一 model 缓存清单，
+# provider 变更后清缓存时一并清空，避免缓存仍指向已关闭的 client。
 _model_cache: dict[tuple[Any, ...], Any] = {}
+providers.register_model_cache(_model_cache)
 
 
 def _message_text(message) -> str:
     """提取消息对象纯文本（duck-typed：优先 extract_plain_text）。"""
     extract = getattr(message, "extract_plain_text", None)
     if callable(extract):
-        try:
+        with contextlib.suppress(Exception):
             return str(extract())
-        except Exception:
-            pass
     return str(message)
 
 
@@ -131,9 +132,7 @@ def _format_response(content: str) -> str:
     if isinstance(keywords, list):
         keyword_text = " | ".join(
             dict.fromkeys(
-                item.strip()
-                for item in keywords
-                if isinstance(item, str) and item.strip()
+                item.strip() for item in keywords if isinstance(item, str) and item.strip()
             )
         )
         if keyword_text:
@@ -173,9 +172,7 @@ async def _request_explain(
     return response.text or ""
 
 
-async def _send_result(
-    bot: Bot, event: Event, raw: str, config, *, as_text: bool
-) -> None:
+async def _send_result(bot: Bot, event: Event, raw: str, config, *, as_text: bool) -> None:
     """默认 Markdown 渲染为图片回复；渲染失败或 ``--text`` 时回退纯文本。"""
     if as_text:
         await send_to_event(bot, event, raw)
@@ -275,16 +272,13 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
     }
     user_prompt = json.dumps(payload, ensure_ascii=False)
     try:
-        raw = await _request_explain(
-            record, text_model, user_prompt, proxy=config.proxy
-        )
-    except asyncio.TimeoutError:
+        raw = await _request_explain(record, text_model, user_prompt, proxy=config.proxy)
+    except TimeoutError:
         await send_to_event(bot, event, "解释超时，请稍后重试。")
         return
     except Exception as exc:
         sv.logger.warning(
-            f"zssm 解释失败 provider={provider_id} model={text_model} "
-            f"error={type(exc).__name__}"
+            f"zssm 解释失败 provider={provider_id} model={text_model} error={type(exc).__name__}"
         )
         await send_to_event(bot, event, "解释失败，请稍后重试。")
         return

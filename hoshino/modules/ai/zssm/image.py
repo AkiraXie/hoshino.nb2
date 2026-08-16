@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from loguru import logger
 from nonebot.adapters import Bot, Event
 from nonebot_plugin_alconna.uniseg import Image as UniImage
@@ -73,7 +75,8 @@ async def _describe_one(
             vision_model=vision_model,
         )
     # 本地 path / raw 字节 / file:// 等：转 BinaryContent 直送 vision
-    content = ai_media.image_segments_to_content([segment])
+    # （本地文件读取为阻塞 I/O，放线程池执行，避免阻塞事件循环）
+    content = await asyncio.to_thread(ai_media.image_segments_to_content, [segment])
     if not content:
         return "图片解析失败（无法读取图片内容）。"
     try:
@@ -104,9 +107,7 @@ async def describe_event_images(
         raise ValueError("当前未配置多模态模型，无法识别图片内容。")
     parts: list[str] = []
     for index, segment in enumerate(images, start=1):
-        desc = await _describe_one(
-            segment, record=record, vision_model=vision_model, config=config
-        )
+        desc = await _describe_one(segment, record=record, vision_model=vision_model, config=config)
         if _is_error_text(desc):
             raise ValueError(desc)
         parts.append(f"图片{index}：{desc}")

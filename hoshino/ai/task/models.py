@@ -72,20 +72,17 @@ class TaskOutput(BaseModel):
     findings: list[Finding] = field(default_factory=list)
     sources: list[Source] = field(default_factory=list)
     plan: list[PlanStep] = field(default_factory=list)
-    unknowns: list[str] = field(default_factory=list)
     risks: list[str] = field(default_factory=list)
     next_steps: list[str] = field(default_factory=list)
 
     def render_markdown(self) -> str:
         """渲染为群消息 Markdown；仅摘要与受控字段。"""
         lines = [f"### {self.summary or '（无摘要）'}"]
-        for f in self.findings:
-            lines.append(f"- **{f.title}**：{f.detail}")
+        lines.extend(f"- **{f.title}**：{f.detail}" for f in self.findings)
         if self.sources:
             lines.append("")
             lines.append("来源：")
-            for s in self.sources:
-                lines.append(f"- [{s.title or s.url}]({s.url})")
+            lines.extend(f"- [{s.title or s.url}]({s.url})" for s in self.sources)
         if self.plan:
             lines.append("")
             lines.append("计划：")
@@ -172,7 +169,7 @@ class TaskContext:
         return data
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "TaskContext":
+    def from_json(cls, data: dict[str, Any]) -> TaskContext:
         profile = frozenset(tuple(pair) for pair in data.get("tool_profile", []))
         return cls(
             task_id=data.get("task_id", ""),

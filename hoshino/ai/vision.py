@@ -6,7 +6,8 @@
 
 只做一次直接 ``Model.request`` 子请求（不进入 Agent 图，避免嵌套 Agent.run）；
 描述请求不带任何工具，避免副作用。model 实例按 (provider, model, proxy) 缓存，
-http client 与 build_model 同源、由 ``clear_agent_cache`` 统一关闭。
+http client 与 build_model 同源，缓存注册到 ``providers`` 的统一 model 缓存清单，
+由 ``clear_agent_cache`` 一并清空并关闭 client。
 """
 
 from __future__ import annotations
@@ -57,6 +58,9 @@ def _vision_model(record: ProviderRecord, model: str, *, proxy: str | None) -> A
     if cached is None:
         cached = providers.build_model(record, model, proxy=proxy)
         _vision_model_cache[key] = cached
+        # 缓存与 Agent 共用 build_model 的 http client：注册到统一清单，
+        # clear_agent_cache 关闭 client 时一并清空（首次使用时注册，幂等）。
+        providers.register_model_cache(_vision_model_cache)
     return cached
 
 

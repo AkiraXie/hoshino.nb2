@@ -54,18 +54,13 @@ async def _status_text(ctx: RunContext[AgentDeps], pid: str) -> str:
     lines.append(f"视觉模型：`{vision_model or '（无，无法看图）'}`")
     models = await _available_models(ctx, pid)
     if models:
-        lines.append(
-            "该 provider 可用模型（API 实时获取）："
-            + "、".join(f"`{m}`" for m in models)
-        )
+        lines.append("该 provider 可用模型（API 实时获取）：" + "、".join(f"`{m}`" for m in models))
     else:
         lines.append("可用模型获取失败（网络或端点不支持）。")
     return "\n".join(lines)
 
 
-async def _validate_model(
-    ctx: RunContext[AgentDeps], pid: str, model: str
-) -> tuple[bool, str]:
+async def _validate_model(ctx: RunContext[AgentDeps], pid: str, model: str) -> tuple[bool, str]:
     """实时校验模型：返回 (ok, 附加信息)。网络失败放行并附警告。"""
     available = await _available_models(ctx, pid)
     if available is None:
@@ -122,9 +117,7 @@ async def provider_choose(
         if not value:
             return "用法：vision <model>（或 vision none 禁用）。"
         if value == "none":
-            store.set_scope_model_override(
-                scope_key, "vision", "none", updated_by=actor
-            )
+            store.set_scope_model_override(scope_key, "vision", "none", updated_by=actor)
             return "已显式禁用多模态（vision）。"
         ok, note = await _validate_model(ctx, pid, value)
         if not ok:

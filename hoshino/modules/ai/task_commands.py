@@ -12,8 +12,25 @@ import json
 import uuid
 
 from nonebot.adapters import Bot, Event
-from hoshino.core.permission import SUPERUSER
 
+from hoshino.ai import deps as ai_deps
+from hoshino.ai import persona, provider, skills, tools
+from hoshino.ai.base import get_config, resolve_provider
+from hoshino.ai.task import events as task_events
+from hoshino.ai.task import (
+    policy,
+    scheduler,
+)
+from hoshino.ai.task import (
+    runtime as task_runtime,
+)
+from hoshino.ai.task import (
+    store as task_store,
+)
+from hoshino.ai.task.models import CapabilitySnapshot, TaskContext, TaskOutput
+from hoshino.ai.task.store import new_id
+from hoshino.core.permission import SUPERUSER
+from hoshino.modules.ai.ai_admin import sv
 from hoshino.platform import (
     dump_target,
     event_scope_key,
@@ -24,20 +41,6 @@ from hoshino.platform import (
     target_from_event,
 )
 from hoshino.platform.superuser import is_superuser
-
-from hoshino.ai import deps as ai_deps
-from hoshino.ai import persona, provider, skills, tools
-from hoshino.ai.base import get_config, resolve_provider
-from hoshino.modules.ai.ai_admin import sv
-from hoshino.ai.task import events as task_events
-from hoshino.ai.task import (
-    policy,
-    runtime as task_runtime,
-    scheduler,
-    store as task_store,
-)
-from hoshino.ai.task.models import CapabilitySnapshot, TaskContext, TaskOutput
-from hoshino.ai.task.store import new_id
 
 _USAGE = (
     "AI Task 命令（仅超级用户）：\n"
@@ -125,9 +128,7 @@ def _can_view(task: dict, scope_key: str, permissions) -> bool:
         return True
     if task["creator_id"] and task["creator_id"] == permissions.user_id:
         return True
-    if permissions.is_admin and task["scope_key"] == scope_key:
-        return True
-    return False
+    return bool(permissions.is_admin and task["scope_key"] == scope_key)
 
 
 # ------------------------------------------------------------ 创建
@@ -182,9 +183,7 @@ async def _create(bot: Bot, event: Event, kind: str, args: list[str]) -> None:
         return
     model = provider.resolve_text_model(scope_key, provider_id)
     if not model:
-        await send_to_event(
-            bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。"
-        )
+        await send_to_event(bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。")
         return
 
     approval_mode = (
@@ -258,9 +257,7 @@ async def _create(bot: Bot, event: Event, kind: str, args: list[str]) -> None:
             {
                 "event_type": task_events.CREATED,
                 "sequence": 1,
-                "payload": json.dumps(
-                    {"kind": kind, "status": "accepted"}, ensure_ascii=False
-                ),
+                "payload": json.dumps({"kind": kind, "status": "accepted"}, ensure_ascii=False),
             }
         ],
         adapter_name=adapter_name,
@@ -351,8 +348,7 @@ async def _list(bot: Bot, event: Event) -> None:
         await send_to_event(bot, event, "当前 scope 还没有 Task。")
         return
     lines = [f"近期 Task（{scope_key or '全部'}）："]
-    for t in tasks:
-        lines.append(f"- `{t['id']}` {t['kind']} {t['status']}")
+    lines.extend(f"- `{t['id']}` {t['kind']} {t['status']}" for t in tasks)
     await send_to_event(bot, event, "\n".join(lines))
 
 

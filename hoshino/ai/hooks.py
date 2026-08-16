@@ -23,7 +23,6 @@ from pydantic_ai.messages import ModelMessage
 
 from .deps import AgentDeps
 
-
 # ------------------------------------------------------------ 决策类型
 
 
@@ -36,15 +35,15 @@ class PreStepDecision:
     prompt: str | None = None  # rewrite 时替换后的 prompt
 
     @classmethod
-    def accept(cls) -> "PreStepDecision":
+    def accept(cls) -> PreStepDecision:
         return cls()
 
     @classmethod
-    def reject(cls, reply: str) -> "PreStepDecision":
+    def reject(cls, reply: str) -> PreStepDecision:
         return cls(action="reject", reply=reply)
 
     @classmethod
-    def rewrite(cls, prompt: str) -> "PreStepDecision":
+    def rewrite(cls, prompt: str) -> PreStepDecision:
         return cls(action="rewrite", prompt=prompt)
 
 
@@ -55,11 +54,11 @@ class RequestErrorDecision:
     retry: bool = False
 
     @classmethod
-    def fail(cls) -> "RequestErrorDecision":
+    def fail(cls) -> RequestErrorDecision:
         return cls()
 
     @classmethod
-    def retry_once(cls) -> "RequestErrorDecision":
+    def retry_once(cls) -> RequestErrorDecision:
         return cls(retry=True)
 
 

@@ -1,7 +1,7 @@
 """会话历史裁剪 / 序列化。
 
-``max_history_messages`` 轮次截断；预留 ``ContextCompressor`` 协议，后续可接入
-AstrBot 式 token 估算、82% 阈值与 LLM 摘要压缩。
+``max_history_messages`` 轮次截断；后续可接入 AstrBot 式 token 估算、82% 阈值与
+LLM 摘要压缩。
 
 截断按**轮边界**（round）对齐：一轮 = user 提问起，到下一个 user 提问前
 （含中间的 tool call / tool return / assistant 回复）。从最旧整轮丢弃，绝不把
@@ -163,9 +163,7 @@ def derive_messages(events: list[dict]) -> list[ModelMessage]:
             else:
                 # 兜底：无 message_json 的旧事件按 content 重建。
                 messages.append(
-                    ModelRequest(
-                        parts=[UserPromptPart(content=data.get("content", ""))]
-                    )
+                    ModelRequest(parts=[UserPromptPart(content=data.get("content", ""))])
                 )
         elif event_type in (EVENT_ASSISTANT_MESSAGE, EVENT_TOOL_RESULT):
             message = deserialize_message(data.get("message_json", ""))
@@ -215,15 +213,3 @@ def prepare_history(
 ) -> list[ModelMessage]:
     """发送给模型前处理好的历史。首期仅做轮次截断。"""
     return truncate_messages(messages, config.max_history_messages)
-
-
-class ContextCompressor:
-    """上下文压缩协议。首期仅透传，后续接入 token 估算与 LLM 摘要。"""
-
-    def compress(
-        self,
-        scope_key: str,
-        messages: list[ModelMessage],
-        config: AIConfig,
-    ) -> list[ModelMessage]:
-        return prepare_history(scope_key, messages, config)

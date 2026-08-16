@@ -133,9 +133,7 @@ async def run_task_run(
     )
     if pre.action == "reject":
         raise TaskRuntimeError(pre.reply or "pre_step_reject")
-    prompt = (
-        pre.prompt if pre.action == "rewrite" and pre.prompt is not None else ctx.prompt
-    )
+    prompt = pre.prompt if pre.action == "rewrite" and pre.prompt is not None else ctx.prompt
 
     run_log = runner.RunLog()
     result = await runner.run_agent_with_retry(

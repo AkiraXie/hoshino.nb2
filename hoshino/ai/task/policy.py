@@ -56,9 +56,7 @@ def cooldown_status(
     return None
 
 
-def resolve_workspace(
-    scope_key: str, name: str | None
-) -> tuple[dict[str, Any] | None, str]:
+def resolve_workspace(scope_key: str, name: str | None) -> tuple[dict[str, Any] | None, str]:
     """解析创建 Task 使用的 workspace：指定名称验证存在；缺省用 default。
 
     返回 ``(workspace, "")`` 或 ``(None, 错误提示)``。创建时必须冻结规范化绝对

@@ -7,6 +7,7 @@ chat 与 task 两个 surface 共用同一 ``AgentDeps`` 定义；``bot``/``event
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
@@ -86,7 +87,8 @@ async def build_permission_snapshot(bot: Bot, event: Event) -> PermissionSnapsho
     is_super = bool(uid is not None and is_superuser(bot, user_id))
     is_admin = is_super
     if uid is not None:
-        try:
+        # uninfo 会话解析是尽力而为：失败回退为非管理员判定（fail-safe），不阻塞。
+        with contextlib.suppress(Exception):
             from nonebot_plugin_uninfo import get_session
 
             session = await get_session(bot=bot, event=event)
@@ -97,8 +99,6 @@ async def build_permission_snapshot(bot: Bot, event: Event) -> PermissionSnapsho
                 role_ids = {role.id for role in member.roles or []}
                 if role_ids & {"ADMINISTRATOR", "OWNER"}:
                     is_admin = True
-        except Exception:
-            pass
     return PermissionSnapshot(user_id=uid, is_superuser=is_super, is_admin=is_admin)
 
 

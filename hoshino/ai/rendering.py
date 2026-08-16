@@ -17,7 +17,7 @@ from markdown_it import MarkdownIt
 from mdit_py_plugins.tasklists import tasklists_plugin
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
-from pygments.lexers import get_lexer_by_name, TextLexer
+from pygments.lexers import TextLexer, get_lexer_by_name
 
 from .config import AIConfig
 

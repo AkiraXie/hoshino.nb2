@@ -14,9 +14,7 @@ from hoshino.ai.tools.web.browser_use import browse_page_description
 from hoshino.ai.tools.web.web_fetch import fetch_url_to_markdown
 
 # 链接提取：http(s) 起，到空白/中文标点/引号为止（参考 CoolQBot 语义）。
-_URL_PATTERN = re.compile(
-    r"https?://[^\s<>\"'，。；：！？、（）【】《》「」『』]+", re.IGNORECASE
-)
+_URL_PATTERN = re.compile(r"https?://[^\s<>\"'，。；：！？、（）【】《》「」『』]+", re.IGNORECASE)
 _TRAILING_URL_PUNCTUATION = ".,;:!?，。；：！？、)]}）】》」』"
 
 # web_fetch 的失败/空结果前缀（据此判定需要 browser_use 兜底）。
@@ -64,8 +62,7 @@ async def load_url(
     )
     # browser_use 的错误提示（网页加载超时/访问失败/截图超限/识别失败等）
     if any(
-        mark in description
-        for mark in ("失败", "不可用", "超时", "为空", "超过", "仅支持", "拒绝")
+        mark in description for mark in ("失败", "不可用", "超时", "为空", "超过", "仅支持", "拒绝")
     ):
         raise ValueError(f"无法获取页面内容：{url}（{description}）。")
     return {"url": url, "kind": "browser", "content": description}

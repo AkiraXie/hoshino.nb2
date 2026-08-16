@@ -14,9 +14,7 @@ from pydantic_ai import RunContext
 from ... import persona, store
 from ...deps import AgentDeps
 
-PersonaAction = Literal[
-    "list", "show", "create", "update", "use", "reset", "global", "delete"
-]
+PersonaAction = Literal["list", "show", "create", "update", "use", "reset", "global", "delete"]
 
 
 async def persona_manage(
@@ -47,8 +45,7 @@ async def persona_manage(
         if not rows:
             return "暂无 persona。"
         return "\n".join(
-            f"- {row['name']}：{row['description'] or row['prompt'][:40]}"
-            for row in rows
+            f"- {row['name']}：{row['description'] or row['prompt'][:40]}" for row in rows
         )
 
     if action == "show":
@@ -60,10 +57,7 @@ async def persona_manage(
         return _format_detail(p, scope_key)
 
     if action in ("global", "delete"):
-        return (
-            "global/delete 仅可通过 `ai persona` 管理员命令执行，"
-            "不能在对话中直接修改全局人设。"
-        )
+        return "global/delete 仅可通过 `ai persona` 管理员命令执行，不能在对话中直接修改全局人设。"
 
     if action == "create":
         if not name:

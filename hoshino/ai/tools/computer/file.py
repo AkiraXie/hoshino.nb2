@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Literal
 
@@ -43,6 +44,22 @@ def _is_sensitive(resolved: str) -> bool:
     return any(part in _SENSITIVE_PARTS or part.startswith(".env") for part in parts)
 
 
+# 文件 I/O 同步 helper：经 asyncio.to_thread 在线程池执行，避免阻塞事件循环。
+def _read_text(path: str) -> str:
+    with open(path, encoding="utf-8") as f:
+        return f.read(50_000)
+
+
+def _list_entries(path: str) -> list[str]:
+    return sorted(os.listdir(path))
+
+
+def _write_text(path: str, content: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
 async def file(
     ctx: RunContext[AgentDeps],
     path: str,
@@ -71,16 +88,16 @@ async def file(
         if not os.path.isfile(resolved):
             return f"文件不存在：{path}"
         try:
-            with open(resolved, encoding="utf-8") as f:
-                return f.read(50_000)
+            data = await asyncio.to_thread(_read_text, resolved)
         except OSError as exc:
             return f"读取失败：{exc}"
+        return data
 
     if mode == "list":
         if not os.path.isdir(resolved):
             return f"目录不存在：{path}"
         try:
-            entries = sorted(os.listdir(resolved))
+            entries = await asyncio.to_thread(_list_entries, resolved)
         except OSError as exc:
             return f"列出失败：{exc}"
         if not entries:
@@ -91,9 +108,7 @@ async def file(
         if len(content.encode("utf-8")) > _MAX_WRITE_BYTES:
             return "写入超过 1MB 限制。"
         try:
-            os.makedirs(os.path.dirname(resolved), exist_ok=True)
-            with open(resolved, "w", encoding="utf-8") as f:
-                f.write(content)
+            await asyncio.to_thread(_write_text, resolved, content)
         except OSError as exc:
             return f"写入失败：{exc}"
         return f"已写入 {path}（{len(content)} 字符）。"
@@ -117,7 +132,7 @@ async def _delete_file(ctx: RunContext[AgentDeps], resolved: str, path: str) -> 
     if not os.path.isfile(resolved):
         return f"文件不存在：{path}"
     try:
-        os.remove(resolved)
+        await asyncio.to_thread(os.remove, resolved)
     except OSError as exc:
         return f"删除失败：{exc}"
     return f"已删除 {path}。"

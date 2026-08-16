@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from urllib.parse import urlparse
 
 from pydantic_ai import BinaryContent, RunContext
@@ -41,7 +42,7 @@ async def browse_page_description(
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
         return "仅支持 http/https 网页 URL。"
-    if is_private_host(parsed.hostname):
+    if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
     png = await _screenshot(url)
@@ -74,7 +75,7 @@ async def browser_use(
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
         return "仅支持 http/https 网页 URL。"
-    if is_private_host(parsed.hostname):
+    if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
     record, vision_model = vision.resolve_vision_model(ctx)
@@ -114,16 +115,15 @@ async def _screenshot(url: str) -> bytes | str:
             page.screenshot(type="png", full_page=False),
             timeout=_BROWSER_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return "网页加载超时。"
     except Exception as exc:
         return f"网页访问失败（{type(exc).__name__}）。"
     finally:
         if page is not None:
-            try:
+            # 关闭失败交由浏览器进程清理，不影响截图结果返回。
+            with contextlib.suppress(Exception):
                 await page.close()
-            except Exception:
-                pass
 
     if not png:
         return "网页截图为空。"

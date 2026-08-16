@@ -26,12 +26,10 @@ _VARIABLE_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 _GROUP_AT = re.compile(r"\{\{([^{}]*)\}\}")
 
 # 内置变量集（固定集合；集合外的引用 fail loud，集合内解析失败渲染为空串）。
-BUILTIN_VARIABLES = frozenset(
-    {"date", "time", "weekday", "scope", "group_name", "user_name"}
-)
+BUILTIN_VARIABLES = frozenset({"date", "time", "weekday", "scope", "group_name", "user_name"})
 
 
-def _builtin_variables(scope_key: str | None) -> dict[str, str]:
+def builtin_variables(scope_key: str | None) -> dict[str, str]:
     """内置模板变量：日期/时间/星期/scope 稳定可用，群名/昵称尽力而为。"""
     now = time.localtime()
     return {
@@ -170,9 +168,7 @@ def update_persona(
         personality=new_personality,
         description=new_description,
         prompt=prompt,
-        begin_dialogs_json=(
-            dialogs_to_json(begin_dialogs) if begin_dialogs is not None else None
-        ),
+        begin_dialogs_json=(dialogs_to_json(begin_dialogs) if begin_dialogs is not None else None),
     )
 
 

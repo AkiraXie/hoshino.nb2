@@ -37,7 +37,7 @@ class ProviderRecord:
     timeout_seconds: float | None = None
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "ProviderRecord":
+    def from_row(cls, row: dict[str, Any]) -> ProviderRecord:
         return cls(
             id=row["id"],
             url=row.get("url", ""),
@@ -101,7 +101,7 @@ async def fetch_available_models(
     record: ProviderRecord,
     *,
     proxy: str | None = None,
-    verify: bool = False,
+    verify: bool = True,
     timeout: float = 15.0,
 ) -> list[str] | None:
     """调用 provider API 获取真实可用模型列表（openai / anthropic 兼容端点）。
@@ -139,11 +139,7 @@ async def fetch_available_models(
             rows = data.get("data") if isinstance(data, dict) else None
             if not isinstance(rows, list):
                 continue
-            ids = [
-                str(row.get("id"))
-                for row in rows
-                if isinstance(row, dict) and row.get("id")
-            ]
+            ids = [str(row.get("id")) for row in rows if isinstance(row, dict) and row.get("id")]
             if ids:
                 return sorted(ids)
     return None

@@ -18,17 +18,17 @@ from pydantic_ai import Tool
 
 from .. import prompts, skills, store
 from ..deps import AgentDeps
-from .core import memory as _memory
-from .core import now as _now
-from .core import persona_manage as _persona_manage
-from .core import image_view as _image_view
-from .core import provider_choose as _provider_choose
+from .bot import send_message as _send_message
+from .bot import service_manage as _service_manage
 from .computer import bash as _bash
 from .computer import file as _file
 from .computer import python as _python
 from .computer import repo_code as _repo_code
-from .bot import send_message as _send_message
-from .bot import service_manage as _service_manage
+from .core import image_view as _image_view
+from .core import memory as _memory
+from .core import now as _now
+from .core import persona_manage as _persona_manage
+from .core import provider_choose as _provider_choose
 from .skill import skill_manage as _skill_manage
 from .skill import skill_read as _skill_read
 from .web import browser_use as _browser_use
@@ -211,8 +211,7 @@ def resolve_tools(deps: AgentDeps) -> list[Tool | Callable[..., Any]]:
         return [
             item.tool
             for item in REGISTRATIONS
-            if item.tool is not None
-            and (item.tool_id, item.version) in deps.task.tool_profile
+            if item.tool is not None and (item.tool_id, item.version) in deps.task.tool_profile
         ]
 
     scope_key = deps.scope_key or ""

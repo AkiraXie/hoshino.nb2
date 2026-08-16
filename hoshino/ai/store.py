@@ -96,13 +96,9 @@ def _migrate_missing_columns(target_engine) -> None:
 
 def _ensure_column(conn, table: str, column: str) -> None:
     """幂等补列（SQLite ALTER TABLE ADD COLUMN）。"""
-    cols = {
-        row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
-    }
+    cols = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()}
     if cols and column not in cols:
-        conn.exec_driver_sql(
-            f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
-        )
+        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
 
@@ -229,8 +225,8 @@ def migrate_sessions_to_conversations(target_engine) -> None:
 
     scope 已有任何对话记录则跳过；旧表保留只读不删除。
     """
-    SessionLocal = sessionmaker(bind=target_engine, expire_on_commit=False)
-    with SessionLocal() as session:
+    session_local = sessionmaker(bind=target_engine, expire_on_commit=False)
+    with session_local() as session:
         existing_scopes = set(
             session.execute(select(AIConversation.scope_key).distinct()).scalars().all()
         )
@@ -251,17 +247,13 @@ def migrate_sessions_to_conversations(target_engine) -> None:
                 )
             )
             session.add(
-                AIScopeChatState(
-                    scope_key=legacy.scope_key, active_conv_id=conv_id, updated_at=now
-                )
+                AIScopeChatState(scope_key=legacy.scope_key, active_conv_id=conv_id, updated_at=now)
             )
             existing_scopes.add(legacy.scope_key)
         session.commit()
 
 
-def create_conversation(
-    scope_key: str, conv_id: str, name: str, provider_id: str = ""
-) -> None:
+def create_conversation(scope_key: str, conv_id: str, name: str, provider_id: str = "") -> None:
     now = time.time()
     with Session() as session:
         session.add(
@@ -313,9 +305,7 @@ def find_conversation_by_name(scope_key: str, name: str) -> dict | None:
         return _conversation_to_dict(row) if row is not None else None
 
 
-def save_conversation_messages(
-    conv_id: str, messages_json: str, provider_id: str = ""
-) -> None:
+def save_conversation_messages(conv_id: str, messages_json: str, provider_id: str = "") -> None:
     now = time.time()
     with Session() as session:
         row = session.get(AIConversation, conv_id)
@@ -351,9 +341,7 @@ def set_active_conv_id(scope_key: str, conv_id: str) -> None:
         row = session.get(AIScopeChatState, scope_key)
         if row is None:
             session.add(
-                AIScopeChatState(
-                    scope_key=scope_key, active_conv_id=conv_id, updated_at=now
-                )
+                AIScopeChatState(scope_key=scope_key, active_conv_id=conv_id, updated_at=now)
             )
         else:
             row.active_conv_id = conv_id
@@ -440,9 +428,7 @@ def load_conversation_events(conv_id: str, *, after_seq: int = -1) -> list[dict]
         return [_event_to_dict(row) for row in rows]
 
 
-def count_conversation_events(
-    conv_id: str, *, types: tuple[str, ...] | None = None
-) -> int:
+def count_conversation_events(conv_id: str, *, types: tuple[str, ...] | None = None) -> int:
     """对话事件条数；``types`` 非空时只数指定类型（如 surface 事件）。"""
     with Session() as session:
         stmt = select(func.count(AIConversationEvent.seq)).where(
@@ -492,9 +478,7 @@ def clear_conversation_events(conv_id: str) -> bool:
         row = session.get(AIConversation, conv_id)
         if row is None:
             return False
-        session.execute(
-            delete(AIConversationEvent).where(AIConversationEvent.conv_id == conv_id)
-        )
+        session.execute(delete(AIConversationEvent).where(AIConversationEvent.conv_id == conv_id))
         row.messages_json = "[]"
         row.updated_at = time.time()
         session.commit()
@@ -558,9 +542,7 @@ def clear_provider_references(provider_id: str) -> int:
     with Session() as session:
         rows = (
             session.execute(
-                select(AIScopeProvider).where(
-                    AIScopeProvider.provider_id == provider_id
-                )
+                select(AIScopeProvider).where(AIScopeProvider.provider_id == provider_id)
             )
             .scalars()
             .all()
@@ -592,13 +574,9 @@ class AIProvider(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False, default="openai_chat")
     default_text_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
     default_vision_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    temperature: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None
-    )
+    temperature: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
-    timeout_seconds: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None
-    )
+    timeout_seconds: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     created_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
 
@@ -645,9 +623,7 @@ def _provider_to_dict(row: AIProvider) -> dict[str, Any]:
 
 def list_provider_rows() -> list[dict[str, Any]]:
     with Session() as session:
-        rows = (
-            session.execute(select(AIProvider).order_by(AIProvider.id)).scalars().all()
-        )
+        rows = session.execute(select(AIProvider).order_by(AIProvider.id)).scalars().all()
         return [_provider_to_dict(row) for row in rows]
 
 
@@ -711,9 +687,7 @@ def delete_provider_row(provider_id: str) -> bool:
         row = session.get(AIProvider, provider_id)
         if row is None:
             return False
-        session.execute(
-            delete(AIProviderModel).where(AIProviderModel.provider_id == provider_id)
-        )
+        session.execute(delete(AIProviderModel).where(AIProviderModel.provider_id == provider_id))
         session.delete(row)
         session.commit()
         return True
@@ -741,9 +715,7 @@ def get_provider_model(provider_id: str, model: str) -> dict[str, Any] | None:
         return {"model": row.model, "capabilities": row.capabilities}
 
 
-def upsert_provider_model(
-    provider_id: str, model: str, capabilities: str = "text"
-) -> None:
+def upsert_provider_model(provider_id: str, model: str, capabilities: str = "text") -> None:
     now = time.time()
     with Session() as session:
         row = session.get(AIProviderModel, (provider_id, model))
@@ -785,9 +757,7 @@ def get_scope_model_overrides(scope_key: str) -> dict[str, str]:
         return {"text_model": row.text_model, "vision_model": row.vision_model}
 
 
-def set_scope_model_override(
-    scope_key: str, slot: str, model: str, updated_by: str = ""
-) -> None:
+def set_scope_model_override(scope_key: str, slot: str, model: str, updated_by: str = "") -> None:
     """设置 scope 单槽位模型覆盖（upsert）。slot ∈ text | vision。"""
     now = time.time()
     with Session() as session:
@@ -950,15 +920,23 @@ def aggregate_usage_by_model(
 
     rows: list[dict[str, Any]] = []
     with Session() as session:
-        for pid, model, count, req, resp, cache_r, cache_w, lat, err in session.execute(
-            stmt
-        ):
-            req = req or 0
-            resp = resp or 0
-            cache_r = cache_r or 0
-            cache_w = cache_w or 0
-            count = count or 0
-            err = err or 0
+        for (
+            pid,
+            model,
+            count_raw,
+            req_raw,
+            resp_raw,
+            cache_r_raw,
+            cache_w_raw,
+            lat,
+            err_raw,
+        ) in session.execute(stmt):
+            req = req_raw or 0
+            resp = resp_raw or 0
+            cache_r = cache_r_raw or 0
+            cache_w = cache_w_raw or 0
+            count = count_raw or 0
+            err = err_raw or 0
             denominator = cache_r + req
             rows.append(
                 {
@@ -970,9 +948,7 @@ def aggregate_usage_by_model(
                     "total_tokens": req + resp,
                     "cache_read_tokens": cache_r,
                     "cache_write_tokens": cache_w,
-                    "cache_hit_ratio": (
-                        (cache_r / denominator) if denominator > 0 else 0.0
-                    ),
+                    "cache_hit_ratio": ((cache_r / denominator) if denominator > 0 else 0.0),
                     "avg_latency_ms": lat or 0.0,
                     "error_count": err,
                     "success_count": count - err,
@@ -1134,15 +1110,15 @@ def _parse_begin_dialogs(raw: str) -> list[dict[str, str]]:
         return []
     if not isinstance(data, list):
         return []
-    result = []
-    for item in data:
+    return [
+        {"user": item["user"], "assistant": item["assistant"]}
+        for item in data
         if (
             isinstance(item, dict)
             and isinstance(item.get("user"), str)
             and isinstance(item.get("assistant"), str)
-        ):
-            result.append({"user": item["user"], "assistant": item["assistant"]})
-    return result
+        )
+    ]
 
 
 def list_personas() -> list[dict[str, Any]]:
@@ -1153,9 +1129,7 @@ def list_personas() -> list[dict[str, Any]]:
 
 def get_persona_by_name(name: str) -> dict[str, Any] | None:
     with Session() as session:
-        row = session.execute(
-            select(AIPersona).where(AIPersona.name == name)
-        ).scalar_one_or_none()
+        row = session.execute(select(AIPersona).where(AIPersona.name == name)).scalar_one_or_none()
         return _persona_to_dict(row) if row is not None else None
 
 
@@ -1206,9 +1180,7 @@ def update_persona(
 ) -> dict[str, Any] | None:
     """更新 persona 特征并刷新 prompt；不存在返回 None。"""
     with Session() as session:
-        row = session.execute(
-            select(AIPersona).where(AIPersona.name == name)
-        ).scalar_one_or_none()
+        row = session.execute(select(AIPersona).where(AIPersona.name == name)).scalar_one_or_none()
         if row is None:
             return None
         if gender is not None:
@@ -1231,17 +1203,13 @@ def update_persona(
 def delete_persona(name: str) -> bool:
     """删除 persona 及绑定引用；返回是否删除了记录。"""
     with Session() as session:
-        row = session.execute(
-            select(AIPersona).where(AIPersona.name == name)
-        ).scalar_one_or_none()
+        row = session.execute(select(AIPersona).where(AIPersona.name == name)).scalar_one_or_none()
         if row is None:
             return False
         persona_id = row.id
         # 清理 scope / global 绑定引用
         session.execute(
-            AIScopePersona.__table__.delete().where(
-                AIScopePersona.persona_id == persona_id
-            )
+            AIScopePersona.__table__.delete().where(AIScopePersona.persona_id == persona_id)
         )
         session.execute(
             AIGlobal.__table__.delete().where(
@@ -1358,11 +1326,7 @@ def memory_delete(scope_key: str, key: str) -> bool:
 
 def memory_list_keys(scope_key: str) -> list[str]:
     with Session() as session:
-        stmt = (
-            select(AIMemory.key)
-            .where(AIMemory.scope_key == scope_key)
-            .order_by(AIMemory.key)
-        )
+        stmt = select(AIMemory.key).where(AIMemory.scope_key == scope_key).order_by(AIMemory.key)
         return list(session.execute(stmt).scalars().all())
 
 

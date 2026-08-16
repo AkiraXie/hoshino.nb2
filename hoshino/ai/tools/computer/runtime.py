@@ -93,10 +93,8 @@ class SandboxRunner:
 
     async def _communicate(self, proc) -> dict[str, object]:
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=self.timeout
-            )
-        except asyncio.TimeoutError:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout)
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return {
@@ -107,12 +105,8 @@ class SandboxRunner:
             }
         return {
             "exit_code": proc.returncode,
-            "stdout": self._truncate(
-                stdout.decode("utf-8", "replace"), self.max_output_chars
-            ),
-            "stderr": self._truncate(
-                stderr.decode("utf-8", "replace"), self.max_output_chars
-            ),
+            "stdout": self._truncate(stdout.decode("utf-8", "replace"), self.max_output_chars),
+            "stderr": self._truncate(stderr.decode("utf-8", "replace"), self.max_output_chars),
             "timed_out": False,
         }
 

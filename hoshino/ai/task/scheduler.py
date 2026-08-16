@@ -7,10 +7,6 @@
 
 from __future__ import annotations
 
-from loguru import logger
-
-from pydantic_ai.tools import DeferredToolResults
-
 import asyncio
 import hashlib
 import json
@@ -18,10 +14,12 @@ import time
 import traceback
 import uuid
 
+from loguru import logger
+from pydantic_ai.tools import DeferredToolResults
+
 from hoshino.core.hooks import on_post_startup, on_shutdown
 
-from .. import errors
-from .. import metrics
+from .. import errors, metrics
 from ..base import get_config
 from . import events as task_events
 from . import store as task_store
@@ -56,7 +54,7 @@ def _params_summary(args) -> str:
     if isinstance(args, dict):
         parts = []
         for key, value in args.items():
-            if isinstance(value, (str, bytes)):
+            if isinstance(value, str | bytes):
                 parts.append(f"{key}=<{len(value)}>")
             else:
                 parts.append(f"{key}={type(value).__name__}")
@@ -130,9 +128,7 @@ async def _tick() -> None:
         ctx = TaskContext.from_json(json.loads(run["context_json"]))
     except (ValueError, TypeError) as exc:
         task_store.update_run_state(run["id"], "failed", last_error="bad context")
-        task_store.update_task_status(
-            run["task_id"], "failed", failure_reason="bad_context"
-        )
+        task_store.update_task_status(run["task_id"], "failed", failure_reason="bad_context")
         logger.warning(
             f"task {task['id']} context 解析失败 error={type(exc).__name__} "
             f"detail={errors.format_exception_detail(exc)}"
@@ -160,9 +156,7 @@ async def _execute_claimed(run: dict, task: dict, ctx: TaskContext) -> None:
         nonlocal cancelled, last_hb
         now = _now()
         if now - last_hb >= _HEARTBEAT_INTERVAL:
-            task_store.heartbeat(
-                run["id"], now + _LEASE_SECONDS, now=now, owner=run["lease_owner"]
-            )
+            task_store.heartbeat(run["id"], now + _LEASE_SECONDS, now=now, owner=run["lease_owner"])
             last_hb = now
         cur = task_store.get_task(task["id"])
         if cur is not None and cur["status"] == "cancelled":
@@ -198,9 +192,7 @@ async def _execute_claimed(run: dict, task: dict, ctx: TaskContext) -> None:
         return
 
     if not isinstance(outcome.output, TaskOutput):
-        await _handle_failure(
-            run, task, ctx, TaskRuntimeError("invalid structured output")
-        )
+        await _handle_failure(run, task, ctx, TaskRuntimeError("invalid structured output"))
         return
 
     # 成功：结果落库与 Task 完成在同一逻辑步骤内
@@ -237,14 +229,11 @@ async def _execute_claimed(run: dict, task: dict, ctx: TaskContext) -> None:
         },
     )
     logger.info(
-        f"task completed id={task['id']} run={run['id']} "
-        f"tokens={outcome.usage.get('total_tokens')}"
+        f"task completed id={task['id']} run={run['id']} tokens={outcome.usage.get('total_tokens')}"
     )
 
 
-async def _handle_approval_request(
-    run: dict, task: dict, ctx: TaskContext, outcome
-) -> None:
+async def _handle_approval_request(run: dict, task: dict, ctx: TaskContext, outcome) -> None:
     """DeferredToolRequests → 为每个 high-risk tool call 创建独立 approval。"""
     requests = outcome.output
     now = _now()
@@ -289,9 +278,7 @@ async def _handle_approval_request(
     )
 
 
-async def _handle_failure(
-    run: dict, task: dict, ctx: TaskContext, exc: Exception
-) -> None:
+async def _handle_failure(run: dict, task: dict, ctx: TaskContext, exc: Exception) -> None:
     """内部有限重试 → 新 attempt → 终态 failed。"""
     # 完整错误详情（message + body/status/tool）写入 last_error 与日志；
     # 用户可见的 failure_reason / 通知仍保持短类型名。
@@ -361,13 +348,9 @@ async def _handle_failure(
         {"status": "failed", "reason": f"run_error:{type(exc).__name__}"},
     )
     logger.warning(
-        f"task failed id={task['id']} run={run['id']} error={type(exc).__name__} "
-        f"detail={detail}"
+        f"task failed id={task['id']} run={run['id']} error={type(exc).__name__} detail={detail}"
     )
-    logger.debug(
-        f"task failed traceback id={task['id']} run={run['id']}\n"
-        f"{traceback.format_exc()}"
-    )
+    logger.debug(f"task failed traceback id={task['id']} run={run['id']}\n{traceback.format_exc()}")
 
 
 def _notify(event_type: str, task: dict, payload: dict) -> None:
@@ -426,9 +409,7 @@ def _after_approval(task_id: str, task_run_id: str, state: str) -> dict:
         return {"ok": True, "task_id": task_id, "pending": True}
     if any(a["state"] == "denied" for a in approvals):
         task_store.update_run_state(task_run_id, "failed", last_error="approval_denied")
-        task_store.update_task_status(
-            task_id, "failed", failure_reason="approval_denied"
-        )
+        task_store.update_task_status(task_id, "failed", failure_reason="approval_denied")
         task = task_store.get_task(task_id) or {}
         task_events.emit(
             task_events.FAILED,
@@ -450,8 +431,40 @@ def _after_approval(task_id: str, task_run_id: str, state: str) -> dict:
     if run is not None:
         try:
             ctx = TaskContext.from_json(json.loads(run["context_json"]))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as exc:
+            # 恢复上下文损坏 → run 无法继续执行：置 failed 收尾，避免 run 永久
+            # 停在 waiting_approval 而 task 已回 queued（调度器只 claim
+            # queued/retry_wait，二者不一致会导致任务卡死）。
             ctx = None
+            task_store.update_run_state(
+                task_run_id,
+                "failed",
+                last_error=f"bad approval context: {type(exc).__name__}",
+            )
+            task_store.update_task_status(task_id, "failed", failure_reason="bad_context")
+            task = task_store.get_task(task_id) or {}
+            task_events.emit(
+                task_events.FAILED,
+                scope_key=(task.get("scope_key") or ""),
+                task_id=task_id,
+                task_run_id=task_run_id,
+                payload={"reason": "bad_context"},
+            )
+            _notify(
+                task_events.FAILED,
+                task,
+                {"status": "failed", "reason": "bad_context"},
+            )
+            logger.warning(
+                f"task approval context 解析失败，置 failed id={task_id} "
+                f"run={task_run_id} error={type(exc).__name__}"
+            )
+            return {
+                "ok": True,
+                "task_id": task_id,
+                "pending": False,
+                "terminal": "failed",
+            }
     if ctx is not None:
         ctx.extra["pending_deferred"] = {a["tool_call_id"]: True for a in approvals}
         task_store.update_run_state(
@@ -480,12 +493,8 @@ def _expire_stale_approvals() -> int:
     """超时 approval → expired，Task/TaskRun failed（approval_timeout）。"""
     expired = task_store.expire_approvals(now=_now())
     for appr in expired:
-        task_store.update_run_state(
-            appr["task_run_id"], "failed", last_error="approval_timeout"
-        )
-        task_store.update_task_status(
-            appr["task_id"], "failed", failure_reason="approval_timeout"
-        )
+        task_store.update_run_state(appr["task_run_id"], "failed", last_error="approval_timeout")
+        task_store.update_task_status(appr["task_id"], "failed", failure_reason="approval_timeout")
         task = task_store.get_task(appr["task_id"]) or {}
         task_events.emit(
             task_events.FAILED,
@@ -563,9 +572,7 @@ async def _deliver(item: dict) -> bool:
         await send_to_target(bot, target, text)
         return True
     except Exception as exc:
-        logger.warning(
-            f"task outbox deliver failed id={item['id']} error={type(exc).__name__}"
-        )
+        logger.warning(f"task outbox deliver failed id={item['id']} error={type(exc).__name__}")
         return False
 
 

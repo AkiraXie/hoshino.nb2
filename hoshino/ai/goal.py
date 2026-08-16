@@ -42,7 +42,7 @@ class GoalRef:
     revision: int
 
 
-class GoalConflict(RuntimeError):
+class GoalConflict(RuntimeError):  # noqa: N818  # 命名与 dsh 的 GoalConflict 对齐，刻意不加 Error 后缀
     """revision CAS 冲突：目标已被并发修改，调用方需重读重试。"""
 
 
@@ -61,9 +61,7 @@ def _from_row(scope_key: str, row: dict) -> Goal:
 class GoalService:
     """每 scope 单目标的显式状态机（进程内无缓存，读写直连 store）。"""
 
-    def create(
-        self, scope_key: str, objective: str, max_rounds: int | None = None
-    ) -> Goal:
+    def create(self, scope_key: str, objective: str, max_rounds: int | None = None) -> Goal:
         """创建或替换目标（revision 重置为 1）。"""
         objective = objective.strip()
         if not objective:

@@ -12,15 +12,17 @@ vision，压缩后仍超限才拒绝。无 vision 模型时返回明确提示。
 
 from __future__ import annotations
 
+import asyncio
 from io import BytesIO
 from urllib.parse import urlparse
 
 import httpx
 from pydantic_ai import BinaryContent, RunContext
 
+from hoshino.ai.tools.web.net import is_private_host
+
 from ... import vision
 from ...deps import AgentDeps
-from hoshino.ai.tools.web.net import is_private_host
 
 _MAX_BYTES = 15 * 1024 * 1024  # 抓取上限（压缩前的网络字节）
 _COMPRESS_THRESHOLD = 10 * 1024 * 1024  # 超过此大小先压缩
@@ -72,7 +74,7 @@ async def describe_image_url(
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
         return "仅支持 http/https 图片 URL。"
-    if is_private_host(parsed.hostname):
+    if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
     async with httpx.AsyncClient(
@@ -92,22 +94,19 @@ async def describe_image_url(
         return "图片内容为空。"
     if len(data) > _MAX_BYTES:
         return f"图片超过大小限制（{_MAX_BYTES // (1024 * 1024)}MB）。"
-    data = _compress_image(data)
+    # PIL 解码/压缩为 CPU 密集阻塞操作，放线程池执行，避免卡住事件循环。
+    data = await asyncio.to_thread(_compress_image, data)
     if len(data) > _COMPRESS_MAX:
         return f"图片压缩后仍超过 {_COMPRESS_MAX // (1024 * 1024)}MB。"
 
     content = [
         BinaryContent(
             data=data,
-            media_type=_media_type_from_content_type(
-                response.headers.get("content-type")
-            ),
+            media_type=_media_type_from_content_type(response.headers.get("content-type")),
         )
     ]
     try:
-        description = await vision.describe_images(
-            record, vision_model, content, proxy=proxy
-        )
+        description = await vision.describe_images(record, vision_model, content, proxy=proxy)
     except Exception as exc:
         return f"图片识别失败（{type(exc).__name__}）。"
     return description or "（图片暂无可识别内容）"
@@ -122,7 +121,7 @@ async def image_view(ctx: RunContext[AgentDeps], url: str):
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
         return "仅支持 http/https 图片 URL。"
-    if is_private_host(parsed.hostname):
+    if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
     record, vision_model = vision.resolve_vision_model(ctx)

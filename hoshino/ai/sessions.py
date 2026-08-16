@@ -14,14 +14,14 @@ ConversationManager）：每个 scope 持有多个命名对话，``active_conv_i
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
 
-from . import context
-from . import store
+from . import context, store
 
 DEFAULT_CONVERSATION_NAME = "默认"
 
@@ -45,13 +45,13 @@ class Conversation:
             self._derived = context.derive_messages(self.events)
         return self._derived
 
-    def _append_events(self, new_events: list[dict]) -> None:
+    def append_events(self, new_events: list[dict]) -> None:
         """追加事件并增量更新派生缓存。"""
         self.events.extend(new_events)
         if self._derived is not None:
             self._derived.extend(context.derive_messages(new_events))
 
-    def _reset(self) -> None:
+    def reset(self) -> None:
         self.events = []
         self._derived = []
 
@@ -97,15 +97,10 @@ def _run_log_prefix_events(run_log, provider_id: str) -> list[dict]:
                 "data": {"provider_id": provider_id},
             }
         )
-    events.append(
-        {"type": context.EVENT_TURN_START, "data": {"started_at": run_log.started_at}}
-    )
-    for call in run_log.tool_calls:
-        events.append({"type": context.EVENT_TOOL_CALL, "data": call})
+    events.append({"type": context.EVENT_TURN_START, "data": {"started_at": run_log.started_at}})
+    events.extend({"type": context.EVENT_TOOL_CALL, "data": call} for call in run_log.tool_calls)
     for index, at in enumerate(run_log.step_at, 1):
-        events.append(
-            {"type": context.EVENT_STEP_END, "data": {"step": index, "at": at}}
-        )
+        events.append({"type": context.EVENT_STEP_END, "data": {"step": index, "at": at}})
     return events
 
 
@@ -169,9 +164,7 @@ class ConversationManager:
             row = store.get_conversation(active_id)
             if row is not None:
                 chosen[active_id] = _row_to_conversation(row)
-        convs = OrderedDict(
-            (c.id, c) for c in sorted(chosen.values(), key=lambda c: c.updated_at)
-        )
+        convs = OrderedDict((c.id, c) for c in sorted(chosen.values(), key=lambda c: c.updated_at))
         if active_id not in convs:
             active_id = next(reversed(convs), None)
         return _ScopeChat(active_id=active_id, convs=convs)
@@ -204,9 +197,7 @@ class ConversationManager:
         summaries = []
         for row in store.get_conversations(scope_key):
             # 消息条数 = surface 事件条数（log-only 事件不计）；未迁移的旧对话回退读 messages_json。
-            count = store.count_conversation_events(
-                row["id"], types=context.SURFACE_EVENT_TYPES
-            )
+            count = store.count_conversation_events(row["id"], types=context.SURFACE_EVENT_TYPES)
             if count == 0 and row.get("messages_json"):
                 count = len(context.deserialize_messages(row["messages_json"]))
             summaries.append(
@@ -240,9 +231,7 @@ class ConversationManager:
         self._evict_convs_if_needed(scope_key)
         return conv
 
-    def _resolve_new_name(
-        self, scope_key: str, state: _ScopeChat, name: str | None
-    ) -> str:
+    def _resolve_new_name(self, scope_key: str, state: _ScopeChat, name: str | None) -> str:
         if name is not None:
             name = name.strip()
             if not name or any(ch.isspace() for ch in name):
@@ -275,7 +264,7 @@ class ConversationManager:
         """清空当前对话事件（对话保留）；返回是否清掉了内容。"""
         conv = self.get_active(scope_key)
         had_content = bool(conv.messages)
-        conv._reset()
+        conv.reset()
         conv.updated_at = time.time()
         store.clear_conversation_events(conv.id)
         return had_content
@@ -297,7 +286,7 @@ class ConversationManager:
         events += context.messages_to_events(new_messages)
         if run_log is not None:
             events.append(_run_log_end_event(run_log, "completed"))
-        conv._append_events(events)
+        conv.append_events(events)
         conv.provider_id = provider_id
         conv.updated_at = time.time()
         store.append_conversation_events(conv.id, events)
@@ -313,12 +302,10 @@ class ConversationManager:
         """
         conv = self.get_active(scope_key)
         events = _run_log_prefix_events(run_log, provider_id)
-        events += context.messages_to_events(
-            [ModelRequest(parts=[UserPromptPart(content=prompt)])]
-        )
+        events += context.messages_to_events([ModelRequest(parts=[UserPromptPart(content=prompt)])])
         if run_log is not None:
             events.append(_run_log_end_event(run_log, run_log.reason or "aborted"))
-        conv._append_events(events)
+        conv.append_events(events)
         conv.provider_id = provider_id
         conv.updated_at = time.time()
         store.append_conversation_events(conv.id, events)
@@ -363,7 +350,5 @@ def _register_lifecycle() -> None:
 
 # 插件加载期（bootstrap 已 replay hooks）注册 shutdown flush；
 # 测试环境 import 本模块不会触发真实 driver。
-try:
+with contextlib.suppress(Exception):  # pragma: no cover - 无 driver 的脚本环境
     _register_lifecycle()
-except Exception:  # pragma: no cover - 无 driver 的脚本环境
-    pass

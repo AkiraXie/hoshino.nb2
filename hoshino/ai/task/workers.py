@@ -19,10 +19,3 @@ class WorkerSpec:
 
 
 GENERAL_WORKER = WorkerSpec()
-
-
-def get_worker(kind: str) -> WorkerSpec:
-    """按 kind 取 WorkerSpec；未知 kind 回退 general。"""
-    if kind == "general":
-        return GENERAL_WORKER
-    return GENERAL_WORKER
