@@ -52,6 +52,80 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["hoshino", "image_web", "nb-tests", "run.py"]
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9", "F",   # pyflakes / 核心 pycodestyle
+    "I",                     # isort
+    "N",                     # pep8-naming
+    "UP",                    # pyupgrade
+    "B",                     # flake8-bugbear
+    "SIM",                   # flake8-simplify
+    "RET",                   # flake8-return
+    "C4",                    # flake8-comprehensions
+    "PERF",                  # perflint
+    "RUF",                   # ruff 专属
+    "ASYNC",                 # flake8-async
+    "TRY",                   # tryceratops
+    "PIE",                   # flake8-pie
+    "FLY",                   # flynt
+    "PLC", "PLW",            # pylint 子集
+    "SLF",                   # flake8-self（私有成员访问）
+    "S",                     # flake8-bandit
+    "DTZ",                   # flake8-datetimez
+]
+ignore = [
+    # 项目以中文书写注释/文档/用户可见字符串，unicode 歧义检测是误报。
+    "RUF001", "RUF002", "RUF003",
+    # Alconna/NoneBot 框架惯用法：DI 依赖与 rule 用函数调用作默认参数
+    # （Depends()、GroupID()、Rule()、EventMessage()、Reaction() 等）。
+    "B008",
+    # DI provider 刻意使用 CapWords 函数名（GroupID()/SenderID()/Reaction()…），
+    # 与 AGENTS.md 的 DI 约定一致；stdlib HTTP handler（do_POST 等）同样豁免。
+    "N802",
+    # 类作用域变量刻意镜像外部 API JSON 字段名（houseId/loaderData/autoTMM…）。
+    "N815",
+    # 兼容出口的 re-export 别名（import X as X）是刻意为之。
+    "PLC0414",
+    # 行宽由 ruff format 负责；中文长字符串无法自动断行。
+    "E501",
+    # 用户可见时间为本地时区 naïve datetime 是刻意行为，改为 aware 会改变展示结果。
+    "DTZ001", "DTZ002", "DTZ003", "DTZ004", "DTZ005", "DTZ006",
+    "DTZ007", "DTZ011", "DTZ012", "DTZ901",
+    # 业务/娱乐代码不生成安全凭据，random 的使用不涉及安全场景。
+    "S311",
+    # try-consider-else 为风格建议，现有 try 块多数已是单调用最小范围。
+    "TRY300",
+    # 模块级惰性单例客户端与缓存（aiohttpx/playwrights/image_web 索引）是
+    # 刻意设计；重构为类会扩大改动面。
+    "PLW0602", "PLW0603",
+    # types.py 用 TYPE_CHECKING 分支使 T_Message 运行时为 Any（避免运行时
+    # import UniMessage），PEP 695 type 语句会改变该运行时语义。
+    "UP040",
+    # ASYNC109 的 timeout 形参是转发给底层调用（httpx/playwright）的包装 API。
+    "ASYNC109",
+    # 项目惯例是在 raise 处直接携带上下文明确的中文消息，为每条消息定义异常类
+    # 会造成大量近空类，收益不成比例。
+    "TRY003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 测试中的 assert、假 token/密码与临时文件属于测试夹具，非安全问题；
+# 测试内阻塞文件 IO 也是常态。
+"nb-tests/*" = ["S101", "S105", "S106", "S108", "S501", "SLF001", "ASYNC230", "SIM115"]
+".tests/*" = ["S101", "S105", "S106", "S108", "S501", "SLF001", "ASYNC230", "SIM115"]
+# 插件包内的测试文件同测试夹具处理。
+"hoshino/modules/interactive/qbitorrent/test_qbit.py" = ["S105", "S501"]
+# info-x 目录名含连字符（importlib 按配置加载），无法改为合法模块名。
+"hoshino/modules/info-x/*" = ["N999"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["hoshino", "image_web"]
+
 [tool.hatch.build.targets.sdist]
 include = ["hoshino"]
 
