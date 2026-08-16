@@ -27,7 +27,8 @@ def test_provider_row_upsert_and_get(tmp_store):
     row = tmp_store.get_provider_row("deepseek")
     assert row["kind"] == "anthropic"
     assert row["default_text_model"] == "deepseek-v4-flash"
-    assert row["default_vision_model"] == ""
+    # provider 只提供默认文本模型，不再有默认 vision 模型
+    assert "default_vision_model" not in row
     assert tmp_store.has_provider_row("deepseek")
     assert not tmp_store.has_provider_row("ghost")
 
@@ -69,30 +70,37 @@ def test_provider_models_crud(tmp_store):
 # ------------------------------------------------------------ scope models
 
 
-def test_resolve_models_inherit_and_override(tmp_store):
-    """双模型解析：scope 覆盖 > provider 默认；none 显式禁用 vision。"""
+def test_resolve_text_model_and_vision(tmp_store):
+    """文本：scope 覆盖 > provider 默认；vision：scope 配置 > 全局默认；none 禁用。"""
     from hoshino.ai import provider as provider_domain
 
     tmp_store.upsert_provider_row(
         provider_id="p",
         kind="openai_chat",
         default_text_model="text-default",
-        default_vision_model="vision-default",
     )
-    # 无覆盖 → 继承 provider 默认
-    assert provider_domain.resolve_models("scope:1", "p") == (
-        "text-default",
-        "vision-default",
-    )
-    # scope 覆盖 text，vision 继承
-    tmp_store.set_scope_model_override("scope:1", "text", "text-override")
-    assert provider_domain.resolve_models("scope:1", "p")[0] == "text-override"
-    assert provider_domain.resolve_models("scope:1", "p")[1] == "vision-default"
-    # none 显式禁用 vision（provider 默认非空也被关掉）
-    tmp_store.set_scope_model_override("scope:1", "vision", "none")
-    assert provider_domain.resolve_models("scope:1", "p")[1] == ""
-    # provider 不存在 → 双空
-    assert provider_domain.resolve_models("scope:1", "ghost") == ("", "")
+    # 无覆盖 → 继承 provider 默认文本
+    assert provider_domain.resolve_text_model("scope:1", "p") == "text-default"
+    # scope 覆盖 text
+    tmp_store.set_scope_text_model("scope:1", "text-override")
+    assert provider_domain.resolve_text_model("scope:1", "p") == "text-override"
+    # 未配置 vision → 空
+    assert provider_domain.resolve_vision("scope:1") == ("", "")
+    # 全局默认 vision（scope 未配置时回退）
+    tmp_store.set_global_value(provider_domain.VISION_GLOBAL_PROVIDER, "p")
+    tmp_store.set_global_value(provider_domain.VISION_GLOBAL_MODEL, "vision-default")
+    assert provider_domain.resolve_vision("scope:2") == ("p", "vision-default")
+    # scope vision 配置覆盖全局
+    tmp_store.set_scope_vision("scope:1", "p", "vision-scope")
+    assert provider_domain.resolve_vision("scope:1") == ("p", "vision-scope")
+    # none 显式禁用（全局默认非空也被关掉）
+    tmp_store.set_scope_vision("scope:1", "", "none")
+    assert provider_domain.resolve_vision("scope:1") == ("", "")
+    # scope 引用的 vision provider 不存在 → 回退全局默认
+    tmp_store.set_scope_vision("scope:1", "ghost", "m")
+    assert provider_domain.resolve_vision("scope:1") == ("p", "vision-default")
+    # provider 不存在 → 文本空
+    assert provider_domain.resolve_text_model("scope:1", "ghost") == ""
 
 
 def test_fetch_available_models_openai(fake_ai_server):
@@ -110,22 +118,32 @@ def test_fetch_available_models_openai(fake_ai_server):
 
 
 def test_scope_model_override_set_and_clear(tmp_store):
-    tmp_store.set_scope_model_override("scope:1", "text", "m1", updated_by="u1")
-    tmp_store.set_scope_model_override("scope:1", "vision", "v1", updated_by="u1")
+    tmp_store.set_scope_text_model("scope:1", "m1", updated_by="u1")
+    tmp_store.set_scope_vision("scope:1", "p", "v1", updated_by="u1")
     assert tmp_store.get_scope_model_overrides("scope:1") == {
         "text_model": "m1",
+        "vision_provider": "p",
         "vision_model": "v1",
     }
-    # 清单槽
+    # 清单槽（vision 成对清除）
     assert tmp_store.clear_scope_model_override("scope:1", "text") is True
     assert tmp_store.get_scope_model_overrides("scope:1") == {
         "text_model": "",
+        "vision_provider": "p",
         "vision_model": "v1",
     }
+    assert tmp_store.clear_scope_model_override("scope:1", "vision") is True
+    assert tmp_store.get_scope_model_overrides("scope:1") == {
+        "text_model": "",
+        "vision_provider": "",
+        "vision_model": "",
+    }
     # 清整行
+    tmp_store.set_scope_vision("scope:1", "p", "v1")
     assert tmp_store.clear_scope_model_override("scope:1") is True
     assert tmp_store.get_scope_model_overrides("scope:1") == {
         "text_model": "",
+        "vision_provider": "",
         "vision_model": "",
     }
     # 无覆盖时返回 False

@@ -1,7 +1,9 @@
-"""AI 多模态测试：事件图片 → 内容转换、image_view 工具、chat 双模型选择。
+"""AI vision 测试：事件图片 → 内容转换、image_view 工具、chat 含图流程。
 
-media 与 image_view 的纯逻辑测试不启动 NoneBot；chat 双模型选择走真实
+media 与 image_view 的纯逻辑测试不启动 NoneBot；chat 含图流程走真实
 NoneBot dispatch 路径（milky 事件 + stub build_agent/render/send）。
+vision 为独立配置（provider + 模型）：工具/chat 用例用全局默认 vision 提供
+（``ai vision default`` 写入的 KV），scope 未配置时回退。
 """
 
 from __future__ import annotations
@@ -71,21 +73,21 @@ def test_segment_unresolvable_skipped():
     assert image_segments_to_content([seg]) == []
 
 
-def test_build_multimodal_prompt_falls_back_to_text():
-    from hoshino.ai.media import build_multimodal_prompt
+def test_build_vision_prompt_falls_back_to_text():
+    from hoshino.ai.media import build_vision_prompt
 
     good = SimpleNamespace(url="https://example.com/a.png", path=None, raw=None)
     bad = SimpleNamespace(url="", path=None, raw=None)
 
-    result = build_multimodal_prompt("看图", [good])
+    result = build_vision_prompt("看图", [good])
     assert isinstance(result, list)
     assert isinstance(result[0], TextContent)
     assert result[0].content == "看图"
     assert isinstance(result[1], ImageUrl)
 
     # 图片全部解析失败 → 回退纯文本 str
-    assert build_multimodal_prompt("看图", [bad]) == "看图"
-    assert build_multimodal_prompt("看图", []) == "看图"
+    assert build_vision_prompt("看图", [bad]) == "看图"
+    assert build_vision_prompt("看图", []) == "看图"
 
 
 # ------------------------------------------------------------ image_view 工具
@@ -145,18 +147,18 @@ class _FakeAsyncClient:
         return self._response
 
 
-def _seed_vision_provider(tmp_store):
-    """预置带 vision 模型的 provider 行，返回默认文本模型名。"""
+def _seed_vision_provider(tmp_store, *, vision_model: str = "gpt-4o"):
+    """预置 provider 行 + 全局默认 vision（provider 不再携带默认 vision 模型）。"""
     tmp_store.upsert_provider_row(
         provider_id="openai",
         url="https://api.example.com/v1",
         key="sk-abcdefghij",
         kind="openai_chat",
         default_text_model="gpt-4o-mini",
-        default_vision_model="gpt-4o",
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
-    tmp_store.upsert_provider_model("openai", "gpt-4o", "multimodal")
+    tmp_store.set_global_value("default_vision_provider", "openai")
+    tmp_store.set_global_value("default_vision_model", vision_model)
 
 
 @pytest.mark.asyncio
@@ -192,17 +194,11 @@ async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
     from hoshino.ai.tools.core import image_view as iv
 
     _seed_vision_provider(tmp_store)
+    # 清掉全局默认 vision → 无看图能力
+    tmp_store.clear_global_value("default_vision_provider")
+    tmp_store.clear_global_value("default_vision_model")
     monkeypatch.setattr(iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x")))
-    # 单独一个无 vision 模型的 provider
-    tmp_store.upsert_provider_row(
-        provider_id="textonly",
-        url="https://api.example.com/v1",
-        key="sk",
-        kind="openai_chat",
-        default_text_model="gpt-4o-mini",
-    )
-    tmp_store.upsert_provider_model("textonly", "gpt-4o-mini", "text")
-    out = await iv.image_view(_tool_ctx(provider_id="textonly"), "https://example.com/a.png")
+    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/a.png")
     assert "未配置 vision 模型" in out
 
 
@@ -319,8 +315,10 @@ def _milky_group(
 
 
 def _stub_env(monkeypatch, tmp_store, *, vision_model: str = "", render_error: bool = False):
-    """配置 openai provider（可选 vision 默认模型）+ stub render/send。
+    """配置 openai provider（可选全局默认 vision）+ stub render/send。
 
+    ``vision_model`` 非空时写入全局默认 vision（``ai vision default`` 的 KV），
+    chat 含图流程经 ``provider.resolve_vision`` 走全局回退。
     ``render_error`` 让渲染抛错（chat 回退纯文本，便于断言 mask 文案）。
     返回 (config, sent)：sent 为 send_group_message 收到的 (group_id, message)。
     """
@@ -336,11 +334,11 @@ def _stub_env(monkeypatch, tmp_store, *, vision_model: str = "", render_error: b
         key="sk-abcdefghij",
         kind="openai_chat",
         default_text_model="gpt-4o-mini",
-        default_vision_model=vision_model,
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
     if vision_model:
-        tmp_store.upsert_provider_model("openai", vision_model, "multimodal")
+        tmp_store.set_global_value("default_vision_provider", "openai")
+        tmp_store.set_global_value("default_vision_model", vision_model)
 
     config = AIConfig(default="openai", system_prompt="你是测试助手。")
     monkeypatch.setattr(chat, "get_config", lambda: config)

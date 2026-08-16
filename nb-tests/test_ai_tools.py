@@ -489,10 +489,11 @@ def _seed_provider_pair(tmp_store):
         key="sk-abcdefghij",
         kind="openai_chat",
         default_text_model="gpt-4o-mini",
-        default_vision_model="gpt-4o",
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
-    tmp_store.upsert_provider_model("openai", "gpt-4o", "multimodal")
+    # 全局默认 vision：provider 不再携带默认 vision 模型，看图需单独配置
+    tmp_store.set_global_value("default_vision_provider", "openai")
+    tmp_store.set_global_value("default_vision_model", "gpt-4o")
 
 
 async def test_provider_choose_requires_superuser(tmp_store):
@@ -541,18 +542,29 @@ async def test_provider_choose_text_and_vision_models(tmp_store, monkeypatch):
     assert "文本模型" in out
     assert tmp_store.get_scope_model_overrides("milky:1")["text_model"] == "gpt-4o-mini"
 
-    out = await provider_choose(ctx, "vision", value="gpt-4o")
-    assert "视觉模型" in out
+    # vision：独立 provider + 模型（斜杠形式）
+    out = await provider_choose(ctx, "vision", value="openai/gpt-4o")
+    assert "vision" in out
+    assert tmp_store.get_scope_model_overrides("milky:1")["vision_provider"] == "openai"
     assert tmp_store.get_scope_model_overrides("milky:1")["vision_model"] == "gpt-4o"
+
+    # vision：空格形式
+    out = await provider_choose(ctx, "vision", value="openai gpt-4o-mini")
+    assert tmp_store.get_scope_model_overrides("milky:1")["vision_model"] == "gpt-4o-mini"
 
     # 不在 API 可用列表 → 拒绝
     out = await provider_choose(ctx, "text", value="ghost-1")
     assert "不在该 provider 的 API 可用列表中" in out
     assert tmp_store.get_scope_model_overrides("milky:1")["text_model"] == "gpt-4o-mini"
 
+    # vision 的 provider 不存在 → 拒绝
+    out = await provider_choose(ctx, "vision", value="ghost/gpt-4o")
+    assert "不存在" in out
+    assert tmp_store.get_scope_model_overrides("milky:1")["vision_provider"] == "openai"
+
     # vision none 禁用
     out = await provider_choose(ctx, "vision", value="none")
-    assert "已显式禁用多模态" in out
+    assert "已显式禁用本会话 vision" in out
     assert tmp_store.get_scope_model_overrides("milky:1")["vision_model"] == "none"
 
     # reset 清除

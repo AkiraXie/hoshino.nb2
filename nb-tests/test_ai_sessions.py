@@ -391,16 +391,16 @@ def test_list_summaries_counts_surface_only(manager, tmp_store):
     assert summaries[0]["count"] == 2  # 只数 user/message + assistant/message
 
 
-def test_messages_to_events_multimodal_content():
-    """多模态 UserPromptPart（内容为部件列表）不炸：提取文本、图片标注为 [图片]。
+def test_messages_to_events_vision_content():
+    """vision UserPromptPart（内容为部件列表）不炸：提取文本、图片标注为 [图片]。
 
-    历史里含多模态轮（或旧库重放）时 content 可能是 [TextContent, ImageUrl, ...]
+    历史里含 vision 轮（或旧库重放）时 content 可能是 [TextContent, ImageUrl, ...]
     列表；事件日志只要求可观测文本，无损重放靠 message_json。
     """
     from pydantic_ai import ImageUrl
     from pydantic_ai.messages import TextContent
 
-    multimodal = ModelRequest(
+    vision = ModelRequest(
         parts=[
             UserPromptPart(
                 content=[
@@ -410,7 +410,7 @@ def test_messages_to_events_multimodal_content():
             )
         ]
     )
-    messages = [multimodal, _asst("看到了")]
+    messages = [vision, _asst("看到了")]
     events = context.messages_to_events(messages)
     assert events[0]["type"] == context.EVENT_USER_MESSAGE
     assert events[0]["data"]["content"] == "看看这张图[图片]"

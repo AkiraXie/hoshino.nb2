@@ -112,7 +112,11 @@ def _stub_env(
     model_text: str = _DEFAULT_MODEL_TEXT,
     with_vision: bool = False,
 ):
-    """stub zssm 的 config / store / build_model / 发送，返回 (fake_model, sent)。"""
+    """stub zssm 的 config / store / build_model / 发送，返回 (fake_model, sent)。
+
+    ``with_vision`` 时写全局默认 vision（``ai vision default`` 的 KV），
+    zssm 经 ``provider.resolve_vision`` 走全局回退。
+    """
     from hoshino.modules.ai import zssm
 
     monkeypatch.setattr(zssm.sv, "check_enabled", lambda scope: True)
@@ -125,11 +129,11 @@ def _stub_env(
         key="sk-abcdefghij",
         kind="openai_chat",
         default_text_model="gpt-4o-mini",
-        default_vision_model="gpt-4o" if with_vision else "",
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
     if with_vision:
-        tmp_store.upsert_provider_model("openai", "gpt-4o", "vision")
+        tmp_store.set_global_value("default_vision_provider", "openai")
+        tmp_store.set_global_value("default_vision_model", "gpt-4o")
 
     fake = FakeModel(model_text)
     monkeypatch.setattr(zssm.providers, "build_model", lambda *a, **k: fake)
@@ -145,7 +149,7 @@ def _stub_env(
 
 
 def _user_payload(fake_model) -> dict:
-    """取出 fake 收到的 user prompt 文本（JSON 解码；多模态时取 TextContent）。"""
+    """取出 fake 收到的 user prompt 文本（JSON 解码；vision 时取 TextContent）。"""
     request = fake_model.messages[0]
     part = request.parts[-1]
     content = part.content
