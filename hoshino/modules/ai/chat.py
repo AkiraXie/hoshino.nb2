@@ -6,15 +6,16 @@
     ``#goal ...``；其余内容一律按聊天处理）；
   - 对机器人自己消息的引用回复（无需 ``#``，如回复 AI 发的图片消息继续追问）。
 - 引用识别：触发后会把回复指向的内容一并交给模型——聊天记录文字、转发消息文字、
-  回复/转发里的图片（多模态路径），而不仅是当前消息本体。
+  回复/转发里的图片（vision 路径），而不仅是当前消息本体。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
   见 ``sessions.py``；轮次按 scope 锁串行化，run 进行中再收消息回忙提示。
 - 执行护栏（持久化不替代超时）：
   run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
   超时/超限把本轮提问写入上下文可续问；provider 异常不写。
 - 模型输出 Markdown 先渲染为图片；渲染失败（超时/浏览器异常）回退纯文本。
-- 多模态：scope/provider 配置多模态模型时，含图消息走 vision 模型（图片经
-  ImageUrl/BinaryContent 传入）；未配置时保留文本提示（mask），模型不看图。
+- vision：scope 配置了 vision（独立 provider + 模型，``ai vision``）时，含图
+  消息走 vision 模型（图片经 ImageUrl/BinaryContent 传入）；未配置时保留文本
+  提示（mask），模型不看图。
 - 日志只记录 provider id、scope、耗时、错误类型，不打印 key 或完整历史。
 """
 
@@ -291,10 +292,10 @@ async def _goal_transition(bot: Bot, event: Event, scope_key: str, action: str) 
 
 
 async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str):
-    """单轮聊天：解析 provider/双模型 → 读当前对话上下文 → run（带护栏）→ 渲染回复。"""
+    """单轮聊天：解析 provider/文本模型 + vision → 读当前对话上下文 → run（带护栏）→ 渲染回复。"""
     manager = sessions.conversation_manager
     config = get_config()
-    # 引用内容注入：回复指向的聊天记录/转发文字一并交给模型理解（图片走多模态）。
+    # 引用内容注入：回复指向的聊天记录/转发文字一并交给模型理解（图片走 vision）。
     reply_ctx = await _reply_context_text(bot, event)
     if reply_ctx:
         prompt = f"{reply_ctx}\n\n{prompt}"
@@ -306,29 +307,31 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     if record is None:
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
         return
-    text_model, vision_model = provider.resolve_models(scope_key, provider_id)
+    text_model = provider.resolve_text_model(scope_key, provider_id)
     if not text_model:
         await send_to_event(bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。")
         return
+    vision_provider_id, vision_model = provider.resolve_vision(scope_key)
 
     # 图片识别：vision 模型"看"图产出文字描述 → 交给默认 text 模型作答。
-    # 无图或图解析失败时走纯文本；有图但无 vision 模型时保留 mask 提示。
+    # 无图或图解析失败时走纯文本；有图但未配置 vision 时保留 mask 提示。
     images = await _event_images(bot, event)
     no_vision_mask = bool(images and not vision_model)
     if images and vision_model:
+        vision_record = provider.get_provider(vision_provider_id)
         # 段转换含本地文件读取（最多 15MB），放线程池执行，避免阻塞事件循环。
         image_content = await asyncio.to_thread(ai_media.image_segments_to_content, images)
-        if image_content:
+        if image_content and vision_record is not None:
             try:
                 description = await vision.describe_images(
-                    record,
+                    vision_record,
                     vision_model,
                     image_content,
-                    proxy=provider.resolve_effective_proxy(record, config.proxy),
+                    proxy=provider.resolve_effective_proxy(vision_record, config.proxy),
                 )
             except Exception as exc:
                 sv.logger.warning(
-                    f"AI 图片描述失败 provider={provider_id} error={type(exc).__name__}"
+                    f"AI 图片描述失败 provider={vision_provider_id} error={type(exc).__name__}"
                 )
                 description = ""
             if description:
@@ -400,7 +403,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         )
     except (TimeoutError, UsageLimitExceeded) as exc:
         # 护栏触发：丢弃本次执行，但把提问留在上下文，下一轮可续问。
-        # 已知限制：多模态轮只保留文本 prompt（图片部件不落历史）。
+        # 已知限制：vision 轮只保留文本 prompt（图片部件不落历史）。
         agent_deps.telemetry.record_error(type(exc).__name__)
         run_log.reason = "timeout" if isinstance(exc, TimeoutError) else "max-requests"
         manager.append_prompt_only(scope_key, prompt, provider_id, run_log)
@@ -513,7 +516,7 @@ def _message_text(message) -> str:
 async def _reply_context_text(bot: Bot, event: Event) -> str:
     """收集引用内容的文本：回复目标（含 OB11 经 get_msg 拉取）+ 转发消息。
 
-    图片类引用由 ``_event_images`` 走多模态路径，这里只取文字部分。
+    图片类引用由 ``_event_images`` 走 vision 路径，这里只取文字部分。
     """
     parts: list[str] = []
     reply = await get_reply_content(bot, event)

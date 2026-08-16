@@ -57,7 +57,7 @@ async def load_url(
     if not _fetch_failed(content):
         return {"url": url, "kind": "web", "content": content}
     if not vision_model:
-        raise ValueError(f"无法获取页面内容：{url}（未配置多模态模型，无法渲染兜底）。")
+        raise ValueError(f"无法获取页面内容：{url}（未配置 vision 模型，无法渲染兜底）。")
     description = await browse_page_description(
         url,
         proxy=provider.resolve_effective_proxy(record, config.proxy),

@@ -231,7 +231,7 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
     if record is None:
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
         return
-    text_model, vision_model = provider.resolve_models(scope_key, provider_id)
+    text_model = provider.resolve_text_model(scope_key, provider_id)
     if not text_model:
         await send_to_event(
             bot,
@@ -239,12 +239,14 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
             f"provider `{provider_id}` 未配置文本模型，请联系管理员。",
         )
         return
+    vision_provider_id, vision_model = provider.resolve_vision(scope_key)
+    vision_record = provider.get_provider(vision_provider_id) if vision_provider_id else None
 
     image_desc = ""
     if images:
         try:
             image_desc = await image_mod.describe_event_images(
-                images, record=record, vision_model=vision_model, config=config
+                images, record=vision_record, vision_model=vision_model, config=config
             )
         except ValueError as exc:
             await send_to_event(bot, event, str(exc))
@@ -256,7 +258,7 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         try:
             resources.append(
                 await link_mod.load_url(
-                    url, record=record, vision_model=vision_model, config=config
+                    url, record=vision_record, vision_model=vision_model, config=config
                 )
             )
         except ValueError as exc:

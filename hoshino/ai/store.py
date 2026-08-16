@@ -93,6 +93,7 @@ def _migrate_missing_columns(target_engine) -> None:
         _ensure_column(conn, "ai_tasks", "adapter_name")
         _ensure_column(conn, "ai_personas", "begin_dialogs")
         _ensure_column(conn, "ai_providers", "use_proxy", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "ai_scope_models", "vision_provider")
 
 
 def _ensure_column(conn, table: str, column: str, decl: str = "TEXT NOT NULL DEFAULT ''") -> None:
@@ -562,9 +563,10 @@ def clear_provider_references(provider_id: str) -> int:
 
 
 class AIProvider(Base):
-    """一个 provider：连接（url/key/kind）+ 默认双模型 + 采样参数。
+    """一个 provider：连接（url/key/kind）+ 默认文本模型 + 采样参数。
 
-    ``default_vision_model`` 可为空（纯文本 provider）；采样参数为空时用模型/网关默认。
+    provider 只提供默认文本模型；vision 由 ``ai vision`` 单独配置
+    （scope 配置 > 全局默认，见 ``provider.resolve_vision``）。
     """
 
     __tablename__ = "ai_providers"
@@ -574,7 +576,6 @@ class AIProvider(Base):
     key: Mapped[str] = mapped_column(Text, nullable=False, default="")
     kind: Mapped[str] = mapped_column(Text, nullable=False, default="openai_chat")
     default_text_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    default_vision_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
     use_proxy: Mapped[bool] = mapped_column(Integer, nullable=False, default=False)
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
@@ -584,7 +585,8 @@ class AIProvider(Base):
 
 
 class AIProviderModel(Base):
-    """provider 的 model-list 注册表。capabilities ∈ text | multimodal | both。"""
+    """provider 的 model-list 注册表（仅历史迁移用途；capabilities 保留旧值
+    text | multimodal | both）。"""
 
     __tablename__ = "ai_provider_models"
 
@@ -596,12 +598,15 @@ class AIProviderModel(Base):
 
 
 class AIScopeModel(Base):
-    """scope 的模型覆盖。空串 = 继承 provider 默认；``none`` = 显式禁用 vision。"""
+    """scope 的模型覆盖。文本模型空串 = 继承 provider 默认；vision 为
+    （provider + 模型）成对配置，空串 = 继承全局默认；``vision_model='none'``
+    = 显式禁用 vision（即使存在全局默认）。"""
 
     __tablename__ = "ai_scope_models"
 
     scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
     text_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    vision_provider: Mapped[str] = mapped_column(Text, nullable=False, default="")
     vision_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_by: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
@@ -614,7 +619,6 @@ def _provider_to_dict(row: AIProvider) -> dict[str, Any]:
         "key": row.key,
         "kind": row.kind,
         "default_text_model": row.default_text_model,
-        "default_vision_model": row.default_vision_model,
         "temperature": row.temperature,
         "max_tokens": row.max_tokens,
         "timeout_seconds": row.timeout_seconds,
@@ -647,7 +651,6 @@ def upsert_provider_row(
     key: str = "",
     kind: str = "openai_chat",
     default_text_model: str = "",
-    default_vision_model: str = "",
     temperature: float | None = None,
     max_tokens: int | None = None,
     timeout_seconds: float | None = None,
@@ -664,7 +667,6 @@ def upsert_provider_row(
                     key=key,
                     kind=kind,
                     default_text_model=default_text_model,
-                    default_vision_model=default_vision_model,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     timeout_seconds=timeout_seconds,
@@ -678,7 +680,6 @@ def upsert_provider_row(
             row.key = key
             row.kind = kind
             row.default_text_model = default_text_model
-            row.default_vision_model = default_vision_model
             row.temperature = temperature
             row.max_tokens = max_tokens
             row.timeout_seconds = timeout_seconds
@@ -755,16 +756,20 @@ def delete_provider_model(provider_id: str, model: str) -> bool:
 
 
 def get_scope_model_overrides(scope_key: str) -> dict[str, str]:
-    """scope 的模型覆盖；无行时返回两个空串（全部继承 provider 默认）。"""
+    """scope 的模型覆盖；无行时返回空串（全部继承 provider/全局默认）。"""
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
         if row is None:
-            return {"text_model": "", "vision_model": ""}
-        return {"text_model": row.text_model, "vision_model": row.vision_model}
+            return {"text_model": "", "vision_provider": "", "vision_model": ""}
+        return {
+            "text_model": row.text_model,
+            "vision_provider": row.vision_provider,
+            "vision_model": row.vision_model,
+        }
 
 
-def set_scope_model_override(scope_key: str, slot: str, model: str, updated_by: str = "") -> None:
-    """设置 scope 单槽位模型覆盖（upsert）。slot ∈ text | vision。"""
+def set_scope_text_model(scope_key: str, model: str, updated_by: str = "") -> None:
+    """设置 scope 文本模型覆盖（upsert）。"""
     now = time.time()
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
@@ -772,24 +777,46 @@ def set_scope_model_override(scope_key: str, slot: str, model: str, updated_by: 
             session.add(
                 AIScopeModel(
                     scope_key=scope_key,
-                    text_model=model if slot == "text" else "",
-                    vision_model=model if slot == "vision" else "",
+                    text_model=model,
                     updated_by=updated_by,
                     updated_at=now,
                 )
             )
         else:
-            if slot == "text":
-                row.text_model = model
-            else:
-                row.vision_model = model
+            row.text_model = model
+            row.updated_by = updated_by
+            row.updated_at = now
+        session.commit()
+
+
+def set_scope_vision(scope_key: str, provider_id: str, model: str, updated_by: str = "") -> None:
+    """设置 scope 的 vision 配置（provider + 模型成对 upsert；空串清除该槽）。"""
+    now = time.time()
+    with Session() as session:
+        row = session.get(AIScopeModel, scope_key)
+        if row is None:
+            session.add(
+                AIScopeModel(
+                    scope_key=scope_key,
+                    vision_provider=provider_id,
+                    vision_model=model,
+                    updated_by=updated_by,
+                    updated_at=now,
+                )
+            )
+        else:
+            row.vision_provider = provider_id
+            row.vision_model = model
             row.updated_by = updated_by
             row.updated_at = now
         session.commit()
 
 
 def clear_scope_model_override(scope_key: str, slot: str | None = None) -> bool:
-    """清除 scope 模型覆盖；slot 为 None 时整行删除。返回是否真的有覆盖被清除。"""
+    """清除 scope 模型覆盖；slot 为 None 时整行删除。返回是否真的有覆盖被清除。
+
+    slot ``vision`` 同时清除 vision 的 provider 与模型（成对配置）。
+    """
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
         if row is None:
@@ -798,6 +825,7 @@ def clear_scope_model_override(scope_key: str, slot: str | None = None) -> bool:
             row.text_model = ""
             row.updated_at = time.time()
         elif slot == "vision":
+            row.vision_provider = ""
             row.vision_model = ""
             row.updated_at = time.time()
         else:

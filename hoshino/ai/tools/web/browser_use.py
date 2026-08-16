@@ -2,8 +2,9 @@
 
 需要看网页内容（而 web_fetch 的纯文本不够、需要"看到"页面布局/截图/渲染结果）
 时使用：用仓库既有 Playwright 设施（``hoshino/util/playwrights.py``）打开页面、
-等渲染完成后整页截图，再把截图交给 provider 的 vision 模型描述，返回文字给调用
-（默认 text）模型。text 模型不需要自己具备视觉能力。
+等渲染完成后整页截图，再把截图交给 vision 模型描述（``ai vision`` 独立配置的
+provider + 模型），返回文字给调用（默认 text）模型。text 模型不需要自己具备
+视觉能力。
 
 安全：只允许 http/https、拒绝私有/回环/保留地址（同 image_view/web_fetch）；
 整体浏览器操作有墙钟超时；截图超限拒绝；页面用完即关。
@@ -73,7 +74,7 @@ async def browser_use(
     """用 Playwright 打开网页并截图，交给 vision 模型识别，返回文字描述。
 
     - 用于需要"看"网页（布局/图表/渲染结果）的场景；
-    - 禁止访问私有/内网地址；当前 provider 未配置 vision 模型时返回提示。
+    - 禁止访问私有/内网地址；当前 scope 未配置 vision 时返回提示。
     """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
@@ -82,10 +83,8 @@ async def browser_use(
         return "拒绝访问私有/内网地址。"
 
     record, vision_model = vision.resolve_vision_model(ctx)
-    if record is None:
-        return "provider 配置异常。"
-    if not vision_model:
-        return "当前 provider 未配置 vision 模型，无法识别网页截图。"
+    if not vision_model or record is None:
+        return "当前未配置 vision 模型，无法识别网页截图（`ai vision set <provider> <模型>`）。"
     return await browse_page_description(
         url,
         proxy=provider.resolve_effective_proxy(record, ctx.deps.config.proxy),

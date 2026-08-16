@@ -85,7 +85,7 @@ def deserialize_message(message_json: str) -> ModelMessage | None:
 
 
 def _user_prompt_text(part: UserPromptPart) -> str:
-    """UserPromptPart 内容转可观测文本：str 直用，多模态部件列表提取文本并标注图片。"""
+    """UserPromptPart 内容转可观测文本：str 直用，vision 部件列表提取文本并标注图片。"""
     content = part.content
     if isinstance(content, str):
         return content
@@ -107,7 +107,7 @@ def messages_to_events(messages: list[ModelMessage]) -> list[dict]:
 
     只产 surface 事件；``ModelRequest`` 含 ``UserPromptPart`` 记为 user/message，
     否则（tool return 或兜底）序列化整条为 tool/result；``ModelResponse`` 序列化
-    整条为 assistant/message。user/message 同时保留 ``content``（可观测，多模态
+    整条为 assistant/message。user/message 同时保留 ``content``（可观测，vision
     内容提取文本并标注图片）与 ``message_json``（含 timestamp 的无损重放），保证
     ``derive_messages(messages_to_events(m)) == m`` 字节级往返。
     """

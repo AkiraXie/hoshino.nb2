@@ -4,9 +4,10 @@ store 提供表级 CRUD；本层提供领域语义（默认模型解析、model-
 可 hash 的 ``ProviderRecord``，供 Agent 缓存 key 使用）。chat / task / ai_admin
 统一走本层，不直接读 config providers（该字段已从 AIConfig 移除）。
 
-模型双维度约定：
-- text 模型必填（scope 覆盖 > provider 默认），为空表示配置缺失；
-- vision 模型可空（无多模态）；``none`` 是 scope 显式禁用 vision 的哨兵。
+模型约定：
+- 文本（text）模型必填（scope 覆盖 > provider 默认），为空表示配置缺失；
+- vision 由 ``ai vision`` 单独配置（独立 provider + 模型）：scope 配置 >
+  全局默认；未配置时无看图能力；``none`` 是 scope 显式禁用 vision 的哨兵。
 """
 
 from __future__ import annotations
@@ -20,8 +21,12 @@ from . import store
 
 KNOWN_KINDS = ("openai_chat", "openai_responses", "anthropic")
 
-# vision 槽的显式禁用哨兵（scope 覆盖为 ``none`` 时强制关闭多模态）。
+# vision 槽的显式禁用哨兵（scope 覆盖为 ``none`` 时强制关闭看图能力）。
 VISION_DISABLED = "none"
+
+# 全局默认 vision 配置的 KV key（``ai vision default`` 写入）。
+VISION_GLOBAL_PROVIDER = "default_vision_provider"
+VISION_GLOBAL_MODEL = "default_vision_model"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +38,6 @@ class ProviderRecord:
     key: str = ""
     kind: str = "openai_chat"
     default_text_model: str = ""
-    default_vision_model: str = ""
     use_proxy: bool = False
     temperature: float | None = None
     max_tokens: int | None = None
@@ -47,7 +51,6 @@ class ProviderRecord:
             key=row.get("key", ""),
             kind=row.get("kind", "openai_chat"),
             default_text_model=row.get("default_text_model", ""),
-            default_vision_model=row.get("default_vision_model", ""),
             use_proxy=bool(row.get("use_proxy", False)),
             temperature=row.get("temperature"),
             max_tokens=row.get("max_tokens"),
@@ -78,7 +81,6 @@ def upsert_provider(record: ProviderRecord) -> None:
         key=record.key,
         kind=record.kind,
         default_text_model=record.default_text_model,
-        default_vision_model=record.default_vision_model,
         use_proxy=record.use_proxy,
         temperature=record.temperature,
         max_tokens=record.max_tokens,
@@ -176,25 +178,36 @@ async def fetch_available_models(
 # ---------------------------------------------------------------- 解析
 
 
-def resolve_models(scope_key: str | None, provider_id: str) -> tuple[str, str]:
-    """解析 (text_model, vision_model)。vision 可为空串（无多模态能力）。
+def resolve_text_model(scope_key: str | None, provider_id: str) -> str:
+    """解析当前 scope 应使用的纯文本模型（scope 覆盖 > provider 默认）。
 
-    优先级：scope 覆盖 > provider 默认；scope 的 ``none`` 显式禁用 vision。
     provider 不存在或未配置时返回空串，由调用方报配置错误。
     """
     record = get_provider(provider_id)
     if record is None:
-        return ("", "")
+        return ""
     overrides = store.get_scope_model_overrides(scope_key or "")
-    text = overrides["text_model"] or record.default_text_model
-    vision = overrides["vision_model"]
-    if vision == VISION_DISABLED:
-        vision = ""
-    elif not vision:
-        vision = record.default_vision_model
-    return (text, vision)
+    return overrides["text_model"] or record.default_text_model
 
 
-def resolve_text_model(scope_key: str | None, provider_id: str) -> str:
-    """解析当前 scope 应使用的纯文本模型（task 等不含图 surface 用）。"""
-    return resolve_models(scope_key, provider_id)[0]
+def resolve_vision(scope_key: str | None) -> tuple[str, str]:
+    """解析当前 scope 应使用的 vision（provider_id, model）；未配置返回 ("", "")。
+
+    优先级：scope 的 vision 配置（provider + 模型）> 全局默认 vision；
+    scope 的 ``none`` 显式禁用（即使存在全局默认）。provider 需真实存在，
+    否则视为未配置（避免引用已删除的 provider）。
+    """
+    overrides = store.get_scope_model_overrides(scope_key or "")
+    if overrides["vision_model"] == VISION_DISABLED:
+        return "", ""
+    if (
+        overrides["vision_provider"]
+        and overrides["vision_model"]
+        and store.has_provider_row(overrides["vision_provider"])
+    ):
+        return overrides["vision_provider"], overrides["vision_model"]
+    provider_id = store.get_global_value(VISION_GLOBAL_PROVIDER) or ""
+    model = store.get_global_value(VISION_GLOBAL_MODEL) or ""
+    if provider_id and model and store.has_provider_row(provider_id):
+        return provider_id, model
+    return "", ""

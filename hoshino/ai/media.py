@@ -1,6 +1,6 @@
-"""事件图片 → pydantic-ai 多模态输入内容。
+"""事件图片 → pydantic-ai vision 输入内容。
 
-``chat`` 收到含图消息且当前 provider/scope 配置了多模态模型时，把 UniImage 段转成
+``chat`` 收到含图消息且当前 scope 配置了 vision 模型时，把 UniImage 段转成
 ``ImageUrl``（远程 http(s)）或 ``BinaryContent``（本地 path/raw 字节），与文本一起
 作为 ``UserContent`` 序列传给 Agent。解析失败的段跳过并日志，不阻塞主流程。
 """
@@ -76,7 +76,7 @@ def _segment_to_content(segment) -> Any | None:
 
 
 def image_segments_to_content(segments: list) -> list[Any]:
-    """把事件图片段转成 pydantic-ai 多模态内容列表（跳过解析失败的段）。"""
+    """把事件图片段转成 pydantic-ai vision 内容列表（跳过解析失败的段）。"""
     parts: list[Any] = []
     for segment in segments:
         part = _segment_to_content(segment)
@@ -85,8 +85,8 @@ def image_segments_to_content(segments: list) -> list[Any]:
     return parts
 
 
-def build_multimodal_prompt(prompt: str, segments: list) -> str | list[Any]:
-    """构造多模态 UserContent：文本 + 图片内容；图片全部失败时回退纯文本。"""
+def build_vision_prompt(prompt: str, segments: list) -> str | list[Any]:
+    """构造 vision UserContent：文本 + 图片内容；图片全部失败时回退纯文本。"""
     content = image_segments_to_content(segments)
     if not content:
         return prompt

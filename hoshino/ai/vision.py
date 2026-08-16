@@ -1,8 +1,9 @@
 """vision 模型看图：文本描述子请求（vision 描述 → 默认模型作答）。
 
-聊天与 image_view 工具都走这里：当前 provider/scope 配了多模态（vision）模型时，
-用 vision 模型"看"图并产出文字描述，再把描述交给默认（text）模型继续作答；
-无 vision 模型时返回空串，由调用方降级（如回复"未启用多模态"）。
+聊天与 image_view 工具都走这里：当前 scope 配置了 vision（独立 provider +
+模型，见 ``provider.resolve_vision``）时，用 vision 模型"看"图并产出文字
+描述，再把描述交给默认（text）模型继续作答；未配置 vision 时返回空串，
+由调用方降级（如回复"未配置 vision 模型"）。
 
 只做一次直接 ``Model.request`` 子请求（不进入 Agent 图，避免嵌套 Agent.run）；
 描述请求不带任何工具，避免副作用。model 实例按 (provider, model, proxy) 缓存，
@@ -34,18 +35,19 @@ _vision_model_cache: dict[tuple[Any, ...], Any] = {}
 
 
 def resolve_vision_model(ctx) -> tuple[ProviderRecord | None, str]:
-    """解析当前 scope/provider 的 vision 模型；无配置返回 (record, "")。
+    """解析当前 scope 的 vision（provider 快照, 模型）；未配置返回 (None, "")。
 
-    record 为 provider 快照（供 build_model / describe_images），空串表示
-    当前 provider/scope 没有可用多模态模型。
+    record 为 vision provider 的快照（供 build_model / describe_images /
+    代理解析），空串表示当前 scope 没有可用的 vision 配置（无看图能力）。
     """
     from . import provider  # 函数内导入（vision 是底层模块，避免被工具层反向依赖）
 
-    provider_id = ctx.deps.telemetry.provider_id
-    record = provider.get_provider(provider_id)
+    vision_provider_id, vision_model = provider.resolve_vision(ctx.deps.scope_key)
+    if not vision_provider_id:
+        return None, ""
+    record = provider.get_provider(vision_provider_id)
     if record is None:
         return None, ""
-    _, vision_model = provider.resolve_models(ctx.deps.scope_key, provider_id)
     return record, vision_model
 
 

@@ -1,13 +1,13 @@
-"""web/image_view：抓取图片 URL，用 provider 的 vision 模型描述后交还给调用模型。
+"""web/image_view：抓取图片 URL，用 vision 模型描述后交还给调用模型。
 
-先 http(s) 抓取字节，再调用 ``vision.describe_images`` 用当前 provider/scope 的
-多模态（vision）模型"看"图并产出文字描述，返回给调用方（通常是默认 text 模型），
-由它基于描述继续作答——text 模型不必自己具备视觉能力。
+先 http(s) 抓取字节，再调用 ``vision.describe_images`` 用当前 scope 配置的
+vision（独立 provider + 模型，``ai vision``）"看"图并产出文字描述，返回给调用方
+（通常是默认 text 模型），由它基于描述继续作答——text 模型不必自己具备视觉能力。
 
 网络行为与 web_fetch 一致：``trust_env=False``（规避 socks 环境变量崩溃）、
 ``verify=config.web_fetch_verify_ssl``、SSRF 防护（拒绝私有/回环/保留地址）、
 30s 超时、跟随重定向。超过 10MB 的图片先压缩（PIL thumbnail + JPEG/80）再送
-vision，压缩后仍超限才拒绝。无 vision 模型时返回明确提示。
+vision，压缩后仍超限才拒绝。未配置 vision 时返回明确提示。
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ async def image_view(ctx: RunContext[AgentDeps], url: str):
     """抓取指定 URL 的图片，用 vision 模型识别后返回文字描述。
 
     仅当需要查看具体图片 URL 的内容时使用；禁止访问私有/内网地址。
-    当前 provider 未配置 vision 模型时返回提示（无法看图）。
+    当前 scope 未配置 vision 时返回提示（无法看图）。
     """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
@@ -129,10 +129,8 @@ async def image_view(ctx: RunContext[AgentDeps], url: str):
         return "拒绝访问私有/内网地址。"
 
     record, vision_model = vision.resolve_vision_model(ctx)
-    if record is None:
-        return "provider 配置异常。"
-    if not vision_model:
-        return "当前 provider 未配置 vision 模型，无法识别图片。"
+    if not vision_model or record is None:
+        return "当前未配置 vision 模型，无法识别图片（`ai vision set <provider> <模型>`）。"
     return await describe_image_url(
         url,
         verify_ssl=ctx.deps.config.web_fetch_verify_ssl,

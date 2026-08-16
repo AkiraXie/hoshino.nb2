@@ -218,7 +218,7 @@ async def run_agent(
 ) -> AgentRunResult | None:
     """驱动 Agent run 直到结束，返回最终结果（未正常结束时为 None）。
 
-    ``prompt``：文本或多模态 UserContent 序列（chat 含图时传 ``[TextContent, ImageUrl/...]``）。
+    ``prompt``：文本或带图（vision）UserContent 序列（chat 含图时传 ``[TextContent, ImageUrl/...]``）。
     ``on_event``：可选同步回调，每个图节点触发一次，供 heartbeat / 取消检查。
     ``deferred_tool_results``/``conversation_id`` 供 Task 审批恢复使用：审批决议后以
     原消息历史 + ``DeferredToolResults`` 重新进入 Agent，沿用同一 conversation 关联。
@@ -299,7 +299,7 @@ async def run_agent_with_retry(
 ) -> AgentRunResult | None:
     """带 request-error 有界重试的 ``run_agent``。
 
-    ``prompt`` 同 ``run_agent``（支持多模态 UserContent 序列）。
+    ``prompt`` 同 ``run_agent``（支持带图 vision UserContent 序列）。
     重试仅在同时满足：异常被 hook 判定 retry 或落入内置瞬态分类器、且本次 turn
     尚无工具调用（无副作用，重进 ``agent.iter`` 不会重放工具执行）、且未达上限。
     护栏异常（``TimeoutError``/``UsageLimitExceeded``）不重试，直接抛出。

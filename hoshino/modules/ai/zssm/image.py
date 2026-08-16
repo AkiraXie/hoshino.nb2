@@ -107,7 +107,7 @@ async def describe_event_images(
     未配置 vision 模型时抛 ValueError（纯图片场景由调用方直接提示）。
     """
     if not vision_model:
-        raise ValueError("当前未配置多模态模型，无法识别图片内容。")
+        raise ValueError("当前未配置 vision 模型，无法识别图片内容。")
     parts: list[str] = []
     for index, segment in enumerate(images, start=1):
         desc = await _describe_one(segment, record=record, vision_model=vision_model, config=config)

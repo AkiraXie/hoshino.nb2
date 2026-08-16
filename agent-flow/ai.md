@@ -51,7 +51,7 @@ hoshino/modules/ai/    插件层（NoneBot 插件，被 bootstrap 按 modules �
 | `store.py` | SQLite 表层：providers / personas / conversations / events / skills / goals / usage |
 | `metrics.py` | 用量提取（`RunResult.usage()`）与 `ai stats` 聚合 |
 | `rendering.py` | Markdown → HTML → Playwright PNG 渲染（聊天图片输出） |
-| `media.py` | 事件图片 → pydantic-ai 多模态输入（`ImageUrl` / `BinaryContent`） |
+| `media.py` | 事件图片 → pydantic-ai vision 输入（`ImageUrl` / `BinaryContent`） |
 | `vision.py` | vision 模型"看图"子请求：描述文本 → 默认模型作答 |
 | `harness.py` | `pydantic-ai-harness` 兼容 facade：Planning / StepPersistence / Skills（可选，可降级） |
 | `errors.py` | 异常详情提取（duck-typed，截断输出，供失败日志与 usage event） |
@@ -134,8 +134,9 @@ pydantic-ai 只提供"单次 run"的模型循环；聊天机器人需要的会�
   few-shot（锚定说话方式）、`output.md` 强制输出规范（所有 persona 生效）、
   `ai persona` CRUD 命令与 `persona_manage` 工具。
 - **provider 治理**：provider 存 SQLite（非 env），`ai setup` 一键配置；model-list
-  实时校验（`ai model list` 调 provider API）；scope 绑定 + 全局默认；文本/视觉
-  双模型槽位（`vision none` 显式禁用）。
+  实时校验（`ai model list` 调 provider API）；scope 绑定 + 全局默认；文本模型
+  provider 只提供默认值，vision 由 `ai vision` 单独配置（独立 provider + 模型：
+  scope 配置 > 全局默认，`none` 显式禁用）。
 - **后台任务（Task）**：`ai task` 创建 research/plan 任务——状态机
   （created/queued/running/waiting_approval/succeeded/failed/cancelled）、调度器
   （claim/lease/heartbeat、有限重试、持久化取消、启动恢复）、**创建时冻结**
@@ -154,8 +155,8 @@ pydantic-ai 只提供"单次 run"的模型循环；聊天机器人需要的会�
   （`mask_key`/`mask_url`）；token/cache 用量落库（`ai stats`）；异常详情提取
   （`errors.py`，不再只记异常类名）。
 - **聊天体验**：Markdown → 图片渲染（Playwright，超时回退纯文本）、引用回复识别
-  （回复机器人消息继续追问、转发内容一并交给模型）、多模态（vision 描述子请求）、
-  执行护栏（墙钟超时 + 请求上限，超时把本轮提问写入上下文可续问）。
+  （回复机器人消息继续追问、转发内容一并交给模型）、vision（描述子请求，独立
+  provider + 模型）、执行护栏（墙钟超时 + 请求上限，超时把本轮提问写入上下文可续问）。
 - **仓库知识工具**：`hoshino_nb2_code`（overview/norms/flow/ai_module/read），让
   agent 改进本仓库（尤其 `hoshino/ai/` 自身）前快速掌握上下文，只读、路径
   containment、敏感路径拒绝。

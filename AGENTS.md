@@ -151,9 +151,10 @@ Hook 规则：业务模块用 `hoshino.core.hooks` 的 `on_serial_startup` / `on
 
 AI 模块（`hoshino/ai/` 基建 + `hoshino/modules/ai/` 插件）：底座 pydantic-ai（Agent +
 RunContext deps + 动态 system prompt + ApprovalRequiredToolset + agent.iter + UsageLimits），
-自有扩展为事件溯源会话历史、多对话管理、三级 persona 模板、provider DB 治理与双模型槽位、
-工具注册表门控、后台 Task 运行时、Goal 服务、拦截瀑布 hooks、遥测脱敏、Markdown 渲染、
-多模态 vision。详细结构与改法见 `agent-flow/ai.md`、`ai-tools.md`；改人格在 `prompts.py`、
+自有扩展为事件溯源会话历史、多对话管理、三级 persona 模板、provider DB 治理
+（文本模型 + 独立配置的 vision 槽位）、工具注册表门控、后台 Task 运行时、Goal
+服务、拦截瀑布 hooks、遥测脱敏、Markdown 渲染、vision 看图。详细结构与改法见
+`agent-flow/ai.md`、`ai-tools.md`；改人格在 `prompts.py`、
 输出规范在 `hoshino/ai/output.md`、新工具在 `tools/`、新配置在 `config.py`（env `AI_*`）。
 
 ## 6. 插件与平台规范

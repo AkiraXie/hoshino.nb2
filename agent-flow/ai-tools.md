@@ -43,7 +43,7 @@ Tool`，注册在 `hoshino/ai/tools/__init__.py` 的 `REGISTRATIONS`；模型"�
 | `now` | core | low | chat/task | 当前时间 |
 | `memory` | core | medium | chat/task | scope 隔离长期记忆读写 |
 | `persona_manage` | core | medium | chat/task | 人设 CRUD/绑定（use/reset 需管理员） |
-| `provider_choose` | core | medium | chat/task | 调整 scope 的 provider/文本/视觉模型（**仅 superuser**） |
+| `provider_choose` | core | medium | chat/task | 调整 scope 的 provider/文本模型/vision（**仅 superuser**） |
 | `bash` | computer | high | chat/task | shell（chat 静态排除；需显式开启） |
 | `python` | computer | high | chat/task | Python 执行（chat 静态排除） |
 | `file` | computer | medium→high | chat/task | 冻结工作目录内读写删（参数级风险） |
