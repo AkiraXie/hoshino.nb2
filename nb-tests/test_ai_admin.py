@@ -476,6 +476,89 @@ async def test_vision_set_rejected_in_private(monkeypatch, tmp_store):
     assert "仅限群聊" in sent[0][1].extract_plain_text()
 
 
+# ------------------------------------------------------- ai search
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_search_set_and_status(monkeypatch, tmp_store):
+    """`ai search set tavily --key <k>`：写入全局配置；`ai search` 回显（key 脱敏）。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai search set tavily --key tvly-secret-key-123")
+    await bot.handle_event(event)
+    text = sent[0][1].extract_plain_text()
+    assert "已设置搜索 provider：`tavily`" in text
+    row = tmp_store.get_search_provider_row()
+    assert row["kind"] == "tavily"
+    assert row["key"] == "tvly-secret-key-123"
+
+    bot, event = _milky_group("ai search")
+    await bot.handle_event(event)
+    text = sent[1][1].extract_plain_text()
+    assert "搜索 provider：`tavily`（自定义）" in text
+    assert "tvly-secret-key-123" not in text  # key 脱敏
+    assert "api.tavily.com" in text  # 默认端点
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_search_set_bocha_and_deepseek_flags(monkeypatch, tmp_store):
+    """bocha 需 --key；deepseek 支持 --url/--key/--model 全可省略。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai search set bocha")
+    await bot.handle_event(event)
+    assert "需要 --key" in sent[0][1].extract_plain_text()
+    assert tmp_store.get_search_provider_row() is None
+
+    bot, event = _milky_group("ai search set deepseek --url http://x/v1 --key sk-ds --model m-1")
+    await bot.handle_event(event)
+    row = tmp_store.get_search_provider_row()
+    assert row["kind"] == "deepseek"
+    assert row["url"] == "http://x/v1"
+    assert row["key"] == "sk-ds"
+    assert row["model"] == "m-1"
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_search_set_unknown_kind(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai search set google")
+    await bot.handle_event(event)
+
+    assert "deepseek / tavily / bocha" in sent[0][1].extract_plain_text()
+    assert tmp_store.get_search_provider_row() is None
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_search_reset(monkeypatch, tmp_store):
+    """`ai search reset`：清除配置回退默认；无配置时提示。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai search reset")
+    await bot.handle_event(event)
+    assert "没有自定义搜索 provider 配置" in sent[0][1].extract_plain_text()
+
+    tmp_store.set_search_provider("bocha", key="sk-bocha")
+    bot, event = _milky_group("ai search reset")
+    await bot.handle_event(event)
+    assert "已清除搜索 provider 配置" in sent[1][1].extract_plain_text()
+    assert tmp_store.get_search_provider_row() is None
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_search_status_no_config_hints(monkeypatch, tmp_store):
+    """未配置且无 anthropic 聊天 provider：提示 ai search set。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai search")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "未配置搜索 provider" in text
+    assert "ai search set" in text
+
+
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_model_set_rejected_in_private(monkeypatch, tmp_store):
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
@@ -612,7 +695,7 @@ async def test_tools_list_shows_defaults(monkeypatch, tmp_store):
     assert "web" in text
     assert "skill" in text
     assert "memory" in text  # 工具名保持原始值
-    assert "duckduckgo_search" in text
+    assert "web_search" in text
     assert "skill_read" in text
     assert "milky:123456" not in text  # 不向用户暴露 scope key
     assert "surface" not in text  # 不向用户暴露 surface 概念

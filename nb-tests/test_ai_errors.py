@@ -72,7 +72,7 @@ def test_format_wrapped_tool_error_name():
     """ToolFailedError 类把工具名包在 .tool_failed 上，应被提取。"""
 
     class _Wrapped:
-        tool_name = "duckduckgo_search"
+        tool_name = "web_search"
 
     class _ToolError(Exception):
         def __init__(self):
@@ -80,7 +80,7 @@ def test_format_wrapped_tool_error_name():
             super().__init__("search failed")
 
     detail = format_exception_detail(_ToolError())
-    assert "tool=duckduckgo_search" in detail
+    assert "tool=web_search" in detail
     assert "search failed" in detail
 
 

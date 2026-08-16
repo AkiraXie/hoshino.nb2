@@ -96,7 +96,8 @@ def test_resolve_tools_computer_adds_file_only_in_chat(tmp_store):
     assert "python" not in names
     # 默认类别仍保留（叠加语义）
     assert "memory" in names
-    assert "duckduckgo_search" in names
+    assert "duckduckgo_search" not in names  # 已弃用客户端爬取
+    assert "web_search" in names
     assert "skill_read" in names
 
 

@@ -161,7 +161,6 @@ def main() -> None:
         record,
         model,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
-        web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
     )
 

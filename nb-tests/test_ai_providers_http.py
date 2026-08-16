@@ -140,7 +140,7 @@ def test_anthropic_roundtrip(fake_ai_server, tmp_store):
     assert last["content"][0]["text"] == "你好"
 
 
-# ------------------------------------------------------------ 原生联网搜索
+# ------------------------------------------------------------ 联网搜索（web_search 工具）
 
 
 def _tools_in(requests: list[dict]) -> list[dict]:
@@ -152,137 +152,217 @@ def _native_search_tool(tools: list[dict]) -> dict | None:
     return next((t for t in tools if t.get("type") == "web_search_20250305"), None)
 
 
-def test_anthropic_native_web_search_tool_in_body(fake_ai_server, tmp_store):
-    """anthropic kind + 原生搜索开启：请求 tools 携带服务端 web_search_20250305。
+def _search_deps(base_url: str, provider_id: str, *, model: str = "deepseek-v4-flash") -> AgentDeps:
+    """web_search 工具的 deps：config.default 指向待测 provider。"""
+    config = AIConfig(system_prompt="你是测试助手。", default=provider_id)
+    return AgentDeps(
+        surface="chat",
+        scope_key=None,
+        target=Target(id="0", private=True, self_id="10000", adapter="milky"),
+        config=config,
+        permissions=PermissionSnapshot(),
+        bot=None,
+        event=None,
+        telemetry=Telemetry(provider_id=provider_id, scope_key="", model=model),
+    )
 
-    DeepSeek 的 ``/anthropic`` 端点用该服务端工具做联网搜索（模型侧不再需要
-    duckduckgo/web_fetch 客户端抓取）。
-    """
-    base_url, requests = fake_ai_server
-    from hoshino.ai.providers import build_agent
 
-    record = ProviderRecord(
-        id="anthropic",
+def _seed_search_config(
+    tmp_store, kind: str, *, url: str = "", key: str = "", model: str = ""
+) -> None:
+    """写入搜索 provider 配置（``ai search set`` 的 DB 语义）。"""
+    tmp_store.set_search_provider(kind, url=url, key=key, model=model)
+
+
+def _seed_chat_provider(
+    tmp_store, base_url: str, *, provider_id: str = "anthropic", kind: str = "anthropic"
+) -> None:
+    """预置聊天 provider 行（deepseek 默认搜索的凭据继承源）。"""
+    tmp_store.upsert_provider_row(
+        provider_id=provider_id,
         url=base_url,
         key="sk-ant-test-123",
-        kind="anthropic",
+        kind=kind,
         default_text_model="deepseek-v4-flash",
     )
-    agent = build_agent("anthropic", record, "deepseek-v4-flash")
-    agent.run_sync("你好", deps=_make_deps(base_url, "anthropic", "deepseek-v4-flash"))
-
-    tool = _native_search_tool(_tools_in(requests))
-    assert tool is not None, "anthropic 请求应携带服务端 web_search 工具"
-    assert tool["name"] == "web_search"
 
 
-def test_native_web_search_disabled_omits_tool(fake_ai_server, tmp_store):
-    """web_search_native=False：anthropic kind 也不注入服务端 web_search 工具。"""
-    base_url, requests = fake_ai_server
-    from hoshino.ai.providers import build_agent
+def test_web_search_deepseek_request_and_results(fake_ai_server, tmp_store):
+    """deepseek 搜索：Anthropic Messages 端点 + 服务端 web_search_20250305。
 
-    record = ProviderRecord(
-        id="anthropic",
-        url=base_url,
-        key="sk-ant-test-123",
-        kind="anthropic",
-        default_text_model="deepseek-v4-flash",
-    )
-    agent = build_agent("anthropic", record, "deepseek-v4-flash", web_search_native=False)
-    agent.run_sync("你好", deps=_make_deps(base_url, "anthropic", "deepseek-v4-flash"))
-
-    assert _native_search_tool(_tools_in(requests)) is None
-
-
-def test_openai_chat_no_native_web_search_tool(fake_ai_server, tmp_store):
-    """openai_chat kind 不支持原生 web_search：不注入、不报错，走既有工具。"""
-    base_url, requests = fake_ai_server
-    from hoshino.ai.providers import build_agent
-
-    record = ProviderRecord(
-        id="openai",
-        url=base_url,
-        key="sk-test-openai",
-        kind="openai_chat",
-        default_text_model="gpt-4o-mini",
-    )
-    agent = build_agent("openai", record, "gpt-4o-mini")
-    result = agent.run_sync("你好", deps=_make_deps(base_url, "openai", "gpt-4o-mini"))
-
-    assert result.output == "你好，我是 OpenAI 回复"
-    assert _native_search_tool(_tools_in(requests)) is None
-
-
-def test_anthropic_web_search_tool_result_parses(fake_ai_server, tmp_store, monkeypatch):
-    """服务端 web_search_tool_result 内容块可解析，最终输出取 text 块。
-
-    DeepSeek 原生搜索的响应会在 content 里带 ``web_search_tool_result``
-    （内含加密的网页内容），pydantic-ai 应跳过它并把后续 text 作为模型输出。
+    响应里的 ``web_search_tool_result`` 块 + ``citations`` 拼成可读结果。
+    base 不带 /v1 时先试 ``{base}/messages``（404）再回退 ``{base}/v1/messages``。
     """
-    import json as _json
+    import asyncio
+    from types import SimpleNamespace
+
+    from fake_ai_server import SEARCH_RESPONSE, _FakeHandler
+    from hoshino.ai.tools.web.web_search import web_search
+
+    _FakeHandler.search_response = SEARCH_RESPONSE
+    base_url, requests = fake_ai_server
+    _seed_search_config(tmp_store, "deepseek", url=base_url, key="sk-ant-test-123")
+
+    out = asyncio.run(
+        web_search(SimpleNamespace(deps=_search_deps(base_url, "anthropic")), "今天的天气")
+    )
+
+    assert "示例结果 A" in out
+    assert "https://example.com/result-a" in out
+    assert "这是结果 A 的摘要。" in out
+    assert "示例结果 B" in out
+    assert "（2 条）" in out
+    # 请求格式：先 404 探测 {base}/messages，再命中 /v1/messages；
+    # x-api-key 鉴权、服务端 web_search 工具、搜索 prompt。
+    assert [r["stem"] for r in requests] == ["/messages", "/v1/messages"]
+    req = requests[1]
+    assert req["headers"]["x-api-key"] == "sk-ant-test-123"
+    assert req["headers"]["authorization"] == "Bearer sk-ant-test-123"
+    assert req["body"]["model"] == "deepseek-v4-flash"  # 未配模型 → 默认
+    assert _native_search_tool(req["body"].get("tools") or []) is not None
+    prompt = req["body"]["messages"][-1]["content"][0]["text"]
+    assert prompt == "Perform a web search for the query: 今天的天气"
+
+
+def test_web_search_deepseek_base_with_v1_hits_first(fake_ai_server, tmp_store):
+    """base 已含 /v1：直接命中 {base}/messages，无 404 探测。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai.tools.web.web_search import web_search
+
+    base_url, requests = fake_ai_server
+    _seed_search_config(tmp_store, "deepseek", url=f"{base_url}/v1", key="sk-ant-test-123")
+
+    out = asyncio.run(
+        web_search(SimpleNamespace(deps=_search_deps(f"{base_url}/v1", "anthropic")), "q")
+    )
+    assert "搜索未返回结果" in out  # 默认纯 text 响应
+    assert [r["stem"] for r in requests] == ["/v1/messages"]
+
+
+def test_web_search_default_inherits_anthropic_provider(fake_ai_server, tmp_store):
+    """默认 deepseek：未配置搜索时继承 anthropic 聊天 provider 凭据。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from fake_ai_server import SEARCH_RESPONSE, _FakeHandler
+    from hoshino.ai.tools.web.web_search import web_search
+
+    _FakeHandler.search_response = SEARCH_RESPONSE
+    base_url, requests = fake_ai_server
+    _seed_chat_provider(tmp_store, base_url)  # 无搜索配置 → 走默认继承
+
+    out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "anthropic")), "q"))
+    assert "示例结果 A" in out
+    req = requests[1]  # /messages 404 探测 + /v1/messages 命中
+    assert req["headers"]["x-api-key"] == "sk-ant-test-123"
+
+
+def test_web_search_no_config_without_anthropic_reports(tmp_store):
+    """无搜索配置且无 anthropic 聊天 provider：提示未配置，不发请求。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai.tools.web.web_search import web_search
+
+    _seed_chat_provider(tmp_store, "http://127.0.0.1:1", provider_id="openai", kind="openai_chat")
+    out = asyncio.run(
+        web_search(
+            SimpleNamespace(deps=_search_deps("http://127.0.0.1:1", "openai", model="gpt-4o-mini")),
+            "q",
+        )
+    )
+    assert "未配置搜索 provider" in out
+    assert "ai search set" in out
+
+
+def test_web_search_api_error_message(fake_ai_server, tmp_store, monkeypatch):
+    """非 404/405 的 API 错误：返回服务端 error.message，不重试回退候选。"""
+    import asyncio
+    import json
+    from types import SimpleNamespace
 
     from fake_ai_server import _FakeHandler
-
-    base_url, requests = fake_ai_server
-    from hoshino.ai.providers import build_agent
+    from hoshino.ai.tools.web.web_search import web_search
 
     def patched_do_post(self):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
-        stem = self.path.split("?")[0]
         self.requests.append(
             {
                 "path": self.path,
-                "stem": stem,
+                "stem": self.path.split("?")[0],
                 "headers": {k.lower(): v for k, v in self.headers.items()},
-                "body": _json.loads(raw) if raw else {},
+                "body": json.loads(raw) if raw else {},
             }
         )
-        if stem == "/v1/messages":
-            self._respond(
-                200,
-                {
-                    "id": "msg_fake_02",
-                    "type": "message",
-                    "role": "assistant",
-                    "model": "deepseek-v4-flash",
-                    "content": [
-                        {
-                            "type": "web_search_tool_result",
-                            "content": [
-                                {
-                                    "type": "web_search_result",
-                                    "title": "标题",
-                                    "url": "https://example.com",
-                                    "encrypted_content": "enc",
-                                    "page_age": None,
-                                }
-                            ],
-                        },
-                        {"type": "text", "text": "查到了：今天 25 度"},
-                    ],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": None,
-                    "usage": {"input_tokens": 10, "output_tokens": 5},
-                },
-            )
-        else:
-            self._respond(404, {"error": "not found"})
+        self._respond(400, {"error": {"message": "model does not support web_search"}})
 
     monkeypatch.setattr(_FakeHandler, "do_POST", patched_do_post)
+    base_url, requests = fake_ai_server
+    _seed_search_config(tmp_store, "deepseek", url=base_url, key="sk-ant-test-123")
 
-    record = ProviderRecord(
-        id="anthropic",
-        url=base_url,
-        key="sk-ant-test-123",
-        kind="anthropic",
-        default_text_model="deepseek-v4-flash",
+    out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "anthropic")), "q"))
+    assert "model does not support web_search" in out
+    assert len(requests) == 1  # 真实 API 错误不尝试回退候选
+
+
+def test_web_search_tavily(fake_ai_server, tmp_store):
+    """tavily 搜索：POST {url}/search，Bearer 鉴权，解析 results[].title/url/content。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai.tools.web.web_search import web_search
+
+    base_url, requests = fake_ai_server
+    _seed_search_config(tmp_store, "tavily", url=base_url, key="tvly-test-key")
+
+    out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "openai")), "q"))
+    assert "Tavily 结果" in out
+    assert "https://example.com/tavily" in out
+    assert "这是 Tavily 的摘要。" in out
+    req = requests[0]
+    assert req["stem"] == "/search"
+    assert req["headers"]["authorization"] == "Bearer tvly-test-key"
+    assert req["body"]["query"] == "q"
+    assert req["body"]["max_results"] == 5
+
+
+def test_web_search_bocha(fake_ai_server, tmp_store):
+    """博查搜索：POST {url}/v1/web-search，Bearer 鉴权，解析 webPages.value。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai.tools.web.web_search import web_search
+
+    base_url, requests = fake_ai_server
+    _seed_search_config(tmp_store, "bocha", url=base_url, key="sk-bocha-key")
+
+    out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "openai")), "q"))
+    assert "博查结果" in out
+    assert "https://example.com/bocha" in out
+    assert "这是博查的摘要。" in out
+    req = requests[0]
+    assert req["stem"] == "/v1/web-search"
+    assert req["headers"]["authorization"] == "Bearer sk-bocha-key"
+    assert req["body"]["query"] == "q"
+    assert req["body"]["count"] == 5
+
+
+def test_web_search_missing_key_reports(tmp_store):
+    """搜索配置缺 key（DB 被直接改坏）：明确提示，不发请求。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    from hoshino.ai.tools.web.web_search import web_search
+
+    _seed_search_config(tmp_store, "tavily", url="http://127.0.0.1:1")  # 无 key
+    out = asyncio.run(
+        web_search(SimpleNamespace(deps=_search_deps("http://127.0.0.1:1", "openai")), "q")
     )
-    agent = build_agent("anthropic", record, "deepseek-v4-flash")
-    result = agent.run_sync("查天气", deps=_make_deps(base_url, "anthropic", "deepseek-v4-flash"))
-
-    assert result.output == "查到了：今天 25 度"
-    assert _native_search_tool(_tools_in(requests)) is not None
+    assert "缺少 API key" in out
+    assert "ai search set tavily --key" in out
 
 
 def test_openai_system_prompt_and_placeholder_in_body(fake_ai_server, tmp_store):

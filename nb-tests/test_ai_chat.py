@@ -720,14 +720,12 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
         model,
         *,
         proxy=None,
-        web_search_native=True,
         tool_max_retries=3,
     ):
         captured["provider_id"] = provider_id
         captured["provider_record"] = provider_record
         captured["model"] = model
         captured["proxy"] = proxy
-        captured["web_search_native"] = web_search_native
         captured["tool_max_retries"] = tool_max_retries
         return FakeAgent(FakeResult("hi"))
 
@@ -742,7 +740,6 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     assert captured["provider_record"].id == "anthropic"
     assert captured["model"] == "claude-3-5-sonnet"
     assert captured["proxy"] == chat.get_config().proxy
-    assert captured["web_search_native"] is True
     assert captured["tool_max_retries"] == 3
     assert len(sent) == 1
 

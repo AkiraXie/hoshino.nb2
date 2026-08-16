@@ -42,6 +42,82 @@ ANTHROPIC_RESPONSE = {
     "usage": {"input_tokens": 10, "output_tokens": 5},
 }
 
+# 原生联网搜索响应（Anthropic web_search_tool_result + citations），
+# 供 web_search 工具测试注入：/v1/messages 返回它时，工具应解析出结构化结果。
+SEARCH_RESPONSE = {
+    "id": "msg_search_01",
+    "type": "message",
+    "role": "assistant",
+    "model": "deepseek-v4-flash",
+    "content": [
+        {
+            "type": "web_search_tool_result",
+            "content": [
+                {
+                    "type": "web_search_result",
+                    "url": "https://example.com/result-a",
+                    "title": "示例结果 A",
+                    "page_age": "2026-08-01",
+                },
+                {
+                    "type": "web_search_result",
+                    "url": "https://example.com/result-b",
+                    "title": "示例结果 B",
+                },
+            ],
+        },
+        {
+            "type": "text",
+            "text": "以下是搜索到的内容：",
+            "citations": [
+                {"url": "https://example.com/result-a", "cited_text": "这是结果 A 的摘要。"},
+                {"url": "https://example.com/result-b", "cited_text": "这是结果 B 的摘要。"},
+            ],
+        },
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": None,
+    "usage": {"input_tokens": 10, "output_tokens": 5},
+}
+
+# Tavily /search 响应（results[].title/url/content）。
+TAVILY_RESPONSE = {
+    "query": "q",
+    "results": [
+        {
+            "title": "Tavily 结果",
+            "url": "https://example.com/tavily",
+            "content": "这是 Tavily 的摘要。",
+            "score": 0.9,
+        }
+    ],
+}
+
+# 博查 /v1/web-search 响应（webPages.value[].name/url/snippet，兼容 Bing 格式）。
+BOCHA_RESPONSE = {
+    "code": 200,
+    "log_id": "log_fake_01",
+    "msg": None,
+    "data": {
+        "_type": "SearchResponse",
+        "webPages": {
+            "webSearchUrl": "",
+            "totalEstimatedMatches": 100,
+            "someResultsRemoved": False,
+            "value": [
+                {
+                    "id": None,
+                    "name": "博查结果",
+                    "url": "https://example.com/bocha",
+                    "displayUrl": "https://example.com/bocha",
+                    "snippet": "这是博查的摘要。",
+                    "siteName": "示例站",
+                }
+            ],
+        },
+    },
+}
+
 
 MODELS_RESPONSE = {
     "object": "list",
@@ -58,6 +134,9 @@ class _FakeHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     requests: ClassVar[list[dict]] = []
     custom_response: ClassVar[dict | None] = None  # 测试注入的 /chat/completions 响应
+    search_response: ClassVar[dict | None] = None  # 测试注入的 /v1/messages 响应（deepseek 搜索）
+    tavily_response: ClassVar[dict | None] = None  # 测试注入的 /search 响应（tavily 搜索）
+    bocha_response: ClassVar[dict | None] = None  # 测试注入的 /v1/web-search 响应（博查搜索）
 
     def _record(self, raw: bytes) -> dict:
         return {
@@ -75,7 +154,11 @@ class _FakeHandler(BaseHTTPRequestHandler):
         if stem == "/chat/completions":
             self._respond(200, self.custom_response or OPENAI_RESPONSE)
         elif stem == "/v1/messages":
-            self._respond(200, ANTHROPIC_RESPONSE)
+            self._respond(200, self.search_response or ANTHROPIC_RESPONSE)
+        elif stem == "/search":
+            self._respond(200, self.tavily_response or TAVILY_RESPONSE)
+        elif stem == "/v1/web-search":
+            self._respond(200, self.bocha_response or BOCHA_RESPONSE)
         else:
             self._respond(404, {"error": "not found"})
 
@@ -110,6 +193,9 @@ def start_fake_server(payload: dict | None = None) -> tuple[str, list[dict], cal
     """
     _FakeHandler.requests = []
     _FakeHandler.custom_response = payload
+    _FakeHandler.search_response = None
+    _FakeHandler.tavily_response = None
+    _FakeHandler.bocha_response = None
     server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
