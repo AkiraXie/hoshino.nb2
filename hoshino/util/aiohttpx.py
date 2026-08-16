@@ -16,6 +16,9 @@ from .urls import redact_url
 _timeout = 5.0
 _client = None
 _client_unverified = None
+# 显式代理客户端：key 为 (verify_ssl, proxy)，由调用方（如 steam）按配置传入。
+# 未传 proxy 的请求一律直连，绝不读取系统代理（trust_env=False）。
+_proxy_clients: dict[tuple[bool, str], AsyncClient] = {}
 _client_lock = asyncio.Lock()
 _pool_size = max(1, (os.cpu_count() or 4) // 2)
 _req_semaphore: asyncio.Semaphore | None = None
@@ -33,55 +36,77 @@ def _header_keys(kwargs: dict[str, Any]) -> list[str]:
     return sorted(headers) if isinstance(headers, Mapping) else []
 
 
+def _build_client(verify_ssl: bool, *, proxy: str | None = None) -> AsyncClient:
+    """创建共享客户端。
+
+    一律 ``trust_env=False``：代理只来自显式 ``proxy`` 参数（x/steam 等
+    境外服务按配置传入），其他请求直连，避免被系统环境变量代理劫持。
+    """
+    if verify_ssl:
+        context: bool | ssl.SSLContext = True
+    else:
+        # verify=False 客户端刻意提供 unverified context（内部接口信任场景）。
+        context = ssl._create_unverified_context()  # noqa: S323, SLF001
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    return AsyncClient(
+        timeout=httpx.Timeout(_timeout, read=_timeout * 3),
+        limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+        verify=context,
+        trust_env=False,
+        proxy=proxy,
+    )
+
+
 @on_startup
 async def init_httpx_client():
     global _client, _client_unverified, _req_semaphore
-    _client = AsyncClient(
-        timeout=httpx.Timeout(_timeout, read=_timeout * 3),
-        limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
-        verify=True,
-    )
-
-    # verify=False 客户端刻意提供 unverified context（内部接口信任场景）。
-    unverified_context = ssl._create_unverified_context()  # noqa: S323, SLF001
-    unverified_context.check_hostname = False
-    unverified_context.verify_mode = ssl.CERT_NONE
-
-    _client_unverified = AsyncClient(
-        timeout=httpx.Timeout(_timeout, read=_timeout * 3),
-        limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
-        verify=unverified_context,
-    )
+    _client = _build_client(True)
+    _client_unverified = _build_client(False)
     _req_semaphore = asyncio.Semaphore(_pool_size)
     logger.info("HTTPX clients initialized successfully.")
 
 
 @on_shutdown
 async def close_httpx_client():
-    global _client, _client_unverified, _req_semaphore
+    global _client, _client_unverified, _req_semaphore, _proxy_clients
     if _client:
         await _client.aclose()
         _client = None
     if _client_unverified:
         await _client_unverified.aclose()
         _client_unverified = None
+    clients = list(_proxy_clients.values())
+    _proxy_clients = {}
+    for client in clients:
+        await client.aclose()
     _req_semaphore = None
     logger.info("HTTPX clients closed successfully.")
 
 
-async def get_client(verify_ssl: bool = True):
+async def get_client(verify_ssl: bool = True, proxy: str | None = None):
     global _client, _client_unverified, _req_semaphore
-    target_client = _client if verify_ssl else _client_unverified
-
-    if target_client is None:
-        async with _client_lock:
-            if (verify_ssl and _client is None) or (not verify_ssl and _client_unverified is None):
-                await init_httpx_client()
+    if proxy:
+        key = (verify_ssl, proxy)
+        client = _proxy_clients.get(key)
+        if client is None:
+            async with _client_lock:
+                if not (client := _proxy_clients.get(key)):
+                    client = _build_client(verify_ssl, proxy=proxy)
+                    _proxy_clients[key] = client
+    else:
+        client = _client if verify_ssl else _client_unverified
+        if client is None:
+            async with _client_lock:
+                if (verify_ssl and _client is None) or (
+                    not verify_ssl and _client_unverified is None
+                ):
+                    await init_httpx_client()
+            client = _client if verify_ssl else _client_unverified
 
     if _req_semaphore is None:
         _req_semaphore = asyncio.Semaphore(_pool_size)
-
-    return _client if verify_ssl else _client_unverified
+    return client
 
 
 class BaseResponse:
@@ -126,12 +151,17 @@ class Response(BaseResponse):
 
 
 async def get(
-    url: str, cookies: dict | None = None, timeout: float = 5.0, verify: bool = True, **kwargs
+    url: str,
+    cookies: dict | None = None,
+    timeout: float = 5.0,
+    verify: bool = True,
+    proxy: str | None = None,
+    **kwargs,
 ) -> Response:
     if cookies is None:
         cookies = {}
     try:
-        client = await get_client(verify_ssl=verify)
+        client = await get_client(verify_ssl=verify, proxy=proxy)
         if not client:
             raise RuntimeError("HTTPX client is not initialized.")  # noqa: TRY301  # 自身校验：未初始化属调用方错误，仍走统一日志后抛出
         if timeout is not None:
@@ -159,12 +189,17 @@ async def get(
 
 
 async def post(
-    url: str, cookies: dict | None = None, timeout: float = 5.0, verify: bool = True, **kwargs
+    url: str,
+    cookies: dict | None = None,
+    timeout: float = 5.0,
+    verify: bool = True,
+    proxy: str | None = None,
+    **kwargs,
 ) -> Response:
     if cookies is None:
         cookies = {}
     try:
-        client = await get_client(verify_ssl=verify)
+        client = await get_client(verify_ssl=verify, proxy=proxy)
         if not client:
             raise RuntimeError("HTTPX client is not initialized.")  # noqa: TRY301  # 自身校验：未初始化属调用方错误，仍走统一日志后抛出
         if timeout is not None:
@@ -191,9 +226,11 @@ async def post(
         raise
 
 
-async def head(url: str, timeout: float = 5.0, verify: bool = True, **kwargs) -> BaseResponse:
+async def head(
+    url: str, timeout: float = 5.0, verify: bool = True, proxy: str | None = None, **kwargs
+) -> BaseResponse:
     try:
-        client = await get_client(verify_ssl=verify)
+        client = await get_client(verify_ssl=verify, proxy=proxy)
         if not client:
             raise RuntimeError("HTTPX client is not initialized.")  # noqa: TRY301  # 自身校验：未初始化属调用方错误，仍走统一日志后抛出
         if timeout is not None:

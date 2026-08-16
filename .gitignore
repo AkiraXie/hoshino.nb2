@@ -150,3 +150,6 @@ dmypy.json
 ./package-lock.json
 ./package.json
 chrome*
+
+# 临时一次性探针测试（联网），默认不收集执行；运行方式见文件内注释
+nb-tests/one-shot/

@@ -21,7 +21,7 @@ from pydantic_ai import BinaryContent, RunContext
 
 from hoshino.ai.tools.web.net import is_private_host
 
-from ... import vision
+from ... import provider, vision
 from ...deps import AgentDeps
 
 _MAX_BYTES = 15 * 1024 * 1024  # 抓取上限（压缩前的网络字节）
@@ -132,7 +132,7 @@ async def image_view(ctx: RunContext[AgentDeps], url: str):
     return await describe_image_url(
         url,
         verify_ssl=ctx.deps.config.web_fetch_verify_ssl,
-        proxy=ctx.deps.config.proxy,
+        proxy=provider.resolve_effective_proxy(record, ctx.deps.config.proxy),
         record=record,
         vision_model=vision_model,
     )

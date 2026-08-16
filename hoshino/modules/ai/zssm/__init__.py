@@ -272,7 +272,12 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
     }
     user_prompt = json.dumps(payload, ensure_ascii=False)
     try:
-        raw = await _request_explain(record, text_model, user_prompt, proxy=config.proxy)
+        raw = await _request_explain(
+            record,
+            text_model,
+            user_prompt,
+            proxy=provider.resolve_effective_proxy(record, config.proxy),
+        )
     except TimeoutError:
         await send_to_event(bot, event, "解释超时，请稍后重试。")
         return

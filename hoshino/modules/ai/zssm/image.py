@@ -18,7 +18,7 @@ from nonebot.adapters import Bot, Event
 from nonebot_plugin_alconna.uniseg import Image as UniImage
 
 from hoshino.ai import media as ai_media
-from hoshino.ai import vision
+from hoshino.ai import provider, vision
 from hoshino.ai.tools.core.image_view import describe_image_url
 from hoshino.util.media import get_event_media_segments
 
@@ -70,7 +70,7 @@ async def _describe_one(
         return await describe_image_url(
             url,
             verify_ssl=config.web_fetch_verify_ssl,
-            proxy=config.proxy,
+            proxy=provider.resolve_effective_proxy(record, config.proxy),
             record=record,
             vision_model=vision_model,
         )
@@ -84,7 +84,7 @@ async def _describe_one(
             record,
             vision_model,
             content,
-            proxy=config.proxy,
+            proxy=provider.resolve_effective_proxy(record, config.proxy),
             prompt=_EYE_PROMPT,
         )
     except Exception as exc:

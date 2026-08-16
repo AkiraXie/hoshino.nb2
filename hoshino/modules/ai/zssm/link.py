@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 
+from hoshino.ai import provider
 from hoshino.ai.tools.web.browser_use import browse_page_description
 from hoshino.ai.tools.web.web_fetch import fetch_url_to_markdown
 
@@ -56,7 +57,7 @@ async def load_url(
         raise ValueError(f"无法获取页面内容：{url}（未配置多模态模型，无法渲染兜底）。")
     description = await browse_page_description(
         url,
-        proxy=config.proxy,
+        proxy=provider.resolve_effective_proxy(record, config.proxy),
         record=record,
         vision_model=vision_model,
     )

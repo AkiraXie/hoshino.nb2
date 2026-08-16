@@ -904,3 +904,26 @@ async def test_config_reset_removes_line(monkeypatch, tmp_store, tmp_path):
     bot, event = _milky_group("ai config reset system_prompt")
     await bot.handle_event(event)
     assert "仅代理与渲染相关参数可改" in sent[1][1].extract_plain_text()
+
+
+async def test_setup_use_proxy_flag(monkeypatch, tmp_store):
+    """ai setup --use-proxy：开启/关闭/保持原值。"""
+    from hoshino.ai.provider import ProviderRecord, upsert_provider
+
+    upsert_provider(ProviderRecord(id="proxyllm", default_text_model="m", use_proxy=True))
+
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+    bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1 --use-proxy")
+    await bot.handle_event(event)
+    text = sent[0][1].extract_plain_text()
+    assert "全局代理：启用" in text
+    assert tmp_store.get_provider_row("proxyllm")["use_proxy"] is True
+
+    bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1 --use-proxy 0")
+    await bot.handle_event(event)
+    assert tmp_store.get_provider_row("proxyllm")["use_proxy"] is False
+
+    # 不带 flag：保持原值
+    bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1")
+    await bot.handle_event(event)
+    assert tmp_store.get_provider_row("proxyllm")["use_proxy"] is False

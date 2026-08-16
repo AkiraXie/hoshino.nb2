@@ -11,8 +11,7 @@ from twscrape.models import Tweet
 from twscrape.utils import parse_cookies
 
 from hoshino import db_dir
-
-from .sv import sv
+from hoshino.util.proxy import get_outside_proxy
 
 USER_LOOKUP_ENDPOINT = "UserByScreenName"
 USER_TWEETS_ENDPOINT = "UserTweets"
@@ -52,7 +51,7 @@ class XClient:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.api = API(
             str(db_path),
-            proxy=sv.get_config().proxy,
+            proxy=get_outside_proxy(),
             raise_when_no_account=True,
         )
         account = await self.api.pool.get_account("hoshino-x")

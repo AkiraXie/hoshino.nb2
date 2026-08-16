@@ -3,9 +3,15 @@ from nonebot.adapters.milky import Adapter as MilkyAdapter
 from nonebot.adapters.onebot.v11 import Adapter as OB11Adapter
 from nonebot.adapters.telegram import Adapter as TGAdapter
 
+from hoshino.util.proxy import apply_telegram_proxy
+
 # 使用自定义配置初始化nonebot
 nonebot.init()
 driver = nonebot.get_driver()
+
+# telegram 未显式配置代理时，统一使用全局 OUTSIDE_PROXY（须在 adapter 注册前）
+apply_telegram_proxy(driver.config)
+
 driver.register_adapter(OB11Adapter)
 driver.register_adapter(TGAdapter)  # Telegram adapter
 driver.register_adapter(MilkyAdapter)  # Milky QQ client adapter

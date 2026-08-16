@@ -10,8 +10,10 @@ from hoshino.platform.depends import GroupID, get_light_app_json_payload
 
 from .bilidata import resolve_bilibili
 from .douyin import resolve_douyin
+from .nga import resolve_nga
 from .sv import sv
 from .weibo import resolve_weibo
+from .xiaoheihe import resolve_xiaoheihe
 from .xiaohongshu import resolve_xiaohongshu
 
 urlmaps = {
@@ -38,6 +40,11 @@ regexs = {
     "vdouyin": re.compile(r"https://v\.douyin\.com/[a-zA-Z0-9_\-]+"),
     "douyin": re.compile(
         r"https://www\.(?:douyin|iesdouyin)\.com/(?:video|note|share/(?:video|note|slides))/[0-9]+"
+    ),
+    "nga": re.compile(r"(?:bbs\.nga\.cn|nga\.178\.com|ngabbs\.com)/read\.php\?tid=(\d+)"),
+    "xiaoheihe": re.compile(
+        r"(?:xiaoheihe\.cn/app/bbs/link|api\.xiaoheihe\.cn/v3/bbs/app/api/web/share\?[^\s]*link_id=)"
+        r"([0-9a-z]+)"
     ),
 }
 
@@ -109,6 +116,14 @@ async def parse_handler(
             return
         case "vdouyin" | "douyin":
             if await resolve_douyin(name, url):
+                await m.finish()
+            return
+        case "nga":
+            if await resolve_nga(name, url):
+                await m.finish()
+            return
+        case "xiaoheihe":
+            if await resolve_xiaoheihe(name, url):
                 await m.finish()
             return
         case _:

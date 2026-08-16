@@ -36,7 +36,7 @@ async def _available_models(ctx: RunContext[AgentDeps], pid: str) -> list[str] |
         return None
     return await provider.fetch_available_models(
         record,
-        proxy=ctx.deps.config.proxy,
+        proxy=provider.resolve_effective_proxy(record, ctx.deps.config.proxy),
         verify=ctx.deps.config.web_fetch_verify_ssl,
     )
 

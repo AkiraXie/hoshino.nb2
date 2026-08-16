@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class XSettings:
-    proxy: str | None = None
     max_tweets_per_account: int = 10
     list_max_tweets: int = 30
     max_media_per_tweet: int = 10

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 import httpx
 
 from hoshino.core.config import config
+from hoshino.util.proxy import get_outside_proxy, normalize_proxy
 
 from .post import XPost
 from .sv import sv
@@ -24,7 +25,7 @@ class XMediaStore:
         self.root = config.data_dir / "x"
         self.errors: list[tuple[str, Exception]] = []
         self.client = httpx.AsyncClient(
-            proxy=_httpx_proxy(settings.proxy),
+            proxy=normalize_proxy(get_outside_proxy()),
             timeout=settings.request_timeout_seconds,
             follow_redirects=True,
             trust_env=False,
@@ -176,12 +177,6 @@ def _take_unseen(urls: list[str], seen: set[str], limit: int) -> list[str]:
         seen.add(url)
         taken.append(url)
     return taken
-
-
-def _httpx_proxy(proxy: str | None) -> str | None:
-    if proxy and proxy.startswith("socks://"):
-        return f"socks5://{proxy.removeprefix('socks://')}"
-    return proxy
 
 
 __all__ = ["XMediaStore"]

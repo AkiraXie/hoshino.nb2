@@ -111,7 +111,7 @@ async def run_task_run(
         ctx.provider_id,
         record,
         ctx.model,
-        proxy=config.proxy,
+        proxy=provider.resolve_effective_proxy(record, config.proxy),
         web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
     )

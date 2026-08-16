@@ -74,6 +74,7 @@ USAGE = (
 
 _SETUP_USAGE = (
     "用法：ai setup <provider_id> --url <url> --key <key> [--text <m>] [--vision <m>]\n"
+    "  [--use-proxy [1|0]]   走全局代理 OUTSIDE_PROXY（默认保持原值，显式 0 关闭）\n"
     "一步完成：新增/更新 provider（openai_chat 兼容）、设全局默认、绑定当前群、"
     "把 --text/--vision 设为默认模型；之后 ai model / ai status 查看生效配置。"
 )
@@ -248,10 +249,11 @@ async def _provider_list(bot: Bot, event: Event, config) -> None:
     for record in records:
         mark = " ← 默认" if record.id == config.default else ""
         vision = record.default_vision_model or "（无）"
+        proxy_flag = " proxy=on" if record.use_proxy else ""
         lines.append(
             f"- `{record.id}` kind={record.kind} "
             f"text={record.default_text_model or '-'} "
-            f"vision={vision} url={mask_url(record.url)}{mark}"
+            f"vision={vision} url={mask_url(record.url)}{proxy_flag}{mark}"
         )
     lines.append("模型列表用 `ai model list` 实时获取。")
     await send_to_event(bot, event, "\n".join(lines))
@@ -317,7 +319,10 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
         await send_to_event(bot, event, "setup 需要 --url 与 --key。")
         return
 
-    existed = provider.has_provider(pid)
+    old = provider.get_provider(pid)
+    use_proxy = old.use_proxy if old is not None else False
+    if "use_proxy" in opts:
+        use_proxy = opts["use_proxy"].lower() not in ("0", "false", "no", "off")
     provider.upsert_provider(
         ProviderRecord(
             id=pid,
@@ -326,11 +331,12 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
             kind="openai_chat",
             default_text_model=opts.get("text", ""),
             default_vision_model=opts.get("vision", ""),
+            use_proxy=use_proxy,
         )
     )
     providers.clear_agent_cache()
 
-    lines = [f"已{'更新' if existed else '新增'} provider `{pid}`。"]
+    lines = [f"已{'更新' if old is not None else '新增'} provider `{pid}`。"]
     store.set_global_value("default_provider", pid)
     lines.append("已设为全局默认 provider。")
     gid = get_group_id(event)
@@ -344,6 +350,7 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
         lines.append(f"视觉模型：`{opts['vision']}`（可看图）。")
     else:
         lines.append("视觉模型未设置：看图需配置 vision 模型，可 `ai model set vision <模型>`。")
+    lines.append(f"全局代理：{'启用' if use_proxy else '未启用'}（use_proxy）。")
     lines.append("用 `ai status` 查看生效配置。")
     await send_to_event(bot, event, "\n".join(lines))
 
@@ -448,7 +455,9 @@ async def _model_list(bot: Bot, event: Event) -> None:
         return
     record = provider.get_provider(pid)
     models = await provider.fetch_available_models(
-        record, proxy=config.proxy, verify=config.web_fetch_verify_ssl
+        record,
+        proxy=provider.resolve_effective_proxy(record, config.proxy),
+        verify=config.web_fetch_verify_ssl,
     )
     if not models:
         await send_to_event(
@@ -505,7 +514,9 @@ async def _model_set(bot: Bot, event: Event, scope_key: str, args: list[str]) ->
 
     record = provider.get_provider(pid)
     available = await provider.fetch_available_models(
-        record, proxy=config.proxy, verify=config.web_fetch_verify_ssl
+        record,
+        proxy=provider.resolve_effective_proxy(record, config.proxy),
+        verify=config.web_fetch_verify_ssl,
     )
     warning = ""
     if available is not None:

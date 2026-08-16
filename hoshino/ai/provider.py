@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from hoshino.util.proxy import get_outside_proxy
+
 from . import store
 
 KNOWN_KINDS = ("openai_chat", "openai_responses", "anthropic")
@@ -32,6 +34,7 @@ class ProviderRecord:
     kind: str = "openai_chat"
     default_text_model: str = ""
     default_vision_model: str = ""
+    use_proxy: bool = False
     temperature: float | None = None
     max_tokens: int | None = None
     timeout_seconds: float | None = None
@@ -45,6 +48,7 @@ class ProviderRecord:
             kind=row.get("kind", "openai_chat"),
             default_text_model=row.get("default_text_model", ""),
             default_vision_model=row.get("default_vision_model", ""),
+            use_proxy=bool(row.get("use_proxy", False)),
             temperature=row.get("temperature"),
             max_tokens=row.get("max_tokens"),
             timeout_seconds=row.get("timeout_seconds"),
@@ -75,6 +79,7 @@ def upsert_provider(record: ProviderRecord) -> None:
         kind=record.kind,
         default_text_model=record.default_text_model,
         default_vision_model=record.default_vision_model,
+        use_proxy=record.use_proxy,
         temperature=record.temperature,
         max_tokens=record.max_tokens,
         timeout_seconds=record.timeout_seconds,
@@ -83,6 +88,17 @@ def upsert_provider(record: ProviderRecord) -> None:
 
 def remove_provider(provider_id: str) -> bool:
     return store.delete_provider_row(provider_id)
+
+
+def resolve_effective_proxy(record: ProviderRecord, config_proxy: str | None) -> str | None:
+    """provider 实际使用的代理。
+
+    ``use_proxy=True`` 时优先走全局 ``OUTSIDE_PROXY``（未配置回退 AI 配置的
+    代理）；默认（False）沿用 AI 配置代理，与旧行为一致。
+    """
+    if record.use_proxy:
+        return get_outside_proxy() or config_proxy
+    return config_proxy
 
 
 # ------------------------------------------------------------ 可用模型（实时）

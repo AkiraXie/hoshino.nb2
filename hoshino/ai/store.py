@@ -92,13 +92,14 @@ def _migrate_missing_columns(target_engine) -> None:
     with target_engine.connect() as conn:
         _ensure_column(conn, "ai_tasks", "adapter_name")
         _ensure_column(conn, "ai_personas", "begin_dialogs")
+        _ensure_column(conn, "ai_providers", "use_proxy", "INTEGER NOT NULL DEFAULT 0")
 
 
-def _ensure_column(conn, table: str, column: str) -> None:
+def _ensure_column(conn, table: str, column: str, decl: str = "TEXT NOT NULL DEFAULT ''") -> None:
     """幂等补列（SQLite ALTER TABLE ADD COLUMN）。"""
     cols = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()}
     if cols and column not in cols:
-        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
         conn.commit()
 
 
@@ -574,6 +575,7 @@ class AIProvider(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False, default="openai_chat")
     default_text_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
     default_vision_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    use_proxy: Mapped[bool] = mapped_column(Integer, nullable=False, default=False)
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     max_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     timeout_seconds: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
@@ -616,6 +618,7 @@ def _provider_to_dict(row: AIProvider) -> dict[str, Any]:
         "temperature": row.temperature,
         "max_tokens": row.max_tokens,
         "timeout_seconds": row.timeout_seconds,
+        "use_proxy": bool(row.use_proxy),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
@@ -648,6 +651,7 @@ def upsert_provider_row(
     temperature: float | None = None,
     max_tokens: int | None = None,
     timeout_seconds: float | None = None,
+    use_proxy: bool = False,
 ) -> None:
     now = time.time()
     with Session() as session:
@@ -664,6 +668,7 @@ def upsert_provider_row(
                     temperature=temperature,
                     max_tokens=max_tokens,
                     timeout_seconds=timeout_seconds,
+                    use_proxy=use_proxy,
                     created_at=now,
                     updated_at=now,
                 )
@@ -677,6 +682,7 @@ def upsert_provider_row(
             row.temperature = temperature
             row.max_tokens = max_tokens
             row.timeout_seconds = timeout_seconds
+            row.use_proxy = use_proxy
             row.updated_at = now
         session.commit()
 

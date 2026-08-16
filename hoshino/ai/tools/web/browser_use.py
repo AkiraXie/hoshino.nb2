@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from pydantic_ai import BinaryContent, RunContext
 
-from ... import vision
+from ... import provider, vision
 from ...deps import AgentDeps
 from .net import is_private_host
 
@@ -85,7 +85,7 @@ async def browser_use(
         return "当前 provider 未配置 vision 模型，无法识别网页截图。"
     return await browse_page_description(
         url,
-        proxy=ctx.deps.config.proxy,
+        proxy=provider.resolve_effective_proxy(record, ctx.deps.config.proxy),
         record=record,
         vision_model=vision_model,
         prompt=prompt,

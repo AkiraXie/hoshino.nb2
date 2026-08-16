@@ -234,3 +234,38 @@ def test_hsnconfig_ai_mounted_from_env(monkeypatch):
         assert get_config().default == "other"
     finally:
         tmp_store_global.clear_global_value("default_provider")
+
+
+def test_provider_row_use_proxy_persisted(tmp_store):
+    """use_proxy 默认 False，upsert 后持久化。"""
+    tmp_store.upsert_provider_row(provider_id="p1", default_text_model="a")
+    assert tmp_store.get_provider_row("p1")["use_proxy"] is False
+    tmp_store.upsert_provider_row(provider_id="p1", default_text_model="a", use_proxy=True)
+    assert tmp_store.get_provider_row("p1")["use_proxy"] is True
+    tmp_store.upsert_provider_row(provider_id="p1", default_text_model="a", use_proxy=False)
+    assert tmp_store.get_provider_row("p1")["use_proxy"] is False
+
+
+def test_provider_record_use_proxy_roundtrip(tmp_store):
+    """ProviderRecord.from_row 透传 use_proxy。"""
+    from hoshino.ai.provider import ProviderRecord, upsert_provider
+
+    upsert_provider(ProviderRecord(id="p2", default_text_model="m", use_proxy=True))
+    record = ProviderRecord.from_row(tmp_store.get_provider_row("p2"))
+    assert record.use_proxy is True
+
+
+def test_resolve_effective_proxy_priority(monkeypatch):
+    """use_proxy=True 走全局 OUTSIDE_PROXY（未配回退 AI 配置）；False 沿用 AI 配置。"""
+    from hoshino.ai.provider import ProviderRecord, resolve_effective_proxy
+
+    record = ProviderRecord(id="p", use_proxy=True)
+    plain = ProviderRecord(id="p")
+    monkeypatch.setenv("OUTSIDE_PROXY", "http://127.0.0.1:7890")
+    assert resolve_effective_proxy(record, None) == "http://127.0.0.1:7890"
+    assert resolve_effective_proxy(record, "http://ai-proxy") == "http://127.0.0.1:7890"
+    assert resolve_effective_proxy(plain, "http://ai-proxy") == "http://ai-proxy"
+
+    monkeypatch.setenv("OUTSIDE_PROXY", "")
+    assert resolve_effective_proxy(record, "http://ai-proxy") == "http://ai-proxy"
+    assert resolve_effective_proxy(record, None) is None

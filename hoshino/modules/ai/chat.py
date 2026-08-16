@@ -329,7 +329,10 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         if image_content:
             try:
                 description = await vision.describe_images(
-                    record, vision_model, image_content, proxy=config.proxy
+                    record,
+                    vision_model,
+                    image_content,
+                    proxy=provider.resolve_effective_proxy(record, config.proxy),
                 )
             except Exception as exc:
                 sv.logger.warning(
@@ -381,7 +384,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         provider_id,
         record,
         model_name,
-        proxy=config.proxy,
+        proxy=provider.resolve_effective_proxy(record, config.proxy),
         web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
     )

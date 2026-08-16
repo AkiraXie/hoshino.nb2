@@ -28,6 +28,7 @@ from hoshino.platform.depends import ParamText
 from hoshino.platform.permission import ADMIN
 from hoshino.service import Service
 from hoshino.util import aiohttpx
+from hoshino.util.proxy import get_outside_proxy
 
 sv = Service("steam", enable_on_default=False, visible=False)
 subscribe_file = db_dir / "subscribes.json"
@@ -101,7 +102,9 @@ async def initialize_steam_subscriptions() -> None:
 async def format_id(account: str) -> str:
     if account.startswith("7656") and len(account) == 17 and account.isdigit():
         return account
-    response = await aiohttpx.get(f"https://steamcommunity.com/id/{account}?xml=1")
+    response = await aiohttpx.get(
+        f"https://steamcommunity.com/id/{account}?xml=1", proxy=get_outside_proxy()
+    )
     xml = etree.XML(response.content)
     values = xml.xpath("/profile/steamID64")
     if not values or not values[0].text:
@@ -188,6 +191,7 @@ async def get_account_status(account: str) -> dict[str, str]:
     response = await aiohttpx.get(
         "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/",
         params={"key": key, "format": "json", "steamids": steam_id},
+        proxy=get_outside_proxy(),
     )
     if not response.ok:
         raise RuntimeError(f"Steam API returned {response.status_code}")
@@ -212,6 +216,7 @@ async def update_game_status(api_key: str | None = None) -> None:
             "format": "json",
             "steamids": ",".join(subscribes),
         },
+        proxy=get_outside_proxy(),
     )
     if not response.ok:
         raise RuntimeError(f"Steam API returned {response.status_code}")
