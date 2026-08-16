@@ -14,7 +14,6 @@ from hoshino.util.network import get_redirect
 from ..post import WeiboPost
 from ..sv import sv
 
-
 _WEIBO_TIME_FORMAT = "%a %b %d %H:%M:%S %z %Y"
 _VISIBLE_TYPES_LOGIN = {0, 6, 7, 8, 9}
 
@@ -33,9 +32,7 @@ def filter_page_info(page_info: dict) -> bool:
     typ = str(typ).lower() if typ else ""
     if typ in {"24", "23", "2"}:
         return False
-    if page_info.get("buttons") is not None:
-        return False
-    return True
+    return page_info.get("buttons") is None
 
 
 def parse_mix_media_info(raw: dict) -> tuple[list[str], list[str]]:
@@ -132,8 +129,8 @@ class _WeiboHttpSession:
                 follow_redirects=follow_redirects,
                 timeout=timeout,
             )
-        except Exception as e:
-            sv.logger.error(f"微博请求异常: url: {url}, params: {params}, error: {e}")
+        except Exception:
+            sv.logger.exception(f"微博请求异常: url: {url}, params: {params}", exception=True)
             raise
 
         self._check_response(
@@ -307,7 +304,7 @@ class WeiboPostParser:
             description=description,
             user_avatar_image=avatar_url,
         )
-        post._get_text(content_html)
+        post.get_text(content_html)
         return post
 
     def _attach_repost(
@@ -363,16 +360,8 @@ class WeiboPostParser:
                 if image.get("videoSrc"):
                     video_urls.append(image["videoSrc"])
         elif isinstance(raw_pics, list):
-            pic_urls.extend(
-                image["large"]["url"]
-                for image in raw_pics
-                if image.get("large")
-            )
-            video_urls.extend(
-                image["videoSrc"]
-                for image in raw_pics
-                if image.get("videoSrc")
-            )
+            pic_urls.extend(image["large"]["url"] for image in raw_pics if image.get("large"))
+            video_urls.extend(image["videoSrc"] for image in raw_pics if image.get("videoSrc"))
         page_info = info.get("page_info", {})
         if page_info.get("type") == "video":
             video_url, pic_url = parse_video_info(page_info)
@@ -518,7 +507,9 @@ class _LoginSource(_BaseWeiboSource):
         return bool(created and _parse_weibo_timestamp(created) > ts)
 
     def compare_items(self, left: dict, right: dict) -> float:
-        return _parse_weibo_timestamp(left["created_at"]) - _parse_weibo_timestamp(right["created_at"])
+        return _parse_weibo_timestamp(left["created_at"]) - _parse_weibo_timestamp(
+            right["created_at"]
+        )
 
     def parse_item(self, raw: dict) -> WeiboPost | None:
         return self.parser.parse_login(raw)
@@ -587,7 +578,9 @@ class _VisitorSource(_BaseWeiboSource):
         return raw.get("card_type") in [9, 6, 7] and _parse_weibo_timestamp(created) > ts
 
     def compare_items(self, left: dict, right: dict) -> float:
-        return _parse_weibo_timestamp(left["mblog"]["created_at"]) - _parse_weibo_timestamp(right["mblog"]["created_at"])
+        return _parse_weibo_timestamp(left["mblog"]["created_at"]) - _parse_weibo_timestamp(
+            right["mblog"]["created_at"]
+        )
 
     def parse_item(self, raw: dict) -> WeiboPost | None:
         return self.parser.parse_visitor(raw)
@@ -658,8 +651,8 @@ class WeiboRequestRuntime:
                 continue
             try:
                 await self.process_missing_target(target)
-            except Exception as e:
-                sv.logger.error(f"处理微博不存在账号队列失败: target={target}, error: {e}")
+            except Exception:
+                sv.logger.exception(f"处理微博不存在账号队列失败: target={target}", exception=True)
             finally:
                 self._missing_target_set.discard(target)
                 self._missing_target_queue.task_done()

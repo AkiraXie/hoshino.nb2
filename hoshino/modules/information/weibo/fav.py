@@ -3,19 +3,19 @@ import random
 import re
 from typing import TYPE_CHECKING
 
-from hoshino.core.permission import SUPERUSER
 from hoshino import data_dir
-from hoshino.util.message import send_segments
 from hoshino.command import UniMessage, uni_text
+from hoshino.core.permission import SUPERUSER
 from hoshino.platform.depends import ParamText
 from hoshino.types import MessageLike
+from hoshino.util.message import send_segments
 
-from .sv import sv
 from .internal.post_runtime import (
     post_msg_from_uid_id,
     render_messages,
     weibo_msg_dir,
 )
+from .sv import sv
 
 if TYPE_CHECKING:
     pass
@@ -164,7 +164,9 @@ def _build_favorite_search_messages(
     total = len(results)
     scope = f" UID: {target_uid}" if target_uid else ""
     for index, chunk in enumerate(chunks, start=1):
-        header = f"微博收藏搜索结果{scope}: 关键词 {keyword}，共 {total} 条，第 {index}/{len(chunks)} 组"
+        header = (
+            f"微博收藏搜索结果{scope}: 关键词 {keyword}，共 {total} 条，第 {index}/{len(chunks)} 组"
+        )
         text = "\n".join([header, *chunk])
         if index == len(chunks):
             text += "\n使用 查看微博收藏 ID"

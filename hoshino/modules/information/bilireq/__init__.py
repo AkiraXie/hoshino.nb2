@@ -2,11 +2,10 @@ import asyncio
 import random
 import time
 
-from pytz import timezone
 from sqlalchemy import select
 
 from hoshino.command import UniMessage
-from hoshino.core.hooks import on_post_startup
+from hoshino.core.hooks import on_post_startup, on_shutdown, spawn
 from hoshino.platform import (
     dump_target,
     group_target,
@@ -25,14 +24,25 @@ from .utils import (
     sv,
 )
 from .utils import (
-    DynamicDB as db,
+    DynamicDB as db,  # noqa: N813  # 表模型短别名，查询语句中作为表引用
 )
 
 # 使用统一的组件
 dyn_queue = PostQueue[BiliBiliDynamic]()
 uid_manager = UIDManager()
 
-tz = timezone("Asia/Shanghai")
+# 后台任务引用：bili_dyn_dispatcher 循环 worker，shutdown 时取消
+_dyn_dispatcher_task: asyncio.Task | None = None
+
+
+def _uid_still_subscribed(uid: str) -> bool:
+    """remove_uid 回调：uid 是否仍被任何群订阅。
+
+    使用独立 Session 查询，避免 lambda 捕获 with 块内的 session。
+    """
+    with Session() as session:
+        stmt = select(db).where(db.uid == uid)
+        return session.execute(stmt).scalar_one_or_none() is not None
 
 
 add_dynamic_cmd = sv.on_command(
@@ -53,8 +63,8 @@ async def _(gid: int | None = GroupID(), uid: str = ParamText()):
         if not dyn:
             await UniMessage.text(f"无法添加 {uid}").send()
             return
-    except Exception as e:
-        sv.logger.exception(e)
+    except Exception:
+        sv.logger.exception(f"获取 UID {uid} 信息失败", exception=True)
         await UniMessage.text(f"UID {uid} 信息获取失败").send()
         return
     uid_int = dyn.uid
@@ -102,14 +112,7 @@ async def _(gid: int | None = GroupID(), uid: str = ParamText()):
             num = len(rows)
             session.commit()
             if num:
-                await uid_manager.remove_uid(
-                    uid,
-                    lambda u: bool(
-                        session.execute(
-                            select(db).where(db.uid == u)
-                        ).scalar_one_or_none()
-                    ),
-                )
+                await uid_manager.remove_uid(uid, _uid_still_subscribed)
         else:
             stmt = select(db).where(db.group == gid, db.name == uid)
             rows = session.execute(stmt).scalars().all()
@@ -120,14 +123,7 @@ async def _(gid: int | None = GroupID(), uid: str = ParamText()):
                 num = len(rows)
                 session.commit()
                 if num:
-                    await uid_manager.remove_uid(
-                        str(target_uid),
-                        lambda u: bool(
-                            session.execute(
-                                select(db).where(db.uid == int(u))
-                            ).scalar_one_or_none()
-                        ),
-                    )
+                    await uid_manager.remove_uid(str(target_uid), _uid_still_subscribed)
             else:
                 num = 0
     if num:
@@ -193,7 +189,6 @@ async def _(gid: int | None = GroupID(), arg: str = ParamText()):
         await send_segments(msgs)
 
 
-# @scheduled_job("interval", seconds=50, jitter=5, id="获取bili动态")
 async def get_bili_dyn():
     ready_count = uid_manager.get_count()
     if ready_count == 0:
@@ -210,14 +205,7 @@ async def get_bili_dyn():
             stmt = select(db).where(db.uid == uid_int)
             rows = session.execute(stmt).scalars().all()
         if not rows:
-            await uid_manager.remove_uid(
-                uid_str,
-                lambda u: bool(
-                    Session()
-                    .execute(select(db).where(db.uid == u))
-                    .scalar_one_or_none()
-                ),
-            )
+            await uid_manager.remove_uid(uid_str, _uid_still_subscribed)
             return
 
         time_rows = sorted(rows, key=lambda x: x.time, reverse=True)
@@ -232,18 +220,15 @@ async def get_bili_dyn():
             dyn.timestamp = max_timestamp
             b = dyn_queue.put(dyn)
             if b:
-                sv.logger.info(
-                    f"获取到新的动态: {dyn.nickname} ({dyn.url} {dyn.timestamp})"
-                )
+                sv.logger.info(f"获取到新的动态: {dyn.nickname} ({dyn.url} {dyn.timestamp})")
         success = True
 
         if ready_count > 1:
             return
-        else:
-            await asyncio.sleep(0.5)
+        await asyncio.sleep(0.5)
 
-    except Exception as e:
-        sv.logger.error(f"获取Bili动态失败 UID {uid_str}: {e}")
+    except Exception:
+        sv.logger.exception(f"获取Bili动态失败 UID {uid_str}", exception=True)
         success = False
     finally:
         await uid_manager.finish_processing(uid_str, success)
@@ -293,8 +278,8 @@ async def handle_bili_dyn(dyn: BiliBiliDynamic, sem):
                     await send_to_target(bot, target, m)
                     await asyncio.sleep(random.uniform(0, 0.5))
                     await send_group_segments(bot, gid, msgs[1:])
-            except Exception as e:
-                sv.logger.error(f"发送 bili 动态失败: {e}")
+            except Exception:
+                sv.logger.exception(f"发送 bili 动态失败: 群{gid}", exception=True)
         dyn_queue.remove_id(dyn.id)
 
 
@@ -305,13 +290,20 @@ async def bili_dyn_dispatcher():
         if not dyn:
             await asyncio.sleep(0.5)
             continue
-        asyncio.create_task(handle_bili_dyn(dyn, sem))
+        spawn(handle_bili_dyn(dyn, sem))
 
 
 @on_post_startup
 async def start_bili_dyn_dispatcher():
+    global _dyn_dispatcher_task
     with Session() as session:
         stmt = select(db.uid).distinct()
         uids = session.scalars(stmt).all()
     await uid_manager.init(uids)
-    asyncio.create_task(bili_dyn_dispatcher())
+    _dyn_dispatcher_task = spawn(bili_dyn_dispatcher())
+
+
+@on_shutdown
+async def stop_bili_dyn_dispatcher():
+    if _dyn_dispatcher_task:
+        _dyn_dispatcher_task.cancel()

@@ -2,24 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from nonebot.adapters import Bot
 
 from hoshino.command import MsgTarget, UniMessage
-import asyncio
-
-from hoshino.core.hooks import on_post_startup, on_serial_startup, on_shutdown
+from hoshino.core.hooks import on_post_startup, on_serial_startup, on_shutdown, spawn
 from hoshino.core.schedule import scheduled_job
 from hoshino.platform import dump_target, platform_key, target_scope_key
 from hoshino.platform.depends import ParamText
 from hoshino.platform.permission import ADMIN
 
-from . import reaction as reaction
-from .sv import sv
-from .runtime import runtime, store
+from . import reaction  # noqa: F401  # 副作用导入：注册 reaction 事件 matcher
 from .db import list_source_key
-
+from .runtime import runtime, store
+from .sv import sv
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 PROFILE_URL_RE = re.compile(r"(?:x|twitter)\.com/([A-Za-z0-9_]{1,15})")
@@ -30,9 +28,7 @@ x_add = sv.on_command("添加x订阅", aliases=("xadd",), permission=ADMIN)
 x_remove = sv.on_command("删除x订阅", aliases=("xremove",), permission=ADMIN)
 x_list_list = sv.on_command("x列表订阅列表", aliases=("xlistlist",))
 x_list_add = sv.on_command("添加x列表订阅", aliases=("xlistadd",), permission=ADMIN)
-x_list_remove = sv.on_command(
-    "删除x列表订阅", aliases=("xlistremove",), permission=ADMIN
-)
+x_list_remove = sv.on_command("删除x列表订阅", aliases=("xlistremove",), permission=ADMIN)
 
 
 def _username(text: str) -> str | None:
@@ -132,9 +128,7 @@ async def handle_x_list_add(
 ) -> None:
     list_id = _list_id(text)
     if list_id is None:
-        await UniMessage.text(
-            "用法：添加x列表订阅 <列表ID 或 x.com/i/lists/<ID> 链接>"
-        ).send()
+        await UniMessage.text("用法：添加x列表订阅 <列表ID 或 x.com/i/lists/<ID> 链接>").send()
         return
     scope_key, platform, group_id, target_data = _scope(bot, target)
     added = await store.add_list_subscription(
@@ -146,9 +140,7 @@ async def handle_x_list_add(
         name=str(list_id),
     )
     await runtime.add_account(list_source_key(list_id))
-    message = (
-        f"已添加列表 list:{list_id}" if added else f"列表 list:{list_id} 已在订阅列表中"
-    )
+    message = f"已添加列表 list:{list_id}" if added else f"列表 list:{list_id} 已在订阅列表中"
     await UniMessage.text(message).send()
 
 
@@ -160,9 +152,7 @@ async def handle_x_list_remove(
 ) -> None:
     list_id = _list_id(text)
     if list_id is None:
-        await UniMessage.text(
-            "用法：删除x列表订阅 <列表ID 或 x.com/i/lists/<ID> 链接>"
-        ).send()
+        await UniMessage.text("用法：删除x列表订阅 <列表ID 或 x.com/i/lists/<ID> 链接>").send()
         return
     scope_key, _, _, _ = _scope(bot, target)
     removed = await store.remove_list_subscription(scope_key, list_id)
@@ -186,19 +176,30 @@ async def poll_x() -> None:
     await runtime.fetch_next_update()
 
 
+# 后台任务引用：X 推送 worker 循环，shutdown 时取消
+_x_dispatch_task: asyncio.Task | None = None
+
+
 async def _x_dispatch_worker() -> None:
     while True:
         try:
             sent = await runtime.dispatch_pending()
         except Exception:
-            sv.logger.exception("X dispatch worker error")
+            sv.logger.exception("X dispatch worker error", exception=True)
             sent = 0
         await asyncio.sleep(0 if sent else 0.5)
 
 
 @on_post_startup
 async def start_x_dispatch_worker() -> None:
-    asyncio.create_task(_x_dispatch_worker())
+    global _x_dispatch_task
+    _x_dispatch_task = spawn(_x_dispatch_worker())
+
+
+@on_shutdown
+async def stop_x_dispatch_worker() -> None:
+    if _x_dispatch_task:
+        _x_dispatch_task.cancel()
 
 
 __all__ = [

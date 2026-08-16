@@ -10,7 +10,11 @@ from hoshino.util import aiohttpx
 
 sv = Service("bihua", visible=False, enable_on_default=False)
 
-bihuas = dict()
+_bihuas: dict[str, str] = {}
+# 兼容性别名：nb-tests 直接替换模块属性 `bihuas` 注入测试数据，
+# handler 经 `bihuas` 读取；生产环境中两者指向同一对象。
+bihuas = _bihuas
+
 configurl = "https://bihua.bleatingsheep.org/meme-data.json"
 prefix = "https://bihua.bleatingsheep.org/meme/"
 m = sv.on_command("bihua", aliases=("b话", "壁画"), block=True)
@@ -18,28 +22,30 @@ r = sv.on_command("随机壁画", aliases=("随机bihua", "随机b话"), block=T
 s = sv.on_command("搜索壁画", aliases=("searchbihua", "搜索b话"), block=True)
 
 
+def _search_bihua(keywords: list[str]) -> list[str]:
+    """返回与全部关键词（不区分大小写）匹配的壁画名。"""
+    word_queries = {word.lower() for word in keywords}
+    return [bihua for bihua in bihuas if all(word in bihua.lower() for word in word_queries)]
+
+
 @scheduled_job("interval", seconds=240, id="bihua_config", jitter=5)
 async def fetch_bihua_config():
     try:
-        global bihuas
-        bi_copy = bihuas.copy()
         resp = await aiohttpx.get(configurl, timeout=10)
         if resp.ok:
-            bi_copy.clear()
-            content = resp.text
-            dic = loads(content)
-            images = dic.get("images", [])
-            for image in images:
+            images = {}
+            for image in loads(resp.text).get("images", []):
                 line: str = image.get("path", "")
                 line = line.removeprefix("meme/")
                 for ext in [".jpg", ".png", ".jpeg"]:
                     if line.endswith(ext):
                         line = line[: -len(ext)]
-                        bi_copy[line] = ext
+                        images[line] = ext
                         break
-        bihuas = bi_copy
+            _bihuas.clear()
+            _bihuas.update(images)
     except Exception:
-        sv.logger.error(f"Error fetching bihua config from {configurl}")
+        sv.logger.exception(f"Error fetching bihua config from {configurl}", exception=True)
 
 
 @r.handle()
@@ -56,25 +62,15 @@ async def _():
 
 @m.handle()
 async def _(text: str = ParamText()):
-    msg = text
-    if not msg:
+    if not text:
         await m.finish()
-    keywords = msg.split()
+    keywords = text.split()
     if not keywords:
         await m.finish()
-    word_queries = set(keywords)
-    matching_bihuas = [
-        bihua
-        for bihua in bihuas
-        if all(word.lower() in bihua.lower() for word in word_queries)
-    ]
+    matching_bihuas = _search_bihua(keywords)
     if not matching_bihuas:
         await fetch_bihua_config()
-    matching_bihuas = [
-        bihua
-        for bihua in bihuas
-        if all(word.lower() in bihua.lower() for word in word_queries)
-    ]
+        matching_bihuas = _search_bihua(keywords)
     if not matching_bihuas:
         await m.finish()
     ra = random.SystemRandom()
@@ -86,25 +82,15 @@ async def _(text: str = ParamText()):
 
 @s.handle()
 async def _(text: str = ParamText()):
-    msg = text
-    if not msg:
+    if not text:
         await s.finish()
-    keywords = msg.split()
+    keywords = text.split()
     if not keywords:
         await s.finish()
-    word_queries = set(keywords)
-    matching_bihuas = [
-        bihua
-        for bihua in bihuas
-        if all(word.lower() in bihua.lower() for word in word_queries)
-    ]
+    matching_bihuas = _search_bihua(keywords)
     if not matching_bihuas:
         await fetch_bihua_config()
-    matching_bihuas = [
-        bihua
-        for bihua in bihuas
-        if all(word.lower() in bihua.lower() for word in word_queries)
-    ]
+        matching_bihuas = _search_bihua(keywords)
     if not matching_bihuas:
         await s.finish()
     await s.send(f"找到壁画：\n-----------\n{'\n'.join(matching_bihuas)}")

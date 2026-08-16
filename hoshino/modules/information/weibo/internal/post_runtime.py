@@ -1,15 +1,17 @@
 import asyncio
 import json
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 from nonebot.adapters import Bot
+
+from hoshino.command import UniMessage, uni_image, uni_text, uni_video
 from hoshino.core.config import config
 from hoshino.modules.information.utils import PostMessage, PostResource
-from hoshino.command import UniMessage, uni_image, uni_text, uni_video
 from hoshino.platform import (
     Target,
     group_target,
@@ -108,8 +110,8 @@ class _TempFileCleaner:
             if path.exists():
                 path.unlink()
                 sv.logger.debug(f"已清理缓存文件: {filepath_str}")
-        except Exception as e:
-            sv.logger.error(f"清理缓存文件失败: {filepath_str} error={e}")
+        except Exception:
+            sv.logger.exception(f"清理缓存文件失败: {filepath_str}", exception=True)
 
 
 class _PostAssetService:
@@ -128,8 +130,8 @@ class _PostAssetService:
         screenshot_timeout: float,
     ) -> PostMessage:
         image_paths = await self.download_images(post)
-        content = "\n".join(post._build_content_lines())
-        header = post._build_text_header()
+        content = "\n".join(post.build_content_lines())
+        header = post.build_text_header()
 
         if not full:
             _file_cleaner.schedule(image_paths)
@@ -198,16 +200,16 @@ class _PostAssetService:
         saver,
     ) -> list[Path]:
         headers = {"referer": post.get_referer()}
-        dirpath = post._get_download_dir(base_dir)
+        dirpath = post.get_download_dir(base_dir)
 
         async def _download_one(index: int, url: str) -> Path | None:
-            filepath = dirpath / post._build_download_filename(index, suffix)
+            filepath = dirpath / post.build_download_filename(index, suffix)
             if filepath.exists():
                 return filepath
             try:
                 saved = await saver(url, filepath, True, headers=headers)
-            except Exception as e:
-                sv.logger.error(f"Error downloading resource {url}: {e}")
+            except Exception:
+                sv.logger.exception(f"Error downloading resource {url}", exception=True)
                 return None
             if saved:
                 return saved
@@ -221,9 +223,7 @@ class _PostAssetService:
             if isinstance(item, Path):
                 saved_paths.append(item)
             elif isinstance(item, Exception):
-                sv.logger.error(
-                    f"Error in download task: {item}, urls={urls}, id={post.id}"
-                )
+                sv.logger.error(f"Error in download task: {item}, urls={urls}, id={post.id}")
         return saved_paths
 
     async def take_screenshot(
@@ -242,14 +242,14 @@ class _PostAssetService:
             return None
         try:
             return await screenshot_task
-        except Exception as e:
-            sv.logger.error(f"Error fetching screenshot: {e}")
+        except Exception:
+            sv.logger.exception("Error fetching screenshot", exception=True)
             return None
 
 
 class _PostArchiveStore:
     async def save(self, post: "WeiboPost", post_message: PostMessage) -> PostMessage:
-        uid_dir = post._get_download_dir(weibo_msg_dir)
+        uid_dir = post.get_download_dir(weibo_msg_dir)
         save_dir = uid_dir / post.id
         save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -279,17 +279,9 @@ class _PostArchiveStore:
         return PostMessage(
             text=post_message.text,
             content=post_message.content,
-            screenshot=(save_dir / "screenshot.jpg")
-            if post_message.screenshot
-            else None,
-            images=[
-                save_dir / "images" / f"{i + 1}.jpg"
-                for i in range(len(post_message.images))
-            ],
-            videos=[
-                save_dir / "videos" / f"{i + 1}.mp4"
-                for i in range(len(post_message.videos))
-            ],
+            screenshot=(save_dir / "screenshot.jpg") if post_message.screenshot else None,
+            images=[save_dir / "images" / f"{i + 1}.jpg" for i in range(len(post_message.images))],
+            videos=[save_dir / "videos" / f"{i + 1}.mp4" for i in range(len(post_message.videos))],
         )
 
     async def load(self, uid: str, post_id: str) -> PostMessage | None:
@@ -315,9 +307,7 @@ class _PostArchiveStore:
         )
 
     async def _refetch(self, uid: str, post_id: str) -> PostMessage | None:
-        sv.logger.warning(
-            f"weibo post not found in cache, refetching: uid={uid} post_id={post_id}"
-        )
+        sv.logger.warning(f"weibo post not found in cache, refetching: uid={uid} post_id={post_id}")
         # Lazy import: request facade imports this runtime through post/WeiboPost.
         from ..request import parse_weibo_with_id
 
@@ -331,8 +321,7 @@ class _PostArchiveStore:
             return
         avatar_path = uid_dir / "user_avatar.jpg"
         is_stale = avatar_path.exists() and (
-            datetime.fromtimestamp(avatar_path.stat().st_mtime).date()
-            != datetime.now().date()
+            datetime.fromtimestamp(avatar_path.stat().st_mtime).date() != datetime.now().date()
         )
         if avatar_path.exists() and not is_stale:
             return
@@ -449,7 +438,7 @@ class _MessageRenderer:
             head += "\n" + post_message.content
         tail = ""
         if post:
-            tail = post._build_text_tail()
+            tail = post.build_text_tail()
 
         messages: list[MessageLike] = []
         if post_message.screenshot:
@@ -498,8 +487,7 @@ class _MessageDispatcher:
             return {}
         target = target or group_target(gid)
         sv.logger.info(
-            "微博发送普通消息: "
-            f"group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
+            f"微博发送普通消息: group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
         )
         result = await send_to_target(bot, target, msgs[0])
         for message in msgs[1:]:
@@ -521,8 +509,7 @@ class _MessageDispatcher:
             return {}
         target = target or group_target(gid)
         sv.logger.info(
-            "微博发送分段消息: "
-            f"group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
+            f"微博发送分段消息: group={gid} uid={uid} post={post_id} msg_count={len(msgs)}"
         )
         result = await send_to_target(bot, target, msgs[0])
         if len(msgs) > 1:
@@ -663,14 +650,12 @@ async def get_post_message(
     screenshot_timeout: float = 6.0,
 ) -> PostMessage:
     image_paths = await _asset_service.download_images(post)
-    content = "\n".join(post._build_content_lines())
-    header = post._build_text_header()
+    content = "\n".join(post.build_content_lines())
+    header = post.build_text_header()
     video_paths = await _asset_service.download_videos(post)
     screenshot = None
     if with_screenshot:
-        screenshot = await _asset_service.take_screenshot(
-            post, timeout=screenshot_timeout
-        )
+        screenshot = await _asset_service.take_screenshot(post, timeout=screenshot_timeout)
     _file_cleaner.schedule([*image_paths, *video_paths])
     return PostMessage(
         text=header,
@@ -730,9 +715,7 @@ def filter_oversized_videos(message: PostMessage) -> PostMessage:
     rendered message loses it, while images (including the video cover) and
     the original post link are still sent.
     """
-    videos = [
-        video for video in message.videos if not _video_upload_exceeds_limit(video)
-    ]
+    videos = [video for video in message.videos if not _video_upload_exceeds_limit(video)]
     if len(videos) != len(message.videos):
         sv.logger.warning(
             "微博视频超过上传限制，已跳过发送（文件仍保留在本地归档）: "

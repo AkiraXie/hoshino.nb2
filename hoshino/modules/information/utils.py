@@ -1,22 +1,23 @@
 """内容订阅共享契约 — compat re-export from hoshino.content"""
+
 from hoshino.content import (
     Post,
     PostMessage,
     PostQueue,
-    UIDManager,
-    clean_filename,
+    PostResource,
     Queueable,
     RenderableMessage,
-    PostResource,
+    UIDManager,
+    clean_filename,
 )
 
 __all__ = [
     "Post",
     "PostMessage",
     "PostQueue",
-    "UIDManager",
-    "clean_filename",
+    "PostResource",
     "Queueable",
     "RenderableMessage",
-    "PostResource",
+    "UIDManager",
+    "clean_filename",
 ]

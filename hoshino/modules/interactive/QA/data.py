@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from sqlalchemy.types import Text, Integer
+from sqlalchemy.types import Integer, Text
+
 from hoshino import db_dir
 
 db_path = db_dir / "QA.db"

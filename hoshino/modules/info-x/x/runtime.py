@@ -27,15 +27,14 @@ from .client import (
     USER_TWEETS_ENDPOINT,
     XAuthenticationError,
     XClient,
-    XRateLimited,
-    XUserNotFound,
+    XRateLimitedError,
+    XUserNotFoundError,
 )
 from .config import XSettings
 from .db import OutboxItem, XStore, parse_list_source_key
 from .media import XMediaStore
 from .post import XPost
 from .sv import sv
-
 
 COOKIE_NAME = "x"
 REQUIRED_COOKIES = ("auth_token", "ct0")
@@ -47,13 +46,13 @@ class XCredentialError(RuntimeError):
     pass
 
 
-class XCookieMissing(XCredentialError):
+class XCookieMissingError(XCredentialError):
     def __init__(self, fields: tuple[str, ...]) -> None:
         super().__init__("X cookie is incomplete")
         self.fields = fields
 
 
-class XCookieExpired(XCredentialError):
+class XCookieExpiredError(XCredentialError):
     pass
 
 
@@ -80,10 +79,7 @@ class XErrorQueue:
         task = XErrorTask(username, error)
         key = self._key(task)
         now = time.time()
-        if (
-            key in self._pending
-            or now - self._last_sent.get(key, 0) < COOKIE_WARNING_INTERVAL
-        ):
+        if key in self._pending or now - self._last_sent.get(key, 0) < COOKIE_WARNING_INTERVAL:
             return False
         self._pending.add(key)
         await self.queue.put(task)
@@ -120,11 +116,9 @@ class XErrorQueue:
             self.queue.task_done()
 
     async def _process(self, task: XErrorTask) -> str:
-        if isinstance(task.error, XUserNotFound):
+        if isinstance(task.error, XUserNotFoundError):
             if task.deleted_subscriptions is None:
-                task.deleted_subscriptions = await self.store.remove_account(
-                    task.username
-                )
+                task.deleted_subscriptions = await self.store.remove_account(task.username)
                 await self.uid_manager.remove_uid(task.username, lambda _: False)
             sv.logger.warning(
                 f"X account @{task.username} was not found; removed "
@@ -134,11 +128,11 @@ class XErrorQueue:
                 f"X 账号不存在，已自动删除订阅: @{task.username}, "
                 f"共 {task.deleted_subscriptions} 条"
             )
-        if isinstance(task.error, XCookieMissing):
+        if isinstance(task.error, XCookieMissingError):
             return f"X cookie 缺少必要字段: {', '.join(task.error.fields)}"
-        if isinstance(task.error, XCookieExpired):
+        if isinstance(task.error, XCookieExpiredError):
             return "X cookie 已过期，抓取已暂停"
-        if isinstance(task.error, XRateLimited):
+        if isinstance(task.error, XRateLimitedError):
             return f"X 接口触发限流: {task.error.endpoint}"
         return f"X 运行异常: @{task.username} {type(task.error).__name__}"
 
@@ -147,7 +141,7 @@ class XErrorQueue:
         error_name = type(task.error).__name__
         if isinstance(task.error, XCredentialError):
             return "credentials", error_name
-        if isinstance(task.error, XRateLimited):
+        if isinstance(task.error, XRateLimitedError):
             return task.error.endpoint, error_name
         return task.username, error_name
 
@@ -175,11 +169,9 @@ class CredentialProvider:
         missing = tuple(field for field in REQUIRED_COOKIES if not cookies.get(field))
         if missing:
             if checked_at - self._last_missing_warning >= COOKIE_WARNING_INTERVAL:
-                sv.logger.warning(
-                    f"X cookie is missing required fields: {', '.join(missing)}"
-                )
+                sv.logger.warning(f"X cookie is missing required fields: {', '.join(missing)}")
                 self._last_missing_warning = checked_at
-            raise XCookieMissing(missing)
+            raise XCookieMissingError(missing)
         return cookies, updated_at
 
     def is_known_expired(self, cookies: dict[str, str]) -> bool:
@@ -229,25 +221,25 @@ class FetchMainline:
             return False
         if updated_at <= 0 or now - updated_at > COOKIE_MAX_AGE:
             self.credentials.mark_expired(cookies)
-            await self.errors.enqueue(source, XCookieExpired("X cookie is expired"))
+            await self.errors.enqueue(source, XCookieExpiredError("X cookie is expired"))
             return False
 
         label = _source_label(source)
         try:
             tweets = await self._fetch_tweets(source, state.user_id, cookies, settings)
-        except XRateLimited as exc:
+        except XRateLimitedError as exc:
             await self.store.set_rate_cooldown(exc.endpoint, exc.retry_at)
             await self.store.defer_poll(source, exc.retry_at, type(exc).__name__)
             sv.logger.warning(f"X rate limit reached for {label} on {exc.endpoint}")
             await self.errors.enqueue(source, exc)
             return False
-        except XUserNotFound as exc:
+        except XUserNotFoundError as exc:
             await self.errors.enqueue(source, exc)
             return True
         except XAuthenticationError as exc:
             self.credentials.mark_expired(cookies)
             await self.errors.enqueue(
-                source, XCookieExpired(str(exc) or "X credential is inactive")
+                source, XCookieExpiredError(str(exc) or "X credential is inactive")
             )
             return False
         except asyncio.CancelledError:
@@ -256,9 +248,7 @@ class FetchMainline:
             delay = retry_delay(
                 state.failures, settings.retry_base_seconds, settings.retry_max_seconds
             )
-            await self.store.defer_poll(
-                source, now + delay, f"{type(exc).__name__}: {exc}"
-            )
+            await self.store.defer_poll(source, now + delay, f"{type(exc).__name__}: {exc}")
             sv.logger.error(
                 f"X polling failed for {label}: {type(exc).__name__}",
                 exception=False,
@@ -343,9 +333,7 @@ class FetchMainline:
                 await self.store.enqueue_list_posts(list_id, posts)
             else:
                 await self.store.enqueue_posts(source, posts)
-            sv.logger.info(
-                f"Fetched {len(posts)} X update(s) for {_source_label(source)}"
-            )
+            sv.logger.info(f"Fetched {len(posts)} X update(s) for {_source_label(source)}")
         else:
             await self.store.set_cursor(source, newest_id)
 
@@ -353,10 +341,7 @@ class FetchMainline:
         await self.store.complete_poll(source, last_posted_at=latest_timestamp)
         if latest_timestamp and now - latest_timestamp < settings.cold_after_seconds:
             await self.uid_manager.unmark_cold(source)
-        elif (
-            previous_posted_at
-            and now - previous_posted_at >= settings.cold_after_seconds
-        ):
+        elif previous_posted_at and now - previous_posted_at >= settings.cold_after_seconds:
             await self.uid_manager.mark_cold(source)
 
     def _media_store(self) -> XMediaStore:
@@ -467,9 +452,7 @@ class XRuntime:
         await self.uid_manager.add_uid(source)
         if parse_list_source_key(source) is not None:
             settings = sv.get_config()
-            self.uid_manager.set_hot_interval(
-                source, settings.list_hot_interval_seconds
-            )
+            self.uid_manager.set_hot_interval(source, settings.list_hot_interval_seconds)
 
     async def fetch_next_update(self) -> bool:
         source = await self.uid_manager.get_next_uid()
@@ -477,8 +460,7 @@ class XRuntime:
             return False
         success = False
         try:
-            success = await self.fetch_mainline.fetch(source)
-            return success
+            return await self.fetch_mainline.fetch(source)
         finally:
             await self.uid_manager.finish_processing(source, success)
 
@@ -498,10 +480,10 @@ __all__ = [
     "DeliveryExecutor",
     "DispatchMainline",
     "FetchMainline",
+    "XCookieExpiredError",
+    "XCookieMissingError",
     "XErrorQueue",
     "XErrorTask",
-    "XCookieExpired",
-    "XCookieMissing",
     "XRuntime",
     "runtime",
     "store",

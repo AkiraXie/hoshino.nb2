@@ -1,44 +1,35 @@
 import asyncio
 import time
-from hoshino.util.command import sucmd
-from hoshino.platform import send_to_superuser
-from nonebot.adapters import Bot
-from hoshino.core.hooks import on_bot_connect
-from asyncio import all_tasks
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+
 import psutil
+from nonebot.adapters import Bot
+
+from hoshino.core.hooks import on_bot_connect
+from hoshino.platform import send_to_superuser
+from hoshino.util.command import sucmd
 
 showcmd = sucmd("状态", aliases={"serverinfo", "stat"})
 epoch = datetime.fromtimestamp(0, UTC)
 
 
-def get_gocq_process():
-    _p = None
-    for ps in psutil.process_iter():
-        if "go-cq" in ps.name() or "gocq" in ps.name():
-            _p = psutil.Process(ps.pid)
-            break
-    return _p
-
-
-def get_lag_process():
-    _p = None
-    for ps in psutil.process_iter():
-        if "Lagrange" in ps.name():
-            _p = psutil.Process(ps.pid)
-            break
-    return _p
+def _find_process(names: tuple[str, ...]) -> psutil.Process | None:
+    """返回进程名包含任一关键词的第一个进程，未找到返回 None。"""
+    for proc in psutil.process_iter():
+        if any(name in proc.name() for name in names):
+            return psutil.Process(proc.pid)
+    return None
 
 
 async def get_stat():
     p = psutil.Process()
-    pp = get_gocq_process()
-    pl = get_lag_process()
+    pp = _find_process(("go-cq", "gocq"))
+    pl = _find_process(("Lagrange",))
     name = "go-cqhttp" if pp else "Lagrange"
     ppp = pp if pp else pl
     if ppp:
         ppp.cpu_percent()
-    tasks = all_tasks()
+    tasks = asyncio.all_tasks()
     p.cpu_percent()
     await asyncio.sleep(1)
     cpu_p = p.cpu_percent()

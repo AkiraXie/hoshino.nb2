@@ -29,7 +29,6 @@ from hoshino.platform.permission import ADMIN
 from hoshino.service import Service
 from hoshino.util import aiohttpx
 
-
 sv = Service("steam", enable_on_default=False, visible=False)
 subscribe_file = db_dir / "subscribes.json"
 sub: dict[str, Any] = {"version": 2, "subscribes": {}}
@@ -70,7 +69,7 @@ def _load_subscriptions() -> bool:
             if isinstance(entry, dict) and entry.get("scope_key"):
                 targets.append(entry)
                 continue
-            if isinstance(entry, (int, str)) and str(entry).lstrip("-").isdigit():
+            if isinstance(entry, int | str) and str(entry).lstrip("-").isdigit():
                 group_id = int(entry)
                 targets.append(
                     {
@@ -89,9 +88,7 @@ def _load_subscriptions() -> bool:
 def _save_subscriptions() -> None:
     subscribe_file.parent.mkdir(parents=True, exist_ok=True)
     temporary = subscribe_file.with_suffix(".json.tmp")
-    temporary.write_text(
-        json.dumps(sub, indent=4, ensure_ascii=False), encoding="utf-8"
-    )
+    temporary.write_text(json.dumps(sub, indent=4, ensure_ascii=False), encoding="utf-8")
     temporary.replace(subscribe_file)
 
 
@@ -125,9 +122,7 @@ looks = sv.on_command(
         "kksteam",
     ),
 )
-look = sv.on_command(
-    "查询steam账号", permission=ADMIN, aliases=("查看steam", "查看steam订阅")
-)
+look = sv.on_command("查询steam账号", permission=ADMIN, aliases=("查看steam", "查看steam订阅"))
 
 
 @adds.handle()
@@ -182,9 +177,7 @@ async def handle_lookup(text: str = ParamText()) -> None:
     elif not status["gameextrainfo"]:
         await UniMessage.text(f"{status['personaname']} 没在玩游戏！").send()
     else:
-        await UniMessage.text(
-            f"{status['personaname']} 正在玩 {status['gameextrainfo']}！"
-        ).send()
+        await UniMessage.text(f"{status['personaname']} 正在玩 {status['gameextrainfo']}！").send()
 
 
 async def get_account_status(account: str) -> dict[str, str]:
@@ -243,9 +236,7 @@ async def update_steam_ids(steam_id: str, subscription: dict[str, Any]) -> bool:
 async def del_steam_ids(steam_id: str, subscription: dict[str, Any]) -> bool:
     normalized = await format_id(steam_id)
     entries = sub["subscribes"].get(normalized, [])
-    remaining = [
-        item for item in entries if item.get("scope_key") != subscription["scope_key"]
-    ]
+    remaining = [item for item in entries if item.get("scope_key") != subscription["scope_key"]]
     if len(remaining) == len(entries):
         return False
     if remaining:
@@ -293,9 +284,7 @@ async def _broadcast(subscriptions: list[dict[str, Any]], message: str) -> None:
         try:
             await send_to_target(bot, load_target(subscription["target_data"]), message)
         except Exception as exc:
-            logger.opt(exception=exc).error(
-                "Failed to send Steam update to {}", scope_key
-            )
+            logger.opt(exception=exc).error("Failed to send Steam update to {}", scope_key)
         await asyncio.sleep(0.5)
 
 

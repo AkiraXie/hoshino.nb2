@@ -17,8 +17,8 @@ from hoshino.platform import (
     reaction_event_rule,
 )
 
-from .sv import sv
 from .runtime import runtime, store
+from .sv import sv
 
 
 async def added_reaction(

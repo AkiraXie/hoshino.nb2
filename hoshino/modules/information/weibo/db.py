@@ -1,11 +1,11 @@
 import os
 
-from hoshino import db_dir
-from hoshino.core.hooks import on_serial_startup
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Float, Integer, Text
 
+from hoshino import db_dir
+from hoshino.core.hooks import on_serial_startup
 
 db_path = os.path.join(db_dir, "weibodata.db")
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -133,9 +133,7 @@ def remove_group_subscriptions_by_uid(group_id: int, uid: str) -> int:
         return len(rows)
 
 
-def remove_group_subscriptions_by_name(
-    group_id: int, name: str
-) -> tuple[int, str | None]:
+def remove_group_subscriptions_by_name(group_id: int, name: str) -> tuple[int, str | None]:
     with Session() as session:
         stmt = select(WeiboDB).where(WeiboDB.group == group_id, WeiboDB.name == name)
         rows = session.execute(stmt).scalars().all()
@@ -204,8 +202,8 @@ def update_group_config(
 
 __all__ = [
     "Session",
-    "WeiboDB",
     "WeiboConfig",
+    "WeiboDB",
     "add_or_update_subscription",
     "get_group_config",
     "list_group_subscriptions",

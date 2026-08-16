@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,7 +14,6 @@ from hoshino.core.config import config
 
 from .post import XPost
 from .sv import sv
-
 
 MAX_VIDEO_BYTES = 45 * 1024 * 1024
 
@@ -123,9 +123,7 @@ class XMediaStore:
         is_video: bool,
         keep_remote: bool,
     ) -> list[str]:
-        paths = await asyncio.gather(
-            *(self._download(post, url, is_video) for url in urls)
-        )
+        paths = await asyncio.gather(*(self._download(post, url, is_video) for url in urls))
         return [
             str(path) if path is not None else url
             for url, path in zip(urls, paths, strict=True)
@@ -133,7 +131,10 @@ class XMediaStore:
         ]
 
     async def _download(self, post: XPost, url: str, is_video: bool) -> Path | None:
-        filename = Path(urlparse(url).path).name or f"media-{abs(hash(url))}"
+        # abs(hash(url)) 在进程间随机化（PYTHONHASHSEED），会导致回退文件名漂移、
+        # 同一 URL 反复下载；sha1 仅用于生成稳定文件名，非安全用途。
+        fallback = f"media-{hashlib.sha1(url.encode('utf-8')).hexdigest()[:12]}"  # noqa: S324
+        filename = Path(urlparse(url).path).name or fallback
         target = self.root / post.uid / post.id / filename
         if target.exists():
             return target

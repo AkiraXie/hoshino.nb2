@@ -1,13 +1,15 @@
 import asyncio
+import re
+from time import localtime, strftime
+
 from hoshino.command import uni_image, uni_text
 from hoshino.types import MessageLike
 from hoshino.util import aiohttpx
 from hoshino.util.cookies import get_cookies
 from hoshino.util.message import send, send_segments
-from time import strftime, localtime
-import re
-from ..bilireq.utils import BiliBiliDynamic
 from hoshino.util.network import get_redirect
+
+from ..bilireq.utils import BiliBiliDynamic
 from .sv import sv
 
 bili_headers = {
@@ -41,8 +43,7 @@ async def get_dynamic_from_url(url: str) -> BiliBiliDynamic | None:
                 card = data.get("item", {})
                 if not card:
                     return None
-                dyn = BiliBiliDynamic.from_dict(card)
-                return dyn
+                return BiliBiliDynamic.from_dict(card)
     return None
 
 
@@ -50,18 +51,13 @@ async def get_bvid(url: str) -> str | None:
     if loc := await get_redirect(url):
         if mat := bili_video_pat.search(loc):
             return mat.group(1)
-        else:
-            return None
+        return None
     return None
 
 
 # 处理超过一万的数字
 def handle_num(num: int) -> str:
-    if num > 10000:
-        s = f"{(num / 10000.0):.2f}万"
-    else:
-        s = str(num)
-    return s
+    return f"{num / 10000.0:.2f}万" if num > 10000 else str(num)
 
 
 async def get_bili_video_resp(bvid: str = "", avid: str = "") -> MessageLike | None:

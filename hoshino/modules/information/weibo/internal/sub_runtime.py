@@ -12,6 +12,8 @@ from ..db import (
     update_subscriptions_for_uid,
 )
 from ..post import WeiboPost
+from ..request import get_weibo_list
+from ..sv import sv
 from .outbox import (
     WeiboOutboxItem,
     WeiboOutboxStore,
@@ -23,9 +25,6 @@ from .post_runtime import (
     adapt_post_message,
     cache_weibo_msg_id,
 )
-from ..request import get_weibo_list
-from ..sv import sv
-
 
 WEIBO_COLD_UID_THRESHOLD = 24 * 60 * 60
 WEIBO_DISPATCH_BATCH_SIZE = 5
@@ -61,18 +60,12 @@ class SubscriptionMatcher:
             return True
         if any(keyword in post.content for keyword in keywords):
             return True
-        if post.repost and any(keyword in post.repost.content for keyword in keywords):
-            return True
-        return False
+        return bool(post.repost and any(keyword in post.repost.content for keyword in keywords))
 
-    def match_posts(
-        self, posts: list[WeiboPost], state: RuntimeState
-    ) -> list[MatchedPost]:
+    def match_posts(self, posts: list[WeiboPost], state: RuntimeState) -> list[MatchedPost]:
         rows = state.uid_rows
         row_keywords_map = {
-            row.group: [kw for kw in row.keyword.split("-_-") if kw]
-            if row.keyword
-            else []
+            row.group: [kw for kw in row.keyword.split("-_-") if kw] if row.keyword else []
             for row in rows
         }
 
@@ -106,24 +99,18 @@ class SubscriptionMatcher:
 
 
 class FetchMainline:
-    def __init__(
-        self, matcher: SubscriptionMatcher, *, cold_uid_threshold: int
-    ) -> None:
+    def __init__(self, matcher: SubscriptionMatcher, *, cold_uid_threshold: int) -> None:
         self.matcher = matcher
         self.cold_uid_threshold = cold_uid_threshold
 
     def _load_group_configs(self, group_ids: list[int]) -> dict[int, object]:
         return {group_id: get_group_config(group_id) for group_id in set(group_ids)}
 
-    async def run_cycle(
-        self, uid_str: str, uid_manager, outbox: WeiboOutboxStore
-    ) -> bool:
+    async def run_cycle(self, uid_str: str, uid_manager, outbox: WeiboOutboxStore) -> bool:
         try:
             rows = list_subscriptions_by_uid(uid_str)
             if not rows:
-                await uid_manager.remove_uid(
-                    uid_str, lambda uid: uid_has_any_subscription(uid)
-                )
+                await uid_manager.remove_uid(uid_str, lambda uid: uid_has_any_subscription(uid))
                 return True
 
             state = RuntimeState(
@@ -133,10 +120,7 @@ class FetchMainline:
             )
             latest_known_ts = max(row.time for row in rows)
             now_ts = time.time()
-            if (
-                latest_known_ts > 0
-                and now_ts - latest_known_ts > 2 * self.cold_uid_threshold
-            ):
+            if latest_known_ts > 0 and now_ts - latest_known_ts > 2 * self.cold_uid_threshold:
                 await uid_manager.mark_cold(uid_str)
 
             min_ts = max(now_ts - self.cold_uid_threshold, latest_known_ts)
@@ -147,9 +131,7 @@ class FetchMainline:
             await uid_manager.unmark_cold(uid_str)
             matched_posts = self.matcher.match_posts(posts, state)
             for item in matched_posts:
-                built_message = await self._build_message(
-                    uid_str, item.post, item.with_screenshot
-                )
+                built_message = await self._build_message(uid_str, item.post, item.with_screenshot)
                 if not built_message:
                     continue
                 # Phase 1 complete: message is archived. Enqueue to durable outbox.
@@ -177,22 +159,20 @@ class FetchMainline:
             sv.logger.error(f"获取微博更新失败 UID {uid_str}")
             return False
 
-    async def _build_message(
-        self, uid_str: str, post: WeiboPost, with_screenshot: bool
-    ):
+    async def _build_message(self, uid_str: str, post: WeiboPost, with_screenshot: bool):
         try:
             message = await post.get_message(
                 with_screenshot=with_screenshot,
                 screenshot_timeout=3.0,
             )
-        except Exception as e:
-            sv.logger.error(f"微博获取消息失败: uid={uid_str} post={post.id} error={e}")
+        except Exception:
+            sv.logger.exception(f"微博获取消息失败: uid={uid_str} post={post.id}", exception=True)
             return None
 
         try:
             return await post.save(message)
-        except Exception as e:
-            sv.logger.error(f"微博推送归档失败: uid={uid_str} post={post.id} error={e}")
+        except Exception:
+            sv.logger.exception(f"微博推送归档失败: uid={uid_str} post={post.id}", exception=True)
             return message
 
 
@@ -284,9 +264,7 @@ class WeiboDispatchRuntime:
         self.cold_uid_threshold = cold_uid_threshold
         self.fetch_lock = asyncio.Lock()
         self.matcher = SubscriptionMatcher()
-        self.fetch_mainline = FetchMainline(
-            self.matcher, cold_uid_threshold=cold_uid_threshold
-        )
+        self.fetch_mainline = FetchMainline(self.matcher, cold_uid_threshold=cold_uid_threshold)
         self.dispatch_mainline = DispatchMainline(outbox)
 
     async def fetch_next_update(self) -> None:
@@ -296,9 +274,7 @@ class WeiboDispatchRuntime:
             uid_str = await self.uid_manager.get_next_uid()
             if not uid_str:
                 return
-            success = await self.fetch_mainline.run_cycle(
-                uid_str, self.uid_manager, self.outbox
-            )
+            success = await self.fetch_mainline.run_cycle(uid_str, self.uid_manager, self.outbox)
             await self.uid_manager.finish_processing(uid_str, success)
 
     async def dispatch_pending(self) -> int:
@@ -310,9 +286,7 @@ class WeiboDispatchRuntime:
         uid_latest_time: dict[str, float] = {}
         for uid, ts in rows:
             uid_str = str(uid)
-            uid_latest_time[uid_str] = max(
-                uid_latest_time.get(uid_str, 0.0), float(ts or 0.0)
-            )
+            uid_latest_time[uid_str] = max(uid_latest_time.get(uid_str, 0.0), float(ts or 0.0))
 
         uids = list(uid_latest_time)
         random.shuffle(uids)

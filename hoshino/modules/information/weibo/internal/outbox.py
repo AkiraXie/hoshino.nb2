@@ -12,9 +12,10 @@ import asyncio
 import json
 import sqlite3
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from hoshino import db_dir
 from hoshino.content import PostMessage
@@ -163,8 +164,9 @@ class WeiboOutboxStore:
             if rows:
                 ids = [int(row["id"]) for row in rows]
                 placeholders = ",".join("?" * len(ids))
+                # placeholders 为内部生成的字面量 "?,?,..."，参数走占位符，非注入点。
                 conn.execute(
-                    f"UPDATE weibo_outbox SET next_attempt_at = ? WHERE id IN ({placeholders})",
+                    f"UPDATE weibo_outbox SET next_attempt_at = ? WHERE id IN ({placeholders})",  # noqa: S608
                     (claim_until, *ids),
                 )
             return [

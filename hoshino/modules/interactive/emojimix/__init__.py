@@ -35,11 +35,9 @@ async def emojimatch(
         return False
     if len(msg) == 1:
         lt = len(text)
-        if lt > 4:
+        if lt > 4 or lt <= 1:
             return False
-        elif lt <= 1:
-            return False
-        elif lt == 2:
+        if lt == 2:
             for i in text:
                 u = char_ord(i)
                 if d := emojis.get(u):
@@ -47,9 +45,7 @@ async def emojimatch(
         else:
             s = multichar_ord(text).split("fe0f-", 1)
             s[0] = s[0] + "fe0f"
-            for u in s:
-                if d := emojis.get(u):
-                    res.append((u, d))
+            res.extend((u, d) for u in s if (d := emojis.get(u)))
     else:
         for ms in msg:
             if ms.is_text() and len(i := str(ms)) <= 2:
@@ -66,9 +62,7 @@ async def emojimatch(
                     res.append((u, d))
     if len(res) == 2:
         state["emojimix"] = res
-        return True
-    else:
-        return False
+    return len(res) == 2
 
 
 @testemoji.handle()

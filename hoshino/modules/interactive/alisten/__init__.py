@@ -16,9 +16,7 @@ from .util import (
 )
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)
-configshow = sv.on_command(
-    "听歌房显示配置", aliases={"alistenshowconfig"}, permission=ADMIN
-)
+configshow = sv.on_command("听歌房显示配置", aliases={"alistenshowconfig"}, permission=ADMIN)
 
 
 @configset.handle()
@@ -52,10 +50,7 @@ async def _(text: str = ParamText(), gid: int = GroupID()):
         session.commit()
         update_client(config)
     await configset.finish(
-        "听歌房配置已更新\n"
-        f"服务器地址: {server_url}\n"
-        f"房间ID: {house_id}\n"
-        f"群 email: {email}\n"
+        f"听歌房配置已更新\n服务器地址: {server_url}\n房间ID: {house_id}\n群 email: {email}\n"
     )
 
 
@@ -72,12 +67,8 @@ async def _(config: AlistenConfig | None = Depends(get_config)):
 
 
 pickmusic = sv.on_command("点歌", aliases={"pickmusic"}, compact=False)
-pickmusicid = sv.on_command(
-    "id点歌", aliases={"idpickmusic", "ID点歌", "Id点歌"}, compact=False
-)
-houseuser = sv.on_command(
-    "听歌房用户", aliases={"alistenusers", "听歌房成员", "谁在听歌"}
-)
+pickmusicid = sv.on_command("id点歌", aliases={"idpickmusic", "ID点歌", "Id点歌"}, compact=False)
+houseuser = sv.on_command("听歌房用户", aliases={"alistenusers", "听歌房成员", "谁在听歌"})
 playlistcmd = sv.on_command(
     "播放列表",
     aliases={
@@ -106,7 +97,7 @@ async def _(
         source = "db"
     resp = await client.pick_music(name=name, source=source, user_name=user_name)
     if resp:
-        print(resp)
+        sv.logger.debug(f"点歌结果: {resp}")
         msg = "点歌成功！歌曲已加入播放列表"
         msg += f"\n歌曲：{resp.name}"
         msg += f"\n歌手：{resp.artist}" if resp.artist != "unknown" else ""

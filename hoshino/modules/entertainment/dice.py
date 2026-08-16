@@ -13,13 +13,15 @@ d = sv.on_regex(r"\.r(\d{1,2})d(\d{1,3})([+-]\d{1,3})?")
 @d.handle()
 async def _(match_obj: re.Match[str] = RegexMatched()):
     rd = random.SystemRandom()
-    num = match_obj.group(1)
-    mx = match_obj.group(2)
+    num = int(match_obj.group(1))
+    mx = int(match_obj.group(2))
     offset = match_obj.group(3)
+    if num < 1 or mx < 1:
+        await d.finish("骰子数量和面数至少为 1")
     res = []
     rs = "本次掷骰结果为: "
-    for i in range(int(num)):
-        c = rd.randint(1, int(mx))
+    for _ in range(num):
+        c = rd.randint(1, mx)
         res.append(c)
     su = sum(res)
     rs += "+".join(str(i) for i in res)

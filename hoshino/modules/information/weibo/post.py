@@ -1,12 +1,12 @@
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import override
 from urllib.parse import unquote, urlparse
 
 from bs4 import BeautifulSoup
-
 from nonebot.adapters import Bot
+
 from hoshino.modules.information.utils import PostMessage
 from hoshino.types import MessageLike
 
@@ -17,7 +17,6 @@ from .internal.post_runtime import (
     save_post_message,
     send_post_message,
 )
-
 
 _IMAGE_URL_PATTERN = re.compile(
     r"\.(?:jpe?g|png|gif|webp|bmp|heic|heif|avif)(?:$|[?#&])",
@@ -130,10 +129,10 @@ class WeiboPost(Post):
     def get_referer(self) -> str:
         return "https://weibo.com"
 
-    def _get_download_dir(self, base_dir: Path) -> Path:
+    def get_download_dir(self, base_dir: Path) -> Path:
         return get_download_dir(self, base_dir)
 
-    def _build_download_filename(self, i: int, suffix: str) -> str:
+    def build_download_filename(self, i: int, suffix: str) -> str:
         return build_download_filename(self, i, suffix)
 
     def _has_any_images(self) -> bool:
@@ -147,7 +146,7 @@ class WeiboPost(Post):
         if video_url and video_url not in self.videos:
             self.videos.append(video_url)
 
-    def _get_text(self, raw_text: str) -> str:
+    def get_text(self, raw_text: str) -> str:
         text = raw_text.replace("<br/>", "\n").replace("<br />", "\n")
         soup = BeautifulSoup(text, "lxml")
 
@@ -184,13 +183,13 @@ class WeiboPost(Post):
         self.content = parsed_text
         return parsed_text
 
-    def _build_content_lines(self) -> list[str]:
+    def build_content_lines(self) -> list[str]:
         return build_content_lines(self)
 
-    def _build_text_header(self) -> str:
+    def build_text_header(self) -> str:
         return build_text_header(self)
 
-    def _build_text_tail(self) -> str:
+    def build_text_tail(self) -> str:
         return build_text_tail(self)
 
     @override

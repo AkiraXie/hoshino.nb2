@@ -49,9 +49,7 @@ async def check_json_or_text(
 ) -> bool:
     url = None
     payload = (
-        light_app_payload
-        if isinstance(light_app_payload, dict)
-        else get_light_app_json_payload(ev)
+        light_app_payload if isinstance(light_app_payload, dict) else get_light_app_json_payload(ev)
     )
     if payload and (meta := payload.get("meta")):
         for name, field in urlmaps.items():
@@ -61,7 +59,7 @@ async def check_json_or_text(
                 for old, new in replacements.items():
                     url = url.replace(old, new)
                 break
-    url = ev.get_plaintext() if not url else url
+    url = url if url else ev.get_plaintext()
     if not url:
         return False
     url = url.strip()

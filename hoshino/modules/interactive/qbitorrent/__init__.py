@@ -1,33 +1,36 @@
+from nonebot.params import Depends
 from sqlalchemy import select
-from .utils import (
-    QbtConfig,
-    get_config,
-    get_client,
-    update_client,
-    sv,
-    Session,
-    add_torrent_download,
-    get_active_torrents,
-    get_completed_torrents,
-    validate_download_url,
-    format_size,
-    QbtClient,
-)
+
 from hoshino.platform.depends import GroupID, ParamText
 from hoshino.platform.permission import ADMIN
-from nonebot.params import Depends
+
+from .utils import (
+    DEFAULT_CATEGORY,
+    QbtClient,
+    QbtConfig,
+    Session,
+    add_torrent_download,
+    format_size,
+    get_active_torrents,
+    get_client,
+    get_completed_torrents,
+    get_config,
+    sv,
+    update_client,
+    validate_download_url,
+)
 
 # 配置命令
-configset = sv.on_command(
-    "qbt配置", aliases={"qbitorrent配置", "qbtconfig"}, permission=ADMIN
-)
+configset = sv.on_command("qbt配置", aliases={"qbitorrent配置", "qbtconfig"}, permission=ADMIN)
 configshow = sv.on_command(
     "qbt显示配置", aliases={"qbitorrent显示配置", "qbtshowconfig"}, permission=ADMIN
 )
 
 # 下载命令
 add_torrent = sv.on_command(
-    "添加种子", aliases={"下载种子", "qbt下载", "addtorrent","addto","tjzj"}
+    "添加种子",
+    aliases={"下载种子", "qbt下载", "addtorrent", "addto", "tjzj"},
+    permission=ADMIN,
 )
 active_list = sv.on_command("下载列表", aliases={"活跃列表", "qbt列表", "torrents"})
 completed_list = sv.on_command("种子列表", aliases={"归档列表", "qbt归档", "completed"})
@@ -42,7 +45,7 @@ async def _(text: str = ParamText(), gid: int = GroupID()):
 
     if len(msgs) == 3:
         server_url, username, password = msgs
-        category = "hoshino"
+        category = DEFAULT_CATEGORY
     else:
         server_url, username, password, category = msgs
 
@@ -134,28 +137,39 @@ async def _(
 
     # 添加下载任务
     result = await add_torrent_download(client, url, category)
-    sv.logger.info(f'添加种子结果: {result}')
+    sv.logger.info(f"添加种子结果: {result}")
     if result["success"]:
         msg = "✅ 种子添加成功！\n"
         msg += f"链接类型: {result.get('url_type', '未知')}\n"
         if result.get("name"):
             msg += f"名称: {result['name']}\n"
             msg += f"大小: {result['size']}\n"
-        msg += f"分类: {category or client.config.category or 'hoshino'}"
+        msg += f"分类: {category or client.config.category or DEFAULT_CATEGORY}"
         await add_torrent.finish(msg, call_header=True)
     else:
         await add_torrent.finish(f"❌ 添加失败: {result['message']}", call_header=True)
 
 
+MAX_SHOW_LIMIT = 50
+"""列表命令单次最多展示的任务数上限"""
+
 STATE_MAP = {
-    "downloading": "下载中", "uploading": "上传中",
-    "pausedDL": "暂停下载", "pausedUP": "暂停上传",
-    "queuedDL": "排队下载", "queuedUP": "排队上传",
-    "stalledDL": "停滞下载", "stalledUP": "停滞上传",
-    "checkingDL": "检查中", "checkingUP": "检查中",
-    "queuedForChecking": "等待检查", "checkingResumeData": "检查数据",
-    "moving": "移动中", "unknown": "未知",
-    "error": "错误", "missingFiles": "文件缺失",
+    "downloading": "下载中",
+    "uploading": "上传中",
+    "pausedDL": "暂停下载",
+    "pausedUP": "暂停上传",
+    "queuedDL": "排队下载",
+    "queuedUP": "排队上传",
+    "stalledDL": "停滞下载",
+    "stalledUP": "停滞上传",
+    "checkingDL": "检查中",
+    "checkingUP": "检查中",
+    "queuedForChecking": "等待检查",
+    "checkingResumeData": "检查数据",
+    "moving": "移动中",
+    "unknown": "未知",
+    "error": "错误",
+    "missingFiles": "文件缺失",
     "allocating": "分配空间",
 }
 
@@ -186,9 +200,9 @@ async def _(
         await active_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
     msg_text = text.strip()
-    max_show = 20
+    max_show = MAX_SHOW_LIMIT
     if msg_text.isdigit():
-        max_show = int(msg_text)
+        max_show = min(max(1, int(msg_text)), MAX_SHOW_LIMIT)
 
     torrents = await get_active_torrents(client, client.config.category)
     if not torrents:
@@ -207,9 +221,9 @@ async def _(
         await completed_list.finish("请先使用 'qbt配置' 命令配置qBittorrent连接信息")
 
     msg_text = text.strip()
-    max_show = 20
+    max_show = MAX_SHOW_LIMIT
     if msg_text.isdigit():
-        max_show = int(msg_text)
+        max_show = min(max(1, int(msg_text)), MAX_SHOW_LIMIT)
 
     torrents = await get_completed_torrents(client, client.config.category)
     if not torrents:

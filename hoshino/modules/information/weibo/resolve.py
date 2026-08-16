@@ -28,9 +28,7 @@ weibo_regexs = {
 async def reaction_weibo_rule(
     state: T_State,
     reaction: ReactionInfo | None = Reaction(),
-    reacted_message: RetrievedMessage | None = ReactedMessage(
-        "319", additions_only=True
-    ),
+    reacted_message: RetrievedMessage | None = ReactedMessage("319", additions_only=True),
 ) -> bool:
     if (
         reaction is None
@@ -76,19 +74,14 @@ async def handle_weibo_reaction(bot: Bot, state: T_State):
         appended = append_fav(uid, id)
         if appended:
             sv.logger.info(f"Added weibo to fav by cache: {uid} {id}")
-            await send_to_superuser(
-                bot, f"微博收藏新增: UID {uid} ID {id} URL {url} (from cache)"
-            )
+            await send_to_superuser(bot, f"微博收藏新增: UID {uid} ID {id} URL {url} (from cache)")
 
     else:
         try:
             # Lazy import: request facade imports post runtime used by this resolver.
             from .request import parse_mapp_weibo, parse_weibo_with_id
 
-            if name == "weibo":
-                _, _, post_id = matched.groups()
-                post = await parse_weibo_with_id(post_id)
-            elif name == "mweibo":
+            if name == "weibo" or name == "mweibo":
                 _, _, post_id = matched.groups()
                 post = await parse_weibo_with_id(post_id)
             elif name == "mappweibo":
@@ -105,12 +98,12 @@ async def handle_weibo_reaction(bot: Bot, state: T_State):
                     )
             else:
                 sv.logger.error(f"Failed to parse weibo URL: {url}")
-        except Exception as e:
-            sv.logger.error(f"Error handling weibo reaction: {e} url: {url}")
+        except Exception:
+            sv.logger.exception(f"Error handling weibo reaction: url: {url}", exception=True)
 
 
 __all__ = [
-    "weibo_regexs",
-    "reaction_weibo_rule",
     "handle_weibo_reaction",
+    "reaction_weibo_rule",
+    "weibo_regexs",
 ]

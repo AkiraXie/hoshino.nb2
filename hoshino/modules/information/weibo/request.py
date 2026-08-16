@@ -2,12 +2,11 @@ import asyncio
 
 from nonebot.adapters import Bot
 
-from hoshino.core.hooks import on_post_startup
+from hoshino.core.hooks import on_post_startup, on_shutdown, spawn
 from hoshino.platform import send_to_superuser
 from hoshino.util.command import sucmd
 from hoshino.util.cookies import save_cookies
 
-from .pw import get_weibo_cookies_from_local
 from .internal.request_runtime import (
     WeiboRequestError,
     get_weibo_list,
@@ -17,8 +16,8 @@ from .internal.request_runtime import (
     parse_mapp_weibo,
     parse_weibo_with_id,
 )
+from .pw import get_weibo_cookies_from_local
 from .sv import sv
-
 
 wbck = sucmd("weibocookies", aliases={"wbck", "rfwb"})
 
@@ -31,7 +30,7 @@ async def get_weibocookies_cmd(bot: Bot):
         if ck:
             await send_to_superuser(bot, "Weibo cookies refreshed successfully")
     except Exception:
-        sv.logger.error("Failed to initialize or get Weibo cookies")
+        sv.logger.exception("Failed to initialize or get Weibo cookies", exception=True)
 
 
 @on_post_startup
@@ -40,9 +39,20 @@ async def initialize_weibo_cookies():
     await save_cookies("weibo", ck)
 
 
+# 后台任务引用：missing_weibo_target_worker 循环 worker，shutdown 时取消
+_missing_weibo_target_task: asyncio.Task | None = None
+
+
 @on_post_startup
 async def start_missing_weibo_target_worker() -> None:
-    asyncio.create_task(missing_weibo_target_worker())
+    global _missing_weibo_target_task
+    _missing_weibo_target_task = spawn(missing_weibo_target_worker())
+
+
+@on_shutdown
+async def stop_missing_weibo_target_worker() -> None:
+    if _missing_weibo_target_task:
+        _missing_weibo_target_task.cancel()
 
 
 __all__ = [

@@ -1,13 +1,34 @@
-from pydantic import BaseModel
-from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, sessionmaker
-from sqlalchemy import select, create_engine, Integer, Text
+import os
 import re
+
+from pydantic import BaseModel
+from sqlalchemy import Integer, Text, create_engine, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from hoshino import db_dir
 from hoshino.core.hooks import on_serial_startup, on_startup
-from hoshino.service import Service
-from hoshino.util.aiohttpx import post, get
 from hoshino.platform.depends import GroupID
+from hoshino.service import Service
+from hoshino.util.aiohttpx import get, post
+
+DEFAULT_CATEGORY = "hoshino"
+"""qBittorrent 默认分类名"""
+
+
+def verify_ssl_enabled() -> bool:
+    """HTTPS 证书校验开关（默认不校验）。
+
+    自建 qBittorrent 站点证书常为自签/过期，默认关闭校验以保持可用；需要严格
+    校验时设置环境变量 ``HSN_QBIT_VERIFY_SSL=1``。与 ``hoshino.util.media`` 的
+    ``HSN_MEDIA_VERIFY_SSL`` 约定保持一致。
+    """
+    return os.getenv("HSN_QBIT_VERIFY_SSL", "0").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
 
 db_path = db_dir / "qbitorrent.db"
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -32,7 +53,7 @@ class QbtConfig(Base):
     server_url: Mapped[str] = mapped_column(Text, nullable=False)
     username: Mapped[str] = mapped_column(Text, nullable=False)
     password: Mapped[str] = mapped_column(Text, nullable=False)
-    category: Mapped[str] = mapped_column(Text, nullable=True, default="hoshino")
+    category: Mapped[str] = mapped_column(Text, nullable=True, default=DEFAULT_CATEGORY)
 
 
 @on_serial_startup
@@ -61,7 +82,7 @@ class QbtAddTorrentRequest(BaseModel):
     """添加种子请求"""
 
     urls: str = ""
-    category: str = "hoshino"
+    category: str = DEFAULT_CATEGORY
     autoTMM: str = "false"
 
 
@@ -90,7 +111,7 @@ class QbtClient:
             response = await post(
                 f"{self.base_url}/api/v2/auth/login",
                 data={"username": self.config.username, "password": self.config.password},
-                verify=False,
+                verify=verify_ssl_enabled(),
             )
             if response.status_code == 200:
                 cookies = response.cookies
@@ -104,10 +125,12 @@ class QbtClient:
                 if sid:
                     self.session_cookie = sid
                     return True
-            sv.logger.warning(f"qBittorrent 登录失败: status={response.status_code}, body={response.text[:100]}")
+            sv.logger.warning(
+                f"qBittorrent 登录失败: status={response.status_code}, body={response.text[:100]}"
+            )
             return False
-        except Exception as e:
-            sv.logger.error(f"qBittorrent 登录异常: {e}")
+        except Exception:
+            sv.logger.exception("qBittorrent 登录异常", exception=True)
             return False
 
     async def _ensure_login(self) -> bool:
@@ -116,37 +139,47 @@ class QbtClient:
             return True
         return await self.login()
 
-    async def add_torrent(self, url: str, category: str = None) -> dict:
-        """添加种子下载，成功时返回种子名称和大小"""
-        if not await self._ensure_login():
-            return {"success": False, "message": "登录失败"}
-
-        cat = category or self.config.category or "hoshino"
-
+    async def _add_torrent_raw(self, url: str, category: str) -> tuple[int, str]:
+        """返回 (status_code, 响应文本)。status_code=403 表示 SID 过期需要重新登录"""
         try:
             headers = {"Cookie": f"SID={self.session_cookie}"}
             response = await post(
                 f"{self.base_url}/api/v2/torrents/add",
                 data={
                     "urls": url,
-                    "category": cat,
+                    "category": category,
                     "autoTMM": "false",
                 },
                 headers=headers,
-                verify=False,
+                verify=verify_ssl_enabled(),
             )
-
-            if response.status_code != 200:
-                return {"success": False, "message": f"请求失败: {response.status_code}"}
-
-
-            return {"success": True, "message": "种子添加成功"}
-
+            return response.status_code, response.text or ""
         except Exception as e:
-            sv.logger.error(f"添加种子失败: {e}")
-            return {"success": False, "message": f"添加种子时发生错误: {str(e)}"}
+            sv.logger.exception("添加种子请求异常", exception=True)
+            return -1, str(e)
 
-    async def _fetch_torrents_raw(self, category: str = None, filter_: str = None) -> tuple[int, list[dict]]:
+    async def add_torrent(self, url: str, category: str | None = None) -> dict:
+        """添加种子下载；SID 过期时自动重新登录后重试一次"""
+        if not await self._ensure_login():
+            return {"success": False, "message": "登录失败"}
+
+        cat = category or self.config.category or DEFAULT_CATEGORY
+        status, body = await self._add_torrent_raw(url, cat)
+        if status == 403:
+            sv.logger.info("SID 已过期，尝试重新登录")
+            self.session_cookie = None
+            if not await self.login():
+                return {"success": False, "message": "登录失败"}
+            status, body = await self._add_torrent_raw(url, cat)
+        if status == -1:
+            return {"success": False, "message": f"添加种子时发生错误: {body}"}
+        if status != 200:
+            return {"success": False, "message": f"请求失败: {status}"}
+        return {"success": True, "message": "种子添加成功"}
+
+    async def _fetch_torrents_raw(
+        self, category: str | None = None, filter_: str | None = None
+    ) -> tuple[int, list[dict]]:
         """返回 (status_code, data)。status_code=403 表示 SID 过期需要重新登录"""
         try:
             headers = {"Cookie": f"SID={self.session_cookie}"}
@@ -159,16 +192,18 @@ class QbtClient:
                 f"{self.base_url}/api/v2/torrents/info",
                 headers=headers,
                 params=params,
-                verify=False,
+                verify=verify_ssl_enabled(),
             )
             if response.status_code == 200:
                 return 200, response.json
             return response.status_code, []
-        except Exception as e:
-            sv.logger.error(f"获取种子列表异常: {e}")
+        except Exception:
+            sv.logger.exception("获取种子列表异常", exception=True)
             return -1, []
 
-    async def get_torrents(self, category: str = None, filter_: str = None) -> list[dict]:
+    async def get_torrents(
+        self, category: str | None = None, filter_: str | None = None
+    ) -> list[dict]:
         """获取种子列表，自动处理 SID 过期重登录"""
         if not await self._ensure_login():
             return []
@@ -186,8 +221,8 @@ class QbtClient:
 
 
 def validate_magnet_url(url: str) -> bool:
-    """验证是否为有效的磁力链接"""
-    magnet_pattern = r"^magnet:\?xt=urn:btih:[a-fA-F0-9]{32}|[a-fA-F0-9]{40}"
+    """验证是否为有效的磁力链接（32 或 40 位十六进制 BTIH）"""
+    magnet_pattern = r"^magnet:\?xt=urn:btih:(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{40})$"
     return bool(re.match(magnet_pattern, url))
 
 
@@ -200,12 +235,11 @@ def validate_download_url(url: str) -> tuple[bool, str]:
     """验证下载URL"""
     if validate_magnet_url(url):
         return True, "磁力链接"
-    elif validate_torrent_url(url):
+    if validate_torrent_url(url):
         return True, "种子文件"
-    elif url.startswith(("http://", "https://")):
+    if url.startswith(("http://", "https://")):
         return True, "网址"
-    else:
-        return False, "无效格式"
+    return False, "无效格式"
 
 
 _clients: dict[int, QbtClient] = {}
@@ -231,9 +265,7 @@ def update_client(config: QbtConfig):
     _clients[config.gid] = QbtClient(config)
 
 
-async def add_torrent_download(
-    client: QbtClient, url: str, category: str = None
-) -> dict:
+async def add_torrent_download(client: QbtClient, url: str, category: str | None = None) -> dict:
     """添加种子下载"""
     is_valid, url_type = validate_download_url(url)
     if not is_valid:
@@ -250,17 +282,16 @@ async def add_torrent_download(
 def format_size(size: int) -> str:
     if size > 1024**3:
         return f"{size / (1024**3):.1f} GB"
-    elif size > 1024**2:
+    if size > 1024**2:
         return f"{size / (1024**2):.1f} MB"
-    else:
-        return f"{size / 1024:.1f} KB"
+    return f"{size / 1024:.1f} KB"
 
 
-async def get_active_torrents(client: QbtClient, category: str = None) -> list[dict]:
+async def get_active_torrents(client: QbtClient, category: str | None = None) -> list[dict]:
     """获取活跃种子列表"""
     return await client.get_torrents(category, filter_="active")
 
 
-async def get_completed_torrents(client: QbtClient, category: str = None) -> list[dict]:
+async def get_completed_torrents(client: QbtClient, category: str | None = None) -> list[dict]:
     """获取已完成的种子列表"""
     return await client.get_torrents(category, filter_="completed")

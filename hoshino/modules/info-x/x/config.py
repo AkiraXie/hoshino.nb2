@@ -24,9 +24,7 @@ class XSettings:
 
     @property
     def rate_interval(self) -> float:
-        return max(
-            1.0, self.rate_limit_window_seconds / max(1, self.rate_limit_requests)
-        )
+        return max(1.0, self.rate_limit_window_seconds / max(1, self.rate_limit_requests))
 
 
 __all__ = ["XSettings"]

@@ -1,17 +1,19 @@
 from pathlib import Path
 
+from nonebot.log import logger
 from playwright.async_api import Route
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+from hoshino.core.config import config
+from hoshino.util.cookies import get_cookies
 from hoshino.util.playwrights import (
+    Browser,
+    Page,
+    context_params,
     get_ap,
     get_b,
-    Page,
-    Browser,
     mobile_context_params,
-    context_params,
 )
-from hoshino.util.cookies import get_cookies
-from nonebot.log import logger
-from hoshino.core.config import config
 
 weibo_script = """
 document.querySelector('div.wrap')?.remove();
@@ -68,8 +70,7 @@ async def get_mapp_weibo_screenshot(
             logger.error(f"get_mapp_weibo_screenshot error: no card url: {url}")
             return None
 
-        image = await card.screenshot(path=path)
-        return image
+        return await card.screenshot(path=path)
     except Exception as e:
         logger.error(f"get_mapp_weibo_screenshot error: {e} url: {url}")
         return None
@@ -82,7 +83,7 @@ async def get_mapp_weibo_screenshot(
 
 async def get_weibo_screenshot_desktop(
     url: str,
-    cookies: dict = {},
+    cookies: dict | None = None,
     timeout: float = 6.0,
     path: Path | str | None = None,
 ) -> bytes | None:
@@ -101,18 +102,16 @@ async def get_weibo_screenshot_desktop(
         element = None
         try:
             element = await page.wait_for_selector(selector, timeout=timeout_ms)
-        except (TimeoutError, Exception):
-            logger.error(
-                f"get_weibo_screenshot timeout: no element found, url: {page.url}  "
-            )
+        except PlaywrightTimeoutError:
+            logger.error(f"get_weibo_screenshot timeout: no element found, url: {page.url}  ")
+            return None
+        except Exception:
+            logger.exception(f"get_weibo_screenshot error: no element found, url: {page.url}  ")
             return None
         if not element:
-            logger.error(
-                f"get_weibo_screenshot error: no element found, url: {page.url}  "
-            )
+            logger.error(f"get_weibo_screenshot error: no element found, url: {page.url}  ")
             return None
-        image = await element.screenshot(path=path)
-        return image
+        return await element.screenshot(path=path)
     except Exception as e:
         logger.error(f"get_weibo_screenshot error: {e}")
         return None
@@ -125,7 +124,7 @@ async def get_weibo_screenshot_desktop(
 
 async def get_weibo_screenshot_mobile(
     url: str,
-    cookies: dict = {},
+    cookies: dict | None = None,
     timeout: float = 6.0,
     path: Path | str | None = None,
 ) -> bytes | None:
@@ -142,25 +141,26 @@ async def get_weibo_screenshot_mobile(
         await page.goto(url, timeout=timeout_ms)
         try:
             await page.wait_for_selector("div.wrap", timeout=timeout_ms)
-        except (TimeoutError, Exception):
+        except Exception:
             logger.warning(
                 f"get_weibo_screenshot get div.wrap error: no element found. url: {url}  "
             )
-            pass
         await page.add_script_tag(content=weibo_script)
         selector = "div.m-panel"
         element = None
         try:
             element = await page.wait_for_selector(selector, timeout=timeout_ms)
-        except (TimeoutError, Exception):
-            logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
+        except PlaywrightTimeoutError:
+            logger.error(f"get_weibo_screenshot timeout: no element found url: {url}  ")
+            return None
+        except Exception:
+            logger.exception(f"get_weibo_screenshot error: no element found url: {url}  ")
             return None
         if not element:
             logger.error(f"get_weibo_screenshot error: no element found url: {url}  ")
             return None
 
-        image = await element.screenshot(path=path)
-        return image
+        return await element.screenshot(path=path)
     except Exception as e:
         logger.error(f"get_weibo_screenshot error: {e}")
         return None
@@ -207,8 +207,7 @@ async def get_weibo_visitor_cookies() -> dict:
         filtered = [
             c
             for c in cookies
-            if c.get("domain") == "weibo.cn"
-            or str(c.get("domain", "")).endswith(".weibo.cn")
+            if c.get("domain") == "weibo.cn" or str(c.get("domain", "")).endswith(".weibo.cn")
         ]
         for ck in filtered:
             ck_dict[ck["name"]] = ck["value"]
@@ -225,10 +224,7 @@ async def get_weibo_visitor_cookies() -> dict:
 
 async def get_weibo_cookies_from_local() -> dict:
     ap = await get_ap()
-    context = await ap.chromium.launch_persistent_context(
-        config.chrome_path,
-        headless=True
-    )
+    context = await ap.chromium.launch_persistent_context(config.chrome_path, headless=True)
     page = None
     try:
         page: Page = await context.new_page()
@@ -239,9 +235,7 @@ async def get_weibo_cookies_from_local() -> dict:
         for ck in cookies:
             ck_dict[ck["name"]] = ck["value"]
         if ck_dict:
-            logger.info(
-                f"get_weibo_cookies_from_local success: got {len(ck_dict)} cookies"
-            )
+            logger.info(f"get_weibo_cookies_from_local success: got {len(ck_dict)} cookies")
         return ck_dict
     except Exception as e:
         logger.error(f"get_weibo_cookies_from_local error: {e}")

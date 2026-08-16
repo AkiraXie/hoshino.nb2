@@ -1,4 +1,5 @@
 import base64
+import binascii
 
 from hoshino.command import UniMessage
 from hoshino.platform.depends import ParamText
@@ -18,5 +19,8 @@ async def _(text: str = ParamText()):
 
 @decrypt.handle()
 async def _(text: str = ParamText()):
-    res = base64.b64decode(text).decode("utf8")
+    try:
+        res = base64.b64decode(text).decode("utf8")
+    except (binascii.Error, UnicodeDecodeError):
+        await decrypt.finish("解码失败，请检查输入")
     await UniMessage.text(res).send()

@@ -1,15 +1,16 @@
-from hoshino.util.playwrights import (
-    get_b,
-    Page,
-    Browser,
-    mobile_context_params,
-    bili_mobilejs,
-)
-from hoshino.util.cookies import get_cookies
 from nonebot.log import logger
 
+from hoshino.util.cookies import get_cookies
+from hoshino.util.playwrights import (
+    Browser,
+    Page,
+    bili_mobilejs,
+    get_b,
+    mobile_context_params,
+)
 
-async def get_bili_dynamic_screenshot(url: str, cookies={}) -> bytes | None:
+
+async def get_bili_dynamic_screenshot(url: str, cookies: dict | None = None) -> bytes | None:
     b: Browser = await get_b()
     c = await b.new_context(**mobile_context_params)
     if not cookies:
@@ -34,13 +35,10 @@ async def get_bili_dynamic_screenshot(url: str, cookies={}) -> bytes | None:
             ".opus-modules" if "opus" in page.url else ".dyn-card", timeout=8000
         )
         if not element:
-            logger.error(
-                f"get_bili_dynamic_screenshot error: no element found url: {url}  "
-            )
+            logger.error(f"get_bili_dynamic_screenshot error: no element found url: {url}  ")
             return None
-        image = await element.screenshot()
+        return await element.screenshot()
 
-        return image
     except Exception as e:
         logger.error(f"get_bili_dynamic_screenshot error: {e} url: {url}")
         return None

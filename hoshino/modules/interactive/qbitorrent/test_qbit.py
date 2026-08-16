@@ -3,6 +3,7 @@
 """
 
 import asyncio
+
 import httpx
 
 # ====== 配置区 (来自 data/db/qbitorrent.db) ======
@@ -13,14 +14,22 @@ CATEGORY = "hoshino"
 # ================================================
 
 STATE_MAP = {
-    "downloading": "下载中", "uploading": "上传中",
-    "pausedDL": "暂停下载", "pausedUP": "暂停上传",
-    "queuedDL": "排队下载", "queuedUP": "排队上传",
-    "stalledDL": "停滞下载", "stalledUP": "停滞上传",
-    "checkingDL": "检查中", "checkingUP": "检查中",
-    "queuedForChecking": "等待检查", "checkingResumeData": "检查数据",
-    "moving": "移动中", "unknown": "未知",
-    "error": "错误", "missingFiles": "文件缺失",
+    "downloading": "下载中",
+    "uploading": "上传中",
+    "pausedDL": "暂停下载",
+    "pausedUP": "暂停上传",
+    "queuedDL": "排队下载",
+    "queuedUP": "排队上传",
+    "stalledDL": "停滞下载",
+    "stalledUP": "停滞上传",
+    "checkingDL": "检查中",
+    "checkingUP": "检查中",
+    "queuedForChecking": "等待检查",
+    "checkingResumeData": "检查数据",
+    "moving": "移动中",
+    "unknown": "未知",
+    "error": "错误",
+    "missingFiles": "文件缺失",
     "allocating": "分配空间",
 }
 
@@ -28,10 +37,9 @@ STATE_MAP = {
 def fmt_size(s: int) -> str:
     if s > 1024**3:
         return f"{s / (1024**3):.1f} GB"
-    elif s > 1024**2:
+    if s > 1024**2:
         return f"{s / (1024**2):.1f} MB"
-    else:
-        return f"{s / 1024:.1f} KB"
+    return f"{s / 1024:.1f} KB"
 
 
 async def test():
@@ -83,9 +91,11 @@ async def test():
                 data = r.json()
                 print(f"结果数: {len(data)}")
                 for t in data[:5]:
-                    print(f"  [{STATE_MAP.get(t.get('state',''), t.get('state',''))}] "
-                          f"{t.get('name','?')[:40]} | {fmt_size(t.get('size',0))} | "
-                          f"{t.get('progress',0)*100:.1f}%")
+                    print(
+                        f"  [{STATE_MAP.get(t.get('state', ''), t.get('state', ''))}] "
+                        f"{t.get('name', '?')[:40]} | {fmt_size(t.get('size', 0))} | "
+                        f"{t.get('progress', 0) * 100:.1f}%"
+                    )
                 if len(data) > 5:
                     print(f"  ... 还有 {len(data) - 5} 个")
             elif r.status_code == 403:
@@ -110,7 +120,9 @@ async def test():
         print("诊断结论:")
         print("  登录方式: form-data (正确用于 v4.5.x)")
         print(f"  SID 获取: {'正常' if sid else '失败'}")
-        print(f"  若列表为空但 status=200: 可能 CATEGORY='{CATEGORY}' 下无种子，或 filter 过滤后无结果")
+        print(
+            f"  若列表为空但 status=200: 可能 CATEGORY='{CATEGORY}' 下无种子，或 filter 过滤后无结果"
+        )
         print("  若 status=403: SID 过期或无效，需重新登录")
         print(f"{'=' * 60}")
 

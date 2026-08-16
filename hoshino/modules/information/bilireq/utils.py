@@ -2,6 +2,8 @@ import base64
 import json
 import math
 import random
+from dataclasses import dataclass
+
 from nonebot.typing import override
 from sqlalchemy import (
     Float,
@@ -12,22 +14,21 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
 from hoshino import db_dir
-from hoshino.core.hooks import on_serial_startup
 from hoshino.command import (
     UniMessage,
     uni_image,
     uni_text,
 )
+from hoshino.core.hooks import on_serial_startup
 from hoshino.service import Service
 from hoshino.types import MessageLike
 from hoshino.util import aiohttpx
 from hoshino.util.cookies import get_cookies_with_ts
-from .pw import get_bili_dynamic_screenshot
 
 from ..utils import Post, PostMessage
-from dataclasses import dataclass
-
+from .pw import get_bili_dynamic_screenshot
 
 sv = Service("bilireq", enable_on_default=False)
 info_url = "https://api.bilibili.com/x/space/wbi/acc/info"
@@ -60,10 +61,10 @@ def pad_string_with_zeros(s: str, length: int) -> str:
 
 
 def generate_gaussian_integer(mean: float, std: float) -> int:
-    TWO_PI = math.pi * 2
+    two_pi = math.pi * 2
     u1 = random.random()
     u2 = random.random()
-    z0 = math.sqrt(-2 * math.log(u1)) * math.cos(TWO_PI * u2)
+    z0 = math.sqrt(-2 * math.log(u1)) * math.cos(two_pi * u2)
     return round(z0 * std + mean)
 
 
@@ -109,17 +110,14 @@ def parse_bilibili_dynamic(dynamic: dict) -> dict:
     is_opus = False
 
     if dyn := modules.get("module_dynamic"):
-        if desc := dyn.get("desc"):
-            if desc_text := desc.get("text"):
-                content = desc_text
+        if (desc := dyn.get("desc")) and (desc_text := desc.get("text")):
+            content = desc_text
         if major := dyn.get("major"):
             match major["type"]:
                 case "MAJOR_TYPE_DRAW":
                     draw = major["draw"]
                     if items := draw.get("items"):
-                        for item in items:
-                            if pic := item.get("src"):
-                                images.append(pic)
+                        images.extend(pic for item in items if (pic := item.get("src")))
                 case "MAJOR_TYPE_ARCHIVE":
                     archive = major["archive"]
                     if pic := archive.get("cover"):
@@ -129,19 +127,15 @@ def parse_bilibili_dynamic(dynamic: dict) -> dict:
                 case "MAJOR_TYPE_OPUS":
                     opus = major["opus"]
                     if opus_pics := opus.get("pics"):
-                        for pic in opus_pics:
-                            if picurl := pic.get("url"):
-                                images.append(picurl)
-                    if summary := opus.get("summary"):
-                        if summary_text := summary.get("text"):
-                            content = summary_text
+                        images.extend(picurl for pic in opus_pics if (picurl := pic.get("url")))
+                    if (summary := opus.get("summary")) and (summary_text := summary.get("text")):
+                        content = summary_text
                     url = "https://m.bilibili.com/opus/" + str(id_str)
                     is_opus = True
                 case "MAJOR_TYPE_ARTICLE":
                     article = major["article"]
                     if article_pics := article.get("covers"):
-                        for pic in article_pics:
-                            images.append(pic)
+                        images.extend(article_pics)
                     if desc := article.get("desc"):
                         content = desc
                 case "MAJOR_TYPE_PGC":
@@ -202,9 +196,7 @@ class BiliBiliDynamic(Post):
         )
 
     @override
-    def render_message(
-        self, post_message: PostMessage
-    ) -> list[MessageLike]:
+    def render_message(self, post_message: PostMessage) -> list[MessageLike]:
         head = post_message.text
         if post_message.screenshot:
             screenshot = uni_image(post_message.screenshot)
@@ -232,8 +224,7 @@ async def get_new_dynamic(uid: str) -> BiliBiliDynamic | None:
     dyns = await get_dynamic(uid, 0)
     if dyns:
         return dyns[0]
-    else:
-        return None
+    return None
 
 
 async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
@@ -251,31 +242,34 @@ async def get_dynamic(uid: str, ts) -> list[BiliBiliDynamic]:
         "dm_cover_img_str": dm_cover_img_str,
         "dm_img_str": dm_img_str,
     }
+    res = None
+    code = 0
     try:
-        code = 000
-        res = await aiohttpx.get(
-            url, params=params, headers=h, cookies=await get_bilicookies()
-        )
+        res = await aiohttpx.get(url, params=params, headers=h, cookies=await get_bilicookies())
         rj = res.json
         data = rj.get("data", {})
         code = int(rj.get("code", 0))
         if code == -352:
-            res = await aiohttpx.get(
-                url, params=params, headers=h, cookies=await get_bilicookies()
-            )
+            res = await aiohttpx.get(url, params=params, headers=h, cookies=await get_bilicookies())
             rj = res.json
             data = rj.get("data", {})
         cards = data.get("items", [])
-    except Exception as e:
-        sv.logger.error(
-            f"获取动态数据解析失败: {e}, uid: {uid}, response: {res.text},code: {code},status: {res.status_code}"
+    except Exception:
+        # 首个请求可能尚未赋值 res，须判空后再取响应细节，避免掩盖原始异常；
+        # exception=True 会在日志中附带当前异常与 traceback
+        response_text = res.text if res is not None else "无响应"
+        status = res.status_code if res is not None else "无"
+        sv.logger.exception(
+            f"获取动态数据解析失败: uid: {uid}, response: {response_text}, "
+            f"code: {code}, status: {status}",
+            exception=True,
         )
         return []
-    dyn = cards[4::-1]
+    # 取前 5 条动态卡片（索引 0-4）并反转，使时间从旧到新排列后再过滤
+    dyn = cards[:5][::-1]
     dyns = [BiliBiliDynamic.from_dict(d) for d in dyn]
     dyns = [d for d in dyns if d.timestamp > ts]
-    dyns = sorted(dyns, key=lambda x: x.timestamp, reverse=True)
-    return dyns
+    return sorted(dyns, key=lambda x: x.timestamp, reverse=True)
 
 
 db_path = db_dir / "bilidata.db"

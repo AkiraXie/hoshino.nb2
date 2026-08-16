@@ -1,6 +1,8 @@
+import contextlib
 from datetime import datetime
 
 from hoshino.util import aiohttpx
+
 from .model import LiveInfo
 
 HEADERS = {
@@ -51,10 +53,9 @@ async def get_room_status(room_id: str) -> LiveInfo:
         live_time_str = room_info.get("live_time", "")
         show_time = None
         if live_time_str:
-            try:
+            # 时间串格式异常时保持 None（无开播时间），不阻塞开播判断。
+            with contextlib.suppress(ValueError):
                 show_time = datetime.strptime(live_time_str, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                pass
         return LiveInfo(
             title=room_info.get("title", ""),
             cover=room_info.get("keyframe", ""),
@@ -64,10 +65,9 @@ async def get_room_status(room_id: str) -> LiveInfo:
             show_status=1,
             platform="bilibili",
         )
-    else:
-        return LiveInfo(
-            url=f"https://live.bilibili.com/{real_id}",
-            anchor=uname,
-            show_status=0,
-            platform="bilibili",
-        )
+    return LiveInfo(
+        url=f"https://live.bilibili.com/{real_id}",
+        anchor=uname,
+        show_status=0,
+        platform="bilibili",
+    )

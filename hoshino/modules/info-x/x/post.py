@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 from urllib.parse import urlparse
 
-from typing_extensions import override
 from twscrape.models import Media, Tweet
 
 from hoshino.command import UniMessage
 from hoshino.content import Post, PostMessage
 from hoshino.types import MessageLike
-
 
 CAPTION_LIMIT = 1024
 
@@ -24,11 +22,11 @@ class XPost(Post):
     likes: int = 0
 
     @classmethod
-    def from_tweet(cls, tweet: Tweet) -> "XPost":
+    def from_tweet(cls, tweet: Tweet) -> XPost:
         author = tweet.user.username.lstrip("@")
         date = tweet.date
         if date.tzinfo is None:
-            date = date.replace(tzinfo=timezone.utc)
+            date = date.replace(tzinfo=UTC)
         images, videos = _media_urls(tweet.media)
         source = tweet.retweetedTweet or tweet.quotedTweet
         return cls(
@@ -91,12 +89,17 @@ class XPost(Post):
         return "https://x.com/"
 
     def format_text(self) -> str:
+        time_str = (
+            datetime.fromtimestamp(self.timestamp, tz=UTC)
+            .astimezone()
+            .strftime("%Y-%m-%d %H:%M:%S")
+        )
         parts = [self.content]
         parts.extend(
             [
                 "------------",
                 f"👤 {self.nickname} (@{self.uid})",
-                f"📅 {datetime.fromtimestamp(self.timestamp).strftime('%Y-%m-%d %H:%M:%S')}",
+                f"📅 {time_str}",
                 f"🔗 {self.url}",
             ]
         )
@@ -106,7 +109,7 @@ class XPost(Post):
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "XPost":
+    def from_dict(cls, raw: dict[str, Any]) -> XPost:
         data = dict(raw)
         repost = data.get("repost")
         data["repost"] = cls.from_dict(repost) if isinstance(repost, dict) else None
@@ -115,10 +118,11 @@ class XPost(Post):
 
 def _media_urls(media: Media) -> tuple[list[str], list[str]]:
     images = [photo.url for photo in media.photos]
-    videos: list[str] = []
-    for video in media.videos:
-        if variant := max(video.variants, key=lambda item: item.bitrate, default=None):
-            videos.append(variant.url)
+    videos = [
+        variant.url
+        for video in media.videos
+        if (variant := max(video.variants, key=lambda item: item.bitrate, default=None))
+    ]
     videos.extend(animation.videoUrl for animation in media.animated)
     return images, videos
 

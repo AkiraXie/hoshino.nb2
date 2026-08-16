@@ -1,10 +1,11 @@
 import os
 
-from hoshino import db_dir
-from hoshino.core.hooks import on_serial_startup
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import Integer, Text
+
+from hoshino import db_dir
+from hoshino.core.hooks import on_serial_startup
 
 db_path = os.path.join(db_dir, "livedata.db")
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -17,6 +18,7 @@ class Base(DeclarativeBase):
 
 class LiveSub(Base):
     """直播间订阅表: room_id + group + platform 为联合主键"""
+
     __tablename__ = "livesub"
 
     room_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -89,9 +91,7 @@ def list_subscriptions_by_room(room_id: str, platform: str) -> list[LiveSub]:
 def list_all_room_ids() -> list[tuple[str, str]]:
     """返回所有不重复的 (room_id, platform) 元组"""
     with Session() as session:
-        rows = session.execute(
-            select(LiveSub.room_id, LiveSub.platform).distinct()
-        ).all()
+        rows = session.execute(select(LiveSub.room_id, LiveSub.platform).distinct()).all()
         return [(r[0], r[1]) for r in rows]
 
 
@@ -109,11 +109,11 @@ def remove_group_subscription(group_id: int, room_id: str, platform: str = "bili
         return len(rows)
 
 
-def remove_group_subscription_by_name(group_id: int, name: str, platform: str | None = None) -> tuple[int, str | None, str | None]:
+def remove_group_subscription_by_name(
+    group_id: int, name: str, platform: str | None = None
+) -> tuple[int, str | None, str | None]:
     with Session() as session:
-        stmt = select(LiveSub).where(
-            LiveSub.group == group_id, LiveSub.name == name
-        )
+        stmt = select(LiveSub).where(LiveSub.group == group_id, LiveSub.name == name)
         if platform:
             stmt = stmt.where(LiveSub.platform == platform)
         rows = session.execute(stmt).scalars().all()

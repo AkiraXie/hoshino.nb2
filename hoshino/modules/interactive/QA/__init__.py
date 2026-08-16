@@ -1,17 +1,20 @@
 from json import JSONDecodeError
-from nonebot.typing import T_State
-from nonebot.params import Depends
-from .data import Question, Session
-from hoshino.platform.permission import ADMIN
-from hoshino.service import Service
+
 from nonebot.adapters import Event
 from nonebot.matcher import Matcher
+from nonebot.params import Depends
+from nonebot.typing import T_State
+from sqlalchemy import select
+
 from hoshino.command import UniMessage
 from hoshino.platform import (
     get_event_message,
 )
 from hoshino.platform.depends import GroupID, ParamMessage, ParamText, PlainText, SenderID
-from sqlalchemy import select
+from hoshino.platform.permission import ADMIN
+from hoshino.service import Service
+
+from .data import Question, Session
 
 
 async def _parse_answer(answer: str) -> UniMessage:
@@ -75,7 +78,7 @@ set_qa_dep = Depends(parse_qa)
 
 
 async def answer_qa_rule(
-    state:T_State,
+    state: T_State,
     gid: int = GroupID(),
     uid: int = SenderID(),
     text: str = PlainText(),
@@ -98,11 +101,10 @@ async def answer_qa_rule(
             )
             answer = session.execute(stmt).scalar_one_or_none()
 
-        if answer :
+        if answer:
             state["answer"] = answer.answer
             return True
-        else:
-            return False
+        return False
 
 
 sv = Service("QA")
@@ -131,9 +133,7 @@ async def _(msg: tuple[str, str] = set_qa_dep, gid: int = GroupID()):
         if obj:
             obj.answer = answer
         else:
-            obj = Question(
-                question=question, answer=answer, group=gid, user=0
-            )
+            obj = Question(question=question, answer=answer, group=gid, user=0)
             session.add(obj)
         session.commit()
     await group_ques.finish(f"好的我记住{question}了")
@@ -174,9 +174,9 @@ async def _(text: str = ParamText(), gid: int = GroupID()):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_gqa.finish('我不记得"{}"这个问题'.format(text))
+        await del_gqa.finish(f'我不记得"{text}"这个问题')
     else:
-        await del_gqa.finish('我不再回答"{}"了'.format(text))
+        await del_gqa.finish(f'我不再回答"{text}"了')
 
 
 @del_qa.handle()
@@ -195,21 +195,21 @@ async def _(text: str = ParamText(), gid: int = GroupID(), uid: int = SenderID()
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_qa.finish('我不记得"{}"这个问题'.format(text))
+        await del_qa.finish(f'我不记得"{text}"这个问题')
     else:
-        await del_qa.finish('我不再回答"{}"了'.format(text))
+        await del_qa.finish(f'我不再回答"{text}"了')
 
 
 async def parse_question(state: T_State, text: str = PlainText()):
     state["question"] = text
 
 
-async def parse_sin_qq(event: Event, state: T_State):
+async def parse_single_qq(event: Event, state: T_State):
     for m in get_event_message(event, []):
         if m.type == "at" and m.data["qq"] != "all":
             state["user_id"] = int(m.data["qq"])
             break
-        elif m.type == "text" and m.data["text"].isdigit():
+        if m.type == "text" and m.data["text"].isdigit():
             state["user_id"] = int(m.data["text"])
             break
 
@@ -221,7 +221,7 @@ async def _(state: T_State, text: str = PlainText()):
 
 @del_pqa.got("user_id", "请输入要删除问题的id,支持at")
 async def _(event: Event, state: T_State):
-    await parse_sin_qq(event, state)
+    await parse_single_qq(event, state)
 
 
 @del_pqa.handle()
@@ -241,11 +241,9 @@ async def _(state: T_State, gid: int = GroupID()):
         num = len(questions)
         session.commit()
     if num == 0:
-        await del_pqa.finish('我不记得"{}"这个问题'.format(state["question"]))
+        await del_pqa.finish(f'我不记得"{state["question"]}"这个问题')
     else:
-        await del_pqa.finish(
-            '我不再回答"{}"这个问题了'.format(state["question"])
-        )
+        await del_pqa.finish(f'我不再回答"{state["question"]}"这个问题了')
 
 
 @lookqa.handle()
@@ -264,9 +262,7 @@ async def _(gid: int = GroupID()):
         stmt = select(Question).where(Question.group == gid, Question.user == 0)
         result = session.execute(stmt).scalars().all()
         msg = [res.question for res in result]
-    await lookgqa.finish(
-        '该群设置的"有人问"有: ' + " | ".join(msg), call_header=True
-    )
+    await lookgqa.finish('该群设置的"有人问"有: ' + " | ".join(msg), call_header=True)
 
 
 @ans.handle()

@@ -6,14 +6,14 @@ import asyncio
 import json
 import sqlite3
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from hoshino import db_dir
 
 from .post import XPost
-
 
 T = TypeVar("T")
 
@@ -251,9 +251,7 @@ class XStore:
 
         return await self._transaction(operation)
 
-    async def list_subscriptions_for_scope(
-        self, scope_key: str
-    ) -> list[ListSubscription]:
+    async def list_subscriptions_for_scope(self, scope_key: str) -> list[ListSubscription]:
         return await self._list_subscriptions("WHERE scope_key = ?", (scope_key,))
 
     async def list_subscriptions_for_list(self, list_id: int) -> list[ListSubscription]:
@@ -273,8 +271,10 @@ class XStore:
         self, clause: str, params: tuple[Any, ...]
     ) -> list[ListSubscription]:
         def operation(conn: sqlite3.Connection) -> list[ListSubscription]:
+            # clause 仅来自本模块内部字面量（见各 list_* 调用方），参数走占位符。
             rows = conn.execute(
-                f"SELECT * FROM list_subscriptions {clause} ORDER BY list_id", params
+                f"SELECT * FROM list_subscriptions {clause} ORDER BY list_id",  # noqa: S608
+                params,
             ).fetchall()
             return [
                 ListSubscription(
@@ -333,9 +333,7 @@ class XStore:
             (int(user_id), _username(username)),
         )
 
-    async def complete_poll(
-        self, username: str, *, last_posted_at: float | None = None
-    ) -> None:
+    async def complete_poll(self, username: str, *, last_posted_at: float | None = None) -> None:
         await self._execute(
             """
             UPDATE account_state
@@ -501,9 +499,7 @@ class XStore:
             (error[:1000], outbox_id),
         )
 
-    async def acquire_rate_permit(
-        self, endpoint: str, minimum_interval: float
-    ) -> RatePermit:
+    async def acquire_rate_permit(self, endpoint: str, minimum_interval: float) -> RatePermit:
         now = time.time()
 
         def operation(conn: sqlite3.Connection) -> RatePermit:
@@ -559,12 +555,12 @@ class XStore:
 
         return await self._transaction(operation)
 
-    async def _subscriptions(
-        self, clause: str, params: tuple[Any, ...]
-    ) -> list[Subscription]:
+    async def _subscriptions(self, clause: str, params: tuple[Any, ...]) -> list[Subscription]:
         def operation(conn: sqlite3.Connection) -> list[Subscription]:
+            # clause 仅来自本模块内部字面量（见各 list_* 调用方），参数走占位符。
             rows = conn.execute(
-                f"SELECT * FROM subscriptions {clause} ORDER BY username", params
+                f"SELECT * FROM subscriptions {clause} ORDER BY username",  # noqa: S608
+                params,
             ).fetchall()
             return [
                 Subscription(
@@ -672,8 +668,7 @@ class XStore:
         # Precise dispatch: a group receives a given tweet at most once, no
         # matter how many subscriptions (user and/or list) matched it.
         exists = conn.execute(
-            "SELECT 1 FROM sqlite_master "
-            "WHERE type = 'index' AND name = 'outbox_scope_tweet_idx'"
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'outbox_scope_tweet_idx'"
         ).fetchone()
         if exists is not None:
             return
@@ -683,9 +678,7 @@ class XStore:
             "DELETE FROM outbox WHERE id NOT IN "
             "(SELECT MIN(id) FROM outbox GROUP BY scope_key, tweet_id)"
         )
-        conn.execute(
-            "CREATE UNIQUE INDEX outbox_scope_tweet_idx ON outbox(scope_key, tweet_id)"
-        )
+        conn.execute("CREATE UNIQUE INDEX outbox_scope_tweet_idx ON outbox(scope_key, tweet_id)")
 
     def _transaction_sync(self, operation: Callable[[sqlite3.Connection], T]) -> T:
         with self._connect() as conn:
@@ -729,8 +722,8 @@ def _first_int(row: sqlite3.Row | None) -> int | None:
 
 
 __all__ = [
-    "AccountState",
     "LIST_SOURCE_PREFIX",
+    "AccountState",
     "ListSubscription",
     "OutboxItem",
     "RatePermit",

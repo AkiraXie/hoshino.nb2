@@ -1,17 +1,21 @@
 import asyncio
-from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import Any, List
 import re
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from hoshino import data_dir
+from hoshino.command import uni_image, uni_text, uni_video
+from hoshino.types import MessageLike
 from hoshino.util import aiohttpx
 from hoshino.util.media import save_img_by_path, save_video_by_path
 from hoshino.util.message import send_segments
 from hoshino.util.network import get_redirect
-from hoshino import data_dir
-from ..utils import Post as BasePost, PostMessage, clean_filename
+
+from ..utils import Post as BasePost
+from ..utils import PostMessage, clean_filename
 from .sv import sv
-from hoshino.command import uni_image, uni_text, uni_video
-from hoshino.types import MessageLike
 
 COMMON_HEADER = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -27,6 +31,10 @@ ANDROID_HEADER = {
     "User-Agent": "Mozilla/5.0 (Linux; Android 15; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/132.0.0.0 Mobile Safari/537.36 Edg/132.0.0.0"
 }
+
+# 抖音分享页默认校验证书；若运行环境证书校验失败（上游反爬/代理环境），
+# 可改为 False 关闭校验以恢复可用。
+DOUYIN_VERIFY_SSL = True
 douyin_img_dir = data_dir / "douyinimages"
 douyin_img_dir.mkdir(exist_ok=True)
 douyin_video_dir = data_dir / "douyinvideos"
@@ -45,17 +53,14 @@ class Post(BasePost):
                 result_path = await save_img_by_path(img_url, filepath, True)
                 if result_path:
                     return result_path
-                else:
-                    sv.logger.error(f"Failed to save image {img_url}")
-                    return None
-            except Exception as e:
-                sv.logger.error(f"Error downloading image {img_url}: {e}")
+                sv.logger.error(f"Failed to save image {img_url}")
+                return None
+            except Exception:
+                sv.logger.exception(f"Error downloading image {img_url}", exception=True)
                 return None
 
         # 并发下载所有图片
-        tasks = [
-            download_single_image(i, img_url) for i, img_url in enumerate(self.images)
-        ]
+        tasks = [download_single_image(i, img_url) for i, img_url in enumerate(self.images)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         saved_images = []
@@ -79,18 +84,14 @@ class Post(BasePost):
 
                 if result_path:
                     return result_path
-                else:
-                    sv.logger.error(f"Failed to save video {video_url}")
-                    return None
-            except Exception as e:
-                sv.logger.error(f"Error downloading video {video_url}: {e}")
+                sv.logger.error(f"Failed to save video {video_url}")
+                return None
+            except Exception:
+                sv.logger.exception(f"Error downloading video {video_url}", exception=True)
                 return None
 
         # 并发下载所有视频
-        tasks = [
-            download_single_video(i, video_url)
-            for i, video_url in enumerate(self.videos)
-        ]
+        tasks = [download_single_video(i, video_url) for i, video_url in enumerate(self.videos)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         saved_videos = []
@@ -116,9 +117,7 @@ class Post(BasePost):
             videos=vids,
         )
 
-    def render_message(
-        self, post_message: PostMessage
-    ) -> list[MessageLike]:
+    def render_message(self, post_message: PostMessage) -> list[MessageLike]:
         messages: list[MessageLike] = []
         if post_message.text:
             messages.append(uni_text(post_message.text))
@@ -132,11 +131,11 @@ class Post(BasePost):
 
 
 class PlayAddr(BaseModel):
-    url_list: List[str]
+    url_list: list[str]
 
 
 class Cover(BaseModel):
-    url_list: List[str]
+    url_list: list[str]
 
 
 class Video(BaseModel):
@@ -146,7 +145,7 @@ class Video(BaseModel):
 
 class Image(BaseModel):
     video: Video | None = None
-    url_list: List[str] = Field(default_factory=list)
+    url_list: list[str] = Field(default_factory=list)
 
 
 class ShareInfo(BaseModel):
@@ -160,40 +159,36 @@ class Author(BaseModel):
 class SlidesData(BaseModel):
     author: Author
     share_info: ShareInfo
-    images: List[Image]
+    images: list[Image]
 
     @property
-    def images_urls(self) -> List[str]:
-        return [image.url_list[0] for image in self.images]
+    def images_urls(self) -> list[str]:
+        return [next(iter(image.url_list), "") for image in self.images]
 
     @property
-    def dynamic_urls(self) -> List[str]:
+    def dynamic_urls(self) -> list[str]:
         return [
-            image.video.play_addr.url_list[0] for image in self.images if image.video
+            next(iter(image.video.play_addr.url_list), "") for image in self.images if image.video
         ]
 
 
 class SlidesInfo(BaseModel):
-    aweme_details: List[SlidesData] = Field(default_factory=list)
+    aweme_details: list[SlidesData] = Field(default_factory=list)
 
 
 class VideoData(BaseModel):
     author: Author
     desc: str
-    images: List[Image] | None = None
+    images: list[Image] | None = None
     video: Video | None = None
 
     @property
-    def images_urls(self) -> List[str] | None:
+    def images_urls(self) -> list[str] | None:
         return [image.url_list[0] for image in self.images] if self.images else None
 
     @property
     def video_url(self) -> str | None:
-        return (
-            self.video.play_addr.url_list[0].replace("playwm", "play")
-            if self.video
-            else None
-        )
+        return self.video.play_addr.url_list[0].replace("playwm", "play") if self.video else None
 
     @property
     def cover_url(self) -> str | None:
@@ -201,7 +196,7 @@ class VideoData(BaseModel):
 
 
 class VideoInfoRes(BaseModel):
-    item_list: List[VideoData] = Field(default_factory=list)
+    item_list: list[VideoData] = Field(default_factory=list)
 
     @property
     def video_data(self) -> VideoData | None:
@@ -225,9 +220,7 @@ class RouterData(BaseModel):
 
     @property
     def video_data(self) -> VideoData | None:
-        if page := self.loaderData.video_page:
-            return page.videoInfoRes.video_data
-        elif page := self.loaderData.note_page:
+        if (page := self.loaderData.video_page) or (page := self.loaderData.note_page):
             return page.videoInfoRes.video_data
         return None
 
@@ -257,29 +250,29 @@ class DouyinParser:
             # https://www.iesdouyin.com/share/video/7468908569061100857/?region=CN&mid=0&u_
             matched = re.search(r"(slides|video|note)/(\d+)", iesdouyin_url)
             if not matched:
-                sv.logger.error(
-                    f"douyin URL does not match expected pattern,url: {share_url}"
-                )
+                sv.logger.error(f"douyin URL does not match expected pattern,url: {share_url}")
                 return None
             _type, video_id = matched.group(1), matched.group(2)
             if _type == "slides":
                 return await self.parse_slides(video_id)
-        for url in [
-            self._build_m_douyin_url(_type, video_id),
-            share_url,
-            iesdouyin_url,
-        ]:
-            return await self.parse_video(url, video_id)
+        # 原 for+return 等价于只尝试第一个候选地址（后续地址不会回退），直接调用
+        return await self.parse_video(self._build_m_douyin_url(_type, video_id), video_id)
 
     async def parse_video(self, url: str, vid: str = "") -> Post | None:
         response = await aiohttpx.get(
-            url, headers=self.ios_headers, verify=False, follow_redirects=False
+            url,
+            headers=self.ios_headers,
+            verify=DOUYIN_VERIFY_SSL,
+            follow_redirects=False,
         )
         if response.status_code != 200:
             sv.logger.error(f"douyin 请求失败，状态码 {response.status_code}")
         text = response.text
 
         video_data = self._extract_data(text)
+        if video_data is None:
+            sv.logger.error(f"douyin: 解析视频数据失败，url: {url}")
+            return None
         videos = [video_data.video_url]
         images = video_data.images_urls if video_data.images_urls else []
         images.append(video_data.cover_url)
@@ -293,28 +286,24 @@ class DouyinParser:
             uid=video_data.author.nickname,
         )
 
-    def _extract_data(self, text: str) -> "VideoData":
-        """从html中提取视频数据
+    def _extract_data(self, text: str) -> "VideoData | None":
+        """从 html 中提取视频数据
 
         Args:
             text (str): 网页源码
 
-        Raises:
-            ParseException: 解析失败
-
         Returns:
-            VideoData: 数据
+            VideoData | None: 解析出的数据；反爬页等无法解析时返回 None
         """
         pattern = re.compile(
             pattern=r"window\._ROUTER_DATA\s*=\s*(.*?)</script>",
             flags=re.DOTALL,
         )
         matched = pattern.search(text)
-        c = matched.group(1).strip()
         if not matched or not matched.group(1):
             sv.logger.error("douyin: 无法从网页中提取数据")
             return None
-        return RouterData.parse_raw(c).video_data
+        return RouterData.parse_raw(matched.group(1).strip()).video_data
 
     async def parse_slides(self, video_id: str) -> Post | None:
         url = "https://www.iesdouyin.com/web/api/v2/aweme/slidesinfo/"
@@ -323,7 +312,10 @@ class DouyinParser:
             "request_source": "200",
         }
         response = await aiohttpx.get(
-            url, params=params, headers=self.android_headers, verify=False
+            url,
+            params=params,
+            headers=self.android_headers,
+            verify=DOUYIN_VERIFY_SSL,
         )
         if response.status_code != 200:
             sv.logger.error(f"douyin 请求失败，状态码 {response.status_code}")

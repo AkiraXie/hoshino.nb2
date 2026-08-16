@@ -14,6 +14,9 @@ CHOICE_PATTERN = (
     r".+?\s*(?:还是|\s+or\s+)\s*"
     r".+[?？]?$"
 )
+# 中大奖（全选）彩蛋：randint 区间上限与触发阈值（约 6.6% 概率）
+JACKPOT_RANGE_MAX = 1000
+JACKPOT_THRESHOLD = 66
 PREFIX = re.compile(r"^(?:选(?:择|一下|一个|一)?|choose|pick)\s*", re.IGNORECASE)
 SEPARATORS = re.compile(r"\s*还是\s*|\s+or\s+", re.IGNORECASE)
 
@@ -37,10 +40,10 @@ async def _(match_result: re.Match[str] = RegexMatched()):
         return
 
     msgs = ["让我看看选什么好呢："]
-    idchoices = list(f"{i + 1}. {choice}" for i, choice in enumerate(choices))
+    idchoices = [f"{i + 1}. {choice}" for i, choice in enumerate(choices)]
     msgs.extend(idchoices)
 
-    if rng.randint(0, 1000) <= 66:
+    if rng.randint(0, JACKPOT_RANGE_MAX) <= JACKPOT_THRESHOLD:
         msgs.append('中大奖了，最终选择： "我全都要"')
     else:
         final = rng.randint(0, len(choices) - 1)

@@ -1,18 +1,27 @@
 # Thanks to https://github.com/MountainDash/nonebot-bison
 
 import asyncio
-from datetime import datetime
+import re
 import time
+from datetime import UTC, datetime
+from pathlib import Path
+
+from nonebot.typing import T_State
+
 from hoshino.command import UniMessage
+from hoshino.core.permission import SUPERUSER
 from hoshino.platform import (
     dump_target,
     group_target,
 )
 from hoshino.platform.depends import GroupID, MessageID, ParamText
-from hoshino.core.permission import SUPERUSER
 from hoshino.platform.permission import ADMIN
+from hoshino.types import MessageLike
 from hoshino.util.media import random_image_or_video_by_path
 from hoshino.util.message import send_segments
+
+from . import fav as _fav  # noqa: F401
+from . import resolve as _resolve  # noqa: F401
 from .db import (
     add_or_update_subscription,
     get_group_config,
@@ -25,8 +34,6 @@ from .db import (
     remove_group_subscriptions_by_uid,
     update_group_config,
 )
-from .sub import uid_manager
-from .sv import sv
 from .internal.post_runtime import (
     render_messages,
     weibo_img_dir,
@@ -35,10 +42,8 @@ from .internal.post_runtime import (
 from .request import (
     get_weibo_new,
 )
-from . import fav as _fav  # noqa: F401
-from . import resolve as _resolve  # noqa: F401
-import re
-from nonebot.typing import T_State
+from .sub import uid_manager
+from .sv import sv
 
 
 def format_weibo_config_bits(group_id: int) -> str:
@@ -49,10 +54,7 @@ def format_weibo_config_bits(group_id: int) -> str:
 def format_weibo_config_message(group_id: int, *, editable: bool) -> str:
     bits = format_weibo_config_bits(group_id)
     message = (
-        "当前微博推送配置: "
-        f"{bits}\n"
-        "位序: only_pic send_screenshot send_segments\n"
-        "含义: 1=开 0=关"
+        f"当前微博推送配置: {bits}\n位序: only_pic send_screenshot send_segments\n含义: 1=开 0=关"
     )
     if editable:
         message += "\n请发送 3 位二进制配置，例如 011"
@@ -126,13 +128,15 @@ random_image_cmd = sv.on_command(
 )
 
 
-@random_image_cmd.handle()
-async def weibo_random_image(
-    text: str = ParamText(),
-    message_id: int | None = MessageID(),
-):
-    path = weibo_img_dir
-    num = 12
+def _random_media(
+    path: Path,
+    num: int,
+    *,
+    video: bool,
+    text: str,
+    message_id: int | None,
+) -> list[MessageLike]:
+    """解析 '关键词 [数量]' 参数并按种子随机选取媒体，供随图/随影命令共用"""
     text = text.strip()
     texts = text.split(maxsplit=1)
     keyword = None
@@ -147,9 +151,15 @@ async def weibo_random_image(
         if keyword.isdigit():
             num = int(keyword)
     seed = time.time() + (message_id or 0)
-    imgs = random_image_or_video_by_path(
-        path, num=num, seed=seed, video=False, keyword=keyword
-    )
+    return random_image_or_video_by_path(path, num=num, seed=seed, video=video, keyword=keyword)
+
+
+@random_image_cmd.handle()
+async def weibo_random_image(
+    text: str = ParamText(),
+    message_id: int | None = MessageID(),
+):
+    imgs = _random_media(weibo_img_dir, 12, video=False, text=text, message_id=message_id)
     await send_segments(imgs)
 
 
@@ -168,25 +178,7 @@ async def weibo_random_video(
     text: str = ParamText(),
     message_id: int | None = MessageID(),
 ):
-    path = weibo_video_dir
-    num = 2
-    text = text.strip()
-    texts = text.split(maxsplit=1)
-    keyword = None
-    if len(texts) == 2:
-        keyword, num_str = texts
-        if num_str.isdigit():
-            num = int(num_str)
-        else:
-            keyword = keyword + num_str
-    elif len(texts) == 1:
-        keyword = texts[0]
-        if keyword.isdigit():
-            num = int(keyword)
-    seed = time.time() + (message_id or 0)
-    imgs = random_image_or_video_by_path(
-        path, num=num, seed=seed, video=True, keyword=keyword
-    )
+    imgs = _random_media(weibo_video_dir, 2, video=True, text=text, message_id=message_id)
     await send_segments(imgs)
 
 
@@ -222,8 +214,8 @@ async def add_subscription(gid: int | None = GroupID(), msg: str = ParamText()):
         if not post:
             await UniMessage.text(f"无法获取微博用户信息，UID: {uid}").send()
             return
-    except Exception as e:
-        sv.logger.exception(e)
+    except Exception:
+        sv.logger.exception(f"无法获取微博用户信息，UID: {uid}", exception=True)
         await UniMessage.text(f"无法获取微博用户信息，UID: {uid}").send()
         return
     kw = "-_-".join(keywords) if keywords else ""
@@ -253,9 +245,7 @@ async def remove_subscription(gid: int | None = GroupID(), uids: str = ParamText
         if uid.isdecimal():
             num = remove_group_subscriptions_by_uid(gid, uid)
             if num:
-                await uid_manager.remove_uid(
-                    uid, lambda u: bool(list_subscriptions_by_uid(u))
-                )
+                await uid_manager.remove_uid(uid, lambda u: bool(list_subscriptions_by_uid(u)))
         else:
             num, target_uid = remove_group_subscriptions_by_name(gid, uid)
             if num and target_uid:
@@ -287,14 +277,12 @@ async def list_subscriptions(gid: int | None = GroupID()):
     for i, row in enumerate(rows):
         uid = row.uid
         name = row.name
-        ts = datetime.fromtimestamp(row.time).strftime("%Y-%m-%d %H:%M:%S")
+        ts = datetime.fromtimestamp(row.time, tz=UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
         msg += f"{i + 1}. UID: {uid}, 昵称: {name}, 上次更新时间: {ts}\n"
     await UniMessage.text(msg).send()
 
 
-see_weibo_cmd = sv.on_command(
-    "微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb", "seewb")
-)
+see_weibo_cmd = sv.on_command("微博最新订阅", aliases=("查看微博最新", "seeweibo", "kkwb", "seewb"))
 
 
 @see_weibo_cmd.handle()
@@ -312,10 +300,7 @@ async def see_weibo(gid: int | None = GroupID(), arg: str = ParamText()):
     else:
         uid = rows[0].uid
         keywords = rows[0].keyword
-        if keywords:
-            keywords = keywords.split("-_-")
-        else:
-            keywords = []
+        keywords = keywords.split("-_-") if keywords else []
         post = await get_weibo_new(uid, 0)
         if not post:
             await UniMessage.text(f"没有获取到{arg}微博").send()
@@ -337,18 +322,15 @@ query_weibo_cmd = sv.on_command(
 @query_weibo_cmd.handle()
 async def query_weibo_user(arg: str = ParamText()):
     arg = arg.strip()
-    if arg.isdecimal():
-        rows = list_subscriptions_by_uid(arg)
-    else:
-        rows = list_subscriptions_by_name(arg)
+    rows = list_subscriptions_by_uid(arg) if arg.isdecimal() else list_subscriptions_by_name(arg)
     if not rows:
         await UniMessage.text(f"没有查到微博用户 {arg}").send()
         return
     msg = "微博用户信息:\n"
-    for row in rows:
-        msg += (
-            f"UID: {row.uid}, 昵称: {row.name}, 关键词: {row.keyword or '无'}, "
-            f"上次更新时间: {datetime.fromtimestamp(row.time).strftime('%Y-%m-%d %H:%M:%S')}\n"
-        )
-        break
+    row = rows[0]
+    msg += (
+        f"UID: {row.uid}, 昵称: {row.name}, 关键词: {row.keyword or '无'}, "
+        f"上次更新时间: "
+        f"{datetime.fromtimestamp(row.time, tz=UTC).astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    )
     await UniMessage.text(msg).send()

@@ -12,9 +12,7 @@ async def _(text: str = PlainText()):
     text = text.lstrip("?？").strip()
     if not text:
         return
-    resp = await aiohttpx.post(
-        "https://lab.magiconch.com/api/nbnhhsh/guess", json={"text": text}
-    )
+    resp = await aiohttpx.post("https://lab.magiconch.com/api/nbnhhsh/guess", json={"text": text})
     j = resp.json
     if len(j) == 0:
         await UniMessage.text(f"{text}: 没有结果").send()
@@ -22,8 +20,5 @@ async def _(text: str = PlainText()):
     res = j[0]
     name = res.get("name")
     trans = res.get("trans", ["没有结果"])
-    msg = "{}: {}".format(
-        name,
-        " ".join(trans),
-    )
+    msg = f"{name}: {' '.join(trans)}"
     await UniMessage.text(msg).send()
