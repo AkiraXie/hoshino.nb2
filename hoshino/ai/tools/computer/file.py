@@ -84,39 +84,41 @@ async def file(
     if _is_sensitive(resolved):
         return "敏感路径不允许访问。"
 
-    if mode == "read":
-        if not os.path.isfile(resolved):
-            return f"文件不存在：{path}"
-        try:
-            data = await asyncio.to_thread(_read_text, resolved)
-        except OSError as exc:
-            return f"读取失败：{exc}"
-        return data
+    match mode:
+        case "read":
+            if not os.path.isfile(resolved):
+                return f"文件不存在：{path}"
+            try:
+                data = await asyncio.to_thread(_read_text, resolved)
+            except OSError as exc:
+                return f"读取失败：{exc}"
+            return data
 
-    if mode == "list":
-        if not os.path.isdir(resolved):
-            return f"目录不存在：{path}"
-        try:
-            entries = await asyncio.to_thread(_list_entries, resolved)
-        except OSError as exc:
-            return f"列出失败：{exc}"
-        if not entries:
-            return f"{path} 为空目录。"
-        return "\n".join(entries)
+        case "list":
+            if not os.path.isdir(resolved):
+                return f"目录不存在：{path}"
+            try:
+                entries = await asyncio.to_thread(_list_entries, resolved)
+            except OSError as exc:
+                return f"列出失败：{exc}"
+            if not entries:
+                return f"{path} 为空目录。"
+            return "\n".join(entries)
 
-    if mode == "write":
-        if len(content.encode("utf-8")) > _MAX_WRITE_BYTES:
-            return "写入超过 1MB 限制。"
-        try:
-            await asyncio.to_thread(_write_text, resolved, content)
-        except OSError as exc:
-            return f"写入失败：{exc}"
-        return f"已写入 {path}（{len(content)} 字符）。"
+        case "write":
+            if len(content.encode("utf-8")) > _MAX_WRITE_BYTES:
+                return "写入超过 1MB 限制。"
+            try:
+                await asyncio.to_thread(_write_text, resolved, content)
+            except OSError as exc:
+                return f"写入失败：{exc}"
+            return f"已写入 {path}（{len(content)} 字符）。"
 
-    if mode == "delete":
-        return await _delete_file(ctx, resolved, path)
+        case "delete":
+            return await _delete_file(ctx, resolved, path)
 
-    return "未知 mode。"
+        case _:
+            return "未知 mode。"
 
 
 async def _delete_file(ctx: RunContext[AgentDeps], resolved: str, path: str) -> str:
@@ -140,9 +142,10 @@ async def _delete_file(ctx: RunContext[AgentDeps], resolved: str, path: str) -> 
 
 def risk_for_file(args: dict) -> str:
     """参数级风险：delete 为 high；write 为 medium；read/list 为 low。"""
-    mode = args.get("mode", "read")
-    if mode == "delete":
-        return "high"
-    if mode == "write":
-        return "medium"
-    return "low"
+    match args.get("mode", "read"):
+        case "delete":
+            return "high"
+        case "write":
+            return "medium"
+        case _:
+            return "low"

@@ -162,16 +162,18 @@ async def hoshino_nb2_code(
     用于改进本仓库代码（尤其是 hoshino/ai/）前快速掌握上下文；详细内容可
     read 对应源文件（如 `read AGENTS.md`、`read hoshino/ai/prompts.py`）。
     """
-    if action == "overview":
-        return _OVERVIEW
-    if action == "norms":
-        return _NORMS
-    if action == "flow":
-        return _FLOW
-    if action == "ai_module":
-        return _AI_MODULE
-    if action == "read":
-        if not path:
-            return "read 需要 path 参数，如 `read hoshino/ai/prompts.py`。"
-        return _read_repo_file(path)
-    return "未知 action，可用：overview / norms / flow / ai_module / read。"
+    match action:
+        case "overview":
+            return _OVERVIEW
+        case "norms":
+            return _NORMS
+        case "flow":
+            return _FLOW
+        case "ai_module":
+            return _AI_MODULE
+        case "read":
+            if not path:
+                return "read 需要 path 参数，如 `read hoshino/ai/prompts.py`。"
+            return _read_repo_file(path)
+        case _:
+            return "未知 action，可用：overview / norms / flow / ai_module / read。"

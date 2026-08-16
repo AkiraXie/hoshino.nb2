@@ -92,13 +92,16 @@ def _last_message_summary(state: Any) -> str:
     pieces: list[str] = []
     for part in getattr(history[-1], "parts", None) or []:
         name = type(part).__name__
-        if name == "UserPromptPart":
-            pieces.append(f"user: {summarize_content(getattr(part, 'content', None), 120)}")
-        elif name == "ToolReturnPart":
-            tool = getattr(part, "tool_name", "")
-            pieces.append(f"tool {tool} → {summarize_content(getattr(part, 'content', None), 160)}")
-        elif name == "RetryPromptPart":
-            pieces.append(f"retry: {summarize_content(getattr(part, 'content', None), 120)}")
+        match name:
+            case "UserPromptPart":
+                pieces.append(f"user: {summarize_content(getattr(part, 'content', None), 120)}")
+            case "ToolReturnPart":
+                tool = getattr(part, "tool_name", "")
+                pieces.append(
+                    f"tool {tool} → {summarize_content(getattr(part, 'content', None), 160)}"
+                )
+            case "RetryPromptPart":
+                pieces.append(f"retry: {summarize_content(getattr(part, 'content', None), 120)}")
     return " ｜ ".join(pieces)
 
 

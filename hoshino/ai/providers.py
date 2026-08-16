@@ -151,22 +151,30 @@ def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = Non
         raise ValueError("provider 未配置 model")
     url = provider.url or None
     http_client = _build_http_client(proxy)
-    if provider.kind == "openai_chat":
-        return _ResponseBodyOpenAIChatModel(
-            model,
-            provider=OpenAIProvider(api_key=provider.key, base_url=url, http_client=http_client),
-        )
-    if provider.kind == "openai_responses":
-        return OpenAIResponsesModel(
-            model,
-            provider=OpenAIProvider(api_key=provider.key, base_url=url, http_client=http_client),
-        )
-    if provider.kind == "anthropic":
-        return AnthropicModel(
-            model,
-            provider=AnthropicProvider(api_key=provider.key, base_url=url, http_client=http_client),
-        )
-    raise ValueError(f"未知 provider kind: {provider.kind}")
+    match provider.kind:
+        case "openai_chat":
+            return _ResponseBodyOpenAIChatModel(
+                model,
+                provider=OpenAIProvider(
+                    api_key=provider.key, base_url=url, http_client=http_client
+                ),
+            )
+        case "openai_responses":
+            return OpenAIResponsesModel(
+                model,
+                provider=OpenAIProvider(
+                    api_key=provider.key, base_url=url, http_client=http_client
+                ),
+            )
+        case "anthropic":
+            return AnthropicModel(
+                model,
+                provider=AnthropicProvider(
+                    api_key=provider.key, base_url=url, http_client=http_client
+                ),
+            )
+        case _:
+            raise ValueError(f"未知 provider kind: {provider.kind}")
 
 
 OUTPUT_STYLE_HEADER = "\n\n（对了，回复的时候记得按下面的小习惯来：）\n"

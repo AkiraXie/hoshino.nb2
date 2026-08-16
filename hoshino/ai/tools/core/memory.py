@@ -34,36 +34,38 @@ async def memory(
     if not scope_key:
         return "当前环境不支持记忆（无法解析 scope）。"
 
-    if action == "get":
-        if not key:
-            return "get 需要 key 参数。"
-        value = store.memory_get(scope_key, key)
-        return value if value is not None else f"记忆 `{key}` 不存在。"
+    match action:
+        case "get":
+            if not key:
+                return "get 需要 key 参数。"
+            value = store.memory_get(scope_key, key)
+            return value if value is not None else f"记忆 `{key}` 不存在。"
 
-    if action == "set":
-        if not key:
-            return "set 需要 key 参数。"
-        if not value:
-            return "set 需要 value 参数。"
-        if len(value) > _MAX_VALUE_LENGTH:
-            return f"value 超过 {_MAX_VALUE_LENGTH} 字符限制。"
-        keys = store.memory_list_keys(scope_key)
-        if key not in keys and len(keys) >= _MAX_KEYS:
-            return f"记忆条数超过 {_MAX_KEYS} 上限，请先 delete 一些。"
-        store.memory_set(scope_key, key, value)
-        return f"已写入记忆 `{key}`。"
+        case "set":
+            if not key:
+                return "set 需要 key 参数。"
+            if not value:
+                return "set 需要 value 参数。"
+            if len(value) > _MAX_VALUE_LENGTH:
+                return f"value 超过 {_MAX_VALUE_LENGTH} 字符限制。"
+            keys = store.memory_list_keys(scope_key)
+            if key not in keys and len(keys) >= _MAX_KEYS:
+                return f"记忆条数超过 {_MAX_KEYS} 上限，请先 delete 一些。"
+            store.memory_set(scope_key, key, value)
+            return f"已写入记忆 `{key}`。"
 
-    if action == "delete":
-        if not key:
-            return "delete 需要 key 参数。"
-        if store.memory_delete(scope_key, key):
-            return f"已删除记忆 `{key}`。"
-        return f"记忆 `{key}` 不存在。"
+        case "delete":
+            if not key:
+                return "delete 需要 key 参数。"
+            if store.memory_delete(scope_key, key):
+                return f"已删除记忆 `{key}`。"
+            return f"记忆 `{key}` 不存在。"
 
-    if action == "list":
-        keys = store.memory_list_keys(scope_key)
-        if not keys:
-            return "暂无记忆。"
-        return "记忆 keys：" + "、".join(keys)
+        case "list":
+            keys = store.memory_list_keys(scope_key)
+            if not keys:
+                return "暂无记忆。"
+            return "记忆 keys：" + "、".join(keys)
 
-    return "未知操作。"
+        case _:
+            return "未知操作。"

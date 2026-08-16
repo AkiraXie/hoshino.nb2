@@ -104,29 +104,30 @@ class GoalService:
         new_objective = goal.objective
         new_blocked_reason = goal.blocked_reason
 
-        if action == "edit":
-            if objective is None or not objective.strip():
-                raise ValueError("目标不能为空。")
-            new_objective = objective.strip()
-        elif action == "pause":
-            phase = "paused"
-        elif action == "resume":
-            phase = "active"
-        elif action == "complete":
-            phase = "complete"
-        elif action == "blocked":
-            if not blocked_reason or not blocked_reason.strip():
-                raise ValueError("blocked 必须给出阻塞原因。")
-            phase = "blocked"
-            new_blocked_reason = blocked_reason.strip()
-        elif action == "advance_round":
-            if phase in ("complete", "blocked"):
-                return goal  # 终态不再推进轮次
-            completed_rounds += 1
-            if goal.max_rounds is not None and completed_rounds >= goal.max_rounds:
+        match action:
+            case "edit":
+                if objective is None or not objective.strip():
+                    raise ValueError("目标不能为空。")
+                new_objective = objective.strip()
+            case "pause":
+                phase = "paused"
+            case "resume":
+                phase = "active"
+            case "complete":
                 phase = "complete"
-        else:
-            raise ValueError(f"未知 goal action：{action}")
+            case "blocked":
+                if not blocked_reason or not blocked_reason.strip():
+                    raise ValueError("blocked 必须给出阻塞原因。")
+                phase = "blocked"
+                new_blocked_reason = blocked_reason.strip()
+            case "advance_round":
+                if phase in ("complete", "blocked"):
+                    return goal  # 终态不再推进轮次
+                completed_rounds += 1
+                if goal.max_rounds is not None and completed_rounds >= goal.max_rounds:
+                    phase = "complete"
+            case _:
+                raise ValueError(f"未知 goal action：{action}")
 
         new = Goal(
             scope_key=scope_key,
