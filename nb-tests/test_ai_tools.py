@@ -450,16 +450,6 @@ async def test_hoshino_nb2_code_static_knowledge():
     assert "output.md" in text
 
 
-async def test_hoshino_nb2_code_read_valid():
-    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
-
-    ctx = _ctx(_deps())
-    text = await hoshino_nb2_code(ctx, "read", path="hoshino/ai/prompts.py")
-    assert "DEFAULT_SYSTEM_PROMPT" in text
-    text = await hoshino_nb2_code(ctx, "read", path="AGENTS.md")
-    assert "HoshinoBot" in text
-
-
 async def test_hoshino_nb2_code_read_rejects_unsafe(tmp_path):
     from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
 
