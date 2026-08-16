@@ -1,0 +1,62 @@
+# PsiACE Skills
+
+> A concise, LLM-friendly index of PsiACE's skill library for coding agents.
+
+This file is Markdown-first for clean parsing. For human-friendly reading, use the website at https://skills.psiace.me. Start with each skill's SKILL.md to understand triggers and workflow. References are short, focused guides for deeper topics.
+
+## Core (Markdown)
+
+- [Skills overview](https://raw.githubusercontent.com/psiace/skills/main/skills/README.md): Site overview, conventions, and index.
+- [Friendly Python skill](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/SKILL.md): Entry point for Python guidance.
+- [Piglet skill](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/SKILL.md): Entry point for Python craftsmanship guidance.
+- [Fast Rust skill](https://raw.githubusercontent.com/psiace/skills/main/skills/fast-rust/SKILL.md): Entry point for Rust guidance.
+- [Modular Go skill](https://raw.githubusercontent.com/psiace/skills/main/skills/modular-go/SKILL.md): Entry point for Go package design guidance.
+
+## Friendly Python references (Markdown)
+
+- [API design](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/api-design.md): Guidance for shaping Python APIs.
+- [CLI argparse](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/cli-argparse.md): Argparse patterns and conventions.
+- [Error handling](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/error-handling.md): Exceptions, error models, and resilience.
+- [Extension architecture](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/extension-architecture.md): Plugin systems and extension points.
+- [OOP design](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/oop-design.md): Practical object modeling.
+- [Portability and Pythonic style](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/portability-pythonic.md): Cross-platform behavior and idioms.
+- [Principles](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/principles.md): Core principles and heuristics.
+- [Reuse and composition](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/reuse-composition.md): Composition-oriented design.
+- [Review checklist](https://raw.githubusercontent.com/psiace/skills/main/skills/friendly-python/references/review-checklist.md): Code review focus areas.
+
+## Piglet references (Markdown)
+
+- [Variables and naming](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/variables-and-naming.md): Naming, scope, and explicit data flow.
+- [Branching and conditions](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/if-else-and-branches.md): Reduce nesting and clarify conditions.
+- [Numbers, strings, containers](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/values-and-containers.md): Replace magic literals and choose containers.
+- [Functions and returns](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/functions-and-returns.md): Stable returns and single responsibility.
+- [Exception handling](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/exceptions-handling.md): Narrow try blocks and specific exceptions.
+- [Loops and iteration](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/loops-and-iteration.md): Iterator helpers for clearer loops.
+- [Decorators](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/decorators.md): Preserve metadata and avoid decorator pitfalls.
+- [Imports and dependencies](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/imports-and-structure.md): Avoid cyclic imports.
+- [Rules and file I/O](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/rules-and-file-io.md): Use appropriate data structures and pathlib.
+- [SOLID in Python](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/solid-python.md): Substitutability and explicit behavior.
+- [Edge cases](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/edge-cases.md): EAFP and simpler main paths.
+- [Walrus operator](https://raw.githubusercontent.com/psiace/skills/main/skills/piglet/references/walrus-operator.md): Assignment expressions without repetition.
+
+## Fast Rust references (Markdown)
+
+- [Compilation optimization](https://raw.githubusercontent.com/psiace/skills/main/skills/fast-rust/references/compilation-optimization.md): Build times and incremental workflow.
+- [Error design](https://raw.githubusercontent.com/psiace/skills/main/skills/fast-rust/references/error-design.md): Error types, context, and ergonomics.
+- [Type exercise](https://raw.githubusercontent.com/psiace/skills/main/skills/fast-rust/references/type-exercise.md): Type-driven design practice.
+
+## Modular Go references (Markdown)
+
+- [Module boundary](https://raw.githubusercontent.com/psiace/skills/main/skills/modular-go/references/module-boundary.md): Narrow public APIs and deep vs wide interface choices.
+- [State flow](https://raw.githubusercontent.com/psiace/skills/main/skills/modular-go/references/state-flow.md): Stateless-first design and one-way state transitions.
+- [Orchestration](https://raw.githubusercontent.com/psiace/skills/main/skills/modular-go/references/orchestration.md): Single executor entry points and helper decomposition.
+- [gRPC practices](https://raw.githubusercontent.com/psiace/skills/main/skills/modular-go/references/grpc-practices.md): Thin transport handlers, centralized status mapping, and explicit dependency injection.
+- [Review checklist](https://raw.githubusercontent.com/psiace/skills/main/skills/modular-go/references/review-checklist.md): Fast architecture sanity checks for module design reviews.
+
+## Optional (Markdown)
+
+- [Repository README](https://raw.githubusercontent.com/psiace/skills/main/README.md): Repo setup and development workflow.
+
+## For humans
+
+- https://skills.psiace.me

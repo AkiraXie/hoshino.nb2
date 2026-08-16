@@ -197,8 +197,8 @@ Telegram 无法枚举所有聊天，依赖全群列表的功能必须明确降�
 
 ## 7. Python 代码风格
 
-通用规范（Ruff、Google 风格、Pythonic 惯用法）由 DSH 的 python-guidelines / piglet /
-friendly-python skills 覆盖；本仓库额外约定：
+通用规范（Ruff、Google 风格、Pythonic 惯用法）见仓库 `.claude/skills/` 下的
+python-guidelines / piglet / friendly-python；本仓库额外约定：
 
 - 保持 Python 3.12 兼容；import 按 stdlib / third-party / local 分组置顶；函数内 import
   仅用于真实循环依赖、可选依赖或昂贵 lazy load（注释原因）。

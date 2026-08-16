@@ -147,6 +147,12 @@ dmypy.json
 *.jpg
 *pid
 .*
+# 通用 agent 技能目录（Claude Code 等按标准位置读取）：允许跟踪 skills 内容
+!/.claude/
+!/.claude/skills/
+/.claude/settings.json
+/.claude/settings.local.json
+/.claude/worktrees/
 ./package-lock.json
 ./package.json
 chrome*
