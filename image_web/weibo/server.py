@@ -421,15 +421,16 @@ async def api_list_posts(page: int = 1, size: int = 20, uid: str = "", q: str = 
         tz = timezone(timedelta(hours=8))
         now = datetime.now(tz)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if date == "today":
-            ts_min = today_start.timestamp()
-            ts_max = float("inf")
-        elif date == "yesterday":
-            ts_min = (today_start - timedelta(days=1)).timestamp()
-            ts_max = today_start.timestamp()
-        else:  # older
-            ts_min = 0
-            ts_max = (today_start - timedelta(days=1)).timestamp()
+        match date:
+            case "today":
+                ts_min = today_start.timestamp()
+                ts_max = float("inf")
+            case "yesterday":
+                ts_min = (today_start - timedelta(days=1)).timestamp()
+                ts_max = today_start.timestamp()
+            case _:  # older
+                ts_min = 0
+                ts_max = (today_start - timedelta(days=1)).timestamp()
         results = [p for p in results if ts_min <= (p.get("timestamp") or 0) < ts_max]
     total, page_items = paginate(results, page, size)
     return {
@@ -505,13 +506,14 @@ async def api_top_uids(limit: int = 5, preview: int = 4, date: str = ""):
         tz = timezone(timedelta(hours=8))
         now = datetime.now(tz)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if date == "today":
-            ts_min, ts_max = today_start.timestamp(), float("inf")
-        elif date == "yesterday":
-            ts_min = (today_start - timedelta(days=1)).timestamp()
-            ts_max = today_start.timestamp()
-        else:
-            ts_min, ts_max = 0, (today_start - timedelta(days=1)).timestamp()
+        match date:
+            case "today":
+                ts_min, ts_max = today_start.timestamp(), float("inf")
+            case "yesterday":
+                ts_min = (today_start - timedelta(days=1)).timestamp()
+                ts_max = today_start.timestamp()
+            case _:
+                ts_min, ts_max = 0, (today_start - timedelta(days=1)).timestamp()
         source = [p for p in source if ts_min <= (p.get("timestamp") or 0) < ts_max]
 
     uid_counts = Counter(p["uid"] for p in source)
