@@ -128,13 +128,16 @@ def tmp_store(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def fake_ai_server():
+def fake_ai_server(request):
     """本地 fake OpenAI/Anthropic HTTP 服务器，返回 (base_url, requests, stop)。
 
     每个测试独立服务器实例：base_url 直接作 provider 的 url；requests 记录每个
     到达的请求（路径/header/body），供断言；stop 在测试结束时关闭服务器。
+    通过 ``@pytest.mark.parametrize("fake_ai_server", [<payload>], indirect=True)``
+    注入自定义 ``/chat/completions`` 响应（默认标准 OPENAI_RESPONSE）。
     """
-    base_url, requests, stop = start_fake_server()
+    payload = getattr(request, "param", None)
+    base_url, requests, stop = start_fake_server(payload=payload)
     yield base_url, requests
     stop()
 

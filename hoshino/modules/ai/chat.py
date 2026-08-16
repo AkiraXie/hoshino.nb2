@@ -431,7 +431,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         tools = ",".join(c["name"] for c in run_log.tool_calls) or "-"
         sv.logger.warning(
             f"AI 请求失败 provider={provider_id} scope={scope_key} conv={conv.name} "
-            f"error={type(exc).__name__} tools={tools} "
+            f"model={model_name} error={type(exc).__name__} tools={tools} "
             f"detail={detail}"
         )
         sv.logger.debug(

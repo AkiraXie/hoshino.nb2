@@ -293,3 +293,55 @@ def test_resolve_tool_proxy_gate(monkeypatch):
         resolve_tool_proxy("socks://127.0.0.1:7890", tool_use_proxy=True)
         == "socks5://127.0.0.1:7890"
     )
+
+
+# ---------------------------------------------- openai_chat 畸形响应可观测性
+
+
+def test_build_model_carries_raw_response_body_on_validation_error():
+    """openai_chat 校验失败（function_call 为 null）→ 异常 body 携带原始响应。
+
+    上游网关返回 ``function_call: {name: null, arguments: null}`` 时，pydantic-ai
+    默认抛 ``UnexpectedModelBehavior`` 且 body=None，失败日志看不到原始 JSON；
+    子类化 model 把 ``response.model_dump()`` 附到异常，``format_exception_detail``
+    现有的 ``body=`` 提取自动生效。
+    """
+    from openai.types.chat import ChatCompletion
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    from hoshino.ai import providers
+    from hoshino.ai.errors import format_exception_detail
+    from hoshino.ai.provider import ProviderRecord
+
+    record = ProviderRecord(id="fake", url="http://fake", key="sk-test", kind="openai_chat")
+    model = providers.build_model(record, "deepseek-v4-flash")
+    try:
+        assert type(model).__name__ == "_ResponseBodyOpenAIChatModel"
+
+        malformed = ChatCompletion.model_construct(
+            id="chatcmpl-fake",
+            object="chat.completion",
+            created=1,
+            model="deepseek-v4-flash",
+            choices=[
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "function_call": {"name": None, "arguments": None},
+                    },
+                    "finish_reason": "function_call",
+                }
+            ],
+        )
+        with pytest.raises(UnexpectedModelBehavior) as exc_info:
+            model._validate_completion(malformed)
+        exc = exc_info.value
+        assert exc.body is not None  # 原始响应体随异常可提取
+        assert '"function_call"' in exc.body
+        detail = format_exception_detail(exc)
+        assert "function_call" in detail
+        assert "Input should be a valid string" in detail
+    finally:
+        providers.clear_agent_cache()

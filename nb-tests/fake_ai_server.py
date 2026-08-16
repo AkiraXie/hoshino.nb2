@@ -57,6 +57,7 @@ class _FakeHandler(BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
     requests: ClassVar[list[dict]] = []
+    custom_response: ClassVar[dict | None] = None  # 测试注入的 /chat/completions 响应
 
     def _record(self, raw: bytes) -> dict:
         return {
@@ -72,7 +73,7 @@ class _FakeHandler(BaseHTTPRequestHandler):
         stem = self.path.split("?")[0]
         self.requests.append(self._record(raw))
         if stem == "/chat/completions":
-            self._respond(200, OPENAI_RESPONSE)
+            self._respond(200, self.custom_response or OPENAI_RESPONSE)
         elif stem == "/v1/messages":
             self._respond(200, ANTHROPIC_RESPONSE)
         else:
@@ -99,13 +100,16 @@ class _FakeHandler(BaseHTTPRequestHandler):
         pass
 
 
-def start_fake_server() -> tuple[str, list[dict], callable]:
+def start_fake_server(payload: dict | None = None) -> tuple[str, list[dict], callable]:
     """启动 fake HTTP 服务器。
 
     返回 ``(base_url, requests, stop)``：``base_url`` 可直接作 provider 的 url；
     ``requests`` 是累积的请求记录（每次调用会清空旧的）；``stop`` 关闭服务器。
+    ``payload`` 非空时作为 ``/chat/completions`` 的固定响应（用于注入畸形响应，
+    如 function_call 字段为 null，验证失败日志携带原始 body 的链路）。
     """
     _FakeHandler.requests = []
+    _FakeHandler.custom_response = payload
     server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

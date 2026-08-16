@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from typing import Any
 
 import httpx
 from loguru import logger
+from pydantic import ValidationError
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
@@ -80,6 +83,29 @@ def build_model_settings(record: ProviderRecord) -> ModelSettings | None:
     return ModelSettings(**settings) if settings else None
 
 
+class _ResponseBodyOpenAIChatModel(OpenAIChatModel):
+    """``openai_chat`` 响应校验失败时把原始响应体附到异常，供失败日志定位。
+
+    pydantic-ai 的 ``_process_response`` 在 ``_validate_completion`` 校验失败时抛
+    ``UnexpectedModelBehavior`` 但不带 ``body``（body=None）。上游网关（如
+    opencode-go）返回 ``function_call`` 的 name/arguments 为 null 的畸形响应时，
+    日志只能看到 pydantic 校验错误文本，看不到原始 JSON，无法判断是模型幻觉还是
+    网关转译问题。此处覆盖公开 hook（openrouter.py 同款扩展点），校验失败时把
+    ``response.model_dump()`` 序列化进异常 ``body``；``errors.format_exception_detail``
+    现有的 ``body=`` 提取 + 截断逻辑自动生效，chat/task 失败日志无需改动。
+    """
+
+    def _validate_completion(self, response: Any) -> Any:
+        try:
+            return super()._validate_completion(response)
+        except ValidationError as exc:
+            raw = json.dumps(response.model_dump(), ensure_ascii=False, default=str)
+            raise UnexpectedModelBehavior(
+                f"Invalid response from {self.system} chat completions endpoint: {exc}",
+                body=raw,
+            ) from exc
+
+
 def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = None) -> Any:
     """按 provider.kind 与显式 model 名构建 pydantic-ai model。"""
     if not model:
@@ -87,7 +113,7 @@ def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = Non
     url = provider.url or None
     http_client = _build_http_client(proxy)
     if provider.kind == "openai_chat":
-        return OpenAIChatModel(
+        return _ResponseBodyOpenAIChatModel(
             model,
             provider=OpenAIProvider(api_key=provider.key, base_url=url, http_client=http_client),
         )
