@@ -336,27 +336,10 @@ ID 是会话内序列号，取回消息时必须保留 group/scene。详细限�
 测试范围按改动风险递增：
 
 1. 纯函数或单模块：运行对应测试文件。
-2. Service、matcher、hook、消息或平台 facade：运行相关 `nb-tests`，至少覆盖 OB11/Milky
-   或任务涉及的 adapter。
+2. Service、matcher、hook、消息或平台 facade：运行相关 `nb-tests`
 3. 插件行为：通过真实 NoneBot dispatch 路径构造事件并断言发送/API 边界。
 4. 启动、公共平台接口或共享核心变更：运行 `uv run pytest nb-tests -q`。
-5. 微博内部逻辑变更：同时运行相关 `.tests/test_weibo_*.py`。
-6. 前端变更：运行 `npm ... run build`，并用 Playwright 在桌面和移动 viewport 验证关键流程。
-
-Milky 消息行为测试必须：
-
-- 使用 `MilkyAdapter.json_to_event()` 构造真实事件模型；
-- 使用唯一 `message_seq`，避免 Alconna 缓存串用；
-- 调用 `await bot.handle_event(event)`，不能只测 rule/parser 或直接调用 handler；
-- stub adapter 的 HTTP/API 边界；
-- 断言 action、target ID 和有意义的消息 payload；
-- 不连接真实 QQNT/Milky endpoint。
-
-权限、service scope、regex/fullmatch、`only_to_me` 等规则要有负例，确认不应响应的输入确实
-不发送消息。不要把“成功 import”当作行为覆盖。
-
-当前测试可能暴露与任务无关的既有失败。先单独重跑并检查相关文件 diff；不要为了全绿而
-顺手修改无关业务。最终报告应给出通过数量、失败用例和为何判断其是否相关。
+5. 前端变更：运行 `npm ... run build`，并用 Playwright 在桌面和移动 viewport 验证关键流程。
 
 ### 8.1 测试纪律（增删测试的准入）
 
