@@ -312,11 +312,12 @@ def test_build_model_ignores_env_proxy(monkeypatch):
     import asyncio
 
     from hoshino.ai.provider import ProviderRecord
-    from hoshino.ai.providers import build_model
+    from hoshino.ai.providers import _http_clients, build_model
 
     monkeypatch.setenv("ALL_PROXY", "socks://127.0.0.1:7890")
     monkeypatch.setenv("all_proxy", "socks://127.0.0.1:7890")
     monkeypatch.setenv("HTTPS_PROXY", "socks://127.0.0.1:7890")
+    before = len(_http_clients)
     record = ProviderRecord(
         id="openai",
         url="https://api.example.com/v1",
@@ -325,13 +326,13 @@ def test_build_model_ignores_env_proxy(monkeypatch):
     )
     model = build_model(record, "gpt-4o-mini")  # proxy 缺省 None → trust_env=False
     assert model is not None
-    # 关闭 build_model 内部创建的 client（同步测试中 clear_agent_cache 不会
-    # 找到事件循环，这里手动关闭避免 Unclosed client 告警）。
-    from hoshino.ai.providers import _http_clients
-
-    for client in _http_clients:
+    # 只关闭本用例新建的 client（同步测试无 running loop，clear_agent_cache 的
+    # create_task 不会执行）。不动其他测试经 build_agent 缓存创建的 client，
+    # 避免跨文件顺序下对已绑定旧事件循环的 client 手动 aclose 触发
+    # "Event loop is closed"。
+    for client in _http_clients[before:]:
         asyncio.run(client.aclose())
-    _http_clients.clear()
+    del _http_clients[before:]
 
 
 # ------------------------------------------------------- provider 解析

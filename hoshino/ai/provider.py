@@ -93,24 +93,24 @@ def remove_provider(provider_id: str) -> bool:
 def resolve_effective_proxy(record: ProviderRecord, config_proxy: str | None) -> str | None:
     """provider 实际使用的代理。
 
-    ``use_proxy=True`` 时优先走全局 ``OUTSIDE_PROXY``（未配置回退 AI 配置的
-    代理）；默认（False）沿用 AI 配置代理，与旧行为一致。
+    ``use_proxy=True`` 时优先走 AI 配置的代理（未配置回退全局 ``OUTSIDE_PROXY``）；
+    默认（False）返回 ``None`` 直连，不走任何代理。
     """
     if record.use_proxy:
-        return get_outside_proxy() or config_proxy
-    return config_proxy
+        return config_proxy or get_outside_proxy()
+    return None
 
 
 def resolve_tool_proxy(config_proxy: str | None, *, tool_use_proxy: bool) -> str | None:
     """web/browser 等抓取类工具实际使用的代理。
 
-    ``tool_use_proxy=True`` 时优先走全局 ``OUTSIDE_PROXY``（未配置回退 AI 配置
-    代理），并归一化 ``socks://`` 为 httpx/Playwright 可解析的 ``socks5://``；
-    默认（False）返回 ``None`` 直连，与既有解析类请求直连策略一致。
+    ``tool_use_proxy=True`` 时优先走 AI 配置的代理（未配置回退全局
+    ``OUTSIDE_PROXY``），并归一化 ``socks://`` 为 httpx/Playwright 可解析的
+    ``socks5://``；默认（False）返回 ``None`` 直连，与既有解析类请求直连策略一致。
     """
     if not tool_use_proxy:
         return None
-    return _normalize_proxy(get_outside_proxy() or config_proxy)
+    return _normalize_proxy(config_proxy or get_outside_proxy())
 
 
 # ------------------------------------------------------------ 可用模型（实时）

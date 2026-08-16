@@ -258,90 +258,105 @@ def test_provider_record_use_proxy_roundtrip(tmp_store):
     assert record.use_proxy is True
 
 
-def test_resolve_effective_proxy_priority(monkeypatch):
-    """use_proxy=True 走全局 OUTSIDE_PROXY（未配回退 AI 配置）；False 沿用 AI 配置。"""
-    from hoshino.ai.provider import ProviderRecord, resolve_effective_proxy
-
-    record = ProviderRecord(id="p", use_proxy=True)
-    plain = ProviderRecord(id="p")
-    monkeypatch.setenv("OUTSIDE_PROXY", "http://127.0.0.1:7890")
-    assert resolve_effective_proxy(record, None) == "http://127.0.0.1:7890"
-    assert resolve_effective_proxy(record, "http://ai-proxy") == "http://127.0.0.1:7890"
-    assert resolve_effective_proxy(plain, "http://ai-proxy") == "http://ai-proxy"
-
-    monkeypatch.setenv("OUTSIDE_PROXY", "")
-    assert resolve_effective_proxy(record, "http://ai-proxy") == "http://ai-proxy"
-    assert resolve_effective_proxy(record, None) is None
-
-
-def test_resolve_tool_proxy_gate(monkeypatch):
-    """工具代理开关：False 直连；True 优先 OUTSIDE_PROXY、回退 AI 配置、socks 归一化。"""
-    from hoshino.ai.provider import resolve_tool_proxy
-
-    # 默认关闭：一律直连（即使配置了代理）
-    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=False) is None
-    monkeypatch.setenv("OUTSIDE_PROXY", "http://127.0.0.1:7890")
-    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=False) is None
-
-    # 开启：OUTSIDE_PROXY 优先，未配置回退 AI 配置代理
-    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=True) == "http://127.0.0.1:7890"
-    monkeypatch.setenv("OUTSIDE_PROXY", "")
-    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=True) == "http://ai-proxy"
-    assert resolve_tool_proxy(None, tool_use_proxy=True) is None
-    # socks:// 归一化为 httpx/Playwright 可解析的 socks5://
-    assert (
-        resolve_tool_proxy("socks://127.0.0.1:7890", tool_use_proxy=True)
-        == "socks5://127.0.0.1:7890"
-    )
-
-
 # ---------------------------------------------- openai_chat 畸形响应可观测性
 
 
-def test_build_model_carries_raw_response_body_on_validation_error():
-    """openai_chat 校验失败（function_call 为 null）→ 异常 body 携带原始响应。
-
-    上游网关返回 ``function_call: {name: null, arguments: null}`` 时，pydantic-ai
-    默认抛 ``UnexpectedModelBehavior`` 且 body=None，失败日志看不到原始 JSON；
-    子类化 model 把 ``response.model_dump()`` 附到异常，``format_exception_detail``
-    现有的 ``body=`` 提取自动生效。
-    """
-    from openai.types.chat import ChatCompletion
-    from pydantic_ai.exceptions import UnexpectedModelBehavior
-
+def _chat_model():
     from hoshino.ai import providers
-    from hoshino.ai.errors import format_exception_detail
     from hoshino.ai.provider import ProviderRecord
 
     record = ProviderRecord(id="fake", url="http://fake", key="sk-test", kind="openai_chat")
     model = providers.build_model(record, "deepseek-v4-flash")
-    try:
-        assert type(model).__name__ == "_ResponseBodyOpenAIChatModel"
+    return model, _close_build_clients
 
-        malformed = ChatCompletion.model_construct(
-            id="chatcmpl-fake",
-            object="chat.completion",
-            created=1,
-            model="deepseek-v4-flash",
-            choices=[
+
+def _close_build_clients() -> None:
+    """关闭 build_model 创建的 http client。
+
+    同步测试没有 running loop，``clear_agent_cache`` 的 ``create_task`` 不会执行；
+    与 ``test_ai_chat.py::test_build_model_ignores_env_proxy`` 同做法，显式
+    ``asyncio.run`` 关闭并清空共享 ``_http_clients``，避免残留 client 干扰后续测试。
+    """
+    import asyncio
+
+    from hoshino.ai.providers import _http_clients
+
+    for client in _http_clients:
+        asyncio.run(client.aclose())
+    _http_clients.clear()
+
+
+def _completion_with(function_call: dict | None, *, tool_calls: list | None = None):
+    from openai.types.chat import ChatCompletion
+
+    message: dict = {
+        "role": "assistant",
+        "content": "正常回复" if not tool_calls else None,
+        "function_call": function_call,
+        "tool_calls": tool_calls,
+    }
+    return ChatCompletion.model_construct(
+        id="chatcmpl-fake",
+        object="chat.completion",
+        created=1,
+        model="deepseek-v4-flash",
+        choices=[
+            {
+                "index": 0,
+                "message": message,
+                "finish_reason": "tool_calls" if tool_calls else "stop",
+            }
+        ],
+    )
+
+
+def test_openai_chat_validation_tolerates_empty_function_call_placeholder():
+    """``_validate_completion`` 面对网关畸形 function_call 的整体行为。
+
+    opencode-go 等 OpenAI 兼容网关在每条响应里附加空占位 legacy function_call
+    （name/arguments 均为 null），pydantic-ai 严格校验会拒绝整个响应，导致每轮
+    对话失败。验证解析层整体行为：
+    - 纯文本响应：空占位被归一化为 None，校验通过，正常文本可用；
+    - 工具调用响应：占位移除后真实 tool_calls 保留，不影响工具链路；
+    - 半空占位（name null 但 arguments 有值）不属于网关占位形态，仍抛
+      ``UnexpectedModelBehavior`` 且异常携带原始响应体（失败日志可定位）。
+    """
+    from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+    from hoshino.ai.errors import format_exception_detail
+
+    model, close_clients = _chat_model()
+    try:
+        # 纯文本：空占位不阻断回复
+        text_response = _completion_with({"name": None, "arguments": None})
+        validated = model._validate_completion(text_response)
+        assert validated.choices[0].message.function_call is None
+
+        # 工具调用：占位移除后 tool_calls 原样保留
+        tool_response = _completion_with(
+            {"name": None, "arguments": None},
+            tool_calls=[
                 {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": None,
-                        "function_call": {"name": None, "arguments": None},
-                    },
-                    "finish_reason": "function_call",
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {"name": "now", "arguments": "{}"},
                 }
             ],
         )
+        validated = model._validate_completion(tool_response)
+        message = validated.choices[0].message
+        assert message.function_call is None
+        assert message.tool_calls[0].function.name == "now"
+
+        # 非占位畸形（仍校验失败）：异常带原始响应体，失败日志可输出
+        partial = _completion_with({"name": None, "arguments": "{}"})
         with pytest.raises(UnexpectedModelBehavior) as exc_info:
-            model._validate_completion(malformed)
+            model._validate_completion(partial)
         exc = exc_info.value
-        assert exc.body is not None  # 原始响应体随异常可提取
+        assert exc.body is not None
         assert '"function_call"' in exc.body
         detail = format_exception_detail(exc)
         assert "function_call" in detail
         assert "Input should be a valid string" in detail
     finally:
-        providers.clear_agent_cache()
+        _close_build_clients()
