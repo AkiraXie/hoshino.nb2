@@ -1,10 +1,9 @@
 """OneBot v11 自定义事件 — Lagrange/LLOneBot 协议扩展"""
 
-from typing import Literal
+from typing import Literal, override
 
 from nonebot.adapters.onebot.v11.event import NoticeEvent
 from pydantic import BaseModel
-from typing_extensions import override
 
 
 class GroupReactionEvent(NoticeEvent):

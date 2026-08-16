@@ -10,33 +10,33 @@ from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
 from hoshino.platform.milky.bot import get_group_list as milky_get_group_list
 from hoshino.platform.milky.bot import (
+    get_group_member_info as milky_get_group_member_info,
+)
+from hoshino.platform.milky.bot import (
     get_media_download_headers as milky_get_media_download_headers,
 )
 from hoshino.platform.milky.bot import get_media_url as milky_get_media_url
-from hoshino.platform.milky.bot import (
-    get_group_member_info as milky_get_group_member_info,
-)
 from hoshino.platform.milky.bot import upload_group_file as milky_upload_group_file
 from hoshino.platform.milky.types import Bot as MilkyBot
 from hoshino.platform.ob11.bot import get_group_list as ob11_get_group_list
 from hoshino.platform.ob11.bot import (
+    get_group_member_info as ob11_get_group_member_info,
+)
+from hoshino.platform.ob11.bot import (
     get_media_download_headers as ob11_get_media_download_headers,
 )
 from hoshino.platform.ob11.bot import get_media_url as ob11_get_media_url
-from hoshino.platform.ob11.bot import (
-    get_group_member_info as ob11_get_group_member_info,
-)
 from hoshino.platform.ob11.bot import upload_group_file as ob11_upload_group_file
 from hoshino.platform.telegram.bot import (
     get_group_list as telegram_get_group_list,
 )
 from hoshino.platform.telegram.bot import (
+    get_group_member_info as telegram_get_group_member_info,
+)
+from hoshino.platform.telegram.bot import (
     get_media_download_headers as telegram_get_media_download_headers,
 )
 from hoshino.platform.telegram.bot import get_media_url as telegram_get_media_url
-from hoshino.platform.telegram.bot import (
-    get_group_member_info as telegram_get_group_member_info,
-)
 from hoshino.platform.telegram.bot import upload_chat_file
 from hoshino.platform.telegram.types import Bot as TelegramBot
 

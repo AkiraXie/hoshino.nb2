@@ -8,9 +8,9 @@ from nonebot.compat import type_validate_python
 from nonebot_plugin_alconna.uniseg import UniMessage
 
 from hoshino.platform.models import ReactionInfo, RetrievedMessage
-from hoshino.platform.superuser import is_superuser
 from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent, GroupReactionEvent
 from hoshino.platform.ob11.types import Adapter, Bot, Event, Message
+from hoshino.platform.superuser import is_superuser
 
 
 def get_reaction_info(event: Event) -> ReactionInfo | None:
@@ -72,11 +72,11 @@ async def get_reacted_message(
             continue
         forward = await bot.get_forward_msg(id=forward_id)
         nodes = forward.get("messages") or forward.get("message") or []
-        for node in nodes:
-            if content := _forward_content(node):
-                forwarded.append(
-                    UniMessage.of(_message(content), adapter=Adapter.get_name())
-                )
+        forwarded.extend(
+            UniMessage.of(_message(content), adapter=Adapter.get_name())
+            for node in nodes
+            if (content := _forward_content(node))
+        )
 
     return RetrievedMessage(
         sender_id=sender_id,

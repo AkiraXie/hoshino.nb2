@@ -1,16 +1,17 @@
 import asyncio
-from dataclasses import dataclass, field
-from asyncio import Queue
-from pathlib import Path
 import re
-from hoshino.types import MessageLike
-from typing import Protocol, TypeVar, Generic
 import time
+from asyncio import Queue
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Generic, Protocol, TypeVar
+
+from hoshino.types import MessageLike
 
 try:
     from typing import Self
 except ImportError:
-    from typing_extensions import Self
+    from typing import Self
 
 
 class Queueable(Protocol):
@@ -79,38 +80,47 @@ class Post:
     repost: Self | None = None
     """转发的Post"""
 
-    async def get_message(self, **kwargs) -> PostMessage: ...
-    def render_message(self, post_message: PostMessage) -> list[RenderableMessage]: ...
+    async def get_message(self, **kwargs) -> PostMessage:
+        raise NotImplementedError("Post 子类必须实现 get_message()")
 
-    def get_referer(self) -> str: ...
+    def render_message(self, post_message: PostMessage) -> list[RenderableMessage]:
+        raise NotImplementedError("Post 子类必须实现 render_message()")
+
+    def get_referer(self) -> str:
+        raise NotImplementedError("Post 子类必须实现 get_referer()")
+
     def get_id(self) -> str:
         return self.id
 
 
 class PostQueue(Queue, Generic[T]):
-    """统一的队列管理器，支持泛型"""
+    """按 ``get_id()`` 去重的队列管理器，支持泛型。
+
+    注意：这是**同步契约**的队列 —— ``put``/``get`` 有意覆盖了
+    ``asyncio.Queue`` 的异步同名方法（内部走 put_nowait/get_nowait），
+    供同步 dispatch 循环调用；不要 ``await queue.put(...)`` 或
+    ``await queue.get(...)``（await 返回值会直接 TypeError）。
+    """
 
     def __init__(self) -> None:
         super().__init__()
-        self._set = set()
+        self._set: set[str] = set()
 
     def put(self, item: T) -> bool:
-        """放入队列，如果ID已存在则跳过"""
+        """放入队列；ID 已存在则跳过。同步契约，不要 await。"""
         item_id = item.get_id()
         if item_id not in self._set:
             self._set.add(item_id)
             super().put_nowait(item)
-            loop = asyncio.get_event_loop()
-            loop.call_later(3600, self.remove_id, item_id)
+            asyncio.get_running_loop().call_later(3600, self.remove_id, item_id)
             return True
         return False
 
     def get(self) -> T | None:
-        """从队列获取项目"""
+        """从队列取出项目；队列为空返回 None。同步契约，不要 await。"""
         if self.empty():
             return None
-        item = super().get_nowait()
-        return item
+        return super().get_nowait()
 
     def remove_id(self, item_id: str) -> None:
         """从集合中移除ID"""
@@ -135,9 +145,7 @@ class UIDManager:
         self._cold_min_interval = 1800
         self._hot_overrides: dict[str, int] = {}
 
-    async def init(
-        self, uids: list[str], min_interval: int = 180, cold_min_interval: int = 1800
-    ):
+    async def init(self, uids: list[str], min_interval: int = 180, cold_min_interval: int = 1800):
         """从UID列表初始化管理器"""
         async with self._lock:
             self._uids = set(uids)
@@ -146,9 +154,7 @@ class UIDManager:
             self._min_interval = min_interval
             self._cold_min_interval = cold_min_interval
             self._last_fetch_times = {
-                uid: ts
-                for uid, ts in self._last_fetch_times.items()
-                if uid in self._uids
+                uid: ts for uid, ts in self._last_fetch_times.items() if uid in self._uids
             }
             self._hot_overrides = {
                 uid: iv for uid, iv in self._hot_overrides.items() if uid in self._uids
@@ -233,10 +239,9 @@ class UIDManager:
                         self._processing_uids.add(uid)
                         await self._uid_queue.put(uid)  # 重新放入队列
                         return uid
-                    else:
-                        # 不需要抓取，直接重新入队
-                        await self._uid_queue.put(uid)
-                        attempts += 1
+                    # 不需要抓取，直接重新入队
+                    await self._uid_queue.put(uid)
+                    attempts += 1
                 elif uid in self._uids:
                     # UID 有效但正在处理中，跳过并重新放入队列
                     await self._uid_queue.put(uid)

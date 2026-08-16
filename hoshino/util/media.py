@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 import random
 from collections.abc import Mapping
 from io import BytesIO
@@ -26,9 +28,24 @@ from hoshino.platform import (
 from hoshino.types import MessageLike
 
 from . import aiohttpx
+from .urls import redact_url
 
 SUPERUSER_IMAGE_LIST = "__superuser__imglist"
 SUPERUSER_VIDEO_LIST = "__superuser__videolist"
+
+
+def _verify_ssl_default() -> bool:
+    """媒体下载默认是否校验 TLS 证书。
+
+    默认校验；个别证书异常的站点可设 env ``HSN_MEDIA_VERIFY_SSL=0`` 关闭校验
+    （``0``/``false``/``no``/``off``）。
+    """
+    return os.getenv("HSN_MEDIA_VERIFY_SSL", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
 
 
 async def _media_segments(
@@ -68,9 +85,7 @@ async def get_event_media_segments(
                 str(getattr(segment, "url", None)),
                 str(getattr(segment, "path", None)),
                 str(getattr(segment, "id", None)),
-                hash(raw)
-                if isinstance((raw := getattr(segment, "raw", None)), bytes)
-                else None,
+                hash(raw) if isinstance((raw := getattr(segment, "raw", None)), bytes) else None,
             )
             if identity not in seen:
                 seen.add(identity)
@@ -98,24 +113,28 @@ async def save_img(
     url: str,
     name: str | Path,
     fav: bool = False,
-    verify: bool = False,
+    verify: bool | None = None,
 ) -> bool:
     image_path = (fav_dir if fav else img_dir) / name
+    if verify is None:
+        verify = _verify_ssl_default()
     return await save_img_by_path(url, image_path, verify=verify) is not None
 
 
-async def save_video(url: str, name: str, verify: bool = False) -> bool:
+async def save_video(url: str, name: str, verify: bool | None = None) -> bool:
+    if verify is None:
+        verify = _verify_ssl_default()
     return await save_video_by_path(url, video_dir / name, verify=verify) is not None
 
 
 async def save_img_by_path(
     url: str,
     path: str | Path,
-    verify: bool = False,
+    verify: bool | None = None,
     headers: Mapping[str, Any] | None = None,
 ) -> Path | None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if verify is None:
+        verify = _verify_ssl_default()
     response = await aiohttpx.get(
         url,
         verify=verify,
@@ -123,28 +142,34 @@ async def save_img_by_path(
         follow_redirects=True,
     )
     try:
-        with BytesIO(response.content) as buffer, Image.open(buffer) as image:
-            if image.format:
-                extension = image.format.lower()
-                path = path.with_suffix(
-                    f".{('jpg' if extension == 'jpeg' else extension)}"
-                )
-            if image.format in {"GIF", "WEBP"} and getattr(image, "is_animated", False):
-                path.write_bytes(response.content)
-            else:
-                image.save(path)
-        return path
+        return await asyncio.to_thread(_write_image, response.content, Path(path))
     except Exception as error:
         logger.error("保存图片失败: {}", error)
         return None
 
 
+def _write_image(content: bytes, path: Path) -> Path:
+    """在 worker 线程中解码/保存图片，避免阻塞事件循环。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with BytesIO(content) as buffer, Image.open(buffer) as image:
+        if image.format:
+            extension = image.format.lower()
+            path = path.with_suffix(f".{('jpg' if extension == 'jpeg' else extension)}")
+        if image.format in {"GIF", "WEBP"} and getattr(image, "is_animated", False):
+            path.write_bytes(content)
+        else:
+            image.save(path)
+    return path
+
+
 async def save_video_by_path(
     url: str,
     path: str | Path,
-    verify: bool = False,
+    verify: bool | None = None,
     headers: Mapping[str, Any] | None = None,
 ) -> Path | None:
+    if verify is None:
+        verify = _verify_ssl_default()
     response = await aiohttpx.get(
         url,
         verify=verify,
@@ -154,9 +179,17 @@ async def save_video_by_path(
     response.raise_for_status()
     content = response.content
     if len(content) < 200:
-        logger.error("视频文件过小，可能无效: {}", url)
+        # url 可能内嵌凭据（如 Telegram 文件 URL 的 bot token），日志需脱敏。
+        logger.error("视频文件过小，可能无效: {}", redact_url(url))
         return None
+    output = await asyncio.to_thread(_write_video, content, Path(path))
+    if output is None:
+        logger.error("下载的文件不是视频格式: {}", redact_url(url))
+    return output
 
+
+def _write_video(content: bytes, path: Path) -> Path | None:
+    """在 worker 线程中识别视频格式并落盘，避免阻塞事件循环。"""
     signatures = {
         b"\x00\x00\x00\x18ftypmp4": "mp4",
         b"\x1aE\xdf\xa3": "mkv",
@@ -167,11 +200,7 @@ async def save_video_by_path(
         b"moov": "mov",
     }
     video_format = next(
-        (
-            extension
-            for signature, extension in signatures.items()
-            if content.startswith(signature)
-        ),
+        (extension for signature, extension in signatures.items() if content.startswith(signature)),
         None,
     )
     if video_format is None and any(
@@ -179,7 +208,6 @@ async def save_video_by_path(
     ):
         video_format = "mp4"
     if video_format is None:
-        logger.error("下载的文件不是视频格式")
         return None
 
     output_path = Path(path).with_suffix(f".{video_format}")
@@ -198,22 +226,17 @@ def random_image_or_video_by_path(
     names = [
         file_path.name
         for file_path in path.iterdir()
-        if file_path.is_file()
-        and (keyword is None or keyword.lower() in file_path.name.lower())
+        if file_path.is_file() and (keyword is None or keyword.lower() in file_path.name.lower())
     ]
     if not names:
         return []
 
     selected_names = random.Random(seed).sample(names, k=min(len(names), num))
     media = [
-        UniMessage.video(path=path / name)
-        if video
-        else UniMessage.image(path=path / name)
+        UniMessage.video(path=path / name) if video else UniMessage.image(path=path / name)
         for name in selected_names
     ]
-    media.append(
-        "\n".join(f"{index}: {name}" for index, name in enumerate(selected_names, 1))
-    )
+    media.append("\n".join(f"{index}: {name}" for index, name in enumerate(selected_names, 1)))
     return media
 
 

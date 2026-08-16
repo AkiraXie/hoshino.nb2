@@ -1,10 +1,15 @@
 from pathlib import Path
-from playwright.async_api import async_playwright, Browser, Playwright, Page as Page
-from hoshino.core.schedule import scheduled_job
-from hoshino.core.hooks import on_startup
-import ssl
 
-ssl._create_default_https_context = ssl._create_unverified_context
+from playwright.async_api import Browser, Playwright, async_playwright
+from playwright.async_api import Page as Page
+
+from hoshino.core.hooks import on_startup
+from hoshino.core.schedule import scheduled_job
+
+# 注意：不要在这里全局替换 ssl._create_default_https_context —— 那会在进程级
+# 关闭 Python 侧 TLS 校验（曾用于放宽证书校验）。Playwright 页面走 Chromium
+# 自带的 BoringSSL，不受 Python ssl 模块影响；如个别目标页面证书异常，应在
+# 创建 browser context 时按需传 ignore_https_errors=True，而不是全局关闭校验。
 ## thansks to github.com/SK-415/HarukaBot
 ap: Playwright | None = None
 _b: Browser | None = None

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing_extensions import override
+from typing import override
 
 from nonebot.adapters.telegram.event import NoticeEvent
 from nonebot.adapters.telegram.model import MessageReactionUpdated

@@ -1,21 +1,42 @@
 """OneBot v11 containment — 全部 OneBot 符号的唯一入口"""
 
-from .types import (
-    Adapter as Adapter,
-    Bot as Bot,
-    Event as Event,
-    GroupMessageEvent as GroupMessageEvent,
-    MessageEvent as MessageEvent,
-    Message as Message,
-    MessageSegment as MessageSegment,
-    NoticeEvent as NoticeEvent,
-    PrivateMessageEvent as PrivateMessageEvent,
-    escape as escape,
-)
 from .events import (
     GroupMsgEmojiLikeEvent as GroupMsgEmojiLikeEvent,
+)
+from .events import (
     GroupReactionEvent as GroupReactionEvent,
 )
+from .types import (
+    Adapter as Adapter,
+)
+from .types import (
+    Bot as Bot,
+)
+from .types import (
+    Event as Event,
+)
+from .types import (
+    GroupMessageEvent as GroupMessageEvent,
+)
+from .types import (
+    Message as Message,
+)
+from .types import (
+    MessageEvent as MessageEvent,
+)
+from .types import (
+    MessageSegment as MessageSegment,
+)
+from .types import (
+    NoticeEvent as NoticeEvent,
+)
+from .types import (
+    PrivateMessageEvent as PrivateMessageEvent,
+)
+from .types import (
+    escape as escape,
+)
+
 __all__ = [
     "Adapter",
     "Bot",

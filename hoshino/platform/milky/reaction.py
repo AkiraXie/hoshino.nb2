@@ -45,13 +45,10 @@ async def get_reacted_message(
         forward_id = segment.data.get("forward_id")
         if not forward_id:
             continue
-        for forwarded_message in await bot.get_forwarded_messages(
-            forward_id=forward_id
-        ):
-            forwarded.append(
-                UniMessage.of(forwarded_message.message, adapter=Adapter.get_name())
-            )
-
+        forwarded.extend(
+            UniMessage.of(fm.message, adapter=Adapter.get_name())
+            for fm in await bot.get_forwarded_messages(forward_id=forward_id)
+        )
     sender_id = str(response.sender_id)
     return RetrievedMessage(
         sender_id=sender_id,

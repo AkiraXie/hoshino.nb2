@@ -1,13 +1,18 @@
 """Adapter-aware permissions backed by nonebot-plugin-uninfo."""
 
-from nonebot.permission import Permission, SUPERUSER
+from nonebot.permission import SUPERUSER, Permission
 from nonebot_plugin_uninfo import (
-    ADMIN as uninfo_admin,
+    ADMIN as uninfo_admin,  # noqa: N811  # 别名刻意避让本模块 ADMIN/OWNER 权限常量
+)
+from nonebot_plugin_uninfo import (
     GROUP as GROUP,
-    OWNER as uninfo_owner,
+)
+from nonebot_plugin_uninfo import (
+    OWNER as uninfo_owner,  # noqa: N811  # 别名刻意避让本模块 ADMIN/OWNER 权限常量
+)
+from nonebot_plugin_uninfo import (
     PRIVATE as PRIVATE,
 )
-
 
 GROUP_ADMIN: Permission = uninfo_admin()
 GROUP_OWNER: Permission = uninfo_owner()

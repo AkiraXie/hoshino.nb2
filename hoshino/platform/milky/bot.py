@@ -48,6 +48,4 @@ async def upload_group_file(
     name: str,
     file: str,
 ):
-    return await bot.upload_group_file(
-        group_id=int(group_id), path=file, file_name=name
-    )
+    return await bot.upload_group_file(group_id=int(group_id), path=file, file_name=name)

@@ -5,8 +5,14 @@ from nonebot.adapters.onebot.v11 import Bot as Bot
 from nonebot.adapters.onebot.v11 import Event as Event
 from nonebot.adapters.onebot.v11.event import (
     GroupMessageEvent as GroupMessageEvent,
+)
+from nonebot.adapters.onebot.v11.event import (
     MessageEvent as MessageEvent,
+)
+from nonebot.adapters.onebot.v11.event import (
     NoticeEvent as NoticeEvent,
+)
+from nonebot.adapters.onebot.v11.event import (
     PrivateMessageEvent as PrivateMessageEvent,
 )
 from nonebot.adapters.onebot.v11.message import Message as Message

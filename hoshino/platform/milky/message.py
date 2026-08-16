@@ -17,7 +17,7 @@ def message_from_parts(parts: Any) -> Message:
 
 
 def image_segment(file: Any) -> MessageSegment:
-    if isinstance(file, (str, Path)):
+    if isinstance(file, str | Path):
         if str(file).startswith(("http://", "https://")):
             return MessageSegment.image(str(file))
         return MessageSegment.image(path=file)
@@ -25,7 +25,7 @@ def image_segment(file: Any) -> MessageSegment:
 
 
 def video_segment(file: Any) -> MessageSegment:
-    if isinstance(file, (str, Path)):
+    if isinstance(file, str | Path):
         if str(file).startswith(("http://", "https://")):
             return MessageSegment.video(str(file))
         return MessageSegment.video(path=file)

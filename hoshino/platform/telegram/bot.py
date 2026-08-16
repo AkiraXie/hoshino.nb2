@@ -6,6 +6,10 @@ from typing import Any
 from urllib.parse import urljoin
 
 from hoshino.platform.telegram.types import Bot, Message, MessageSegment
+from hoshino.util.urls import redact_url
+
+# Telegram 文件 URL 内嵌 bot token；日志输出前用它脱敏（别名保留平台语义）。
+redact_media_url = redact_url
 
 
 async def get_media_download_headers(bot: Bot, url: str) -> dict[str, str]:

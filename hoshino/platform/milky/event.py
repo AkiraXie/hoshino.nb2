@@ -6,12 +6,11 @@ from typing import Any
 
 from nonebot.adapters import Event
 
-from hoshino.types import MessageId, MessageLike
-
 from hoshino.platform.milky.types import (
     GroupMessageEvent,
     MessageEvent,
 )
+from hoshino.types import MessageId, MessageLike
 
 
 def _data_value(event: Event, name: str, default: Any = None) -> Any:
@@ -131,9 +130,7 @@ def is_group_event(event: Event) -> bool:
 
 
 def is_private_event(event: Event) -> bool:
-    return bool(getattr(event, "is_private", False)) and not isinstance(
-        event, GroupMessageEvent
-    )
+    return bool(getattr(event, "is_private", False)) and not isinstance(event, GroupMessageEvent)
 
 
 async def _expand_forward_segments(bot, message) -> list[Any]:
@@ -164,8 +161,8 @@ async def get_forwarded_messages(bot, event: Event) -> list[MessageLike]:
 
 __all__ = [
     "get_event_message",
-    "get_forwarded_messages",
     "get_event_value",
+    "get_forwarded_messages",
     "get_group_id",
     "get_message_id",
     "get_plaintext",

@@ -7,9 +7,8 @@ from typing import Any
 from nonebot.adapters.onebot.v11 import Event
 from nonebot.compat import type_validate_python
 
-from hoshino.types import MessageId, MessageLike
-
 from hoshino.platform.ob11.types import Bot, Message
+from hoshino.types import MessageId, MessageLike
 
 
 def _forward_content(node: Any) -> Any:

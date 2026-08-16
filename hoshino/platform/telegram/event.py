@@ -6,9 +6,8 @@ from typing import Any
 
 from nonebot.adapters import Event
 
-from hoshino.types import MessageId, MessageLike
-
 from hoshino.platform.telegram.types import EditedMessageEvent, MessageEvent
+from hoshino.types import MessageId, MessageLike
 
 
 def get_event_value(event: Event, name: str, default: Any = None) -> Any:
@@ -94,9 +93,7 @@ def get_plaintext(event: Event, default: str = "") -> str:
     extract = getattr(message, "extract_plain_text", None)
     if callable(extract):
         return extract()
-    return str(
-        getattr(message, "text", None) or getattr(message, "caption", None) or message
-    )
+    return str(getattr(message, "text", None) or getattr(message, "caption", None) or message)
 
 
 def get_session_id(event: Event, default: str | None = None) -> str | None:
@@ -143,7 +140,7 @@ def get_reply_message_id(event: Event, default: Any = None) -> MessageId | None:
 
 
 def is_message_event(event: Event) -> bool:
-    return isinstance(event, (MessageEvent, EditedMessageEvent))
+    return isinstance(event, MessageEvent | EditedMessageEvent)
 
 
 def is_group_event(event: Event) -> bool:

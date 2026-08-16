@@ -71,7 +71,7 @@ def dump_target(target: Target) -> str:
 def _jsonable(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [_jsonable(item) for item in value]
     if isinstance(value, Enum):
         return value.value

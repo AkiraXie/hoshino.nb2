@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from asyncio import get_running_loop
 from collections.abc import Sequence
-from typing import Type
 
 import nonebot
 from nonebot.adapters import Bot, Event
@@ -41,9 +40,7 @@ async def _strip_cmd(bot: Bot, event: Event, state: T_State) -> None:
     message = get_event_message(event)
     segment = message.pop(0)
     segment_text = str(segment).lstrip()
-    new_message = message.__class__(
-        segment_text[len(state["_prefix"]["raw_command"]) :].lstrip()
-    )
+    new_message = message.__class__(segment_text[len(state["_prefix"]["raw_command"]) :].lstrip())
     for new_segment in reversed(new_message):
         message.insert(0, new_segment)
 
@@ -53,7 +50,7 @@ def sucmd(
     only_to_me: bool = True,
     aliases: set | None = None,
     **kwargs,
-) -> Type[Matcher]:
+) -> type[Matcher]:
     kwargs["aliases"] = aliases
     kwargs["permission"] = SUPERUSER
     kwargs["rule"] = to_me() if only_to_me else Rule()
@@ -79,7 +76,7 @@ def sumsg(
     only_to_me: bool = True,
     rule: Rule = Rule(),
     **kwargs,
-) -> Type[Matcher]:
+) -> type[Matcher]:
     kwargs["permission"] = SUPERUSER
     kwargs["rule"] = rule & to_me() if only_to_me else Rule(rule)
     kwargs.setdefault("block", True)

@@ -33,6 +33,19 @@ from hoshino.platform.telegram.types import Bot as TelegramBot
 from hoshino.platform.telegram.types import Message as TelegramMessage
 from hoshino.platform.telegram.types import MessageSegment as TelegramMessageSegment
 
+# 无法识别会话发起者时的占位用户 ID（OB11 匿名/系统账号）。
+UNKNOWN_USER_ID = 80000000
+# 占位用户 ID 对应的引用头。
+UNKNOWN_USER_HEADER = ">???\n"
+
+
+def call_header_from_names(names: Sequence[str | None]) -> str:
+    """取第一个非空显示名生成引用头（``>名称\\n``）；全部为空返回空串。"""
+    for name in names:
+        if name:
+            return f">{name}\n"
+    return ""
+
 
 async def to_unimessage(
     message: MessageLike,
@@ -82,8 +95,8 @@ async def to_unimessage(
 async def _call_header(bot: Bot, event: Event) -> str:
     if get_group_id(event) is None or (user_id := get_user_id(event)) is None:
         return ""
-    if user_id == 80000000:
-        return ">???\n"
+    if user_id == UNKNOWN_USER_ID:
+        return UNKNOWN_USER_HEADER
     try:
         session = await get_session(bot, event)
     except Exception as error:
@@ -91,14 +104,13 @@ async def _call_header(bot: Bot, event: Event) -> str:
         return ""
     if session is None:
         return ""
-    for value in (
-        session.member.nick if session.member else None,
-        session.user.nick,
-        session.user.name,
-    ):
-        if value:
-            return f">{value}\n"
-    return ""
+    return call_header_from_names(
+        (
+            session.member.nick if session.member else None,
+            session.user.nick,
+            session.user.name,
+        )
+    )
 
 
 async def send_to_event(
@@ -141,7 +153,7 @@ def _forward_items(messages: Sequence[Any]) -> list[Any]:
         return list(messages)
     if isinstance(
         messages,
-        (str, UniMessage, AdapterMessage, AdapterMessageSegment),
+        str | UniMessage | AdapterMessage | AdapterMessageSegment,
     ):
         return [messages]
     return list(messages)

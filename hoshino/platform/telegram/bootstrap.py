@@ -9,7 +9,6 @@ from nonebot.adapters.telegram.model import Update
 
 from hoshino.platform.telegram.events import MessageReactionEvent
 
-
 _ALLOWED_UPDATES = [
     "message",
     "edited_message",
@@ -35,7 +34,10 @@ def apply_patches() -> None:
     if getattr(Event, "_hoshino_reaction_patch", False):
         return
 
-    original_parse = getattr(Event, "_Event__parse_event").__func__
+    # 直接访问适配器私有类方法 ``_Event__parse_event``（name-mangled），依赖
+    # nonebot-adapter-telegram 内部实现；适配器固定 0.1.0b20，升级前必须重新验证。
+
+    original_parse = Event._Event__parse_event.__func__  # noqa: SLF001  # 固定版本兼容补丁，见上方注释
 
     def parse_event(cls: type[Event], payload: dict[str, Any]) -> Event:
         if "message_reaction" in payload:
@@ -44,19 +46,16 @@ def apply_patches() -> None:
             return event
         return original_parse(cls, payload)
 
-    Event._Event__parse_event = classmethod(parse_event)
+    Event._Event__parse_event = classmethod(parse_event)  # noqa: SLF001
     original_call_api = Bot.call_api
 
     async def call_api(self: Bot, api: str, *args: Any, **kwargs: Any) -> Any:
-        if (
-            api in {"get_updates", "set_webhook"}
-            and kwargs.get("allowed_updates") is None
-        ):
+        if api in {"get_updates", "set_webhook"} and kwargs.get("allowed_updates") is None:
             kwargs["allowed_updates"] = list(_ALLOWED_UPDATES)
         return await original_call_api(self, api, *args, **kwargs)
 
     Bot.call_api = call_api
-    Event._hoshino_reaction_patch = True
+    Event._hoshino_reaction_patch = True  # noqa: SLF001  # 本补丁自定义的 monkey-patch 标记属性
 
 
 __all__ = ["apply_patches"]

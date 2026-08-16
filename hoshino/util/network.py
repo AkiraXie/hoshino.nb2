@@ -14,7 +14,7 @@ async def get_redirect(
         url,
         follow_redirects=False,
         headers=headers or {},
-        verify=False,
+        verify=True,
     )
     return response.headers.get("Location") or url
 

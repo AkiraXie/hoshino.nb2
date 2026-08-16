@@ -30,12 +30,12 @@ class RetrievedMessage:
     """A platform-neutral view of a message referenced by a reaction."""
 
     sender_id: str
-    content: "UniMessage"
-    forwarded: tuple["UniMessage", ...] = field(default_factory=tuple)
+    content: UniMessage
+    forwarded: tuple[UniMessage, ...] = field(default_factory=tuple)
     trusted_sender: bool = False
 
     @property
-    def messages(self) -> tuple["UniMessage", ...]:
+    def messages(self) -> tuple[UniMessage, ...]:
         """Return the original message followed by expanded forward nodes."""
 
         return (self.content, *self.forwarded)

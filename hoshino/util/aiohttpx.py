@@ -1,13 +1,17 @@
 import asyncio
-from typing import Any
-from httpx import AsyncClient
-import httpx
-from httpx import URL
-from loguru import logger
 import os
-import simplejson
-from hoshino.core.hooks import on_startup, on_shutdown
 import ssl
+from collections.abc import Mapping
+from typing import Any
+
+import httpx
+import simplejson
+from httpx import URL, AsyncClient
+from loguru import logger
+
+from hoshino.core.hooks import on_shutdown, on_startup
+
+from .urls import redact_url
 
 _timeout = 5.0
 _client = None
@@ -15,6 +19,18 @@ _client_unverified = None
 _client_lock = asyncio.Lock()
 _pool_size = max(1, (os.cpu_count() or 4) // 2)
 _req_semaphore: asyncio.Semaphore | None = None
+
+
+def _response_status(error: Exception) -> int | None:
+    """从异常中提取 HTTP 状态码（若已收到响应）；请求未发出时为 None。"""
+    response = getattr(error, "response", None)
+    return getattr(response, "status_code", None)
+
+
+def _header_keys(kwargs: dict[str, Any]) -> list[str]:
+    """失败日志只输出 header 键名列表，不输出 header 值（可能含凭据）。"""
+    headers = kwargs.get("headers", {})
+    return sorted(headers) if isinstance(headers, Mapping) else []
 
 
 @on_startup
@@ -26,7 +42,8 @@ async def init_httpx_client():
         verify=True,
     )
 
-    unverified_context = ssl._create_unverified_context()
+    # verify=False 客户端刻意提供 unverified context（内部接口信任场景）。
+    unverified_context = ssl._create_unverified_context()  # noqa: S323, SLF001
     unverified_context.check_hostname = False
     unverified_context.verify_mode = ssl.CERT_NONE
 
@@ -58,9 +75,7 @@ async def get_client(verify_ssl: bool = True):
 
     if target_client is None:
         async with _client_lock:
-            if (verify_ssl and _client is None) or (
-                not verify_ssl and _client_unverified is None
-            ):
+            if (verify_ssl and _client is None) or (not verify_ssl and _client_unverified is None):
                 await init_httpx_client()
 
     if _req_semaphore is None:
@@ -111,17 +126,19 @@ class Response(BaseResponse):
 
 
 async def get(
-    url: str, cookies: dict = {}, timeout: float = 5.0, verify: bool = True, **kwargs
+    url: str, cookies: dict | None = None, timeout: float = 5.0, verify: bool = True, **kwargs
 ) -> Response:
+    if cookies is None:
+        cookies = {}
     try:
         client = await get_client(verify_ssl=verify)
         if not client:
-            raise RuntimeError("HTTPX client is not initialized.")
+            raise RuntimeError("HTTPX client is not initialized.")  # noqa: TRY301  # 自身校验：未初始化属调用方错误，仍走统一日志后抛出
         if timeout is not None:
             kwargs["timeout"] = timeout
         async with _req_semaphore:
             resp = await client.get(url, cookies=cookies, **kwargs)
-        res = Response(
+        return Response(
             resp.url,
             resp.content,
             resp.status_code,
@@ -130,26 +147,31 @@ async def get(
             text=resp.text,
             cookies=resp.cookies,
         )
-        return res
-    except Exception as e:
-        logger.error(
-            f"GET request failed - URL: {url}, params: {kwargs}, cookies: {cookies},error: {e}"
+    except Exception as error:
+        logger.exception(
+            "GET request failed - url: {}, status: {}, header keys: {}, error: {}",
+            redact_url(url),
+            _response_status(error),
+            _header_keys(kwargs),
+            type(error).__name__,
         )
         raise
 
 
 async def post(
-    url: str, cookies: dict = {}, timeout: float = 5.0, verify: bool = True, **kwargs
+    url: str, cookies: dict | None = None, timeout: float = 5.0, verify: bool = True, **kwargs
 ) -> Response:
+    if cookies is None:
+        cookies = {}
     try:
         client = await get_client(verify_ssl=verify)
         if not client:
-            raise RuntimeError("HTTPX client is not initialized.")
+            raise RuntimeError("HTTPX client is not initialized.")  # noqa: TRY301  # 自身校验：未初始化属调用方错误，仍走统一日志后抛出
         if timeout is not None:
             kwargs["timeout"] = timeout
         async with _req_semaphore:
             resp = await client.post(url, cookies=cookies, **kwargs)
-        res = Response(
+        return Response(
             resp.url,
             resp.content,
             resp.status_code,
@@ -158,27 +180,33 @@ async def post(
             text=resp.text,
             cookies=resp.cookies,
         )
-        return res
-    except Exception as e:
-        logger.error(
-            f"POST request failed - URL: {url}, params: {kwargs}, cookies: {cookies}, error: {e}"
+    except Exception as error:
+        logger.exception(
+            "POST request failed - url: {}, status: {}, header keys: {}, error: {}",
+            redact_url(url),
+            _response_status(error),
+            _header_keys(kwargs),
+            type(error).__name__,
         )
         raise
 
 
-async def head(
-    url: str, timeout: float = 5.0, verify: bool = True, **kwargs
-) -> BaseResponse:
+async def head(url: str, timeout: float = 5.0, verify: bool = True, **kwargs) -> BaseResponse:
     try:
         client = await get_client(verify_ssl=verify)
         if not client:
-            raise RuntimeError("HTTPX client is not initialized.")
+            raise RuntimeError("HTTPX client is not initialized.")  # noqa: TRY301  # 自身校验：未初始化属调用方错误，仍走统一日志后抛出
         if timeout is not None:
             kwargs["timeout"] = timeout
         async with _req_semaphore:
             resp = await client.head(url, **kwargs)
-        res = BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
-        return res
-    except Exception as e:
-        logger.error(f"HEAD request failed - URL: {url}, params: {kwargs},  error: {e}")
+        return BaseResponse(resp.url, resp.status_code, resp.headers, _resp=resp)
+    except Exception as error:
+        logger.exception(
+            "HEAD request failed - url: {}, status: {}, header keys: {}, error: {}",
+            redact_url(url),
+            _response_status(error),
+            _header_keys(kwargs),
+            type(error).__name__,
+        )
         raise
