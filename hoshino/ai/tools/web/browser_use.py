@@ -34,9 +34,12 @@ async def browse_page_description(
     record,
     vision_model: str,
     prompt: str = "这是网页截图，请描述页面主要内容与关键文字。",
+    fetch_proxy: str | None = None,
 ) -> str:
     """Playwright 打开网页 → 截图 → vision 描述（供 browser_use 工具与 zssm 复用）。
 
+    ``proxy``：vision 请求（LLM API）代理；``fetch_proxy``：页面抓取代理
+    （``AI_TOOL_USE_PROXY`` 开启时由调用方传入，默认直连）。
     校验协议/SSRF → 截图 → vision.describe_images。失败返回错误提示字符串。
     """
     parsed = urlparse(url)
@@ -45,7 +48,7 @@ async def browse_page_description(
     if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
-    png = await _screenshot(url)
+    png = await _screenshot(url, proxy=fetch_proxy)
     if isinstance(png, str):
         return png  # 错误提示
     content = [BinaryContent(data=png, media_type="image/png")]
@@ -86,14 +89,21 @@ async def browser_use(
     return await browse_page_description(
         url,
         proxy=provider.resolve_effective_proxy(record, ctx.deps.config.proxy),
+        fetch_proxy=provider.resolve_tool_proxy(
+            ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
+        ),
         record=record,
         vision_model=vision_model,
         prompt=prompt,
     )
 
 
-async def _screenshot(url: str) -> bytes | str:
-    """Playwright 打开页面并返回 PNG 字节；失败返回错误提示字符串。"""
+async def _screenshot(url: str, *, proxy: str | None) -> bytes | str:
+    """Playwright 打开页面并返回 PNG 字节；失败返回错误提示字符串。
+
+    ``proxy``：页面抓取代理（可选）。Chromium 上下文级代理仅在显式传入时生效，
+    默认直连（Playwright 不读取系统代理）。
+    """
     from hoshino.util import playwrights
 
     try:
@@ -101,10 +111,17 @@ async def _screenshot(url: str) -> bytes | str:
     except Exception as exc:
         return f"浏览器不可用（{type(exc).__name__}）。"
 
-    page = None
+    context = None
     try:
+        context = await asyncio.wait_for(
+            browser.new_context(
+                viewport=_VIEWPORT,
+                proxy={"server": proxy} if proxy else None,
+            ),
+            timeout=_BROWSER_TIMEOUT_SECONDS,
+        )
         page = await asyncio.wait_for(
-            browser.new_page(viewport=_VIEWPORT),
+            context.new_page(),
             timeout=_BROWSER_TIMEOUT_SECONDS,
         )
         await asyncio.wait_for(
@@ -120,10 +137,10 @@ async def _screenshot(url: str) -> bytes | str:
     except Exception as exc:
         return f"网页访问失败（{type(exc).__name__}）。"
     finally:
-        if page is not None:
-            # 关闭失败交由浏览器进程清理，不影响截图结果返回。
+        if context is not None:
+            # 关闭 context 会连带关闭页面；失败交由浏览器进程清理，不影响截图结果。
             with contextlib.suppress(Exception):
-                await page.close()
+                await context.close()
 
     if not png:
         return "网页截图为空。"

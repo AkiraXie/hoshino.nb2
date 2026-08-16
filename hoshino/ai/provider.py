@@ -101,6 +101,18 @@ def resolve_effective_proxy(record: ProviderRecord, config_proxy: str | None) ->
     return config_proxy
 
 
+def resolve_tool_proxy(config_proxy: str | None, *, tool_use_proxy: bool) -> str | None:
+    """web/browser 等抓取类工具实际使用的代理。
+
+    ``tool_use_proxy=True`` 时优先走全局 ``OUTSIDE_PROXY``（未配置回退 AI 配置
+    代理），并归一化 ``socks://`` 为 httpx/Playwright 可解析的 ``socks5://``；
+    默认（False）返回 ``None`` 直连，与既有解析类请求直连策略一致。
+    """
+    if not tool_use_proxy:
+        return None
+    return _normalize_proxy(get_outside_proxy() or config_proxy)
+
+
 # ------------------------------------------------------------ 可用模型（实时）
 
 # 本地不再维护 model-list（ai_provider_models 表仅作历史迁移用途）：可用模型

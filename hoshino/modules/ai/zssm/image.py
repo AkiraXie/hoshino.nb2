@@ -71,6 +71,9 @@ async def _describe_one(
             url,
             verify_ssl=config.web_fetch_verify_ssl,
             proxy=provider.resolve_effective_proxy(record, config.proxy),
+            fetch_proxy=provider.resolve_tool_proxy(
+                config.proxy, tool_use_proxy=config.tool_use_proxy
+            ),
             record=record,
             vision_model=vision_model,
         )

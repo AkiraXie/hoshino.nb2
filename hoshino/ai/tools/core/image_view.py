@@ -65,9 +65,12 @@ async def describe_image_url(
     proxy: str | None,
     record,
     vision_model: str,
+    fetch_proxy: str | None = None,
 ) -> str:
     """抓取图片 URL 并用 vision 模型描述（供 image_view 工具与 zssm 复用）。
 
+    ``proxy``：vision 请求（LLM API）代理；``fetch_proxy``：图片抓取代理
+    （``AI_TOOL_USE_PROXY`` 开启时由调用方传入，默认直连）。
     校验协议/SSRF → httpx 抓取（trust_env=False）→ 超限压缩 → vision 描述。
     失败返回错误提示字符串（供直接展示），成功返回描述文本。
     """
@@ -80,6 +83,7 @@ async def describe_image_url(
     async with httpx.AsyncClient(
         trust_env=False,
         verify=verify_ssl,
+        proxy=fetch_proxy,
         timeout=httpx.Timeout(30.0),
         follow_redirects=True,
     ) as client:
@@ -133,6 +137,9 @@ async def image_view(ctx: RunContext[AgentDeps], url: str):
         url,
         verify_ssl=ctx.deps.config.web_fetch_verify_ssl,
         proxy=provider.resolve_effective_proxy(record, ctx.deps.config.proxy),
+        fetch_proxy=provider.resolve_tool_proxy(
+            ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
+        ),
         record=record,
         vision_model=vision_model,
     )

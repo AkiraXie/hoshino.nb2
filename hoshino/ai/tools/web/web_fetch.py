@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic_ai import RunContext
 
+from ... import provider
 from ...deps import AgentDeps
 from .net import is_private_host
 
@@ -34,11 +35,13 @@ async def fetch_url_to_markdown(
     *,
     verify_ssl: bool = True,
     max_chars: int = _MAX_CHARS,
+    proxy: str | None = None,
 ) -> str:
     """抓取网页正文转 markdown（供 web_fetch 工具与 zssm 插件复用）。
 
     ``verify_ssl``：HTTPS 证书校验开关（默认校验）；SSRF 防护（拒绝私有/回环/
-    保留地址）内建于本函数。
+    保留地址）内建于本函数。``proxy``：抓取请求代理（``AI_TOOL_USE_PROXY``
+    开启时由调用方传入；``trust_env=False`` 仍忽略环境变量代理）。
     """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
@@ -50,6 +53,7 @@ async def fetch_url_to_markdown(
     async with httpx.AsyncClient(
         trust_env=False,
         verify=verify_ssl,
+        proxy=proxy,
         timeout=httpx.Timeout(30.0),
         follow_redirects=True,
     ) as client:
@@ -79,7 +83,13 @@ async def web_fetch(ctx: RunContext[AgentDeps], url: str) -> str:
     仅当你已经知道某个具体网址、需要它的全文时才用；只是想了解信息请优先用
     duckduckgo_search。禁止访问私有/内网地址。
     """
-    return await fetch_url_to_markdown(url, verify_ssl=ctx.deps.config.web_fetch_verify_ssl)
+    return await fetch_url_to_markdown(
+        url,
+        verify_ssl=ctx.deps.config.web_fetch_verify_ssl,
+        proxy=provider.resolve_tool_proxy(
+            ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
+        ),
+    )
 
 
 # markdownify 缺失时置 None：注册表据此跳过注入（与其它可选依赖工具一致）。

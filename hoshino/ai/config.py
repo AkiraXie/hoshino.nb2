@@ -37,6 +37,10 @@ class AIConfig:
     # ``ALL_PROXY=socks://...`` 环境变量导致 httpx 崩溃。支持 http(s):// 与
     # socks://（后者归一化为 socks5://）。
     proxy: str | None = None
+    # 工具抓取请求（web_fetch/browser_use/image_view/web_search）是否走代理：
+    # 默认 False 直连（既有解析类请求直连策略）；置 True 后与 LLM 请求一致，
+    # 优先全局 OUTSIDE_PROXY、未配置回退本配置 proxy。
+    tool_use_proxy: bool = False
     # Task 默认审批模式：auto（high-risk 工具 deferred approval）/
     # always（全部工具先审批）/ never（不审批）。创建 Task 时冻结进 capability snapshot。
     task_approval_mode: str = "auto"

@@ -50,7 +50,10 @@ async def load_url(
 
     kind：``web``（网页正文 markdown）或 ``browser``（网页截图 vision 描述）。
     """
-    content = await fetch_url_to_markdown(url, verify_ssl=config.web_fetch_verify_ssl)
+    tool_proxy = provider.resolve_tool_proxy(config.proxy, tool_use_proxy=config.tool_use_proxy)
+    content = await fetch_url_to_markdown(
+        url, verify_ssl=config.web_fetch_verify_ssl, proxy=tool_proxy
+    )
     if not _fetch_failed(content):
         return {"url": url, "kind": "web", "content": content}
     if not vision_model:
@@ -58,6 +61,7 @@ async def load_url(
     description = await browse_page_description(
         url,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
+        fetch_proxy=tool_proxy,
         record=record,
         vision_model=vision_model,
     )
