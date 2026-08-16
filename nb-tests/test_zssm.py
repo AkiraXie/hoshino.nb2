@@ -223,7 +223,7 @@ async def test_zssm_fetches_links(monkeypatch, tmp_store):
 
     fake, sent = _stub_env(monkeypatch, tmp_store)
 
-    async def fake_fetch(url, *, verify_ssl=False):
+    async def fake_fetch(url, *, verify_ssl=False, proxy=None):
         return f"[{url} 的正文]"
 
     monkeypatch.setattr(zssm.link, "fetch_url_to_markdown", fake_fetch)
@@ -245,12 +245,14 @@ async def test_zssm_link_web_fail_falls_back_to_browser(monkeypatch, tmp_store):
 
     fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=True)
 
-    async def fail_fetch(url, *, verify_ssl=False):
+    async def fail_fetch(url, *, verify_ssl=False, proxy=None):
         return "抓取失败（ConnectError）。"
 
     monkeypatch.setattr(zssm.link, "fetch_url_to_markdown", fail_fetch)
 
-    async def fake_browse(url, *, proxy=None, record=None, vision_model="", prompt=""):
+    async def fake_browse(
+        url, *, proxy=None, fetch_proxy=None, record=None, vision_model="", prompt=""
+    ):
         return "页面渲染后的内容描述"
 
     monkeypatch.setattr(zssm.link, "browse_page_description", fake_browse)
@@ -271,12 +273,14 @@ async def test_zssm_link_both_fail_report_error(monkeypatch, tmp_store):
 
     fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=True)
 
-    async def fail_fetch(url, *, verify_ssl=False):
+    async def fail_fetch(url, *, verify_ssl=False, proxy=None):
         return "抓取失败（ConnectError）。"
 
     monkeypatch.setattr(zssm.link, "fetch_url_to_markdown", fail_fetch)
 
-    async def fail_browse(url, *, proxy=None, record=None, vision_model="", prompt=""):
+    async def fail_browse(
+        url, *, proxy=None, fetch_proxy=None, record=None, vision_model="", prompt=""
+    ):
         return "网页加载超时。"
 
     monkeypatch.setattr(zssm.link, "browse_page_description", fail_browse)
@@ -303,7 +307,9 @@ async def test_zssm_image_with_vision_describes(monkeypatch, tmp_store):
 
     monkeypatch.setattr(zssm.image, "event_images", fake_images)
 
-    async def fake_describe_url(url, *, verify_ssl=False, proxy=None, record=None, vision_model=""):
+    async def fake_describe_url(
+        url, *, verify_ssl=False, proxy=None, fetch_proxy=None, record=None, vision_model=""
+    ):
         return "图片里有一张显卡"
 
     monkeypatch.setattr(zssm.image, "describe_image_url", fake_describe_url)

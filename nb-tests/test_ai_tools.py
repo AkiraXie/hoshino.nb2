@@ -25,12 +25,13 @@ def _deps(
     bot=None,
     task=None,
     permissions: PermissionSnapshot | None = None,
+    config: AIConfig | None = None,
 ) -> AgentDeps:
     return AgentDeps(
         surface=surface,  # type: ignore[arg-type]
         scope_key=scope_key,
         target=Target(id="123"),
-        config=AIConfig(),
+        config=config if config is not None else AIConfig(),
         permissions=permissions
         or PermissionSnapshot(user_id="u1", is_superuser=False, is_admin=True),
         bot=bot,
@@ -389,6 +390,54 @@ async def test_web_fetch_blocks_private_and_non_http():
     assert "仅支持" in await web_fetch_mod.tool(ctx, "file:///etc/passwd")
 
 
+async def test_web_fetch_uses_proxy_when_enabled(monkeypatch):
+    """tool_use_proxy 开启时 web_fetch 把代理传给 httpx；默认直连。"""
+    from dataclasses import replace
+
+    from hoshino.ai.tools.web import web_fetch as web_fetch_mod
+
+    if web_fetch_mod.tool is None:
+        pytest.skip("markdownify 未安装")
+
+    captured: list[dict] = []
+
+    class _FakeResponse:
+        def __init__(self):
+            self.headers = {"content-type": "text/html"}
+            self.text = "<html><body>Hello</body></html>"
+
+        def raise_for_status(self):
+            return None
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, headers=None):
+            return _FakeResponse()
+
+    monkeypatch.setattr(web_fetch_mod.httpx, "AsyncClient", _FakeClient)
+
+    # 默认（tool_use_proxy=False）：trust_env=False 直连，proxy 为空
+    captured.clear()
+    out = await web_fetch_mod.tool(_ctx(_deps()), "https://example.com/page")
+    assert out == "Hello"
+    assert captured[0]["proxy"] is None
+
+    # 开启后：抓取请求走 AI 配置代理
+    captured.clear()
+    deps = _deps(config=replace(AIConfig(), tool_use_proxy=True, proxy="http://127.0.0.1:7890"))
+    out = await web_fetch_mod.tool(_ctx(deps), "https://example.com/page")
+    assert out == "Hello"
+    assert captured[0]["proxy"] == "http://127.0.0.1:7890"
+
+
 def test_web_search_prefers_search_over_fetch():
     """web_search 保持原始名，但描述引导优先搜索、少抓全文。"""
     from hoshino.ai.tools.web import web_search as web_search_mod
@@ -613,9 +662,16 @@ async def test_browser_use_delegates_to_vision_model(tmp_store, monkeypatch):
         async def close(self):
             pass
 
-    class _FakeBrowser:
-        async def new_page(self, viewport=None):
+    class _FakeContext:
+        async def new_page(self):
             return _FakePage()
+
+        async def close(self):
+            pass
+
+    class _FakeBrowser:
+        async def new_context(self, viewport=None, proxy=None):
+            return _FakeContext()
 
     calls: list = []
 
@@ -636,3 +692,68 @@ async def test_browser_use_delegates_to_vision_model(tmp_store, monkeypatch):
     assert calls[0][0] == "openai"
     assert calls[0][1] == "gpt-4o"
     assert calls[0][2][0].data == b"\x89PNG shot"
+
+
+async def test_browser_use_page_fetch_proxy(tmp_store, monkeypatch):
+    """tool_use_proxy 开启时给 Chromium 上下文传页面抓取代理；关闭时直连。"""
+    from dataclasses import replace
+
+    from hoshino.ai.tools.web import browser_use as bu
+
+    _seed_provider_pair(tmp_store)
+
+    class _FakePage:
+        async def goto(self, url, **kwargs):
+            pass
+
+        async def screenshot(self, **kwargs):
+            return b"\x89PNG shot"
+
+    class _FakeContext:
+        async def new_page(self):
+            return _FakePage()
+
+        async def close(self):
+            pass
+
+    class _FakeBrowser:
+        def __init__(self):
+            self.context_proxies: list = []
+
+        async def new_context(self, viewport=None, proxy=None):
+            self.context_proxies.append(proxy)
+            return _FakeContext()
+
+    import hoshino.util.playwrights as pw  # browser_use 函数内导入，patch 模块对象
+
+    async def fake_get_b():
+        return _FakeBrowser()
+
+    async def fake_describe(record, vision_model, content, *, proxy=None, prompt=None):
+        return "页面显示：Hello"
+
+    monkeypatch.setattr(bu.vision, "describe_images", fake_describe)
+    monkeypatch.setattr(pw, "get_b", fake_get_b)
+
+    # 默认（tool_use_proxy=False）：直连，不传代理
+    direct_browser = _FakeBrowser()
+
+    async def fake_get_direct():
+        return direct_browser
+
+    monkeypatch.setattr(pw, "get_b", fake_get_direct)
+    out = await bu.browser_use(_ctx(_deps()), "https://example.com/page")
+    assert out == "页面显示：Hello"
+    assert direct_browser.context_proxies == [None]
+
+    # 开启后：页面抓取走 AI 配置代理（与 vision 请求代理一致）
+    proxy_browser = _FakeBrowser()
+
+    async def fake_get_proxy():
+        return proxy_browser
+
+    monkeypatch.setattr(pw, "get_b", fake_get_proxy)
+    deps = _deps(config=replace(AIConfig(), tool_use_proxy=True, proxy="http://127.0.0.1:7890"))
+    out = await bu.browser_use(_ctx(deps), "https://example.com/page")
+    assert out == "页面显示：Hello"
+    assert proxy_browser.context_proxies == [{"server": "http://127.0.0.1:7890"}]

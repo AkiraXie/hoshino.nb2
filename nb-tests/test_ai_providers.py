@@ -175,13 +175,14 @@ def test_scope_model_override_set_and_clear(tmp_store):
 
 def test_ai_config_from_env_file_and_vars(tmp_path):
     """AI_* env（文件 + 环境变量）→ AIConfig：默认 provider、代理、数值/布尔强转。"""
-    from hoshino.ai.config import load_ai_config_from_env
+    from hoshino.ai.config import AIConfig, load_ai_config_from_env
 
     env_file = tmp_path / ".env.prod"
     env_file.write_text(
         "# AI 配置\n"
         "AI_DEFAULT_PROVIDER=opencode-go\n"
         "AI_PROXY=http://127.0.0.1:7890\n"
+        "AI_TOOL_USE_PROXY=true\n"
         "AI_MAX_HISTORY_MESSAGES=40\n"
         "AI_WEB_SEARCH_NATIVE=false\n"
         "OTHER=ignored\n",
@@ -190,11 +191,13 @@ def test_ai_config_from_env_file_and_vars(tmp_path):
     cfg = load_ai_config_from_env(env={"AI_TOOL_MAX_RETRIES": "5"}, env_file=str(env_file))
     assert cfg.default == "opencode-go"
     assert cfg.proxy == "http://127.0.0.1:7890"
+    assert cfg.tool_use_proxy is True  # 工具代理开关（默认 False，显式开启）
     assert cfg.max_history_messages == 40
     assert cfg.web_search_native is False  # 布尔强转
     assert cfg.tool_max_retries == 5  # 环境变量覆盖文件
     # 未配置字段用代码默认
     assert cfg.render_theme == "light"
+    assert AIConfig().tool_use_proxy is False  # 代码默认直连
     # env 显式置空会覆盖文件值 → 字段视为未设置，落代码默认
     cfg2 = load_ai_config_from_env(env={"AI_DEFAULT_PROVIDER": ""}, env_file=str(env_file))
     assert cfg2.default == ""
@@ -269,3 +272,24 @@ def test_resolve_effective_proxy_priority(monkeypatch):
     monkeypatch.setenv("OUTSIDE_PROXY", "")
     assert resolve_effective_proxy(record, "http://ai-proxy") == "http://ai-proxy"
     assert resolve_effective_proxy(record, None) is None
+
+
+def test_resolve_tool_proxy_gate(monkeypatch):
+    """工具代理开关：False 直连；True 优先 OUTSIDE_PROXY、回退 AI 配置、socks 归一化。"""
+    from hoshino.ai.provider import resolve_tool_proxy
+
+    # 默认关闭：一律直连（即使配置了代理）
+    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=False) is None
+    monkeypatch.setenv("OUTSIDE_PROXY", "http://127.0.0.1:7890")
+    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=False) is None
+
+    # 开启：OUTSIDE_PROXY 优先，未配置回退 AI 配置代理
+    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=True) == "http://127.0.0.1:7890"
+    monkeypatch.setenv("OUTSIDE_PROXY", "")
+    assert resolve_tool_proxy("http://ai-proxy", tool_use_proxy=True) == "http://ai-proxy"
+    assert resolve_tool_proxy(None, tool_use_proxy=True) is None
+    # socks:// 归一化为 httpx/Playwright 可解析的 socks5://
+    assert (
+        resolve_tool_proxy("socks://127.0.0.1:7890", tool_use_proxy=True)
+        == "socks5://127.0.0.1:7890"
+    )
