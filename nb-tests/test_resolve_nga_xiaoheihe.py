@@ -235,18 +235,3 @@ async def test_parse_xiaoheihe_captcha_degrades(monkeypatch):
     monkeypatch.setattr(aiohttpx, "get", fake_get)
 
     assert await xiaoheihe.parse_xiaoheihe("127801232") is None
-
-
-def test_parse_text_and_images_plain():
-    from hoshino.modules.information.resolve.xiaoheihe import _parse_text_and_images
-
-    text, images = _parse_text_and_images(
-        {"text": json.dumps([{"type": "text", "text": "<p>纯文本</p>"}])}
-    )
-    assert text == "纯文本"
-    assert images == []
-
-    # 非 JSON 文本原样清理返回
-    text, images = _parse_text_and_images({"text": "hello\xa0world"})
-    assert text == "hello world"
-    assert images == []

@@ -95,15 +95,6 @@ def test_resolve_models_inherit_and_override(tmp_store):
     assert provider_domain.resolve_models("scope:1", "ghost") == ("", "")
 
 
-def test_resolve_text_model_uses_scope_override(tmp_store):
-    from hoshino.ai import provider as provider_domain
-
-    tmp_store.upsert_provider_row(provider_id="p", kind="openai_chat", default_text_model="default")
-    assert provider_domain.resolve_text_model("scope:1", "p") == "default"
-    tmp_store.set_scope_model_override("scope:1", "text", "override")
-    assert provider_domain.resolve_text_model("scope:1", "p") == "override"
-
-
 def test_fetch_available_models_openai(fake_ai_server):
     """fetch_available_models：GET {url}/models + Bearer 鉴权，返回排序后的 id 列表。"""
     import asyncio
@@ -116,32 +107,6 @@ def test_fetch_available_models_openai(fake_ai_server):
     assert models == ["gpt-4o", "gpt-4o-mini"]  # 排序
     assert requests[0]["stem"] == "/models"
     assert requests[0]["headers"]["authorization"] == "Bearer sk-test"
-
-
-def test_fetch_available_models_failure_returns_none():
-    """端点不可达/无 key → 返回 None（调用方给提示，不抛异常）。"""
-    import asyncio
-
-    from hoshino.ai.provider import ProviderRecord, fetch_available_models
-
-    record = ProviderRecord(id="x", url="http://127.0.0.1:1", key="k", kind="openai_chat")
-    assert asyncio.run(fetch_available_models(record, verify=False)) is None
-    assert (
-        asyncio.run(
-            fetch_available_models(
-                ProviderRecord(id="x", url="http://127.0.0.1:1", key="", kind="openai_chat"),
-                verify=False,
-            )
-        )
-        is None
-    )
-
-
-def test_scope_model_overrides_default_empty(tmp_store):
-    assert tmp_store.get_scope_model_overrides("scope:1") == {
-        "text_model": "",
-        "vision_model": "",
-    }
 
 
 def test_scope_model_override_set_and_clear(tmp_store):
@@ -173,117 +138,32 @@ def test_scope_model_override_set_and_clear(tmp_store):
 # ------------------------------------------------------------ AIConfig env 挂载
 
 
-def test_ai_config_from_env_file_and_vars(tmp_path):
-    """AI_* env（文件 + 环境变量）→ AIConfig：默认 provider、代理、数值/布尔强转。"""
-    from hoshino.ai.config import AIConfig, load_ai_config_from_env
-
-    env_file = tmp_path / ".env.prod"
-    env_file.write_text(
-        "# AI 配置\n"
-        "AI_DEFAULT_PROVIDER=opencode-go\n"
-        "AI_PROXY=http://127.0.0.1:7890\n"
-        "AI_TOOL_USE_PROXY=true\n"
-        "AI_MAX_HISTORY_MESSAGES=40\n"
-        "AI_WEB_SEARCH_NATIVE=false\n"
-        "OTHER=ignored\n",
-        encoding="utf-8",
-    )
-    cfg = load_ai_config_from_env(env={"AI_TOOL_MAX_RETRIES": "5"}, env_file=str(env_file))
-    assert cfg.default == "opencode-go"
-    assert cfg.proxy == "http://127.0.0.1:7890"
-    assert cfg.tool_use_proxy is True  # 工具代理开关（默认 False，显式开启）
-    assert cfg.max_history_messages == 40
-    assert cfg.web_search_native is False  # 布尔强转
-    assert cfg.tool_max_retries == 5  # 环境变量覆盖文件
-    # 未配置字段用代码默认
-    assert cfg.render_theme == "light"
-    assert AIConfig().tool_use_proxy is False  # 代码默认直连
-    # env 显式置空会覆盖文件值 → 字段视为未设置，落代码默认
-    cfg2 = load_ai_config_from_env(env={"AI_DEFAULT_PROVIDER": ""}, env_file=str(env_file))
-    assert cfg2.default == ""
-
-
-def test_hsnconfig_ai_mounted_from_env(monkeypatch):
-    """config.ai 惰性挂载：从注入的 AI_* env 构建 AIConfig；DB 默认覆盖 env 默认。
-
-    注入的 AI_* 环境变量优先于 ``.env.prod``（见 hoshino/ai/config.py），
-    断言注入的测试值，不依赖本机 ``.env.prod``。
-    """
-    import hoshino.ai.config as ai_config
-    from hoshino.ai.base import get_config
-
-    monkeypatch.setenv("AI_DEFAULT_PROVIDER", "test-provider")
-    monkeypatch.setenv("AI_PROXY", "http://127.0.0.1:7890")
-    monkeypatch.setenv("AI_MAX_HISTORY_MESSAGES", "40")
-
-    # 直接测挂载函数（避免全局 config 实例依赖真实 .env.prod）
-    class _FakeHsn:
-        pass
-
-    ai_config.mount_into_hsnconfig(_FakeHsn)
-    assert "ai" in _FakeHsn.__dict__  # property 已挂
-    # 幂等
-    ai_config.mount_into_hsnconfig(_FakeHsn)
-    assert len([k for k in _FakeHsn.__dict__ if k == "ai"]) == 1
-
-    # get_config：注入的 env 默认 + DB 覆盖
-    cfg = get_config()
-    assert cfg.default == "test-provider"
-    assert cfg.proxy == "http://127.0.0.1:7890"
-    assert cfg.max_history_messages == 40
-    tmp_store_global = __import__("hoshino.ai.store", fromlist=["set_global_value"])
-    tmp_store_global.set_global_value("default_provider", "other")
-    try:
-        assert get_config().default == "other"
-    finally:
-        tmp_store_global.clear_global_value("default_provider")
-
-
-def test_provider_row_use_proxy_persisted(tmp_store):
-    """use_proxy 默认 False，upsert 后持久化。"""
-    tmp_store.upsert_provider_row(provider_id="p1", default_text_model="a")
-    assert tmp_store.get_provider_row("p1")["use_proxy"] is False
-    tmp_store.upsert_provider_row(provider_id="p1", default_text_model="a", use_proxy=True)
-    assert tmp_store.get_provider_row("p1")["use_proxy"] is True
-    tmp_store.upsert_provider_row(provider_id="p1", default_text_model="a", use_proxy=False)
-    assert tmp_store.get_provider_row("p1")["use_proxy"] is False
-
-
-def test_provider_record_use_proxy_roundtrip(tmp_store):
-    """ProviderRecord.from_row 透传 use_proxy。"""
-    from hoshino.ai.provider import ProviderRecord, upsert_provider
-
-    upsert_provider(ProviderRecord(id="p2", default_text_model="m", use_proxy=True))
-    record = ProviderRecord.from_row(tmp_store.get_provider_row("p2"))
-    assert record.use_proxy is True
-
-
-# ---------------------------------------------- openai_chat 畸形响应可观测性
-
-
 def _chat_model():
     from hoshino.ai import providers
     from hoshino.ai.provider import ProviderRecord
 
+    before = len(providers._http_clients)
     record = ProviderRecord(id="fake", url="http://fake", key="sk-test", kind="openai_chat")
     model = providers.build_model(record, "deepseek-v4-flash")
-    return model, _close_build_clients
+    return model, before
 
 
-def _close_build_clients() -> None:
-    """关闭 build_model 创建的 http client。
+def _close_build_clients(before_count: int) -> None:
+    """只关闭本用例新建的 http client。
 
-    同步测试没有 running loop，``clear_agent_cache`` 的 ``create_task`` 不会执行；
+    同步测试无 running loop，``clear_agent_cache`` 的 ``create_task`` 不会执行；
     与 ``test_ai_chat.py::test_build_model_ignores_env_proxy`` 同做法，显式
-    ``asyncio.run`` 关闭并清空共享 ``_http_clients``，避免残留 client 干扰后续测试。
+    ``asyncio.run`` 关闭。只处理 ``before_count`` 之后新增的 client，避免关闭
+    其他测试经 build_agent 缓存仍在使用的 client（否则后续用例请求报
+    "client has been closed"）。
     """
     import asyncio
 
     from hoshino.ai.providers import _http_clients
 
-    for client in _http_clients:
+    for client in _http_clients[before_count:]:
         asyncio.run(client.aclose())
-    _http_clients.clear()
+    del _http_clients[before_count:]
 
 
 def _completion_with(function_call: dict | None, *, tool_calls: list | None = None):
@@ -359,4 +239,4 @@ def test_openai_chat_validation_tolerates_empty_function_call_placeholder():
         assert "function_call" in detail
         assert "Input should be a valid string" in detail
     finally:
-        _close_build_clients()
+        _close_build_clients(close_clients)

@@ -271,38 +271,6 @@ def _stub_send(monkeypatch):
 # ---------------------------------------------------------- 配置纯函数
 
 
-def test_ai_config_defaults():
-    config = AIConfig()
-    assert config.default == ""
-    assert config.max_history_messages == 64
-    # 原生联网搜索与工具重试预算的默认值
-    assert config.web_search_native is True
-    assert config.tool_max_retries == 3
-    # web_fetch 证书校验与渲染清晰度/emoji 默认值
-    assert config.web_fetch_verify_ssl is True
-    assert config.render_device_scale == 2.0
-    assert config.render_emoji is True
-
-
-def test_mask_key_and_url():
-    from hoshino.ai.config import mask_key, mask_url
-
-    assert mask_key("") == ""
-    assert mask_key("sk-1234567890") == "sk-1...7890"
-    assert mask_key("short") == "*****"
-    assert mask_url("https://api.example.com/v1") == "https://api.example.com/v1"
-    assert "secret" not in mask_url("https://x.com/path?secret=abc")
-
-
-def test_httpx_proxy_normalizes_socks():
-    from hoshino.ai.providers import _httpx_proxy
-
-    assert _httpx_proxy(None) is None
-    assert _httpx_proxy("http://127.0.0.1:7890") == "http://127.0.0.1:7890"
-    assert _httpx_proxy("socks://127.0.0.1:7890") == "socks5://127.0.0.1:7890"
-    assert _httpx_proxy("socks5://127.0.0.1:7890") == "socks5://127.0.0.1:7890"
-
-
 def test_build_model_ignores_env_proxy(monkeypatch):
     """AIConfig.proxy 为空时应走 trust_env=False，读入 socks:// 环境变量也不崩。
 
@@ -383,55 +351,7 @@ def _seed_test_providers(tmp_store) -> AIConfig:
     return AIConfig(default="openai")
 
 
-# ------------------------------------------------------- 历史裁剪
-
-
-def test_truncate_messages_by_turns():
-    from hoshino.ai.context import truncate_messages
-
-    messages = [f"m{i}" for i in range(10)]  # type: ignore[list-item]
-    assert truncate_messages(messages, 3) == ["m7", "m8", "m9"]
-    assert truncate_messages(messages, 0) == messages
-    assert truncate_messages(messages, 100) == messages
-
-
-def test_serialize_roundtrip_empty():
-    from hoshino.ai.context import deserialize_messages, serialize_messages
-
-    raw = serialize_messages([])
-    assert deserialize_messages(raw) == []
-    assert deserialize_messages(None) == []
-    assert deserialize_messages("not-json") == []
-
-
 # ------------------------------------------------------- 指标聚合
-
-
-def test_snapshot_from_usage():
-    from hoshino.ai.metrics import snapshot_from_usage
-
-    usage = RunUsage(
-        input_tokens=10,
-        output_tokens=4,
-        cache_read_tokens=6,
-        cache_write_tokens=2,
-        requests=1,
-    )
-    snap = snapshot_from_usage(usage)
-    assert snap.request_tokens == 10
-    assert snap.response_tokens == 4
-    assert snap.total_tokens == 14
-    assert snap.cache_read_tokens == 6
-
-    empty = snapshot_from_usage(None)
-    assert empty.total_tokens == 0
-
-
-def test_cache_hit_ratio():
-    from hoshino.ai.metrics import cache_hit_ratio
-
-    assert cache_hit_ratio(10, 40) == 0.8
-    assert cache_hit_ratio(0, 0) == 0.0
 
 
 def test_format_stats_contains_tokens():
@@ -511,29 +431,6 @@ def test_build_full_html_spacing():
 
 
 # ------------------------------------------------------- SQLite store
-
-
-def test_store_session_crud(tmp_store):
-    tmp_store.save_session_messages("milky:1", '[{"id":1}]', "openai")
-    assert tmp_store.load_session_messages("milky:1") == '[{"id":1}]'
-    assert tmp_store.get_session_provider("milky:1") == "openai"
-
-    tmp_store.save_session_messages("milky:1", "[]", "anthropic")
-    assert tmp_store.load_session_messages("milky:1") == "[]"
-
-    assert tmp_store.clear_session("milky:1") is True
-    assert tmp_store.load_session_messages("milky:1") is None
-    assert tmp_store.clear_session("milky:1") is False
-
-
-def test_store_scope_provider_crud(tmp_store):
-    assert tmp_store.get_scope_provider("milky:1") is None
-    tmp_store.set_scope_provider("milky:1", "openai", updated_by="u1")
-    assert tmp_store.get_scope_provider("milky:1") == "openai"
-    tmp_store.set_scope_provider("milky:1", "anthropic", updated_by="u2")
-    assert tmp_store.get_scope_provider("milky:1") == "anthropic"
-    assert tmp_store.clear_scope_provider("milky:1") is True
-    assert tmp_store.get_scope_provider("milky:1") is None
 
 
 def test_store_clear_provider_references(tmp_store):

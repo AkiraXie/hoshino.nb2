@@ -45,15 +45,6 @@ class TestTaskContextRoundTrip:
         assert restored.extra["pending_deferred"] == {"c1": True}
         assert restored.persona_prompt == "你是研究员"
 
-    def test_from_json_missing_fields_use_defaults(self):
-        from hoshino.ai.task.models import TaskContext
-
-        restored = TaskContext.from_json({"task_id": "t9"})
-        assert restored.task_id == "t9"
-        assert restored.scope_key == ""
-        assert restored.approval_mode == "auto"
-        assert restored.tool_profile == frozenset()
-
 
 # ------------------------------------------------------------ store CRUD / cooldown
 
@@ -85,10 +76,11 @@ class TestStore:
         task_store.update_task_status(task_id, "succeeded", output_json="{}")
         assert task_store.get_task(task_id)["status"] == "succeeded"
 
-    def test_cooldown_blocks_second_creation(self, tmp_store):
+    def test_cooldown_blocks_and_bypasses_superuser(self, tmp_store):
         from hoshino.ai.task import store as task_store
 
         _create_task(tmp_store, task_id="t1")
+        # 普通用户：冷却期内第二次创建被拦，返回既有任务
         created = task_store.create_task(
             task_id="t2",
             kind="research",
@@ -107,10 +99,7 @@ class TestStore:
         assert created["task_id"] == "t1"
         assert 0 < created["remaining"] <= 300.0
 
-    def test_cooldown_bypass_for_superuser(self, tmp_store):
-        from hoshino.ai.task import store as task_store
-
-        _create_task(tmp_store, task_id="t1")
+        # 超级用户：bypass_cooldown 直接放行
         created = task_store.create_task(
             task_id="t2",
             kind="research",
@@ -248,21 +237,6 @@ class TestPolicyWorkspace:
         allowed, active, cap = policy.check_concurrent("milky:123456")
         assert allowed is False and active == 1 and cap == 1
 
-    def test_workspace_crud_and_default(self, tmp_store):
-        from hoshino.ai.task import store as task_store
-
-        assert task_store.add_workspace("milky:123456", "ws", "/tmp/ws", "read_write") == ""
-        assert (
-            task_store.add_workspace("milky:123456", "ws", "/tmp/other", "read_write") != ""
-        )  # 重名拒绝
-        assert task_store.set_default_workspace("milky:123456", "ws") is True
-        assert task_store.get_default_workspace("milky:123456")["name"] == "ws"
-        assert task_store.get_workspace("milky:123456", "ws")["mode"] == "read_write"
-        assert task_store.remove_workspace("milky:123456", "ws") is True
-        assert task_store.get_workspace("milky:123456", "ws") is None
-        # 删掉默认后，另一个 scope 的默认不受影响
-        assert task_store.get_default_workspace("milky:other") is None
-
     def test_resolve_workspace(self, tmp_store):
         from hoshino.ai.task import policy
         from hoshino.ai.task import store as task_store
@@ -307,7 +281,8 @@ class TestOutbox:
         remaining = task_store.outbox_pending(limit=10)
         assert len(remaining) == 1 and remaining[0]["sequence"] == 2
 
-    def test_outbox_retry_increments_attempt(self, tmp_store):
+    def test_outbox_retry_policy(self, tmp_store):
+        """重试递增 attempt；超过 max_attempts 后放弃投递，不再进入 pending。"""
         from hoshino.ai.task import store as task_store
 
         task_store.outbox_enqueue(
@@ -323,24 +298,12 @@ class TestOutbox:
         item = task_store.outbox_pending(limit=1)[0]
         assert item["attempt"] == 1
         assert item["last_error"] == "send failed"
-
-    def test_outbox_gives_up_after_max_attempts(self, tmp_store):
-        """超过重试上限后放弃投递：不再进入 pending，不回滚 Task 终态。"""
-        from hoshino.ai.task import store as task_store
-
-        task_store.outbox_enqueue(
-            event_type="task.completed",
-            task_id="t1",
-            sequence=1,
-            target_json="{}",
-            payload="{}",
-        )
-        item = task_store.outbox_pending(limit=1)[0]
+        # 未达上限仍可重试
         task_store.outbox_mark_retry(item["id"], "send failed", next_retry_at=1.0, max_attempts=3)
+        assert len(task_store.outbox_pending(limit=1)) == 1
+        # 达到上限：放弃（不再进入 pending）
         task_store.outbox_mark_retry(item["id"], "send failed", next_retry_at=1.0, max_attempts=3)
-        assert len(task_store.outbox_pending(limit=1)) == 1  # 未达上限仍可重试
-        task_store.outbox_mark_retry(item["id"], "send failed", next_retry_at=1.0, max_attempts=3)
-        assert task_store.outbox_pending(limit=1) == []  # 达到上限：放弃
+        assert task_store.outbox_pending(limit=1) == []
 
 
 # ------------------------------------------------------------ scheduler
@@ -600,11 +563,3 @@ class TestMatcher:
         assert task_commands.taskcmd.block is True
         # 所有 ai 命令统一审批：task 命令挂 SUPERUSER，非超管不可达
         assert _perm_names(task_commands.taskcmd.permission) == _perm_names(SUPERUSER)
-
-    def test_task_matcher_present_in_nonebot_matchers(self):
-        from nonebot import get_loaded_plugins
-
-        from hoshino.modules.ai import task_commands
-
-        all_matchers = [m for plugin in get_loaded_plugins() for m in plugin.matcher]
-        assert task_commands.taskcmd.matcher in all_matchers

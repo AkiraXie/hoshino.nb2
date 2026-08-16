@@ -126,7 +126,7 @@ def test_resolve_tools_task_restores_profile():
 # ------------------------------------------------------- core 工具
 
 
-async def test_memory_tool_scope_isolated(tmp_store):
+async def test_memory_tool_behavior(tmp_store):
     from hoshino.ai.tools.core.memory import memory
 
     ctx = _ctx(_deps("milky:1"))
@@ -137,32 +137,22 @@ async def test_memory_tool_scope_isolated(tmp_store):
     # scope 隔离：别的会话读不到
     ctx2 = _ctx(_deps("milky:2"))
     assert "不存在" in await memory(ctx2, "get", key="k")
-
-
-async def test_memory_tool_value_limit(tmp_store):
-    from hoshino.ai.tools.core.memory import memory
-
-    ctx = _ctx(_deps("milky:1"))
+    # 值长度超限拒绝，不落库
     out = await memory(ctx, "set", key="big", value="x" * 2001)
     assert "超过" in out
     assert await memory(ctx, "get", key="big") == "记忆 `big` 不存在。"
 
 
-async def test_persona_manage_use_requires_admin(tmp_store):
+async def test_persona_manage_use_permission_and_binding(tmp_store):
     from hoshino.ai import persona
     from hoshino.ai.tools.core.persona_manage import persona_manage
 
     persona.create_persona("爱丽丝", gender="女性", personality="温柔", description="测试")
+    # 非管理员拒绝
     deps = _deps(permissions=PermissionSnapshot(user_id="u1", is_superuser=False, is_admin=False))
     out = await persona_manage(_ctx(deps), "use", name="爱丽丝")
     assert "需要群管理员权限" in out
-
-
-async def test_persona_manage_use_admin_binds(tmp_store):
-    from hoshino.ai import persona
-    from hoshino.ai.tools.core.persona_manage import persona_manage
-
-    persona.create_persona("爱丽丝", gender="女性", personality="温柔", description="测试")
+    # 管理员绑定成功，并持久化 scope persona
     out = await persona_manage(_ctx(_deps()), "use", name="爱丽丝")
     assert "已绑定" in out
     assert tmp_store.get_scope_persona_id("milky:1") is not None
@@ -186,8 +176,8 @@ async def test_persona_manage_global_delete_rejected(tmp_store):
 # ------------------------------------------------------- bot 工具
 
 
-async def test_send_message_single_emit(monkeypatch):
-    """send_message 只调一次 send_to_event，不额外副作用。"""
+async def test_send_message_overall(monkeypatch):
+    """send_message 单次发送；超长内容拒绝发送，无额外副作用。"""
     from hoshino.ai.tools.bot.send_message import send_message
 
     calls: list[str] = []
@@ -199,6 +189,10 @@ async def test_send_message_single_emit(monkeypatch):
     deps = _deps(event=object(), bot=object())
     out = await send_message(_ctx(deps), "目标信息")
     assert out == "消息已发送。"
+    assert calls == ["目标信息"]
+    # 超长内容拒绝发送
+    out = await send_message(_ctx(deps), "x" * 2001)
+    assert "过长" in out
     assert calls == ["目标信息"]
 
 
@@ -213,20 +207,6 @@ async def test_send_message_requires_live_event(monkeypatch):
     monkeypatch.setattr("hoshino.platform.send_to_event", fake_send_to_event)
     out = await send_message(_ctx(_deps()), "hi")  # bot/event 均 None
     assert "不支持" in out
-    assert calls == []
-
-
-async def test_send_message_length_limit(monkeypatch):
-    from hoshino.ai.tools.bot.send_message import send_message
-
-    calls: list[str] = []
-
-    async def fake_send_to_event(bot, event, message):
-        calls.append(message)
-
-    monkeypatch.setattr("hoshino.platform.send_to_event", fake_send_to_event)
-    out = await send_message(_ctx(_deps(event=object(), bot=object())), "x" * 2001)
-    assert "过长" in out
     assert calls == []
 
 
@@ -331,7 +311,7 @@ async def test_file_delete_refused_on_chat_surface(tmp_path):
 
 
 async def test_file_delete_executes_on_task_surface(tmp_path):
-    """task surface 的 delete 经 deferred approval 后实际执行。"""
+    """task surface 的 delete 经 deferred approval 后实际执行；目录删除拒绝。"""
     from hoshino.ai.tools.computer.file import file
 
     ctx = _file_ctx(tmp_path, surface="task")
@@ -340,14 +320,8 @@ async def test_file_delete_executes_on_task_surface(tmp_path):
     assert "已删除" in out
     assert not (tmp_path / "a.txt").exists()
     assert "不存在" in await file(ctx, "a.txt", mode="delete")
-
-
-async def test_file_delete_directory_refused_on_task(tmp_path):
-    """目录删除（bulk）不在 v1 范围：拒绝且无副作用。"""
-    from hoshino.ai.tools.computer.file import file
-
+    # 目录删除（bulk）不在 v1 范围：拒绝且无副作用
     (tmp_path / "sub").mkdir()
-    ctx = _file_ctx(tmp_path, surface="task")
     out = await file(ctx, "sub", mode="delete")
     assert "不支持删除目录" in out
     assert (tmp_path / "sub").is_dir()
@@ -438,16 +412,6 @@ async def test_web_fetch_uses_proxy_when_enabled(monkeypatch):
     assert captured[0]["proxy"] == "http://127.0.0.1:7890"
 
 
-def test_web_search_prefers_search_over_fetch():
-    """web_search 保持原始名，但描述引导优先搜索、少抓全文。"""
-    from hoshino.ai.tools.web import web_search as web_search_mod
-
-    if web_search_mod.tool is None:
-        pytest.skip("ddgs 未安装")
-    assert web_search_mod.tool.name == "duckduckgo_search"
-    assert "优先" in web_search_mod.tool.description
-
-
 # ------------------------------------------------------- computer/hoshino_nb2_code
 
 
@@ -462,7 +426,8 @@ def test_resolve_tools_hoshino_nb2_code_in_computer(tmp_store):
     assert "file" in names  # computer 类别整体叠加
 
 
-async def test_hoshino_nb2_code_overview():
+async def test_hoshino_nb2_code_static_knowledge():
+    """静态知识段内容整体断言：overview / norms / flow / ai_module。"""
     from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
 
     ctx = _ctx(_deps())
@@ -471,11 +436,6 @@ async def test_hoshino_nb2_code_overview():
     assert "uv run pytest nb-tests" in text
     assert "hoshino/ai" in text
 
-
-async def test_hoshino_nb2_code_norms_and_flow():
-    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
-
-    ctx = _ctx(_deps())
     norms = await hoshino_nb2_code(ctx, "norms")
     assert "agent-plan-report" in norms
     assert "不主动提交/推送 Git" in norms
@@ -484,11 +444,6 @@ async def test_hoshino_nb2_code_norms_and_flow():
     assert "milky-plugin-test-protocol.md" in flow
     assert "ai-tools.md" in flow
 
-
-async def test_hoshino_nb2_code_ai_module():
-    from hoshino.ai.tools.computer.repo_code import hoshino_nb2_code
-
-    ctx = _ctx(_deps())
     text = await hoshino_nb2_code(ctx, "ai_module")
     assert "prompts.py" in text
     assert "REGISTRATIONS" in text

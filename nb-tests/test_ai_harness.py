@@ -67,9 +67,6 @@ def _run_with_caps(agent: Agent, prompt: str, caps: list):
 
 
 class TestAvailability:
-    def test_harness_installed(self):
-        assert harness.harness_available() is True
-
     def test_builders_return_none_when_unavailable(self, monkeypatch):
         monkeypatch.setattr(harness, "_HARNESS_AVAILABLE", False)
         assert harness.build_planning() is None
@@ -104,35 +101,28 @@ class TestPlanningInjection:
         db = harness._plan_db_path()
         assert db, "engine 应指向临时库"
 
-        store_a = harness.SqlitePlanStore(db, session="task_a")
-        store_b = harness.SqlitePlanStore(db, session="task_b")
-
-        async def _seed():
+        async def _seed(store_a, store_b):
             from pydantic_ai_harness.planning import PlanItem
 
             await store_a.set_items([PlanItem(id="p1", content="A计划")])
             return len(await store_a.get_items()), len(await store_b.get_items())
 
-        a, b = asyncio.run(_seed())
+        # 直接按 session 打开：不同 session 的 plan 空间隔离
+        store_a = harness.SqlitePlanStore(db, session="task_a")
+        store_b = harness.SqlitePlanStore(db, session="task_b")
+        a, b = asyncio.run(_seed(store_a, store_b))
         assert a == 1
         assert b == 0
 
-    def test_resolver_isolates_by_deps_task_id(self, tmp_store):
+        # 经 deps resolver 按 task_id 打开：同样隔离
         ctx_a = SimpleNamespace(deps=SimpleNamespace(task=SimpleNamespace(task_id="t_a")))
         ctx_b = SimpleNamespace(deps=SimpleNamespace(task=SimpleNamespace(task_id="t_b")))
         store_a = harness._plan_store_resolver(ctx_a)
         store_b = harness._plan_store_resolver(ctx_b)
         assert type(store_a).__name__ == "SqlitePlanStore"
-
-        async def _seed():
-            from pydantic_ai_harness.planning import PlanItem
-
-            await store_a.set_items([PlanItem(id="p1", content="A计划")])
-            return len(await store_a.get_items()), len(await store_b.get_items())
-
-        a, b = asyncio.run(_seed())
+        a, b = asyncio.run(_seed(store_a, store_b))
         assert a == 1
-        assert b == 0  # 不同 task_id 的 plan 空间隔离
+        assert b == 0
 
 
 # ------------------------------------------------------------ step persistence

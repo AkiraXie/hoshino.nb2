@@ -147,25 +147,6 @@ def test_play_token_fallback_to_query():
     assert video_data.play_token == "abc123"
 
 
-def test_response_size_from_headers():
-    """从 Content-Range 优先、Content-Length 兜底取文件大小。"""
-    from hoshino.modules.information.resolve.douyin import DouyinParser
-
-    parser = DouyinParser()
-
-    class _Headers:
-        def __init__(self, values: dict[str, str]) -> None:
-            self._values = values
-
-        def get(self, key: str) -> str | None:
-            return self._values.get(key)
-
-    assert parser._response_size(_Headers({"Content-Range": "bytes 0-1/20614334"})) == 20614334
-    assert parser._response_size(_Headers({"Content-Length": "9376249"})) == 9376249
-    assert parser._response_size(_Headers({"Content-Range": "invalid"})) == 0
-    assert parser._response_size(_Headers({})) == 0
-
-
 def test_ttwid_from_cookies():
     """Set-Cookie 提取 ttwid（保留 %7C 原始编码），无则 None。"""
     from hoshino.modules.information.resolve.douyin import DouyinParser

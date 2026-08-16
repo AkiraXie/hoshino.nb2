@@ -224,6 +224,14 @@ def test_messages_to_events_derive_roundtrip():
     assert context.serialize_messages(derived) == context.serialize_messages(messages)
 
 
+def test_serialize_messages_empty_and_malformed_input():
+    """serialize/deserialize 的空往返与畸形输入容错：DB 里 NULL/损坏 JSON 回退空列表。"""
+    raw = context.serialize_messages([])
+    assert context.deserialize_messages(raw) == []
+    assert context.deserialize_messages(None) == []
+    assert context.deserialize_messages("not-json") == []
+
+
 def test_derive_skips_unknown_event_types():
     """未知事件类型在派生时跳过，不破坏重放（前向兼容）。"""
     events = [

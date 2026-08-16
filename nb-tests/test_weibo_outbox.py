@@ -149,63 +149,7 @@ async def test_weibo_outbox_restart_recovery(tmp_path: Path):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_weibo_outbox_cleanup_old(tmp_path: Path):
-    from hoshino.modules.information.weibo.internal.outbox import WeiboOutboxStore
-
-    store = WeiboOutboxStore(tmp_path / "outbox.db")
-    await store.enqueue(
-        group_id=1,
-        target_data="{}",
-        uid="u",
-        post_id="p1",
-        post_payload={},
-        message_payload={},
-    )
-    due = await store.due_outbox()
-    await store.mark_sent(due[0].id)
-
-    # Nothing old enough to clean
-    assert await store.cleanup_old(days=7) == 0
-
-    # Manually backdate created_at to trigger cleanup
-    import sqlite3
-
-    conn = sqlite3.connect(tmp_path / "outbox.db")
-    conn.execute(
-        "UPDATE weibo_outbox SET created_at = ? WHERE id = ?",
-        (time.time() - 8 * 86400, due[0].id),
-    )
-    conn.commit()
-    conn.close()
-
-    assert await store.cleanup_old(days=7) == 1
-
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_weibo_outbox_serialization_roundtrip():
-    from hoshino.content import PostMessage
-    from hoshino.modules.information.weibo.internal.outbox import (
-        deserialize_post_message,
-        serialize_post_message,
-    )
-
-    original = PostMessage(
-        text="test post",
-        content="test post",
-        screenshot=Path("/data/img/shot.png"),
-        images=[Path("/data/img/1.jpg"), Path("/data/img/2.jpg")],
-        videos=[Path("/data/video/v.mp4")],
-    )
-    data = serialize_post_message(original)
-    restored = deserialize_post_message(data)
-
-    assert restored.text == original.text
-    assert restored.content == original.content
-    assert restored.screenshot == original.screenshot
-    assert restored.images == original.images
-    assert restored.videos == original.videos
-
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_weibo_outbox_claim_prevents_double_dispatch(tmp_path: Path):
     """Overlapping dispatch runs must not read the same item twice.

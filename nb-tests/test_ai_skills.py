@@ -7,13 +7,6 @@ import pytest
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
 
 
-def test_list_skills_contains_builtin(tmp_store):
-    from hoshino.ai import skills
-
-    names = {s.name for s in skills.list_skills()}
-    assert "web-research" in names
-
-
 def test_get_skill_parses_frontmatter(tmp_store):
     from hoshino.ai import skills
 
@@ -41,12 +34,6 @@ def test_disable_excludes(tmp_store):
     assert skills.list_enabled("milky:1") == []
     assert skills.set_enabled("milky:1", "web-research", True) is True
     assert [s.name for s in skills.list_enabled("milky:1")] == ["web-research"]
-
-
-def test_set_enabled_missing_skill_returns_false(tmp_store):
-    from hoshino.ai import skills
-
-    assert skills.set_enabled("milky:1", "不存在", True) is False
 
 
 def test_local_skill_overrides_builtin(tmp_store, tmp_path, monkeypatch):

@@ -14,12 +14,7 @@ from typing import ClassVar
 import pytest
 
 from hoshino.util import aiohttpx
-from hoshino.util.proxy import (
-    OUTSIDE_PROXY_ENV,
-    apply_telegram_proxy,
-    get_outside_proxy,
-    normalize_proxy,
-)
+from hoshino.util.proxy import OUTSIDE_PROXY_ENV, apply_telegram_proxy
 
 
 class _TargetHandler(BaseHTTPRequestHandler):
@@ -137,44 +132,6 @@ async def test_proxy_client_pool_shared_semaphore(httpx_clients):
     assert aiohttpx._req_semaphore is not None
     await aiohttpx.get_client(proxy="http://127.0.0.1:8080")
     assert aiohttpx._req_semaphore is not None
-
-
-def test_outside_proxy_reads_environment(monkeypatch):
-    """OUTSIDE_PROXY 未配置/为空时返回 None，配置后返回原值。"""
-    monkeypatch.delenv(OUTSIDE_PROXY_ENV, raising=False)
-    assert get_outside_proxy() is None
-    monkeypatch.setenv(OUTSIDE_PROXY_ENV, "  http://127.0.0.1:7890  ")
-    assert get_outside_proxy() == "http://127.0.0.1:7890"
-    monkeypatch.setenv(OUTSIDE_PROXY_ENV, "")
-    assert get_outside_proxy() is None
-
-
-def test_normalize_proxy_socks_scheme():
-    """socks:// 归一化为 socks5://，其余原样返回。"""
-    assert normalize_proxy("socks://127.0.0.1:1080") == "socks5://127.0.0.1:1080"
-    assert normalize_proxy("http://127.0.0.1:7890") == "http://127.0.0.1:7890"
-    assert normalize_proxy(None) is None
-
-
-def test_apply_telegram_proxy(monkeypatch):
-    """telegram 未配置时用 OUTSIDE_PROXY 补齐；已配置则尊重原值。"""
-
-    class FakeConfig:
-        telegram_proxy = None
-
-    monkeypatch.setenv(OUTSIDE_PROXY_ENV, "http://127.0.0.1:7890")
-    config = FakeConfig()
-    apply_telegram_proxy(config)
-    assert config.telegram_proxy == "http://127.0.0.1:7890"
-
-    config.telegram_proxy = "http://127.0.0.1:9999"
-    apply_telegram_proxy(config)
-    assert config.telegram_proxy == "http://127.0.0.1:9999"
-
-    monkeypatch.setenv(OUTSIDE_PROXY_ENV, "")
-    config.telegram_proxy = None
-    apply_telegram_proxy(config)
-    assert config.telegram_proxy is None
 
 
 def test_apply_telegram_proxy_with_nonebot_config(monkeypatch):

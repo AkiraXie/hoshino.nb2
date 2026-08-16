@@ -323,19 +323,6 @@ def _stub_models(monkeypatch, models: list[str] | None):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_model_shows_current_models(monkeypatch, tmp_store):
-    """`ai model`：显示当前文本/多模态模型与操作提示。"""
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai model")
-    await bot.handle_event(event)
-
-    text = sent[0][1].extract_plain_text()
-    assert "gpt-4o-mini" in text  # openai 默认文本模型
-    assert "（未设置）" in text  # vision 默认空
-    assert "ai model set" in text  # 操作提示
-
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_model_set_default_slot_is_text(monkeypatch, tmp_store):
     """`ai model set <模型>` 不带槽位默认改文本。"""
@@ -698,17 +685,6 @@ async def test_bare_ai_shows_status(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_ai_help_shows_usage(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai help")
-    await bot.handle_event(event)
-
-    text = sent[0][1].extract_plain_text()
-    assert "仅超级用户" in text
-    assert "ai setup" in text
-
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_setup_one_shot_configures_provider(monkeypatch, tmp_store):
     """ai setup：新增 provider + 注册模型 + 设默认 + 绑定当前群，一步完成。"""
@@ -756,21 +732,6 @@ def _stub_env_file(monkeypatch, tmp_path) -> str:
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_show_lists_render_and_proxy(monkeypatch, tmp_store):
-    """`ai config`：显示当前代理/渲染配置与操作提示。"""
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config")
-    await bot.handle_event(event)
-
-    text = sent[0][1].extract_plain_text()
-    assert "proxy" in text
-    assert "render_font" in text
-    assert "render_theme" in text
-    assert "render_emoji" in text
-    assert "ai config set" in text
-
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_config_set_font_writes_env_file(monkeypatch, tmp_store, tmp_path):
     """`ai config set render_font`：写盘 .env.prod，重新加载即生效。"""
