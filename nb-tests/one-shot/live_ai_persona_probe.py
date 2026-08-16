@@ -6,7 +6,7 @@ aichat.json + data/db/aichat.db 的 provider 行）向真实模型发起单轮�
 （是否死板、是否贴合元气少女人设、输出规范是否生效）。
 
 运行：
-    uv run python nb-tests/live_ai_persona_probe.py
+    uv run python nb-tests/one-shot/live_ai_persona_probe.py
 
 行为说明：
 - 与 chat.py 相同的 provider/模型解析、build_agent、run_agent_with_retry、护栏；
@@ -160,16 +160,17 @@ def main() -> None:
         provider_id,
         record,
         model,
-        proxy=config.proxy,
+        proxy=provider.resolve_effective_proxy(record, config.proxy),
         web_search_native=config.web_search_native,
         tool_max_retries=config.tool_max_retries,
     )
 
     system_prompt = asyncio.run(effective_system_prompt(config))
+    effective_proxy = provider.resolve_effective_proxy(record, config.proxy)
     print("=" * 70)
     print("真实 provider 人格探针")
     print(f"provider={provider_id} kind={record.kind} url={record.url}")
-    print(f"model={model} proxy={config.proxy}")
+    print(f"model={model} proxy={effective_proxy or '直连'}")
     print("persona 解析: 默认级（无全局/scope 绑定）")
     print("-" * 70)
     print("system prompt 全文（模型实际看到）：")
@@ -202,7 +203,7 @@ def main() -> None:
         "",
         f"- 时间：{time.strftime('%Y-%m-%d %H:%M')}",
         f"- provider：`{provider_id}`（kind={record.kind}，url={record.url}）",
-        f"- 模型：`{model}`（proxy={config.proxy}）",
+        f"- 模型：`{model}`（proxy={effective_proxy or '直连'}）",
         "- 会话：每问独立空上下文；无全局/scope persona 绑定 → 默认人格",
         "- 注意：本文不含任何 key/token，密钥仅存在于 aichat.db",
         "",

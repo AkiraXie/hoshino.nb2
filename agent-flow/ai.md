@@ -212,4 +212,4 @@ Python 聊天机器人框架（对话管理与提示词组织参考）：
 - 新增配置：`config.py` `AIConfig` 字段（env `AI_*`，写 `.env.prod`）。
 - 改 provider 支持：`provider.py`（领域层）+ `providers.py`（model 工厂）。
 - 验证：`uv run pytest nb-tests/test_ai_persona.py nb-tests/test_ai_chat.py -q`；
-  真实 provider 人格探针 `uv run python nb-tests/live_ai_persona_probe.py`。
+  真实 provider 人格探针 `uv run python nb-tests/one-shot/live_ai_persona_probe.py`。

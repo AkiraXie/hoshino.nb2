@@ -114,7 +114,7 @@ _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
 
 验证：uv run pytest nb-tests/test_ai_persona.py nb-tests/test_ai_chat.py -q；
 uv run ruff check hoshino/ai；真实 provider 人格探针：
-uv run python nb-tests/live_ai_persona_probe.py"""
+uv run python nb-tests/one-shot/live_ai_persona_probe.py"""
 
 
 def _resolve_contained(root: str, path: str) -> str:
