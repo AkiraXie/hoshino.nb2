@@ -149,7 +149,7 @@ async def test_chat_http_agent_error_falls_back_to_text(fake_ai_server, monkeypa
     assert "AI 请求失败" in message.extract_plain_text()
 
 
-_MALFORMED_FUNCTION_CALL = {
+_EMPTY_FUNCTION_CALL_RESPONSE = {
     "id": "chatcmpl-fake",
     "object": "chat.completion",
     "created": 1677652288,
@@ -159,10 +159,10 @@ _MALFORMED_FUNCTION_CALL = {
             "index": 0,
             "message": {
                 "role": "assistant",
-                "content": None,
+                "content": "好的！给你推荐几个不用开火就能搞定的选择～",
                 "function_call": {"name": None, "arguments": None},
             },
-            "finish_reason": "function_call",
+            "finish_reason": "stop",
         }
     ],
     "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
@@ -170,26 +170,32 @@ _MALFORMED_FUNCTION_CALL = {
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.parametrize("fake_ai_server", [_MALFORMED_FUNCTION_CALL], indirect=True)
-async def test_chat_http_malformed_function_call_fails_gracefully(
+@pytest.mark.parametrize("fake_ai_server", [_EMPTY_FUNCTION_CALL_RESPONSE], indirect=True)
+async def test_chat_http_empty_function_call_placeholder_succeeds(
     fake_ai_server, monkeypatch, tmp_store
 ):
-    """上游返回畸形 function_call（name/arguments 为 null）→ 失败提示，不崩溃。
+    """网关附加空 function_call 占位（name/arguments 为 null）→ chat 正常回复。
 
-    复现 opencode-go 网关空 legacy function_call 导致 UnexpectedModelBehavior 的
-    场景：真实 build_agent 链路收到畸形 200 响应，chat 应回复失败提示而不是
-    抛异常中断事件处理。
+    复现 opencode-go 网关真实形态：内容正常但每条响应都带
+    ``function_call: {name: null, arguments: null}``。归一化占位后校验通过，
+    chat 应成功渲染并发送图片回复，而不是 UnexpectedModelBehavior 失败。
     """
-    base_url, _requests = fake_ai_server
+    base_url, requests = fake_ai_server
     from hoshino.modules.ai import chat
 
     monkeypatch.setattr(chat, "get_config", lambda: _seed_openai(tmp_store, base_url))
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+
+    async def fake_render(md, cfg):
+        return b"FAKEPNG"
+
+    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
     sent = _stub_send(monkeypatch)
 
     bot, event = _milky_group("#你好", user_id=7)
     await bot.handle_event(event)
 
+    assert len(requests) == 1
     assert len(sent) == 1
     _, message = sent[0]
-    assert "AI 请求失败" in message.extract_plain_text()
+    assert [seg.type for seg in message] == ["image"]

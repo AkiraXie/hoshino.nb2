@@ -84,18 +84,21 @@ def build_model_settings(record: ProviderRecord) -> ModelSettings | None:
 
 
 class _ResponseBodyOpenAIChatModel(OpenAIChatModel):
-    """``openai_chat`` 响应校验失败时把原始响应体附到异常，供失败日志定位。
+    """``openai_chat`` 响应容错与失败可观测性：空 function_call 归一化 + 原始响应体随异常。
 
-    pydantic-ai 的 ``_process_response`` 在 ``_validate_completion`` 校验失败时抛
-    ``UnexpectedModelBehavior`` 但不带 ``body``（body=None）。上游网关（如
-    opencode-go）返回 ``function_call`` 的 name/arguments 为 null 的畸形响应时，
-    日志只能看到 pydantic 校验错误文本，看不到原始 JSON，无法判断是模型幻觉还是
-    网关转译问题。此处覆盖公开 hook（openrouter.py 同款扩展点），校验失败时把
-    ``response.model_dump()`` 序列化进异常 ``body``；``errors.format_exception_detail``
-    现有的 ``body=`` 提取 + 截断逻辑自动生效，chat/task 失败日志无需改动。
+    两个职责：
+    1. **空 legacy function_call 容错**：opencode-go 等 OpenAI 兼容网关在每条响应里
+       附加 ``function_call: {name: null, arguments: null}`` 空占位（无论是否真的
+       调用工具），pydantic-ai 严格校验必填 ``str`` 字段会拒绝整个响应。该字段为
+       null 表示模型没有 legacy function_call，校验前置 None 即可；工具调用走
+       ``tool_calls`` 字段，pydantic-ai ``_process_response`` 不读 function_call。
+    2. **原始响应体随异常**：校验失败（非空占位类畸形）时把 ``response.model_dump()``
+       序列化进异常 ``body``（pydantic-ai 默认 body=None），``errors.format_exception_detail``
+       现有的 ``body=`` 提取 + 截断逻辑自动生效，chat/task 失败日志可看到原始 JSON。
     """
 
     def _validate_completion(self, response: Any) -> Any:
+        _drop_empty_function_call(response)
         try:
             return super()._validate_completion(response)
         except ValidationError as exc:
@@ -104,6 +107,42 @@ class _ResponseBodyOpenAIChatModel(OpenAIChatModel):
                 f"Invalid response from {self.system} chat completions endpoint: {exc}",
                 body=raw,
             ) from exc
+
+
+def _attr_or_item(obj: Any, key: str) -> Any:
+    """dict / pydantic 对象统一的字段读取。
+
+    openai SDK 反序列化的响应是 pydantic 对象；``model_construct`` 构造（测试）
+    时嵌套层是 dict。``getattr`` 对 dict 无效、``obj[key]`` 对对象无效，统一走
+    duck-typed 读取。
+    """
+    if isinstance(obj, dict):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
+def _drop_empty_function_call(response: Any) -> None:
+    """把网关返回的空 legacy function_call 占位移除（name/arguments 均为空）。
+
+    只处理「完全空占位」（name 与 arguments 都 falsy）：此时模型没有 legacy
+    function_call，置 None 让标准校验通过。若只有一半为空（保留原样），交给
+    pydantic-ai 严格校验，避免掩盖真正畸形响应。修改只发生在响应对象本身，
+    ``response.model_dump()`` 的后续校验/日志自动反映清洗后的结构。
+    """
+    for choice in _attr_or_item(response, "choices") or []:
+        message = _attr_or_item(choice, "message")
+        if message is None:
+            continue
+        fc = _attr_or_item(message, "function_call")
+        if fc is None:
+            continue
+        name = _attr_or_item(fc, "name")
+        arguments = _attr_or_item(fc, "arguments")
+        if not name and not arguments:
+            if isinstance(message, dict):
+                message["function_call"] = None
+            else:
+                message.function_call = None
 
 
 def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = None) -> Any:
