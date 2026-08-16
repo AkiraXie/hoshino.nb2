@@ -1,6 +1,5 @@
-from nonebot.adapters import Bot
+from nonebot.adapters import Bot, Event
 from nonebot.matcher import matchers
-from nonebot.adapters import Event
 
 from hoshino.command import UniMessage
 from hoshino.platform import send_group_forward, send_private_forward
@@ -30,7 +29,7 @@ async def _():
 
 @test3.handle()
 async def _(event: Event):
-    res= get_event(event) 
+    res = get_event(event)
     await test3.finish(res)
 
 

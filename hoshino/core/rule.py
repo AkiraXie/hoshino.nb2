@@ -1,7 +1,9 @@
 import re
+
 from nonebot.adapters import Bot, Event
 from nonebot.rule import Rule
 from nonebot.typing import T_State
+
 from hoshino.util import normalize_str
 
 
@@ -39,8 +41,7 @@ def regex(
             state["_matched_groups"] = matched.groups()
             state["_matched_dict"] = matched.groupdict()
             return True
-        else:
-            return False
+        return False
 
     return Rule(_regex)
 

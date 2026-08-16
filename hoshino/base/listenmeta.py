@@ -1,5 +1,6 @@
-from hoshino.core.config import config as config
 from nonebot.adapters import Bot
+
+from hoshino.core.config import config as config
 from hoshino.core.hooks import on_bot_connect
 from hoshino.platform import Target, send_to_target, superuser_ids_for_bot
 

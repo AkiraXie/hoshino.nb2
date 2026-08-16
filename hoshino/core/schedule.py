@@ -1,27 +1,28 @@
+from collections.abc import Awaitable, Callable
 from functools import wraps
-from loguru import logger
+from typing import Any
+
 from apscheduler import job
-from typing import Callable, Any, Awaitable, List, Dict
+from loguru import logger
 
 
 def _get_scheduler():
     """惰性 import APScheduler，避免模块级 import 时要求 nonebot.init()。"""
     from nonebot_plugin_apscheduler import scheduler
+
     return scheduler
 
 
 def wrapper(
     func: Callable[[], Any],
     id: str,
-    args: List | None = None,
-    kwargs: Dict[str, Any] | None = None,
+    args: list | None = None,
+    kwargs: dict[str, Any] | None = None,
 ):
     @wraps(func)
     async def _wrapper():
         try:
-            logger.opt(colors=True).debug(
-                f"<ly>Scheduled job <c>{id}</c> started.</ly>"
-            )
+            logger.opt(colors=True).debug(f"<ly>Scheduled job <c>{id}</c> started.</ly>")
             if kwargs is None and args is not None:
                 res = await func(*args)
             elif kwargs is not None and args is None:
@@ -30,9 +31,7 @@ def wrapper(
                 res = await func()
             else:
                 res = await func(*args, **kwargs)
-            logger.opt(colors=True).debug(
-                f"<ly>Scheduled job <c>{id}</c> completed.</ly>"
-            )
+            logger.opt(colors=True).debug(f"<ly>Scheduled job <c>{id}</c> completed.</ly>")
             return res
         except Exception as e:
             logger.opt(colors=True, exception=e).error(
@@ -44,8 +43,8 @@ def wrapper(
 
 def scheduled_job(
     trigger: str,
-    args: List | None = None,
-    kwargs: Dict[str, Any] | None = None,
+    args: list | None = None,
+    kwargs: dict[str, Any] | None = None,
     **triger_kwargs,
 ):
     def deco(func: Callable[[], Any]) -> Callable[[], Awaitable[Any]]:
@@ -55,9 +54,7 @@ def scheduled_job(
         id = triger_kwargs.get("id", func.__name__)
         triger_kwargs["id"] = id
         sched = _get_scheduler()
-        return sched.scheduled_job(trigger, **triger_kwargs)(
-            wrapper(func, id, args, kwargs)
-        )
+        return sched.scheduled_job(trigger, **triger_kwargs)(wrapper(func, id, args, kwargs))
 
     return deco
 
@@ -65,8 +62,8 @@ def scheduled_job(
 def add_job(
     func: Callable[[], Any],
     trigger: str,
-    args: List | None = None,
-    kwargs: Dict[str, Any] | None = None,
+    args: list | None = None,
+    kwargs: dict[str, Any] | None = None,
     **triger_kwargs,
 ) -> job.Job:
     triger_kwargs.setdefault("timezone", "Asia/Shanghai")

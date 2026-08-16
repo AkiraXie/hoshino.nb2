@@ -1,18 +1,19 @@
+from loguru import logger
+from simplejson import loads
+from simplejson.errors import JSONDecodeError
+
+from hoshino.platform.depends import PlainText
 from hoshino.util.command import sucmd
 from hoshino.util.cookies import (
-    save_cookies,
     check_all_cookies,
     check_cookies,
     delete_cookies,
+    save_cookies,
 )
 from hoshino.util.message import finish, send
-from hoshino.platform.depends import PlainText
-from simplejson import loads
 
 
-@sucmd(
-    "save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True
-).handle()
+@sucmd("save_cookies", aliases={"保存cookies", "addck", "添加cookies"}, only_to_me=True).handle()
 async def save_cookies_cmd(msg: str = PlainText()):
     msgs = msg.split(None, 1)
     if len(msgs) < 2:
@@ -22,8 +23,9 @@ async def save_cookies_cmd(msg: str = PlainText()):
     cookies = msgs[1]
     try:
         cookies = loads(cookies)
-    except Exception:
-        pass
+    except JSONDecodeError:
+        # 非 JSON 内容按原始字符串 cookie 处理
+        logger.debug("cookie 内容不是 JSON，按原始字符串保存")
     if not name:
         await finish("请提供cookie名称")
     if not cookies:
@@ -49,9 +51,7 @@ async def check_cookies_cmd(msg: str = PlainText()):
         await send(f"可用的cookies: {', '.join(cookies)}")
 
 
-@sucmd(
-    "del_cookies", aliases={"删除cookies", "delck", "删除ck"}, only_to_me=True
-).handle()
+@sucmd("del_cookies", aliases={"删除cookies", "delck", "删除ck"}, only_to_me=True).handle()
 async def del_ck_cmd(name: str = PlainText()):
     if not name:
         await finish("请提供cookie名称")
@@ -61,12 +61,17 @@ async def del_ck_cmd(name: str = PlainText()):
         if not cookies:
             await send("没有可删除的cookies")
             return
+        failed = 0
         for k in list(cookies):
             try:
                 await delete_cookies(k)
-            except Exception:
-                pass
-        await send("删除所有cookies 成功")
+            except Exception as exc:
+                failed += 1
+                logger.warning(f"删除cookies {k} 失败: {exc}")
+        if failed:
+            await send(f"删除cookies完成，失败{failed}个，成功{len(cookies) - failed}个")
+        else:
+            await send("删除所有cookies 成功")
         return
 
     if not check_cookies(name):

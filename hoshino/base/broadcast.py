@@ -13,6 +13,9 @@ bc = sucmd("bc", aliases={"广播", "broadcast"})
 @bc.handle()
 async def _(bot: Bot, msg=EventMessage()):
     gids = [group["group_id"] for group in await get_group_list(bot)]
+    if not gids:
+        # Telegram 无法枚举机器人加入的所有聊天，空列表不代表真的没有群
+        await bc.finish("没有可广播的群（Telegram 等平台无法枚举机器人加入的聊天）")
     count = 0
     for gid in gids:
         await sleep(0.5)

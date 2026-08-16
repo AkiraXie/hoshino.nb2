@@ -4,9 +4,11 @@ import json
 import os
 import re
 from collections import defaultdict
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Callable, Generic, TypeVar, cast
+from types import MappingProxyType
+from typing import Any, Generic, TypeVar, cast
 
 import nonebot
 from arclet.alconna import AllParam
@@ -14,13 +16,13 @@ from nonebot.adapters import Bot, Event
 from nonebot.matcher import Matcher
 from nonebot.plugin import on_notice, on_request
 from nonebot.rule import to_me
-from pydantic import TypeAdapter, ValidationError
 from nonebot_plugin_alconna import (
     Alconna,
     Args,
     CommandMeta,
     on_alconna,
 )
+from pydantic import TypeAdapter, ValidationError
 
 from hoshino import service_dir as _service_dir
 from hoshino.core.logger_wrapper import LoggerWrapper
@@ -43,28 +45,19 @@ from hoshino.platform.permission import ADMIN, NORMAL, OWNER
 
 _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 ConfigT = TypeVar("ConfigT")
-_loaded_services: dict[str, "Service[Any]"] = {}
+_loaded_services: dict[str, Service[Any]] = {}
 _service_config_dir = Path(__file__).resolve().parent.parent / "service_config"
 
 
-def _iter_to_set(words: set | list | tuple | str | None) -> set:
+def _iter_to_set(words: set | list | tuple | str | None) -> set[str]:
+    if words is None:
+        return set()
     if isinstance(words, str):
-        res = set([words])
-    elif not isinstance(words, set):
-        if words:
-            res = (
-                set([words])
-                if len(words) == 1 and isinstance(words, tuple)
-                else set(words)
-            )
-        else:
-            res = set()
-    else:
-        res = words
-    return res
+        return {words}
+    return set(words)
 
 
-def _save_service_data(service: "Service[Any]"):
+def _save_service_data(service: Service[Any]):
     _service_dir.mkdir(parents=True, exist_ok=True)
     data_file = _service_dir / f"{service.name}.json"
     temporary = data_file.with_suffix(".json.tmp")
@@ -88,8 +81,7 @@ def _load_service_data(service_name: str) -> dict:
     if not os.path.exists(data_file):
         return {}
     with open(data_file, encoding="utf8") as f:
-        data = json.load(f)
-        return data
+        return json.load(f)
 
 
 def _load_service_scopes(data: dict) -> tuple[set[str], set[str]]:
@@ -131,6 +123,20 @@ def _config_to_json_data(config: object) -> object:
     return config
 
 
+def _parse_telegram_scope_ids(enable_scope: set[str]) -> set[int]:
+    """解析 Telegram 平台 enable_scope 中的群 ID（形如 ``"telegram:<id>"``）。
+
+    Telegram 无法枚举机器人已加入的所有聊天，get_group_list 返回空时用持久化
+    的 scope 记录降级恢复群列表。id 可为负（私有频道等），解析时允许负号。
+    """
+    prefix = "telegram:"
+    return {
+        int(scope.removeprefix(prefix))
+        for scope in enable_scope
+        if scope.startswith(prefix) and scope.removeprefix(prefix).lstrip("-").isdigit()
+    }
+
+
 class Service(Generic[ConfigT]):
     def __init__(
         self,
@@ -154,22 +160,19 @@ class Service(Generic[ConfigT]):
 
         *`visible` : 默认可见状态
         """
-        assert not _illegal_char.search(name) or not name.isdigit(), (
-            'Service name cannot contain character in [\\/:*?"<>|.] or be pure number'
-        )
-        assert manage_perm in (
-            ADMIN,
-            OWNER,
-            SUPERUSER,
-        ), "Service manage_perm is illegal"
+        if _illegal_char.search(name) or name.isdigit():
+            raise ValueError(
+                'Service name cannot contain character in [\\/:*?"<>|.] or be pure number'
+            )
+        if manage_perm not in (ADMIN, OWNER, SUPERUSER):
+            raise ValueError("Service manage_perm is illegal")
+        if name in _loaded_services:
+            raise RuntimeError(f'Service name "{name}" already exist!')
         self.name = name
         self.manage_perm = manage_perm
         self.enable_on_default = enable_on_default
         self.visible = visible
         self.config_type = config_type
-        assert self.name not in _loaded_services, (
-            f'Service name "{self.name}" already exist!'
-        )
         data = _load_service_data(self.name)
         self.enable_scope, self.disable_scope = _load_service_scopes(data)
         self.logger = LoggerWrapper(self.name)
@@ -179,8 +182,9 @@ class Service(Generic[ConfigT]):
         _loaded_services[self.name] = self
 
     @staticmethod
-    def get_loaded_services() -> dict[str, "Service[Any]"]:
-        return _loaded_services
+    def get_loaded_services() -> Mapping[str, Service[Any]]:
+        """返回已注册服务的只读视图；注册表只能通过 Service() 构造变更。"""
+        return MappingProxyType(_loaded_services)
 
     def set_enable(self, scope_key: str):
         self.enable_scope.add(scope_key)
@@ -200,15 +204,9 @@ class Service(Generic[ConfigT]):
         gl = defaultdict(list)
         for bot in nonebot.get_bots().values():
             platform = platform_key(bot)
-            sgl = set(g["group_id"] for g in await get_group_list(bot))
+            sgl = {g["group_id"] for g in await get_group_list(bot)}
             if not sgl and platform == "telegram":
-                prefix = f"{platform}:"
-                sgl = {
-                    int(scope.removeprefix(prefix))
-                    for scope in self.enable_scope
-                    if scope.startswith(prefix)
-                    and scope.removeprefix(prefix).lstrip("-").isdigit()
-                }
+                sgl = _parse_telegram_scope_ids(self.enable_scope)
             if self.enable_on_default:
                 sgl = {
                     gid
@@ -316,23 +314,21 @@ class Service(Generic[ConfigT]):
         manage_perm: Permission = ADMIN,
         enable_on_default: bool = True,
         visible: bool = True,
-    ) -> "Service | None":
+    ) -> Service | None:
         names = nonebot.get_available_plugin_names()
         if plugin_name in names:
             return None
         plugin = nonebot.load_plugin(plugin_name)
         if not plugin:
             return None
-        svname = plugin_name.replace("nonebot_plugin_", "").replace(
-            "nonebot-plugin-", ""
-        )
+        svname = plugin_name.replace("nonebot_plugin_", "").replace("nonebot-plugin-", "")
         sv = Service(svname, manage_perm, enable_on_default, visible)
         if matchers := plugin.matcher:
             for m in matchers:
                 sv.add_nonebot_plugin_matcher(m)
         return sv
 
-    def add_nonebot_plugin_matcher(self, matcher: type[Matcher]) -> "MatcherWrapper":
+    def add_nonebot_plugin_matcher(self, matcher: type[Matcher]) -> MatcherWrapper:
         rule = self.check_service(False, False)
         matcher.rule = matcher.rule & rule
         mw = AlconnaMatcherWrapper(self.name, matcher)
@@ -350,16 +346,20 @@ class Service(Generic[ConfigT]):
         compact: bool = True,
         **kwargs,
     ):
-        command_meta = meta if meta is not None else CommandMeta(compact=compact)
         if isinstance(name, Alconna):
             alc = name
+            # 未显式传 meta 时由 on_alconna 保留实例自带 meta；显式传了才覆盖
+            on_alconna_meta = meta
         else:
+            command_meta = meta if meta is not None else CommandMeta(compact=compact)
             alc = Alconna(name, Args["text?", AllParam], meta=command_meta)
+            # meta 已在构造 Alconna 时固化；再传给 on_alconna 会整体替换一遍
+            on_alconna_meta = None
         alc_aliases: set[str] | tuple[str, ...] | None = None
         if aliases:
             if isinstance(aliases, str):
                 alc_aliases = (aliases,)
-            elif isinstance(aliases, (set, list, tuple)):
+            elif isinstance(aliases, set | list | tuple):
                 alc_aliases = tuple(aliases)
         return self.on_alconna(
             alc,
@@ -367,7 +367,7 @@ class Service(Generic[ConfigT]):
             only_group=only_group,
             permission=permission,
             aliases=alc_aliases,
-            meta=command_meta,
+            meta=on_alconna_meta,
             compact=compact,
             **kwargs,
         )
@@ -384,11 +384,12 @@ class Service(Generic[ConfigT]):
         meta: CommandMeta | None = None,
         **kwargs,
     ):
-        command_meta = meta if meta is not None else CommandMeta(compact=compact)
         if isinstance(command, Alconna):
-            if command_meta is not command.meta:
-                command += command_meta
+            # Alconna 的 += 会整体替换 meta；仅在显式传入 meta 参数时覆盖实例自带 meta
+            if meta is not None:
+                command += meta
         else:
+            command_meta = meta if meta is not None else CommandMeta(compact=compact)
             command = Alconna(command, meta=command_meta)
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
@@ -402,39 +403,9 @@ class Service(Generic[ConfigT]):
             "only_group": only_group,
         }
         self.matchers.append(
-            f"<Matcher from Service {self.name}, type=Message.alconna, "
-            f"command={command}>"
+            f"<Matcher from Service {self.name}, type=Message.alconna, command={command}>"
         )
-        mw = AlconnaMatcherWrapper(self.name, matcher)
-        return mw
-
-    def _on_alconna_delegate(
-        self,
-        command: Alconna | str | re.Pattern,
-        type_label: str,
-        only_to_me: bool = False,
-        only_group: bool = True,
-        permission: Permission = NORMAL,
-        aliases: set[str] | tuple[str, ...] | None = None,
-        **kwargs,
-    ):
-        if not isinstance(command, Alconna):
-            command = Alconna(command)
-        kwargs["permission"] = permission
-        rule = self.check_service(only_to_me, only_group)
-        kwargs["rule"] = rule & kwargs.pop("rule", Rule())
-        matcher = on_alconna(command, aliases=aliases, **kwargs)
-        matcher.__hoshino_info__ = {
-            "service": self.name,
-            "type": type_label,
-            "command": str(command),
-            "only_group": only_group,
-        }
-        self.matchers.append(
-            f"<Matcher from Service {self.name}, type={type_label}, command={command}>"
-        )
-        mw = AlconnaMatcherWrapper(self.name, matcher)
-        return mw
+        return AlconnaMatcherWrapper(self.name, matcher)
 
     def _on_native_message(
         self,
@@ -447,7 +418,7 @@ class Service(Generic[ConfigT]):
         only_group: bool = True,
         permission: Permission = NORMAL,
         **kwargs,
-    ) -> "MatcherWrapper":
+    ) -> MatcherWrapper:
         kwargs["permission"] = permission
         rule = self.check_service(only_to_me, only_group)
         kwargs["rule"] = rule & kwargs.pop("rule", Rule())
@@ -462,8 +433,7 @@ class Service(Generic[ConfigT]):
         if command:
             description += f", command={command}"
         self.matchers.append(f"{description}>")
-        mw = MatcherWrapper(self.name, matcher)
-        return mw
+        return MatcherWrapper(self.name, matcher)
 
     def on_startswith(
         self,
@@ -494,7 +464,7 @@ class Service(Generic[ConfigT]):
         permission: Permission = NORMAL,
         ignorecase: bool = False,
         **kwargs,
-    ) -> "MatcherWrapper":
+    ) -> MatcherWrapper:
         return self._on_native_message(
             nonebot.on_endswith,
             "Message.endswith",
@@ -525,10 +495,16 @@ class Service(Generic[ConfigT]):
                 **kwargs,
             )
         pattern = "|".join(re.escape(k) for k in sorted(kw_set))
-        pattern = pattern if normal else rf"(?:^|\W)({pattern})(?:$|\W)"
-        return self._on_alconna_delegate(
-            re.compile(pattern),
+        if not normal:
+            # 词边界模式：关键词前后必须是消息边界或非单词字符
+            pattern = rf"(?:^|\W)(?:{pattern})(?:$|\W)"
+        # 走 NoneBot 原生 on_regex（re.search 语义，任意位置匹配）；Alconna
+        # 的正则只对消息开头做前缀锚定，中缀关键词会漏匹配
+        return self._on_native_message(
+            nonebot.on_regex,
             "Message.keyword",
+            pattern,
+            matcher_args=(pattern,),
             only_to_me=only_to_me,
             only_group=only_group,
             permission=permission,
@@ -605,15 +581,13 @@ class Service(Generic[ConfigT]):
 
     def on_notice(
         self, rule: Rule = Rule(), only_group: bool = True, permission=NORMAL, **kwargs
-    ) -> "MatcherWrapper":
+    ) -> MatcherWrapper:
         rule = self.check_service(False, only_group) & rule
-        mw = MatcherWrapper(
-            self.name, on_notice(rule=rule, permission=permission, **kwargs)
-        )
+        mw = MatcherWrapper(self.name, on_notice(rule=rule, permission=permission, **kwargs))
         self.matchers.append(str(mw))
         return mw
 
-    def on_request(self, only_group: bool = True, **kwargs) -> "MatcherWrapper":
+    def on_request(self, only_group: bool = True, **kwargs) -> MatcherWrapper:
         rule = self.check_service(False, only_group) & kwargs.pop("rule", Rule())
         mw = MatcherWrapper(self.name, on_request(rule, **kwargs))
         self.matchers.append(str(mw))

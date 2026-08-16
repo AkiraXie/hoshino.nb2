@@ -5,7 +5,6 @@ from nonebot.log import default_format, logger
 
 from hoshino.core.config import config
 
-
 _HOSHINO_MATCHER_MODULE = "module=hoshino.core.service"
 
 
@@ -18,9 +17,7 @@ def _is_redundant_matcher_log(record: dict) -> bool:
     if _HOSHINO_MATCHER_MODULE not in message:
         return False
 
-    return message.startswith("Event will be handled by ") or message.endswith(
-        " running complete"
-    )
+    return message.startswith("Event will be handled by ") or message.endswith(" running complete")
 
 
 class Filter:

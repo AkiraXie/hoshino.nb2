@@ -1,9 +1,12 @@
+import os
+from datetime import datetime
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import BigInteger, DateTime
-import os
+
 from hoshino import db_dir
-from datetime import datetime
+from hoshino.core.hooks import on_serial_startup
 
 db_path = os.path.join(db_dir, "black.db")
 engine = create_engine(f"sqlite:///{db_path}", echo=False, future=True)
@@ -14,12 +17,14 @@ class Base(DeclarativeBase):
     pass
 
 
-class black(Base):
+class BlackRecord(Base):
     __tablename__ = "black"
     uid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     due_time: Mapped["datetime"] = mapped_column(DateTime, primary_key=True)
 
 
-# 初始化数据库
-if not os.path.exists(db_path):
+@on_serial_startup
+async def _init_db() -> None:
+    """启动串行阶段建表，避免在 import 期执行 DDL。"""
+    db_dir.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(engine)

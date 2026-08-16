@@ -20,7 +20,7 @@ async def ls_friend(bot: Bot):
     msg = ["{user_id} {nickname}".format_map(g) for g in gl]
     msg = "\n".join(msg)
     msg = f"| QQ号 | 昵称 | 共{len(gl)}个好友\n" + msg
-    await bot.send(msg)
+    await UniMessage.text(msg).send()
 
 
 lscmds = sucmds("ls", True)

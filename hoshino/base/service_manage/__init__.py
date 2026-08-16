@@ -9,14 +9,13 @@ from hoshino.command import (
     AlconnaMatches,
     Args,
     At,
+    CommandMeta,
     MultiVar,
     Option,
     UniMessage,
     UniMsg,
     on_alconna,
-    CommandMeta
 )
-from hoshino.platform.permission import ADMIN
 from hoshino.platform import (
     event_scope_key,
     get_group_id,
@@ -25,6 +24,7 @@ from hoshino.platform import (
     is_group_event,
     platform_key,
 )
+from hoshino.platform.permission import ADMIN
 from hoshino.service import Service
 
 compact_meta = CommandMeta(compact=True)
@@ -43,14 +43,14 @@ lssv = on_alconna(
     block=True,
 )
 enable = on_alconna(
-    Alconna("enable", Args["items", MultiVar(str, "*")], Option("--all|-a"),meta=compact_meta),
+    Alconna("enable", Args["items", MultiVar(str, "*")], Option("--all|-a"), meta=compact_meta),
     rule=to_me(),
     aliases={"开启", "打开", "启用"},
     permission=ADMIN,
     block=True,
 )
 disable = on_alconna(
-    Alconna("disable", Args["items", MultiVar(str, "*")], Option("--all|-a"),meta=compact_meta),
+    Alconna("disable", Args["items", MultiVar(str, "*")], Option("--all|-a"), meta=compact_meta),
     rule=to_me(),
     aliases={"关闭", "停用", "禁用"},
     permission=ADMIN,
@@ -76,7 +76,7 @@ async def _(bot: Bot, event: Event, gids: tuple[str, ...], matches=AlconnaMatche
             if is_group_event(event) and gid == get_group_id(event)
             else group_scope_key(gid, platform=platform_key(bot))
         )
-        current_svs = map(lambda sv: (sv, sv.check_enabled(scope_key)), svs)
+        current_svs = ((sv, sv.check_enabled(scope_key)) for sv in svs)
         cmpfunc = cmp_to_key(
             lambda x, y: (y[1] - x[1])
             or (-1 if x[0].name < y[0].name else 1 if x[0].name > y[0].name else 0)
@@ -154,10 +154,11 @@ async def _switch_services(
         services = tuple(svs.keys())
     allsv = set(svs.keys())
     exclude, succ, notfound, succ_group = set(), set(), set(), set()
-    for name in services:
+    for raw_name in services:
         flag = 1
-        if name.startswith(("!", "！")) or name.endswith(("!", "！")):
-            name = re.sub(r"[!！]", "", name)
+        name = raw_name
+        if raw_name.startswith(("!", "！")) or raw_name.endswith(("!", "！")):
+            name = re.sub(r"[!！]", "", raw_name)
             flag = 0
         if name in svs:
             sv = svs[name]

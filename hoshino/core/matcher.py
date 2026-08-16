@@ -41,29 +41,19 @@ class MatcherWrapper:
             bot, event, message, at_sender=at_sender, call_header=call_header, **kwargs
         )
 
-    async def finish(
-        self, message=None, *, at_sender=False, call_header=False, **kwargs
-    ):
+    async def finish(self, message=None, *, at_sender=False, call_header=False, **kwargs):
         if message:
-            await self.send(
-                message, at_sender=at_sender, call_header=call_header, **kwargs
-            )
+            await self.send(message, at_sender=at_sender, call_header=call_header, **kwargs)
         raise FinishedException
 
-    async def reject(
-        self, prompt=None, *, at_sender=False, call_header=False, **kwargs
-    ):
+    async def reject(self, prompt=None, *, at_sender=False, call_header=False, **kwargs):
         if prompt:
-            await self.send(
-                prompt, at_sender=at_sender, call_header=call_header, **kwargs
-            )
+            await self.send(prompt, at_sender=at_sender, call_header=call_header, **kwargs)
         raise RejectedException
 
     async def pause(self, prompt=None, *, at_sender=False, call_header=False, **kwargs):
         if prompt:
-            await self.send(
-                prompt, at_sender=at_sender, call_header=call_header, **kwargs
-            )
+            await self.send(prompt, at_sender=at_sender, call_header=call_header, **kwargs)
         raise PausedException
 
     def set_arg(self, key: str, value):

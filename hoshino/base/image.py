@@ -1,9 +1,9 @@
 import asyncio
-import os
+from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
 from time import time
-from typing import Any, Sequence
+from typing import Any
 
 from httpx import URL
 from nonebot.adapters import Bot, Event
@@ -25,12 +25,13 @@ from hoshino.platform import (
     ReactionInfo,
     RetrievedMessage,
     get_group_id,
-    get_message_id,
     get_media_download_headers,
     get_media_url,
+    get_message_id,
     get_plaintext,
     get_session_id,
     reaction_event_rule,
+    redact_media_url,
     send_to_superuser,
 )
 from hoshino.util import aiohttpx
@@ -53,9 +54,7 @@ from hoshino.util.message import (
 async def reaction_img_rule(
     state: T_State,
     reaction: ReactionInfo | None = Reaction(),
-    reacted_message: RetrievedMessage | None = ReactedMessage(
-        "66", "76", additions_only=True
-    ),
+    reacted_message: RetrievedMessage | None = ReactedMessage("66", "76", additions_only=True),
 ) -> bool:
     if (
         reaction is None
@@ -81,9 +80,7 @@ async def reaction_img_rule(
 async def reaction_video_rule(
     state: T_State,
     reaction: ReactionInfo | None = Reaction(),
-    reacted_message: RetrievedMessage | None = ReactedMessage(
-        "424", additions_only=True
-    ),
+    reacted_message: RetrievedMessage | None = ReactedMessage("424", additions_only=True),
 ) -> bool:
     if (
         reaction is None
@@ -108,11 +105,17 @@ async def reaction_video_rule(
 def _media_filename(segment: Any, default: str) -> str:
     data = getattr(segment, "data", {})
     if isinstance(data, dict) and (filename := data.get("filename")):
-        return str(filename)
-    name = getattr(segment, "name", None)
-    if name and name not in {"image.png", "video.mp4"}:
-        return str(name)
-    return default
+        name = str(filename)
+    else:
+        name = getattr(segment, "name", None)
+        if not name or name in {"image.png", "video.mp4"}:
+            return default
+        name = str(name)
+    # 只取 basename，并拒绝 "." / ".."，防止文件名路径穿越
+    basename = Path(name).name
+    if basename in {"", ".", ".."}:
+        return default
+    return basename
 
 
 async def _save_images(
@@ -131,14 +134,12 @@ async def _save_images(
             continue
         default = f"{message_id}_{session_id}_{index}.jpg"
         filename = Path(dirname, _media_filename(segment, default))
-        tasks.append(
-            save_img(url.replace("https://", "http://"), filename, is_fav, False)
-        )
+        tasks.append(save_img(url, filename, is_fav, True))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     saved = 0
     for result in results:
         if isinstance(result, Exception):
-            logger.error(f"保存图片失败: {result}")
+            logger.error(f"保存图片失败: {redact_media_url(str(result))}")
         elif result:
             saved += 1
     if saved:
@@ -159,12 +160,12 @@ async def _save_videos(
             continue
         default = f"{message_id}_{session_id}_{index}.mp4"
         filename = _media_filename(segment, default)
-        tasks.append(save_video(url.replace("https://", "http://"), filename, False))
+        tasks.append(save_video(url, filename, True))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     saved = 0
     for result in results:
         if isinstance(result, Exception):
-            logger.error(f"保存视频失败: {result}")
+            logger.error(f"保存视频失败: {redact_media_url(str(result))}")
         elif result:
             saved += 1
     await send_to_superuser(bot, f"成功保存{saved}视频" if saved else "保存视频失败")
@@ -201,10 +202,7 @@ async def save_img_cmd(
         message_id=int(get_message_id(event, 0)),
         session_id=get_session_id(event, "unknown") or "unknown",
         group_id=get_group_id(event),
-        is_fav=bool(
-            state.get("__IMG_FAV", False)
-            or state.get(KEYWORD_KEY, "") in {"fav", "fim"}
-        ),
+        is_fav=bool(state.get("__IMG_FAV", False) or state.get(KEYWORD_KEY, "") in {"fav", "fim"}),
     )
 
 
@@ -245,14 +243,16 @@ async def save_vi_cmd(
 async def _delete_images(names: list[str]) -> None:
     if not names:
         await finish()
+    img_root = img_dir.resolve()
+    fav_root = fav_dir.resolve()
     for name in names:
-        path = os.path.join(img_dir, name)
-        if os.path.exists(path):
-            os.remove(path)
+        img_path = (img_dir / name).resolve()
+        if img_path.is_relative_to(img_root) and img_path.is_file():
+            img_path.unlink()
             await send(f"删除图片{name}成功")
-        path = os.path.join(fav_dir, name)
-        if os.path.exists(path):
-            os.remove(path)
+        fav_path = (fav_dir / name).resolve()
+        if fav_path.is_relative_to(fav_root) and fav_path.is_file():
+            fav_path.unlink()
             await send(f"删除收藏图片{name}成功")
 
 
@@ -289,12 +289,13 @@ async def show_img_cmd(
     names = get_plaintext(event).split(None)
     if not names:
         await finish()
+    img_root = img_dir.resolve()
     for name in names:
-        path = os.path.join(img_dir, name)
-        if os.path.exists(path):
-            with open(path, "rb") as f:
-                img = f.read()
-                await send(UniMessage.image(raw=img))
+        path = (img_dir / name).resolve()
+        if path.is_relative_to(img_root) and path.is_file():
+            # 阻塞文件读取隔离到线程，避免卡住事件循环。
+            img = await asyncio.to_thread(path.read_bytes)
+            await send(UniMessage.image(raw=img))
         else:
             await send(f"图片{name}不存在")
 
@@ -391,16 +392,14 @@ async def toimg_cmd(bot: Bot, state: T_State):
                 url = URL(url)
                 platform_headers = await get_media_download_headers(bot, str(url))
                 headers = default_headers | platform_headers
-                resp = await aiohttpx.get(
-                    url, verify=False, follow_redirects=True, headers=headers
-                )
+                resp = await aiohttpx.get(url, verify=True, follow_redirects=True, headers=headers)
                 if resp.ok:
                     img = resp.content
                     im = Image.open(BytesIO(img))
                     im.close()
                     result += UniMessage.image(raw=img)
             except Exception:
-                logger.exception(f"获取图片失败: {url}")
+                logger.exception(f"获取图片失败: {redact_media_url(str(url))}")
                 continue
     if result:
         await finish(result)

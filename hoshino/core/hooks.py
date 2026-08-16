@@ -3,9 +3,36 @@
 bootstrap() 前收集回调，bootstrap() 时统一下发到真实 driver。
 使得 ``from hoshino.hooks import on_startup`` 在 nonebot.init() 前也能正常使用。
 """
+
 from __future__ import annotations
+
 import asyncio
-from typing import Callable
+from collections.abc import Callable, Coroutine
+from typing import Any
+
+from loguru import logger
+
+# 持有后台任务强引用，防止 task 被 GC；done 回调中移除并记录异常。
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _on_task_done(task: asyncio.Task) -> None:
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    if exc := task.exception():
+        logger.error(f"后台任务异常: {exc}")
+
+
+def spawn(coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
+    """启动一个后台任务并持有其引用，避免被 GC 回收、异常无人接收。
+
+    用法：``spawn(some_coro())``；返回值仅在需要取消任务时使用。
+    """
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_on_task_done)
+    return task
 
 
 class _Registry:
@@ -24,6 +51,7 @@ class _Registry:
         if self._replayed:
             # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
+
             return nonebot.get_driver().on_startup(func)
         self._startup.append(func)
         return func
@@ -33,8 +61,10 @@ class _Registry:
         if self._replayed:
             # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
+
             async def _wrapper():
                 await func()
+
             return nonebot.get_driver().on_startup(_wrapper)
         self._serial_startup.append(func)
         return func
@@ -44,8 +74,10 @@ class _Registry:
         if self._replayed:
             # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
+
             async def _wrapper():
-                asyncio.create_task(func())
+                spawn(func())
+
             return nonebot.get_driver().on_startup(_wrapper)
         self._post_startup.append(func)
         return func
@@ -54,6 +86,7 @@ class _Registry:
         if self._replayed:
             # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
+
             return nonebot.get_driver().on_shutdown(func)
         self._shutdown.append(func)
         return func
@@ -62,6 +95,7 @@ class _Registry:
         if self._replayed:
             # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
+
             return nonebot.get_driver().on_bot_connect(func)
         self._bot_connect.append(func)
         return func
@@ -70,6 +104,7 @@ class _Registry:
         if self._replayed:
             # Lazy import: hooks are registered before nonebot.init() during bootstrap.
             import nonebot
+
             return nonebot.get_driver().on_bot_disconnect(func)
         self._bot_disconnect.append(func)
         return func
@@ -78,6 +113,7 @@ class _Registry:
         if self._replayed:
             # Lazy import: nonebot.message is only safe after nonebot initialization.
             from nonebot.message import run_preprocessor as _rp
+
             return _rp(func)
         self._preprocessors.append(func)
         return func
@@ -86,24 +122,27 @@ class _Registry:
         if self._replayed:
             # Lazy import: nonebot.message is only safe after nonebot initialization.
             from nonebot.message import event_preprocessor as _rp
+
             return _rp(func)
         self._event_preprocessors.append(func)
         return func
-
 
     async def _run_serial_and_post(self) -> None:
         for fn in self._serial_startup:
             await fn()
         if self._post_startup:
+
             async def _run_post():
                 for fn in self._post_startup:
                     await fn()
-            asyncio.create_task(_run_post())
+
+            spawn(_run_post())
 
     def replay(self, driver) -> None:
         # Lazy import: nonebot.message is only safe after nonebot initialization.
-        from nonebot.message import run_preprocessor as _rp
         from nonebot.message import event_preprocessor as _ep
+        from nonebot.message import run_preprocessor as _rp
+
         if self._serial_startup or self._post_startup:
             driver.on_startup(self._run_serial_and_post)
         for fn in self._startup:

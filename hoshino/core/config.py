@@ -1,20 +1,27 @@
 from __future__ import annotations
-from nonebot.config import Config as BaseConfig
+
 from pathlib import Path
+
+from nonebot.config import Config as BaseConfig
+from pydantic import Field
 
 
 class HoshinoConfig(BaseConfig):
     """Hoshino配置类"""
 
     # hoshino特有配置
-    modules: list[str] = [
-        "information",
-        "interactive",
-        "develop",
-        "tools",
-        "entertainment",
-        "ai",
-    ]
+    # 用 default_factory 而非类级可变默认值：modules 是 pydantic-settings 字段，
+    # 会从 .env.prod 的 MODULES 覆盖，ClassVar 会使其退化为静态默认值。
+    modules: list[str] = Field(
+        default_factory=lambda: [
+            "information",
+            "interactive",
+            "develop",
+            "tools",
+            "entertainment",
+            "ai",
+        ]
+    )
     data: str = "data"
     static: str = "static"
     zai: str = "はい！私はいつも貴方の側にいますよ！"
@@ -51,8 +58,12 @@ def _mount_config_extensions(hsn_cls) -> None:
     """
     try:
         from hoshino.ai.config import mount_into_hsnconfig
-    except ImportError:
-        return
+    except ModuleNotFoundError as exc:
+        # 仅当目标模块（含其父包）本身缺失时视为可选扩展跳过挂载；
+        # 其它真实导入错误（如 ai 模块内部依赖缺失）不应被静默吞掉。
+        if exc.name in {"hoshino.ai", "hoshino.ai.config"}:
+            return
+        raise
     mount_into_hsnconfig(hsn_cls)
 
 
