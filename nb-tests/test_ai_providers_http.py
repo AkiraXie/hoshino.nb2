@@ -308,15 +308,18 @@ def test_web_search_api_error_message(fake_ai_server, tmp_store, monkeypatch):
     assert len(requests) == 1  # 真实 API 错误不尝试回退候选
 
 
-def test_web_search_tavily(fake_ai_server, tmp_store):
-    """tavily 搜索：POST {url}/search，Bearer 鉴权，解析 results[].title/url/content。"""
+def test_web_search_tavily(fake_ai_server, tmp_store, monkeypatch):
+    """tavily 搜索：端点写死 api.tavily.com，POST /search，Bearer 鉴权。"""
     import asyncio
     from types import SimpleNamespace
 
+    from hoshino.ai import search as search_domain
     from hoshino.ai.tools.web.web_search import web_search
 
     base_url, requests = fake_ai_server
-    _seed_search_config(tmp_store, "tavily", url=base_url, key="tvly-test-key")
+    # 端点写死：测试里把内置常量指到 fake 服务器。
+    monkeypatch.setattr(search_domain, "DEFAULT_TAVILY_URL", base_url)
+    _seed_search_config(tmp_store, "tavily", key="tvly-test-key")  # url 配置被忽略
 
     out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "openai")), "q"))
     assert "Tavily 结果" in out
@@ -329,15 +332,18 @@ def test_web_search_tavily(fake_ai_server, tmp_store):
     assert req["body"]["max_results"] == 5
 
 
-def test_web_search_bocha(fake_ai_server, tmp_store):
-    """博查搜索：POST {url}/v1/web-search，Bearer 鉴权，解析 webPages.value。"""
+def test_web_search_bocha(fake_ai_server, tmp_store, monkeypatch):
+    """博查搜索：端点写死 api.bocha.cn，POST /v1/web-search，Bearer 鉴权。"""
     import asyncio
     from types import SimpleNamespace
 
+    from hoshino.ai import search as search_domain
     from hoshino.ai.tools.web.web_search import web_search
 
     base_url, requests = fake_ai_server
-    _seed_search_config(tmp_store, "bocha", url=base_url, key="sk-bocha-key")
+    # 端点写死：测试里把内置常量指到 fake 服务器。
+    monkeypatch.setattr(search_domain, "DEFAULT_BOCHA_URL", base_url)
+    _seed_search_config(tmp_store, "bocha", key="sk-bocha-key")  # url 配置被忽略
 
     out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "openai")), "q"))
     assert "博查结果" in out
@@ -357,7 +363,7 @@ def test_web_search_missing_key_reports(tmp_store):
 
     from hoshino.ai.tools.web.web_search import web_search
 
-    _seed_search_config(tmp_store, "tavily", url="http://127.0.0.1:1")  # 无 key
+    _seed_search_config(tmp_store, "tavily")  # 无 key
     out = asyncio.run(
         web_search(SimpleNamespace(deps=_search_deps("http://127.0.0.1:1", "openai")), "q")
     )

@@ -6,9 +6,10 @@
 - ``deepseek``：Anthropic 兼容 Messages 端点 + 服务端 ``web_search_20250305``
   工具（dsh 同款 wire format），响应解析 ``web_search_tool_result`` 块与
   ``text`` 块的 ``citations``；
-- ``tavily``：``POST {url}/search``，Bearer 鉴权，``results[].title/url/content``；
-- ``bocha``（博查）：``POST {url}/v1/web-search``，Bearer 鉴权，
-  ``webPages.value[].name/url/snippet``（兼容 Bing 格式）。
+- ``tavily``：``POST https://api.tavily.com/search``（端点写死），Bearer 鉴权，
+  ``results[].title/url/content``；
+- ``bocha``（博查）：``POST https://api.bocha.cn/v1/web-search``（端点写死），
+  Bearer 鉴权，``webPages.value[].name/url/snippet``（兼容 Bing 格式）。
 
 默认 deepseek：未配置时继承当前 anthropic 聊天 provider 的 url/key/model
 （存量 DeepSeek 用户零配置可用）；没有可用 anthropic provider 时返回 None，
@@ -86,9 +87,11 @@ def resolve_search_config(scope_key: str | None, config: AIConfig) -> SearchConf
             ),
         )
     if kind == "tavily":
-        return SearchConfig(kind="tavily", url=row["url"] or DEFAULT_TAVILY_URL, key=row["key"])
+        # 端点写死（api.tavily.com），不接受配置 url。
+        return SearchConfig(kind="tavily", url=DEFAULT_TAVILY_URL, key=row["key"])
     if kind == "bocha":
-        return SearchConfig(kind="bocha", url=row["url"] or DEFAULT_BOCHA_URL, key=row["key"])
+        # 端点写死（api.bocha.cn），不接受配置 url。
+        return SearchConfig(kind="bocha", url=DEFAULT_BOCHA_URL, key=row["key"])
     return None  # 未知 kind（数据异常）→ 视为未配置
 
 

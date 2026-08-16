@@ -481,13 +481,14 @@ async def test_vision_set_rejected_in_private(monkeypatch, tmp_store):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_search_set_and_status(monkeypatch, tmp_store):
-    """`ai search set tavily --key <k>`：写入全局配置；`ai search` 回显（key 脱敏）。"""
+    """`ai search set tavily --key <k>`：写入全局配置；`ai search` 回显（不显示 key）。"""
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
     bot, event = _milky_group("ai search set tavily --key tvly-secret-key-123")
     await bot.handle_event(event)
     text = sent[0][1].extract_plain_text()
     assert "已设置搜索 provider：`tavily`" in text
+    assert "tvly-secret-key-123" not in text  # 命令回显也不显示 key
     row = tmp_store.get_search_provider_row()
     assert row["kind"] == "tavily"
     assert row["key"] == "tvly-secret-key-123"
@@ -496,18 +497,24 @@ async def test_search_set_and_status(monkeypatch, tmp_store):
     await bot.handle_event(event)
     text = sent[1][1].extract_plain_text()
     assert "搜索 provider：`tavily`（自定义）" in text
-    assert "tvly-secret-key-123" not in text  # key 脱敏
-    assert "api.tavily.com" in text  # 默认端点
+    assert "tvly-secret-key-123" not in text  # 状态只显示已配置/未设置
+    assert "已配置" in text
+    assert "api.tavily.com" in text  # 内置端点
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_search_set_bocha_and_deepseek_flags(monkeypatch, tmp_store):
-    """bocha 需 --key；deepseek 支持 --url/--key/--model 全可省略。"""
+    """bocha/tavily 需 --key 且不接受 --url（端点内置）；deepseek 支持全套 flags。"""
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
     bot, event = _milky_group("ai search set bocha")
     await bot.handle_event(event)
     assert "需要 --key" in sent[0][1].extract_plain_text()
+    assert tmp_store.get_search_provider_row() is None
+
+    bot, event = _milky_group("ai search set tavily --key tvly-x --url http://evil")
+    await bot.handle_event(event)
+    assert "端点与模型已内置" in sent[1][1].extract_plain_text()
     assert tmp_store.get_search_provider_row() is None
 
     bot, event = _milky_group("ai search set deepseek --url http://x/v1 --key sk-ds --model m-1")

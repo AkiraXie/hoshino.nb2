@@ -15,11 +15,11 @@ vision 管理语义（独立 provider + 模型，与文本模型解耦）：
 - ``ai vision default <provider> <模型>``：设置全局默认 vision（仅 SUPERUSER）。
 
 搜索管理语义（独立搜索 provider，与聊天 provider 解耦，默认 deepseek）：
-- ``ai search``：显示当前搜索 provider（kind/端点/模型，key 脱敏）。
+- ``ai search``：显示当前搜索 provider（kind/端点/模型；key 只显示已配置/未设置）。
 - ``ai search set deepseek [--url <u>] [--key <k>] [--model <m>]``：配置 deepseek
   （省略项回退默认端点/模型，key 继承 anthropic 聊天 provider）。
 - ``ai search set tavily --key <k>`` / ``ai search set bocha --key <k>``：
-  配置 Tavily / 博查（默认端点 api.tavily.com / api.bocha.cn）。
+  配置 Tavily / 博查（端点已内置 api.tavily.com / api.bocha.cn，只需要 key）。
 - ``ai search reset``：清除配置，回退默认 deepseek。
 - ``ai config`` 仅代理/渲染语义，不涉及搜索；搜索走 ``ai search``。
 
@@ -52,7 +52,7 @@ from hoshino.ai import (
     tools,
 )
 from hoshino.ai.base import get_config
-from hoshino.ai.config import mask_key, mask_url, write_ai_config_env
+from hoshino.ai.config import mask_url, write_ai_config_env
 from hoshino.ai.provider import ProviderRecord
 from hoshino.core.permission import SUPERUSER
 from hoshino.core.service import Service
@@ -148,11 +148,12 @@ _SEARCH_USAGE = (
     "用法：\n"
     "  ai search                       查看当前搜索 provider\n"
     "  ai search set deepseek [--url <u>] [--key <k>] [--model <m>]  配置 deepseek\n"
-    "  ai search set tavily --key <k>  配置 Tavily（默认端点 api.tavily.com）\n"
-    "  ai search set bocha --key <k>   配置博查（默认端点 api.bocha.cn）\n"
+    "  ai search set tavily --key <k>  配置 Tavily（端点 api.tavily.com，内置）\n"
+    "  ai search set bocha --key <k>   配置博查（端点 api.bocha.cn，内置）\n"
     "  ai search reset                 清除配置，回退默认（deepseek）\n"
     "deepseek 省略 --url/--key/--model 时回退默认端点/模型，key 继承 anthropic\n"
-    "聊天 provider；tavily/bocha 必须提供 --key。"
+    "聊天 provider；tavily/bocha 只需 --key（端点与模型已内置）。\n"
+    "key 只写入 DB，命令输出不显示。"
 )
 
 # ai config 可在线修改并写盘的白名单：仅代理与渲染相关参数。
@@ -853,19 +854,20 @@ async def _search_status(bot: Bot, event: Event) -> None:
     lines = [
         f"搜索 provider：`{cfg.kind}`（{source}）",
         f"端点：{mask_url(cfg.url)}",
-        f"API key：{mask_key(cfg.key) or '（未设置）'}",
+        "API key：已配置" if cfg.key else "API key：未设置",  # 不展示 key（含脱敏）
     ]
     if cfg.kind == "deepseek":
         lines.append(f"模型：`{cfg.model}`")
     lines.append(
-        "设置：ai search set <deepseek|tavily|bocha> [--url <u>] [--key <k>] [--model <m>]"
+        "设置：ai search set <deepseek|tavily|bocha> [--key <k>]"
+        "（deepseek 可加 --url/--model；tavily/bocha 端点内置）"
     )
     lines.append("恢复默认：ai search reset")
     await send_to_event(bot, event, "\n".join(lines))
 
 
 async def _search_set(bot: Bot, event: Event, args: list[str]) -> None:
-    """`ai search set <kind> [--url <u>] [--key <k>] [--model <m>]`。"""
+    """`ai search set <kind> [--key <k>]`；deepseek 可加 --url/--model。"""
     if not args:
         await send_to_event(bot, event, _SEARCH_USAGE)
         return
@@ -876,9 +878,13 @@ async def _search_set(bot: Bot, event: Event, args: list[str]) -> None:
         )
         return
     opts = _parse_flags(args[1:])
-    if kind in ("tavily", "bocha") and not opts.get("key"):
-        await send_to_event(bot, event, f"`{kind}` 需要 --key（无继承来源）。")
-        return
+    if kind in ("tavily", "bocha"):
+        if not opts.get("key"):
+            await send_to_event(bot, event, f"`{kind}` 需要 --key（无继承来源）。")
+            return
+        if opts.get("url") or opts.get("model"):
+            await send_to_event(bot, event, f"`{kind}` 端点与模型已内置，只需要 --key。")
+            return
     store.set_search_provider(
         kind,
         url=opts.get("url", ""),
