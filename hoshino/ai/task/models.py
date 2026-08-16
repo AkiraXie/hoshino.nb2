@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -19,7 +19,7 @@ CreationPolicy = Literal["all", "admin", "superuser"]
 ApprovalMode = Literal["auto", "always", "never"]
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     created = "created"
     queued = "queued"
     running = "running"
@@ -29,7 +29,7 @@ class TaskStatus(str, Enum):
     cancelled = "cancelled"
 
 
-class TaskRunState(str, Enum):
+class TaskRunState(StrEnum):
     queued = "queued"
     running = "running"
     waiting_approval = "waiting_approval"
@@ -40,7 +40,7 @@ class TaskRunState(str, Enum):
     cancelled = "cancelled"
 
 
-class ApprovalState(str, Enum):
+class ApprovalState(StrEnum):
     pending = "pending"
     approved = "approved"
     denied = "denied"
