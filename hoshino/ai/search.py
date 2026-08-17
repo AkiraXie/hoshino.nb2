@@ -104,7 +104,7 @@ async def search_web(
 ) -> str:
     """按配置执行一次搜索，返回可读结果文本（不抛异常，失败返回错误提示）。"""
     if not cfg.key:
-        return f"搜索 provider `{cfg.kind}` 缺少 API key：`ai search set {cfg.kind} --key <k>`。"
+        return f"搜索 provider `{cfg.kind}` 缺少 API key：`ai search add <名字> {cfg.kind} --key <k>`。"
     match cfg.kind:
         case "deepseek":
             return await _deepseek_search(cfg, query, proxy=proxy, verify=verify)

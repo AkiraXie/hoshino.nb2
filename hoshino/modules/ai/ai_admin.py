@@ -14,13 +14,16 @@ vision 管理语义（独立 provider + 模型，与文本模型解耦）：
 - ``ai vision reset``：清除本群 vision 配置，回退全局默认。
 - ``ai vision default <provider> <模型>``：设置全局默认 vision（仅 SUPERUSER）。
 
-搜索管理语义（独立搜索 provider，与聊天 provider 解耦，默认 deepseek）：
-- ``ai search``：显示当前搜索 provider（kind/端点/模型；key 只显示已配置/未设置）。
-- ``ai search set deepseek [--url <u>] [--key <k>] [--model <m>]``：配置 deepseek
-  （省略项回退默认端点/模型，key 继承 anthropic 聊天 provider）。
-- ``ai search set tavily --key <k>`` / ``ai search set bocha --key <k>``：
-  配置 Tavily / 博查（端点已内置 api.tavily.com / api.bocha.cn，只需要 key）。
-- ``ai search reset``：清除配置，回退默认 deepseek。
+搜索管理语义（独立搜索 provider，与聊天 provider 解耦，默认 deepseek；
+支持配置多个 provider，再选一个作为默认生效）：
+- ``ai search``：显示当前生效的搜索 provider（kind/端点/模型；key 只显示已配置/未设置）。
+- ``ai search add <名字> <kind> [--url <u>] [--key <k>] [--model <m>]``：
+  添加/更新搜索 provider（名字自定，多 provider 并存）。deepseek 省略项回退默认
+  端点/模型，key 继承 anthropic 聊天 provider；tavily/bocha 只需要 --key
+  （端点已内置 api.tavily.com / api.bocha.cn）。
+- ``ai search default <名字>``（``set`` 同义）：把某个 provider 设为默认生效。
+- ``ai search list``：列出所有已配置的 provider（默认标记）。
+- ``ai search remove <名字>``：删除一个 provider。
 - ``ai config`` 仅代理/渲染语义，不涉及搜索；搜索走 ``ai search``。
 
 provider 管理语义：
@@ -78,12 +81,13 @@ USAGE = (
     "  ai model list         获取真实可用模型（provider API）\n"
     "  ai model set <模型>   设置文本模型（默认槽位）\n"
     "  ai vision             查看/设置看图模型（独立 provider + 模型）\n"
-    "  ai search             查看/设置搜索 provider（deepseek/tavily/博查，默认 deepseek）\n"
+    "  ai search             查看/管理搜索 provider（多 provider，选默认生效）\n"
     "  ai provider           查看当前 provider\n"
     "  ai provider set <id>  绑定当前群到指定 provider\n"
     "其他：\n"
     "  ai provider list / default <id> / reset / remove\n"
-    "  ai model reset [text] / ai vision set|reset|default / ai search set|reset\n"
+    "  ai model reset [text] / ai vision set|reset|default\n"
+    "  ai search list / add <名字> <kind> / default|set <名字> / remove\n"
     "  ai status / ai stats [provider_id]\n"
     "  ai clear [scope] / ai contexts [scope] / ai tools ... / ai persona ...\n"
     "  ai config [set <key> <value> | reset <key>]  在线改代理/渲染参数并写盘\n"
@@ -146,14 +150,16 @@ _VISION_USAGE = (
 
 _SEARCH_USAGE = (
     "用法：\n"
-    "  ai search                       查看当前搜索 provider\n"
-    "  ai search set deepseek [--url <u>] [--key <k>] [--model <m>]  配置 deepseek\n"
-    "  ai search set tavily --key <k>  配置 Tavily（端点 api.tavily.com，内置）\n"
-    "  ai search set bocha --key <k>   配置博查（端点 api.bocha.cn，内置）\n"
-    "  ai search reset                 清除配置，回退默认（deepseek）\n"
-    "deepseek 省略 --url/--key/--model 时回退默认端点/模型，key 继承 anthropic\n"
-    "聊天 provider；tavily/bocha 只需 --key（端点与模型已内置）。\n"
-    "key 只写入 DB，命令输出不显示。"
+    "  ai search                           查看当前生效的搜索 provider\n"
+    "  ai search list                      列出所有已配置的搜索 provider\n"
+    "  ai search add <名字> <kind> [--url <u>] [--key <k>] [--model <m>]\n"
+    "                                       添加/更新搜索 provider（名字自定）\n"
+    "  ai search default <名字>            把某个 provider 设为默认生效\n"
+    "  ai search set <名字>                （同 default）\n"
+    "  ai search remove <名字>             删除一个 provider\n"
+    "kind 可选：deepseek / tavily / bocha。deepseek 省略 --url/--key/--model 时\n"
+    "回退默认端点/模型，key 继承 anthropic 聊天 provider；tavily/bocha 只需\n"
+    "--key（端点与模型已内置）。key 只写入 DB，命令输出不显示。"
 )
 
 # ai config 可在线修改并写盘的白名单：仅代理与渲染相关参数。
@@ -820,64 +826,88 @@ async def _vision_default(bot: Bot, event: Event, args: list[str]) -> None:
 
 
 async def _handle_search(bot: Bot, event: Event, args: list[str]) -> None:
-    """``ai search``：查看/设置全局搜索 provider（deepseek/tavily/博查）。"""
+    """``ai search``：查看/管理搜索 provider（多 provider，选默认生效）。"""
     if not args:
         await _search_status(bot, event)
         return
     action, rest = args[0], args[1:]
     if action in ("show", "status"):
         await _search_status(bot, event)
-        return
-    if action == "set":
-        await _search_set(bot, event, rest)
-    elif action == "reset":
-        await _search_reset(bot, event)
+    elif action == "list":
+        await _search_list(bot, event)
+    elif action == "add":
+        await _search_add(bot, event, rest)
+    elif action in ("default", "set"):
+        await _search_set_default(bot, event, rest)
+    elif action in ("remove", "del"):
+        await _search_remove(bot, event, rest)
     else:
         await send_to_event(bot, event, _SEARCH_USAGE)
 
 
 async def _search_status(bot: Bot, event: Event) -> None:
-    """`ai search`：当前搜索 provider（kind/端点/模型，key 脱敏）+ 来源。"""
+    """`ai search`：当前生效的搜索 provider（kind/端点/模型，key 脱敏）+ 来源。"""
     config = get_config()
     scope_key = event_scope_key(bot, event)
-    row = store.get_search_provider_row()
+    default_id = store.get_search_default_id()
     cfg = search.resolve_search_config(scope_key, config)
     if cfg is None:
         await send_to_event(
             bot,
             event,
-            "当前未配置搜索 provider：`ai search set <deepseek|tavily|bocha> ...`\n"
+            "当前未配置搜索 provider：`ai search add <名字> <deepseek|tavily|bocha> ...`\n"
             "（默认 deepseek 需 anthropic 兼容聊天 provider 或显式 --key）。",
         )
         return
-    source = "自定义" if row is not None else "默认（继承 anthropic 聊天 provider）"
+    source = "自定义" if default_id else "默认（继承 anthropic 聊天 provider）"
+    label = f"`{default_id}`（`{cfg.kind}`）" if default_id else f"`{cfg.kind}`"
     lines = [
-        f"搜索 provider：`{cfg.kind}`（{source}）",
+        f"搜索 provider：{label}（{source}）",
         f"端点：{mask_url(cfg.url)}",
         "API key：已配置" if cfg.key else "API key：未设置",  # 不展示 key（含脱敏）
     ]
     if cfg.kind == "deepseek":
         lines.append(f"模型：`{cfg.model}`")
     lines.append(
-        "设置：ai search set <deepseek|tavily|bocha> [--key <k>]"
-        "（deepseek 可加 --url/--model；tavily/bocha 端点内置）"
+        "管理：ai search list 查看全部；ai search add 添加；ai search default <名字> 切换默认"
     )
-    lines.append("恢复默认：ai search reset")
     await send_to_event(bot, event, "\n".join(lines))
 
 
-async def _search_set(bot: Bot, event: Event, args: list[str]) -> None:
-    """`ai search set <kind> [--key <k>]`；deepseek 可加 --url/--model。"""
-    if not args:
-        await send_to_event(bot, event, _SEARCH_USAGE)
-        return
-    kind = args[0]
-    if kind not in search.SEARCH_KINDS:
+async def _search_list(bot: Bot, event: Event) -> None:
+    """`ai search list`：列出所有已配置的搜索 provider（默认标记）。"""
+    rows = store.list_search_providers()
+    if not rows:
         await send_to_event(
-            bot, event, f"不支持的搜索 provider `{kind}`：可选 deepseek / tavily / bocha。"
+            bot,
+            event,
+            "还没有配置搜索 provider：`ai search add <名字> <deepseek|tavily|bocha> [--key <k>]`。",
         )
         return
-    opts = _parse_flags(args[1:])
+    default_id = store.get_search_default_id()
+    lines = [f"已配置的搜索 provider（{len(rows)} 个）："]
+    for row in rows:
+        marker = "（默认）" if row["id"] == default_id else ""
+        key_state = "key 已配置" if row["key"] else "key 未设置"
+        url = mask_url(row["url"]) or "（默认端点）"
+        model = f"，模型 `{row['model']}`" if row["model"] else ""
+        lines.append(f"- `{row['id']}`（{row['kind']}）{marker}：{url}，{key_state}{model}")
+    lines.append("切换默认：ai search default <名字>；删除：ai search remove <名字>")
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _search_add(bot: Bot, event: Event, args: list[str]) -> None:
+    """`ai search add <名字> <kind> [--url <u>] [--key <k>] [--model <m>]`。"""
+    if len(args) < 2:
+        await send_to_event(bot, event, _SEARCH_USAGE)
+        return
+    name, kind = args[0], args[1]
+    if kind not in search.SEARCH_KINDS:
+        await send_to_event(
+            bot, event, f"不支持的搜索 provider kind `{kind}`：可选 deepseek / tavily / bocha。"
+        )
+        return
+    opts = _parse_flags(args[2:])
     if kind in ("tavily", "bocha"):
         if not opts.get("key"):
             await send_to_event(bot, event, f"`{kind}` 需要 --key（无继承来源）。")
@@ -885,33 +915,61 @@ async def _search_set(bot: Bot, event: Event, args: list[str]) -> None:
         if opts.get("url") or opts.get("model"):
             await send_to_event(bot, event, f"`{kind}` 端点与模型已内置，只需要 --key。")
             return
-    store.set_search_provider(
+    existing = store.get_search_provider_row(name)
+    store.upsert_search_provider(
+        name,
         kind,
         url=opts.get("url", ""),
         key=opts.get("key", ""),
         model=opts.get("model", ""),
         updated_by=str(get_user_id(event) or ""),
     )
+    verb = "已更新" if existing else "已添加"
     note = ""
     if kind == "deepseek":
         note = "（省略项回退默认端点/模型，key 继承 anthropic 聊天 provider）"
     await send_to_event(
         bot,
         event,
-        f"已设置搜索 provider：`{kind}`{note}\n查看生效配置：ai search；恢复默认：ai search reset",
+        f"{verb}搜索 provider：`{name}`（{kind}）{note}\n"
+        f"设为默认生效：ai search default {name}；查看全部：ai search list",
     )
 
 
-async def _search_reset(bot: Bot, event: Event) -> None:
-    """`ai search reset`：清除自定义搜索配置，回退默认（deepseek）。"""
-    if store.clear_search_provider():
+async def _search_set_default(bot: Bot, event: Event, args: list[str]) -> None:
+    """`ai search default <名字>`：选择默认生效的搜索 provider。"""
+    if not args:
+        await send_to_event(bot, event, _SEARCH_USAGE)
+        return
+    name = args[0]
+    if not store.set_search_default(name):
         await send_to_event(
             bot,
             event,
-            "已清除搜索 provider 配置，回退默认（deepseek，继承 anthropic 聊天 provider）。",
+            f"搜索 provider `{name}` 不存在：`ai search list` 查看已配置，`ai search add` 添加。",
         )
+        return
+    row = store.get_search_provider_row(name)
+    kind = row["kind"] if row else "?"
+    await send_to_event(
+        bot,
+        event,
+        f"已将默认搜索 provider 切换为：`{name}`（{kind}）\n查看生效配置：ai search；查看全部：ai search list",
+    )
+
+
+async def _search_remove(bot: Bot, event: Event, args: list[str]) -> None:
+    """`ai search remove <名字>`：删除一个搜索 provider。"""
+    if not args:
+        await send_to_event(bot, event, _SEARCH_USAGE)
+        return
+    name = args[0]
+    if store.delete_search_provider(name):
+        await send_to_event(bot, event, f"已删除搜索 provider：`{name}`。")
     else:
-        await send_to_event(bot, event, "当前没有自定义搜索 provider 配置。")
+        await send_to_event(
+            bot, event, f"搜索 provider `{name}` 不存在：`ai search list` 查看已配置。"
+        )
 
 
 async def _handle_stats(bot: Bot, event: Event, args: list[str]) -> None:

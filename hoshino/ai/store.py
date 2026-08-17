@@ -613,10 +613,12 @@ class AIScopeModel(Base):
 
 
 class AISearchProvider(Base):
-    """全局搜索 provider 配置（单行，id 恒为 ``default``；``ai search`` 管理）。
+    """搜索 provider 配置（多行：id = provider 名；``ai search`` 管理）。
 
     kind ∈ deepseek | tavily | bocha；url/key/model 为空时按 kind 回退默认
     （deepseek 继承 anthropic 聊天 provider 凭据），见 ``search.resolve_search_config``。
+    当前生效的 provider 由全局 value ``search_default_provider`` 指向；
+    未设置默认时回退 id 为 ``default`` 的存量行（老版本单行配置）。
     """
 
     __tablename__ = "ai_search_providers"
@@ -854,12 +856,14 @@ def clear_scope_model_override(scope_key: str, slot: str | None = None) -> bool:
 
 # ------------------------------------------------------------ search provider
 
-
 _SEARCH_CONFIG_ID = "default"
+# 全局 value：当前默认搜索 provider 的 id；未设置时回退 _SEARCH_CONFIG_ID 存量行。
+_SEARCH_DEFAULT_VALUE_KEY = "search_default_provider"
 
 
 def _search_to_dict(row: AISearchProvider) -> dict[str, Any]:
     return {
+        "id": row.id,
         "kind": row.kind,
         "url": row.url,
         "key": row.key,
@@ -869,24 +873,58 @@ def _search_to_dict(row: AISearchProvider) -> dict[str, Any]:
     }
 
 
-def get_search_provider_row() -> dict[str, Any] | None:
-    """全局搜索 provider 配置行；未配置返回 None（走默认 deepseek）。"""
+def _get_search_row(session, provider_id: str) -> AISearchProvider | None:
+    return session.get(AISearchProvider, provider_id)
+
+
+def list_search_providers() -> list[dict[str, Any]]:
+    """列出全部搜索 provider 配置行（含 id）。"""
     with Session() as session:
-        row = session.get(AISearchProvider, _SEARCH_CONFIG_ID)
+        rows = (
+            session.execute(select(AISearchProvider).order_by(AISearchProvider.id)).scalars().all()
+        )
+        return [_search_to_dict(row) for row in rows]
+
+
+def get_search_provider_row(provider_id: str | None = None) -> dict[str, Any] | None:
+    """取搜索 provider 配置行。
+
+    - 传 ``provider_id``：取该 id 的行；
+    - 不传：取当前默认行（全局默认 → 无默认时回退 id=``default`` 存量行）。
+    """
+    with Session() as session:
+        if provider_id is not None:
+            row = _get_search_row(session, provider_id)
+            return _search_to_dict(row) if row is not None else None
+        global_row = session.get(AIGlobal, _SEARCH_DEFAULT_VALUE_KEY)
+        if global_row is not None and global_row.value:
+            row = _get_search_row(session, global_row.value)
+            if row is not None:
+                return _search_to_dict(row)
+        row = _get_search_row(session, _SEARCH_CONFIG_ID)
         return _search_to_dict(row) if row is not None else None
 
 
-def set_search_provider(
-    kind: str, url: str = "", key: str = "", model: str = "", updated_by: str = ""
+def has_search_provider(provider_id: str) -> bool:
+    return get_search_provider_row(provider_id) is not None
+
+
+def upsert_search_provider(
+    provider_id: str,
+    kind: str,
+    url: str = "",
+    key: str = "",
+    model: str = "",
+    updated_by: str = "",
 ) -> None:
-    """写入全局搜索 provider 配置（单行 upsert）。"""
+    """写入一个搜索 provider 配置行（按 id upsert，多 provider 并存）。"""
     now = time.time()
     with Session() as session:
-        row = session.get(AISearchProvider, _SEARCH_CONFIG_ID)
+        row = _get_search_row(session, provider_id)
         if row is None:
             session.add(
                 AISearchProvider(
-                    id=_SEARCH_CONFIG_ID,
+                    id=provider_id,
                     kind=kind,
                     url=url,
                     key=key,
@@ -905,15 +943,63 @@ def set_search_provider(
         session.commit()
 
 
-def clear_search_provider() -> bool:
-    """清除全局搜索 provider 配置（回退默认 deepseek）；返回是否真的清除了。"""
+def delete_search_provider(provider_id: str) -> bool:
+    """删除一个搜索 provider 配置行；若它是当前默认，同步清除默认指向。"""
     with Session() as session:
-        row = session.get(AISearchProvider, _SEARCH_CONFIG_ID)
+        row = _get_search_row(session, provider_id)
         if row is None:
             return False
         session.delete(row)
+        global_row = session.get(AIGlobal, _SEARCH_DEFAULT_VALUE_KEY)
+        if global_row is not None and global_row.value == provider_id:
+            session.delete(global_row)
         session.commit()
         return True
+
+
+def set_search_default(provider_id: str) -> bool:
+    """把某个已配置的搜索 provider 设为默认；不存在返回 False。"""
+    if not has_search_provider(provider_id):
+        return False
+    set_global_value(_SEARCH_DEFAULT_VALUE_KEY, provider_id)
+    return True
+
+
+def get_search_default_id() -> str | None:
+    """当前默认搜索 provider 的 id；未设置默认时返回存量 default 行 id。"""
+    default_id = get_global_value(_SEARCH_DEFAULT_VALUE_KEY)
+    if default_id and has_search_provider(default_id):
+        return default_id
+    if has_search_provider(_SEARCH_CONFIG_ID):
+        return _SEARCH_CONFIG_ID
+    return None
+
+
+def clear_search_default() -> bool:
+    """清除默认指向并删除存量 ``default`` 行（回退 deepseek 继承）。
+
+    ``add`` 的命名 provider 行保留（list 仍可见，可重新 default）；
+    老版本单行配置（id=``default``）随默认一起清除。
+    返回是否真的清除了任何东西。
+    """
+    cleared_value = clear_global_value(_SEARCH_DEFAULT_VALUE_KEY)
+    deleted_default = delete_search_provider(_SEARCH_CONFIG_ID)
+    return cleared_value or deleted_default
+
+
+def set_search_provider(
+    kind: str, url: str = "", key: str = "", model: str = "", updated_by: str = ""
+) -> None:
+    """写入 id=``default`` 的搜索 provider 配置行并设为默认（兼容老版本入口）。"""
+    upsert_search_provider(
+        _SEARCH_CONFIG_ID, kind, url=url, key=key, model=model, updated_by=updated_by
+    )
+    set_search_default(_SEARCH_CONFIG_ID)
+
+
+def clear_search_provider() -> bool:
+    """清除存量 default 行与默认指向（回退默认 deepseek）；返回是否真的清除了。"""
+    return clear_search_default()
 
 
 # ----------------------------------------------------------------- usage events
