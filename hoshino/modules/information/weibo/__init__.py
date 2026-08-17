@@ -4,7 +4,6 @@ import asyncio
 import re
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 
 from nonebot.typing import T_State
 
@@ -14,10 +13,8 @@ from hoshino.platform import (
     dump_target,
     group_target,
 )
-from hoshino.platform.depends import GroupID, MessageID, ParamText
+from hoshino.platform.depends import GroupID, ParamText
 from hoshino.platform.permission import ADMIN
-from hoshino.types import MessageLike
-from hoshino.util.media import random_image_or_video_by_path
 from hoshino.util.message import send_segments
 
 from . import fav as _fav  # noqa: F401
@@ -36,8 +33,6 @@ from .db import (
 )
 from .internal.post_runtime import (
     render_messages,
-    weibo_img_dir,
-    weibo_video_dir,
 )
 from .request import (
     get_weibo_new,
@@ -116,70 +111,6 @@ async def set_weibo_config(state: T_State, gid: int | None = GroupID()):
         f"{config_bits}\n"
         f"only_pic={only_pic}, send_screenshot={send_screenshot}, send_segments={send_segments}"
     )
-
-
-random_image_cmd = sv.on_command(
-    "微博随图",
-    aliases=("wbimg", "wim"),
-    only_group=False,
-    only_to_me=True,
-    permission=SUPERUSER,
-    priority=5,
-)
-
-
-def _random_media(
-    path: Path,
-    num: int,
-    *,
-    video: bool,
-    text: str,
-    message_id: int | None,
-) -> list[MessageLike]:
-    """解析 '关键词 [数量]' 参数并按种子随机选取媒体，供随图/随影命令共用"""
-    text = text.strip()
-    texts = text.split(maxsplit=1)
-    keyword = None
-    if len(texts) == 2:
-        keyword, num_str = texts
-        if num_str.isdigit():
-            num = int(num_str)
-        else:
-            keyword = keyword + num_str
-    elif len(texts) == 1:
-        keyword = texts[0]
-        if keyword.isdigit():
-            num = int(keyword)
-    seed = time.time() + (message_id or 0)
-    return random_image_or_video_by_path(path, num=num, seed=seed, video=video, keyword=keyword)
-
-
-@random_image_cmd.handle()
-async def weibo_random_image(
-    text: str = ParamText(),
-    message_id: int | None = MessageID(),
-):
-    imgs = _random_media(weibo_img_dir, 12, video=False, text=text, message_id=message_id)
-    await send_segments(imgs)
-
-
-random_video_cmd = sv.on_command(
-    "微博随影",
-    aliases=("wbvid", "wvi"),
-    only_to_me=True,
-    only_group=False,
-    permission=SUPERUSER,
-    priority=5,
-)
-
-
-@random_video_cmd.handle()
-async def weibo_random_video(
-    text: str = ParamText(),
-    message_id: int | None = MessageID(),
-):
-    imgs = _random_media(weibo_video_dir, 2, video=True, text=text, message_id=message_id)
-    await send_segments(imgs)
 
 
 add_weibo_cmd = sv.on_command(
