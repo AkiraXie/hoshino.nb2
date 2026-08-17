@@ -135,7 +135,7 @@ hoshino/
 
 - `hoshino/bootstrap.py` — 注册 adapter 和 OB11 扩展事件
 - `hoshino/platform/ob11/bootstrap.py` — OB11 `Bot.send()` legacy patch
-- `hoshino/base/image.py` — legacy OB11 Message 输出路径（reaction 已走公共 DI）
+- `hoshino/base/image.py` — legacy OB11 Message 输出路径（超管存图/看图等命令）
 - `hoshino/base/test.py` — 测试代码
 
 ## 验证脚本
