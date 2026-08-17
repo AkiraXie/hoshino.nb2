@@ -368,7 +368,7 @@ def test_web_search_missing_key_reports(tmp_store):
         web_search(SimpleNamespace(deps=_search_deps("http://127.0.0.1:1", "openai")), "q")
     )
     assert "缺少 API key" in out
-    assert "ai search set tavily --key" in out
+    assert "ai search add <名字> tavily --key" in out
 
 
 def test_openai_system_prompt_and_placeholder_in_body(fake_ai_server, tmp_store):
