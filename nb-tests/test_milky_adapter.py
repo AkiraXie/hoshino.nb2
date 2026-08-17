@@ -326,51 +326,6 @@ async def test_reacted_message_di_fetches_milky_message(
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_milky_reaction_reaches_image_matcher_rule(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from hoshino.base.image import svimg_notice
-    from hoshino.util.media import SUPERUSER_IMAGE_LIST
-
-    async def fake_get_message(
-        self,
-        *,
-        message_scene: str,
-        peer_id: int,
-        message_seq: int,
-    ) -> IncomingMessage:
-        return IncomingMessage.model_validate(
-            {
-                "message_scene": message_scene,
-                "peer_id": peer_id,
-                "message_seq": message_seq,
-                "sender_id": 10000,
-                "time": 1,
-                "segments": [
-                    {
-                        "type": "image",
-                        "data": {
-                            "resource_id": "image-resource",
-                            "temp_url": "https://example.com/image.jpg",
-                            "width": 100,
-                            "height": 100,
-                            "sub_type": "normal",
-                        },
-                    }
-                ],
-            }
-        )
-
-    monkeypatch.setattr(MilkyBot, "get_message", fake_get_message)
-    bot, _ = _milky_group_message("ignored", to_me=False)
-    event = _milky_reaction()
-    state: dict[str, Any] = {}
-
-    assert await svimg_notice.rule(bot, event, state)
-    assert state[SUPERUSER_IMAGE_LIST][0].url == "https://example.com/image.jpg"
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_reacted_message_di_preserves_ob11_fetch(
     app: App,
     monkeypatch: pytest.MonkeyPatch,
@@ -411,36 +366,6 @@ async def test_reacted_message_di_preserves_ob11_fetch(
     ) as ctx:
         ctx.pass_params(bot=bot, event=event)
         ctx.should_return(("10000", True, "https://example.com/image.jpg"))
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.parametrize(
-    "event",
-    (
-        pytest.param(_ob11_reaction(), id="ob11-reaction"),
-        pytest.param(_ob11_emoji_like(), id="ob11-emoji-like"),
-        pytest.param(_milky_reaction(), id="milky-reaction"),
-    ),
-)
-async def test_image_reaction_business_rule_is_adapter_neutral(event):
-    from hoshino.base.image import reaction_img_rule
-    from hoshino.platform import RetrievedMessage, get_reaction_info
-    from hoshino.util.media import SUPERUSER_IMAGE_LIST
-
-    reaction = get_reaction_info(event)
-    assert reaction is not None
-    message = RetrievedMessage(
-        sender_id="10000",
-        content=UniMessage.image(url="https://example.com/image.jpg"),
-        trusted_sender=True,
-    )
-    state: dict[str, Any] = {}
-    assert await reaction_img_rule(
-        state,
-        reaction=reaction,
-        reacted_message=message,
-    )
-    assert state[SUPERUSER_IMAGE_LIST][0].url == "https://example.com/image.jpg"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

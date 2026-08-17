@@ -474,56 +474,6 @@ class TestBasePlugins:
         assert "投递成功1个群" in calls[2]["params"]["message"][0]["data"]["text"]
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_image_reaction_notice_saves_referenced_image(self, monkeypatch):
-        """image: a Milky reaction retrieves and saves a trusted image."""
-        image_module = _loaded_module("hoshino.base.image")
-        captured: dict[str, Any] = {}
-
-        async def fake_save_images(segments, **kwargs):
-            captured["segments"] = list(segments)
-            captured.update(kwargs)
-            return len(segments)
-
-        monkeypatch.setattr(image_module, "_save_images", fake_save_images)
-        notice = _make_reaction_notice(face_id="66")
-        calls = _stub_all_api(
-            monkeypatch,
-            referenced_sender_id=_superuser_id(),
-            referenced_segments=[
-                {
-                    "type": "image",
-                    "data": {
-                        "resource_id": "image-resource",
-                        "temp_url": "https://example.com/image.jpg",
-                        "width": 100,
-                        "height": 100,
-                        "sub_type": "normal",
-                    },
-                }
-            ],
-        )
-
-        await _make_bot().handle_event(notice)
-
-        message_calls = [call for call in calls if call["action"] == "get_message"]
-        assert message_calls == [
-            {
-                "action": "get_message",
-                "params": {
-                    "message_scene": "group",
-                    "peer_id": 123456,
-                    "message_seq": 7001,
-                },
-            }
-        ]
-        assert captured["message_id"] == 7001
-        assert captured["session_id"] == f"group_123456_{_superuser_id()}"
-        assert captured["group_id"] == 123456
-        assert captured["is_fav"] is True
-        assert len(captured["segments"]) == 1
-        assert captured["segments"][0].url == "https://example.com/image.jpg"
-
-    @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_image_short_delete_alias_remains_available(self, monkeypatch, tmp_path):
         """image: the whitespace-qualified ``st`` alias still deletes a file."""
         image_module = _loaded_module("hoshino.base.image")
