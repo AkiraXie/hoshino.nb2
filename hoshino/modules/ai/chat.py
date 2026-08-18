@@ -1,10 +1,11 @@
-"""AI 聊天插件：``#`` 前缀或回复 bot 自己的消息触发对话，支持多对话（上下文）管理。
+"""AI 聊天插件：``@机器人`` 或 ``#`` 前缀触发对话，支持多对话（上下文）管理。
 
-- 群聊/私聊均可用，不要求 @机器人。触发条件：
-  - ``#`` 前缀消息（``#`` 命名空间保留词为控制命令，整词精确匹配：
-    ``#new [name]`` / ``#switch|sw <name>`` / ``#list|ls`` / ``#clear`` /
-    ``#goal ...``；其余内容一律按聊天处理）；
-  - 对机器人自己消息的引用回复（无需 ``#``，如回复 AI 发的图片消息继续追问）。
+- 群聊/私聊均可用。触发条件：
+  - @本机器人（to_me）→ 一定触发，不要求 ``#`` 前缀；
+  - 不 at 任何人 + ``#`` 前缀消息 → 触发（``#`` 命名空间保留词为控制命令，
+    整词精确匹配：``#new [name]`` / ``#switch|sw <name>`` / ``#list|ls`` /
+    ``#clear`` / ``#goal ...``；其余内容一律按聊天处理）；
+  - 回复消息 + 不 at 任何人 + ``#`` 前缀 → 触发（回复本身不额外放行，仍需 ``#``）。
 - 引用识别：触发后会把回复指向的内容一并交给模型——聊天记录文字、转发消息文字、
   回复/转发里的图片（vision 路径），而不仅是当前消息本体。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
@@ -64,7 +65,6 @@ from hoshino.platform import (
     get_group_id,
     get_plaintext,
     get_reply_content,
-    is_reply_to_bot,
     send_to_event,
     to_unimessage,
 )
@@ -75,18 +75,12 @@ sv = Service("aichat", enable_on_default=False, visible=False)
 
 
 async def _ai_chat_rule(bot: Bot, event: Event) -> bool:
-    """``#`` 前缀（``#xxx`` / ``@本bot #xxx``），或对机器人自己消息的引用回复。
-
-    按消息段结构判断而非 ``get_plaintext``：纯文本提取会丢弃 at 段，
-    导致 ``@bot2 #xxx`` 被误判为 ``#xxx`` 而触发本 bot。
-    """
+    
     if event.is_tome():
         return get_plaintext(event).lstrip().startswith("#")
     msg = get_event_message(event)
     unimsg = await to_unimessage(msg, bot=bot, event=event) if msg is not None else None
-    if unimsg and unimsg[0].type == "text" and unimsg[0].text.lstrip().startswith("#"):
-        return True
-    return is_reply_to_bot(bot, event)
+    return unimsg and unimsg.startswith("#")
 
 
 # 默认 block=True，避免命中消息继续落到其他 on_message 规则。

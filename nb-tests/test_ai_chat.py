@@ -586,29 +586,6 @@ async def test_chat_at_self_with_hash_triggers(monkeypatch, tmp_store):
     assert len(sent) == 1
 
 
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_at_self_without_hash_does_not_trigger(monkeypatch, tmp_store):
-    """`@bot1 你好`（@ 自己但无 #、非回复）不触发。"""
-    from hoshino.modules.ai import chat
-
-    _stub_config(monkeypatch, tmp_store)
-    agent = FakeAgent(FakeResult("x"))
-    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
-    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
-    sent = _stub_send(monkeypatch)
-
-    bot, event = _milky_group(
-        "x",
-        user_id=7,
-        segments=[
-            {"type": "mention", "data": {"user_id": 10000}},
-            {"type": "text", "data": {"text": "你好"}},
-        ],
-    )
-    await bot.handle_event(event)
-
-    assert sent == []
-
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_no_provider_configured(monkeypatch, tmp_store):
@@ -1535,19 +1512,15 @@ def test_get_reply_helpers_milky():
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_reply_to_bot_without_hash_triggers(monkeypatch, tmp_store):
-    """回复 bot 自己的消息无需 ``#`` 即触发对话。"""
+async def test_chat_reply_to_bot_without_hash_does_not_trigger(monkeypatch, tmp_store):
+    """回复 bot 自己的消息但无 ``#`` 前缀不触发（回复本身不额外放行）。"""
     agent, sent = _chat_env(monkeypatch, tmp_store)
 
     bot, event = _milky_group("继续说说", user_id=7, reply=_milky_reply(10000, "之前的 AI 消息"))
     await bot.handle_event(event)
 
-    # 触发成功且引用内容注入 prompt
-    assert agent.prompt is not None
-    assert "继续说说" in agent.prompt
-    assert "用户引用了上一条消息" in agent.prompt
-    assert "之前的 AI 消息" in agent.prompt
-    assert len(sent) == 1  # AI 回复（渲染为图片）已发出
+    assert getattr(agent, "prompt", None) is None
+    assert sent == []
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
