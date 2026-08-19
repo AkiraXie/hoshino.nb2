@@ -397,11 +397,9 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
             timeout=config.chat_run_timeout_seconds,
         )
     except (TimeoutError, UsageLimitExceeded) as exc:
-        # 护栏触发：丢弃本次执行，但把提问留在上下文，下一轮可续问。
-        # 已知限制：vision 轮只保留文本 prompt（图片部件不落历史）。
+        # 护栏触发：丢弃本次执行，不写入上下文（避免失败的提问/中间产物污染历史）。
         agent_deps.telemetry.record_error(type(exc).__name__)
         run_log.reason = "timeout" if isinstance(exc, TimeoutError) else "max-requests"
-        manager.append_prompt_only(scope_key, prompt, provider_id, run_log)
         reason = "超时" if isinstance(exc, TimeoutError) else "超出步数限制"
         sv.logger.warning(
             f"AI 请求{reason} provider={provider_id} scope={scope_key} conv={conv.name}"
@@ -409,7 +407,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         await send_to_event(
             bot,
             event,
-            f"处理{reason}，问题已保留在上下文，可直接续问或换种问法。",
+            f"处理{reason}，本次对话未记录，请重新提问。",
         )
         return
     except Exception as exc:
