@@ -1,9 +1,7 @@
-"""AI vision 测试：事件图片 → 内容转换、image_view 工具、chat 含图流程。
+"""AI vision e2e 测试：chat 含图流程走真实 NoneBot dispatch 路径。
 
-media 与 image_view 的纯逻辑测试不启动 NoneBot；chat 含图流程走真实
-NoneBot dispatch 路径（milky 事件 + stub build_agent/render/send）。
-vision 为独立配置（provider + 模型）：工具/chat 用例用全局默认 vision 提供
-（``ai vision default`` 写入的 KV），scope 未配置时回退。
+milky 事件 + stub build_agent/render/send，验证 vision 描述注入、mask 提示、
+无图回退等用户可见行为。
 """
 
 from __future__ import annotations
@@ -11,256 +9,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from pydantic_ai import BinaryContent, ImageUrl
-from pydantic_ai.messages import TextContent
 
 from conftest import next_seq
-from hoshino.ai.deps import AgentDeps, PermissionSnapshot, Telemetry
 
 pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
 
 
-# ------------------------------------------------------------ media 转换
-
-
-def test_segment_url_becomes_image_url():
-    from hoshino.ai.media import image_segments_to_content
-
-    seg = SimpleNamespace(url="https://example.com/a.png", path=None, raw=None)
-    parts = image_segments_to_content([seg])
-    assert len(parts) == 1
-    assert isinstance(parts[0], ImageUrl)
-    assert parts[0].url == "https://example.com/a.png"
-
-
-def test_segment_path_becomes_binary(tmp_path):
-    from hoshino.ai.media import image_segments_to_content
-
-    img = tmp_path / "a.png"
-    img.write_bytes(b"\x89PNG fake")
-    seg = SimpleNamespace(url="", path=str(img), raw=None)
-    parts = image_segments_to_content([seg])
-    assert len(parts) == 1
-    assert isinstance(parts[0], BinaryContent)
-    assert parts[0].data == b"\x89PNG fake"
-    assert parts[0].media_type == "image/png"
-
-
-def test_segment_raw_becomes_binary():
-    from hoshino.ai.media import image_segments_to_content
-
-    seg = SimpleNamespace(url="", path=None, raw=b"\x89PNG raw")
-    parts = image_segments_to_content([seg])
-    assert isinstance(parts[0], BinaryContent)
-    assert parts[0].data == b"\x89PNG raw"
-
-
-def test_segment_file_url_becomes_binary(tmp_path):
-    from hoshino.ai.media import image_segments_to_content
-
-    img = tmp_path / "a.jpg"
-    img.write_bytes(b"jpeg")
-    seg = SimpleNamespace(url=f"file://{img}", path=None, raw=None)
-    parts = image_segments_to_content([seg])
-    assert isinstance(parts[0], BinaryContent)
-    assert parts[0].media_type == "image/jpeg"
-
-
-def test_segment_unresolvable_skipped():
-    from hoshino.ai.media import image_segments_to_content
-
-    seg = SimpleNamespace(url="", path=None, raw=None)
-    assert image_segments_to_content([seg]) == []
-
-
-def test_build_vision_prompt_falls_back_to_text():
-    from hoshino.ai.media import build_vision_prompt
-
-    good = SimpleNamespace(url="https://example.com/a.png", path=None, raw=None)
-    bad = SimpleNamespace(url="", path=None, raw=None)
-
-    result = build_vision_prompt("看图", [good])
-    assert isinstance(result, list)
-    assert isinstance(result[0], TextContent)
-    assert result[0].content == "看图"
-    assert isinstance(result[1], ImageUrl)
-
-    # 图片全部解析失败 → 回退纯文本 str
-    assert build_vision_prompt("看图", [bad]) == "看图"
-    assert build_vision_prompt("看图", []) == "看图"
-
-
-# ------------------------------------------------------------ image_view 工具
-
-
-def _tool_ctx(config=None, provider_id: str = ""):
-    from nonebot_plugin_alconna.uniseg import Target
-
-    from hoshino.ai.config import AIConfig
-
-    cfg = config or AIConfig()
-    return SimpleNamespace(
-        deps=AgentDeps(
-            surface="chat",  # type: ignore[arg-type]
-            scope_key=None,
-            target=Target(id="0", private=True, self_id="10000", adapter="milky"),
-            config=cfg,
-            permissions=PermissionSnapshot(),
-            bot=None,
-            event=None,
-            telemetry=Telemetry(provider_id=provider_id, scope_key="", model=""),
-        )
-    )
-
-
-class _FakeResponse:
-    def __init__(self, content: bytes = b"", headers: dict | None = None, status: int = 200):
-        self.content = content
-        self.headers = headers or {}
-        self._status = status
-
-    def raise_for_status(self):
-        if self._status >= 400:
-            import httpx
-
-            request = httpx.Request("GET", "http://fake")
-            raise httpx.HTTPStatusError(
-                f"http {self._status}",
-                request=request,
-                response=httpx.Response(self._status, request=request),
-            )
-
-
-class _FakeAsyncClient:
-    """替换 httpx.AsyncClient：固定返回预设响应。"""
-
-    def __init__(self, response: _FakeResponse):
-        self._response = response
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
-
-    async def get(self, url, **kwargs):
-        return self._response
-
-
-def _seed_vision_provider(tmp_store, *, vision_model: str = "gpt-4o"):
-    """预置 provider 行 + 全局默认 vision（provider 不再携带默认 vision 模型）。"""
-    tmp_store.upsert_provider_row(
-        provider_id="openai",
-        url="https://api.example.com/v1",
-        key="sk-abcdefghij",
-        kind="openai_chat",
-        default_text_model="gpt-4o-mini",
-    )
-    tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
-    tmp_store.set_global_value("default_vision_provider", "openai")
-    tmp_store.set_global_value("default_vision_model", vision_model)
-
-
-@pytest.mark.asyncio
-async def test_image_view_delegates_to_vision_model(monkeypatch, tmp_store):
-    from hoshino.ai.tools.core import image_view as iv
-
-    _seed_vision_provider(tmp_store)
-    calls: list = []
-
-    async def fake_describe(record, vision_model, content, *, proxy=None, prompt=None):
-        calls.append((record.id, vision_model, content))
-        return "图里有一只猫"
-
-    monkeypatch.setattr(iv.vision, "describe_images", fake_describe)
-    monkeypatch.setattr(
-        iv.httpx,
-        "AsyncClient",
-        lambda **kw: _FakeAsyncClient(
-            _FakeResponse(b"\x89PNG data", {"content-type": "image/png"})
-        ),
-    )
-    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/a.png")
-    assert out == "图里有一只猫"
-    assert calls[0][0] == "openai"
-    assert calls[0][1] == "gpt-4o"
-    content = calls[0][2]
-    assert isinstance(content[0], BinaryContent)
-    assert content[0].data == b"\x89PNG data"
-
-
-@pytest.mark.asyncio
-async def test_image_view_no_vision_model_reports(monkeypatch, tmp_store):
-    from hoshino.ai.tools.core import image_view as iv
-
-    _seed_vision_provider(tmp_store)
-    # 清掉全局默认 vision → 无看图能力
-    tmp_store.clear_global_value("default_vision_provider")
-    tmp_store.clear_global_value("default_vision_model")
-    monkeypatch.setattr(iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x")))
-    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/a.png")
-    assert "未配置 vision 模型" in out
-
-
-@pytest.mark.asyncio
-async def test_image_view_rejects_private_host(monkeypatch):
-    from hoshino.ai.tools.core import image_view as iv
-
-    monkeypatch.setattr(iv.httpx, "AsyncClient", lambda **kw: _FakeAsyncClient(_FakeResponse(b"x")))
-    out = await iv.image_view(_tool_ctx(), "http://127.0.0.1/secret.png")
-    assert "拒绝访问私有" in out
-
-
-@pytest.mark.asyncio
-async def test_image_view_rejects_bad_scheme():
-    from hoshino.ai.tools.core import image_view as iv
-
-    out = await iv.image_view(_tool_ctx(), "file:///etc/passwd")
-    assert "仅支持 http/https" in out
-
-
-@pytest.mark.asyncio
-async def test_image_view_size_limit(monkeypatch, tmp_store):
-    from hoshino.ai.tools.core import image_view as iv
-
-    _seed_vision_provider(tmp_store)
-    monkeypatch.setattr(iv.vision, "describe_images", lambda *a, **k: "x")
-
-    async def _noop(*a, **k):
-        return "x"
-
-    monkeypatch.setattr(iv.vision, "describe_images", _noop)
-
-    big = b"x" * (15 * 1024 * 1024 + 1)
-    monkeypatch.setattr(
-        iv.httpx,
-        "AsyncClient",
-        lambda **kw: _FakeAsyncClient(_FakeResponse(big, {"content-type": "image/png"})),
-    )
-    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/big.png")
-    assert "大小限制" in out
-
-
-@pytest.mark.asyncio
-async def test_image_view_fetch_error(monkeypatch, tmp_store):
-    from hoshino.ai.tools.core import image_view as iv
-
-    _seed_vision_provider(tmp_store)
-
-    async def _noop(*a, **k):
-        return "x"
-
-    monkeypatch.setattr(iv.vision, "describe_images", _noop)
-    monkeypatch.setattr(
-        iv.httpx,
-        "AsyncClient",
-        lambda **kw: _FakeAsyncClient(_FakeResponse(b"", status=404)),
-    )
-    out = await iv.image_view(_tool_ctx(provider_id="openai"), "https://example.com/missing.png")
-    assert "抓取失败" in out
-
-
-# ------------------------------------------------------------ chat 双模型
+# ------------------------------------------------------------ helpers
 
 
 def _milky_group(
@@ -315,13 +70,7 @@ def _milky_group(
 
 
 def _stub_env(monkeypatch, tmp_store, *, vision_model: str = "", render_error: bool = False):
-    """配置 openai provider（可选全局默认 vision）+ stub render/send。
-
-    ``vision_model`` 非空时写入全局默认 vision（``ai vision default`` 的 KV），
-    chat 含图流程经 ``provider.resolve_vision`` 走全局回退。
-    ``render_error`` 让渲染抛错（chat 回退纯文本，便于断言 mask 文案）。
-    返回 (config, sent)：sent 为 send_group_message 收到的 (group_id, message)。
-    """
+    """配置 openai provider（可选全局默认 vision）+ stub render/send。"""
     from nonebot.adapters.milky import Bot as MilkyBot
     from nonebot.adapters.milky.model.api import MessageResponse
 
@@ -420,6 +169,9 @@ class _FakeAgent:
     def iter(self, prompt, **kwargs):
         self.prompt = prompt
         return _FakeAgentRun(self._result)
+
+
+# ------------------------------------------------------------ e2e tests
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

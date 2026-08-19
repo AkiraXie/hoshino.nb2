@@ -213,67 +213,36 @@ python-guidelines / piglet / friendly-python；本仓库额外约定：
 
 ## 8. 测试策略与纪律
 
-### 8.1 测试组织（仓库现状）
+### 8.1 核心原则：只写 e2e 测试
 
-- `nb-tests/`：NoneBot 集成与插件行为测试，唯一进入常规 `pytest nb-tests` 的套件。
+**禁止写单元测试（函数/类级别的直接调用测试），除非用户明确要求。**
+
+所有测试必须是 e2e（端到端）测试：从用户交互入口（`bot.handle_event(event)`）出发，
+经过完整的 NoneBot dispatch 链路，断言用户可见的输出（发送的消息、API 调用边界）。
+不允许绕过 dispatch 直接调用内部函数、store CRUD、解析器、工具函数等进行断言。
+
+### 8.2 测试组织
+
+- `nb-tests/`：e2e 测试套件，唯一进入常规 `pytest nb-tests` 的目录。
   共享 fixture 在 `nb-tests/conftest.py`：`_nonebot_bootstrap`（session 级初始化+全插件加载）、
   `tmp_store`（AI store 指向临时 SQLite）、`fake_ai_server`（本地 fake OpenAI/Anthropic
-  HTTP，可 parametrize 注入自定义响应）、`_clear_uninfo_cache`；事件与消息 helper 见
-  `_helpers.py` / `adapter_events.py`。
-- `nb-tests/one-shot/`：真实 provider/第三方站点联网探针（`test_ai_provider_live.py`、
-  `live_ai_persona_probe.py`）。必须设 `ONE_SHOT_LIVE=1` 才运行，不进常规套件；只打印
-  脱敏信息，不落 key/token、不写 usage 事件。
+  HTTP）、`_clear_uninfo_cache`；事件与消息 helper 见 `_helpers.py` / `adapter_events.py`。
+- `nb-tests/one-shot/`：真实 provider/第三方站点联网探针。必须设 `ONE_SHOT_LIVE=1`
+  才运行，不进常规套件；只打印脱敏信息，不落 key/token。
 
-### 8.2 测试范围与跑法（按改动风险递增）
+### 8.3 测试纪律
 
-1. 纯函数/单模块：`pytest <对应文件> -q`。
-2. Service、matcher、hook、消息或平台 facade：`pytest <相关 nb-tests> -q`，至少覆盖涉及的 adapter。
-3. 插件行为：真实 NoneBot dispatch（事件 → `handle_event` → 断言发送/API 边界）。
-4. 公共核心或跨平台改动：`pytest nb-tests -q` 全量。
-5. 前端改动：`npm ... run build` + Playwright 桌面/移动 viewport 关键流程。
-6. 真实 provider/外网验证走 one-shot 探针，不混入常规套件。
+1. **不主动补测试**：默认不新增测试，除非用户明确要求。靠既有 e2e 测试 + lint/build
+   + 运行探针验证即可。
+2. **补测试必须是 e2e**：从交互输入到最终产出的完整链条（如 `#消息 → handle_event →
+   build_agent → provider HTTP → 渲染 → 发送`），不是流程切片。
+3. **计划阶段先声明**：任务开始时说明是否需要补测试；不得在实施中途自行决定补测。
 
-提交前一律过 §10 门槛。
-
-### 8.3 测试纪律（增删测试的准入）
-
-1. **计划阶段先声明补测**：任务开始时（计划/方案阶段）主动说明本次「是否需要补测试、补哪些、
-   按哪个层级（单测/端到端/探针）」；不得在实施中途自行决定补测。只有改动面超出预期
-   （隐藏复杂分支、真实 bug 复现）才允许实施中补测，且必须向用户说明理由。
-2. **不为简单改动补测试**：简单 bug、简单逻辑、薄的导入/导出或纯配置读取改动，默认不新增
-   测试，除非用户明确要求。靠既有测试 + lint/build + 运行探针验证即可。
-3. **单测有门槛**：只有复杂 bug 修复或流程核心业务逻辑（解析层、权限、生命周期、状态机、
-   护栏等）才写单测；聚焦**函数/类/功能的整体行为**，不为单个 if 分支、单个报错文案、
-   单条配置项单独建用例。写完单测必须在交付说明末尾附**测试用例表**（文件/函数/内容/补测
-   理由；理由不充分的用例不写）。
-4. **端到端必须是完整流程**：从交互输入到最终产出（如 `#消息 → build_agent → provider HTTP
-   → 渲染 → 发送`）的整套链条，不是流程切片；能用端到端覆盖的不退化成分散单测。
-
-### 8.4 什么是碎片（不补、并删）
-
-2026-08 全量排查（501 → 435 用例）确立的删除对象，新增测试对照规避：
-
-- 简单工具函数（几行字符串/算术/归一化/字段映射）、薄 CRUD roundtrip；
-- 纯配置读取/默认值/环境变量解析断言；文案与展示断言（help/model 展示/prompt 关键词）；
-- 单个 if 分支、单个报错文案、单条配置项校验的独立用例；
-- import 可用性 smoke、与既有端到端重复的 rule/切片测试；第三方库逐字段透传的薄包装测试。
-
-保留对象：
-
-- 复杂 bug 回归（真实故障背景）；核心状态机/权限/护栏/安全边界（SSRF、containment、
-  敏感路径、并发租约）；解析层与消息队列整体行为；完整流程端到端。
-- 平台协议关键行为：Milky 测试按 `docs/milky-plugin-test-protocol.md`（json_to_event 构造
-  真实事件、唯一 message_seq、handle_event 真实 dispatch、stub API 边界、断言 action/
-  target/payload、不连真实 endpoint）。
-- 权限、scope、`only_to_me` 等规则必须有负例（应响应 + 不应响应都要覆盖）；不要把
-  「成功 import」当行为覆盖。
-
-### 8.5 验证与报告
+### 8.4 验证与报告
 
 - 既有失败先单独重跑并检查相关文件 diff，不要为全绿顺手改无关业务；报告给出通过数、
   失败用例及相关性判断。
-- 写了单测必须附测试用例表（§8.3.3）；测试基建改动（fixture/helper/one-shot/conftest）
-  在交付说明中说明影响面与验证方式。
+- 测试基建改动（fixture/helper/one-shot/conftest）在交付说明中说明影响面与验证方式。
 
 ## 9. Web 应用
 
@@ -305,4 +274,4 @@ uv run pytest <focused tests> -q     # 公共核心/跨平台：uv run pytest nb
 ```
 
 最后 `git status --short` + diff 复核：无凭据、日志、缓存、构建产物或无关格式化。交付说明
-简洁列出：行为变化、关键文件、验证结果、未覆盖边界；写了单测附测试用例表（§8.3.3）。
+简洁列出：行为变化、关键文件、验证结果、未覆盖边界。

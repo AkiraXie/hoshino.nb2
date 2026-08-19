@@ -196,119 +196,6 @@ async def test_provider_list_masks_key(monkeypatch, tmp_store):
     assert "sk-ant-1234567890" not in text
 
 
-# ------------------------------------------------------- provider default
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_default_requires_superuser(monkeypatch, tmp_store):
-    """非 superuser 无法触发任何 ai 命令（SUPERUSER matcher 直接拦截）。"""
-    _, sent, saved = _stub_env(monkeypatch, tmp_store, superuser=False)
-
-    bot, event = _milky_group("ai provider default anthropic")
-    await bot.handle_event(event)
-
-    assert saved == []
-    assert sent == []  # matcher 拦截，非 superuser 完全无响应
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_default_success(monkeypatch, tmp_store):
-    config, sent, saved = _stub_env(monkeypatch, tmp_store, superuser=True)
-
-    bot, event = _milky_group("ai provider default anthropic")
-    await bot.handle_event(event)
-
-    assert tmp_store.get_global_value("default_provider") == "anthropic"
-    assert "已设置全局默认 provider" in sent[0][1].extract_plain_text()
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_default_unknown_id(monkeypatch, tmp_store):
-    _, sent, saved = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai provider default ghost")
-    await bot.handle_event(event)
-
-    assert saved == []
-    assert "不存在" in sent[0][1].extract_plain_text()
-
-
-# ------------------------------------------------------- provider use / reset
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_use_binds_scope(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai provider use anthropic", user_id=42)
-    await bot.handle_event(event)
-
-    assert tmp_store.get_scope_provider("milky:123456") == "anthropic"
-    assert "已切换到" in sent[0][1].extract_plain_text()
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_use_rejected_in_private(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_private("ai provider use anthropic")
-    await bot.handle_event(event)
-
-    assert len(sent) == 1
-    assert "私聊不允许" in sent[0][1].extract_plain_text()
-    assert tmp_store.get_scope_provider("milky:private:999") is None
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_use_member_rejected(monkeypatch, tmp_store):
-    # role=member 且非 SUPERUSER → 不满足 SUPERUSER permission → matcher 不执行
-    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
-
-    bot, event = _milky_group("ai provider use anthropic", user_id=42, role="member")
-    await bot.handle_event(event)
-
-    assert sent == []
-    assert tmp_store.get_scope_provider("milky:123456") is None
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_reset_clears_scope(monkeypatch, tmp_store):
-    tmp_store.set_scope_provider("milky:123456", "anthropic")
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai provider reset")
-    await bot.handle_event(event)
-
-    assert tmp_store.get_scope_provider("milky:123456") is None
-    assert "已清除" in sent[0][1].extract_plain_text()
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_reset_rejected_in_private(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_private("ai provider reset")
-    await bot.handle_event(event)
-
-    assert len(sent) == 1
-    assert "私聊不允许" in sent[0][1].extract_plain_text()
-
-
-# ------------------------------------------------------- provider add / remove
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_provider_add_requires_superuser(monkeypatch, tmp_store):
-    _, sent, saved = _stub_env(monkeypatch, tmp_store, superuser=False)
-
-    bot, event = _milky_group("ai status")
-    await bot.handle_event(event)
-
-    assert saved == []
-    assert sent == []  # 非超管连只读的 ai status 也无响应
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
 # ------------------------------------------------------- scope 模型命令
 
 
@@ -324,47 +211,49 @@ def _stub_models(monkeypatch, models: list[str] | None):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_model_set_default_slot_is_text(monkeypatch, tmp_store):
-    """`ai model set <模型>` 不带槽位默认改文本。"""
+async def test_text_set_provider_model(monkeypatch, tmp_store):
+    """`ai text set <provider> <model>` 设置文本模型（成对配置）。"""
     _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group("ai model set gpt-4o")
+    bot, event = _milky_group("ai text set openai gpt-4o")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "当前文本模型：`gpt-4o`" in text
-    assert "ai vision" in text  # 回显附带 vision 引导
-    assert tmp_store.get_scope_model_overrides("milky:123456")["text_model"] == "gpt-4o"
+    assert "`openai` / `gpt-4o`" in text
+    overrides = tmp_store.get_scope_model_overrides("milky:123456")
+    assert overrides["text_provider"] == "openai"
+    assert overrides["text_model"] == "gpt-4o"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_model_set_validates_against_api_list(monkeypatch, tmp_store):
+async def test_text_set_validates_against_api_list(monkeypatch, tmp_store):
     """模型不在 provider API 可用列表时拒绝，并给出可用列表。"""
     _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group("ai model set text ghost-1")
+    bot, event = _milky_group("ai text set openai ghost-1")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
     assert "不在 provider" in text
     assert "gpt-4o-mini" in text  # 可用列表提示
-    assert tmp_store.get_scope_model_overrides("milky:123456")["text_model"] == ""
+    overrides = tmp_store.get_scope_model_overrides("milky:123456")
+    assert overrides["text_model"] == ""
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_model_set_proceeds_when_api_down(monkeypatch, tmp_store):
+async def test_text_set_proceeds_when_api_down(monkeypatch, tmp_store):
     """无法连接 provider 时放行并附警告。"""
     _stub_models(monkeypatch, None)
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group("ai model set text gpt-4o")
+    bot, event = _milky_group("ai text set openai gpt-4o")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
     assert "无法连接 provider 校验" in text
-    assert "当前文本模型：`gpt-4o`" in text
+    assert "`openai` / `gpt-4o`" in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -557,25 +446,26 @@ async def test_search_status_no_config_hints(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_model_set_rejected_in_private(monkeypatch, tmp_store):
+async def test_text_set_rejected_in_private(monkeypatch, tmp_store):
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_private("ai model set text gpt-4o-mini")
+    bot, event = _milky_private("ai text set openai gpt-4o-mini")
     await bot.handle_event(event)
 
     assert "仅限群聊" in sent[0][1].extract_plain_text()
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_model_set_member_rejected(monkeypatch, tmp_store):
+async def test_text_set_member_rejected(monkeypatch, tmp_store):
     # role=member 且非 SUPERUSER → 不满足 SUPERUSER permission → matcher 不执行
     _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
 
-    bot, event = _milky_group("ai model set text gpt-4o-mini", user_id=42, role="member")
+    bot, event = _milky_group("ai text set openai gpt-4o-mini", user_id=42, role="member")
     await bot.handle_event(event)
 
     assert len(sent) == 0  # SUPERUSER matcher 直接拦截，非超管无响应
-    assert tmp_store.get_scope_model_overrides("milky:123456")["text_model"] == ""
+    overrides = tmp_store.get_scope_model_overrides("milky:123456")
+    assert overrides["text_model"] == ""
 
 
 # ------------------------------------------------------- status / stats / clear
