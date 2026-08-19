@@ -251,7 +251,8 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         case "config":
             await _handle_config(bot, event, rest)
         case _:
-            await send_to_event(bot, event, USAGE)
+            # 未识别的子命令静默忽略，避免 "ai 是什么" / "ai workflow" 等日常对话误触发。
+            return
 
 
 def _parse_flags(args: list[str]) -> dict[str, str]:
