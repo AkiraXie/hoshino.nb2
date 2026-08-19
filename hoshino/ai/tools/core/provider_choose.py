@@ -1,9 +1,9 @@
 """core/provider_choose：超级用户调整当前 scope 的 provider / 文本模型 / vision。
 
-把 ``ai provider set`` / ``ai model set`` / ``ai vision set`` 等管理员命令的语义
+把 ``ai provider set`` / ``ai text set`` / ``ai vision set`` 等管理员命令的语义
 做成 LLM 工具：superuser 可以直接让模型帮自己切换 provider、设定文本模型与
-vision（独立 provider + 模型）。可用模型一律调用 provider API 实时获取校验
-（本地不维护 model-list）。
+vision（均为 provider + model 成对配置）。可用模型一律调用 provider API 实时
+获取校验（本地不维护 model-list）。
 
 只写 scope 级覆盖（``ai_scope_providers`` / ``ai_scope_models``），不动全局默认。
 """
@@ -50,8 +50,9 @@ async def _status_text(ctx: RunContext[AgentDeps], pid: str) -> str:
         return "\n".join(lines)
     bound = store.get_scope_provider(scope_key)
     lines.append(f"provider：`{pid}`" + ("（scope 绑定）" if bound else "（默认）"))
-    text_model = provider.resolve_text_model(scope_key, pid)
-    lines.append(f"纯文本模型：`{text_model or '（未配置）'}`")
+    text_pid, text_model = provider.resolve_text_model(scope_key, pid)
+    text_source = f"`{text_pid}` / " if text_pid and text_pid != pid else ""
+    lines.append(f"纯文本模型：{text_source}`{text_model or '（未配置）'}`")
     vision_pid, vision_model = provider.resolve_vision(scope_key)
     if vision_model:
         lines.append(f"vision：`{vision_pid}` / `{vision_model}`")
@@ -98,11 +99,12 @@ async def provider_choose(
 
     - status：查看当前 provider、文本模型与 vision、API 可用模型清单
     - provider <id>：把当前会话切换到指定 provider
-    - text <model>：设置文本模型（实时校验在 API 可用列表内）
+    - text <provider> <model> 或 text <provider>/<model>：设置文本模型
+      （provider + model 成对配置；实时校验在 API 可用列表内）
     - vision <provider> <model> 或 vision <provider>/<model>：设置 vision
       （独立 provider + 模型；实时校验，需真正支持看图）
     - vision none：显式禁用 vision
-    - reset [text|vision]：清除模型覆盖，回退 provider 默认 / 全局 vision 默认
+    - reset [text|vision]：清除模型覆盖，回退 provider 默认 / 全局默认
     """
     if not ctx.deps.permissions.is_superuser:
         return "该工具仅超级用户可用（superuser），当前用户无权限。"
@@ -126,12 +128,18 @@ async def provider_choose(
 
     if action == "text":
         if not value:
-            return "用法：text <model>（可用模型见 status）。"
-        ok, note = await _validate_model(ctx, pid, value)
+            return "用法：text <provider> <model>（或 text <provider>/<model>）。"
+        spec = _parse_vision_spec(value)
+        if spec is None:
+            return "用法：text <provider> <model>（或 text <provider>/<model>）。"
+        tpid, tmodel = spec
+        if not provider.has_provider(tpid):
+            return f"provider `{tpid}` 不存在。"
+        ok, note = await _validate_model(ctx, tpid, tmodel)
         if not ok:
             return note
-        store.set_scope_text_model(scope_key, value, updated_by=actor)
-        return f"已把文本模型设为 `{value}`（覆盖 provider 默认）{note}".rstrip()
+        store.set_scope_text(scope_key, tpid, tmodel, updated_by=actor)
+        return f"已把文本模型设为 `{tpid}` / `{tmodel}`（本会话）{note}".rstrip()
 
     if action == "vision":
         if not value:

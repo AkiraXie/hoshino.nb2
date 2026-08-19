@@ -94,6 +94,7 @@ def _migrate_missing_columns(target_engine) -> None:
         _ensure_column(conn, "ai_personas", "begin_dialogs")
         _ensure_column(conn, "ai_providers", "use_proxy", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_scope_models", "vision_provider")
+        _ensure_column(conn, "ai_scope_models", "text_provider")
 
 
 def _ensure_column(conn, table: str, column: str, decl: str = "TEXT NOT NULL DEFAULT ''") -> None:
@@ -605,6 +606,7 @@ class AIScopeModel(Base):
     __tablename__ = "ai_scope_models"
 
     scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    text_provider: Mapped[str] = mapped_column(Text, nullable=False, default="")
     text_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
     vision_provider: Mapped[str] = mapped_column(Text, nullable=False, default="")
     vision_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -780,16 +782,24 @@ def get_scope_model_overrides(scope_key: str) -> dict[str, str]:
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
         if row is None:
-            return {"text_model": "", "vision_provider": "", "vision_model": ""}
+            return {
+                "text_provider": "",
+                "text_model": "",
+                "vision_provider": "",
+                "vision_model": "",
+            }
         return {
+            "text_provider": row.text_provider,
             "text_model": row.text_model,
             "vision_provider": row.vision_provider,
             "vision_model": row.vision_model,
         }
 
 
-def set_scope_text_model(scope_key: str, model: str, updated_by: str = "") -> None:
-    """设置 scope 文本模型覆盖（upsert）。"""
+def set_scope_text(
+    scope_key: str, provider_id: str, model: str, updated_by: str = ""
+) -> None:
+    """设置 scope 文本模型覆盖（provider + model 成对 upsert；空串清除该槽）。"""
     now = time.time()
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
@@ -797,12 +807,14 @@ def set_scope_text_model(scope_key: str, model: str, updated_by: str = "") -> No
             session.add(
                 AIScopeModel(
                     scope_key=scope_key,
+                    text_provider=provider_id,
                     text_model=model,
                     updated_by=updated_by,
                     updated_at=now,
                 )
             )
         else:
+            row.text_provider = provider_id
             row.text_model = model
             row.updated_by = updated_by
             row.updated_at = now
@@ -842,6 +854,7 @@ def clear_scope_model_override(scope_key: str, slot: str | None = None) -> bool:
         if row is None:
             return False
         if slot == "text":
+            row.text_provider = ""
             row.text_model = ""
             row.updated_at = time.time()
         elif slot == "vision":

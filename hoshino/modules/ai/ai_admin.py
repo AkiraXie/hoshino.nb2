@@ -1,11 +1,16 @@
 """AI 管理插件：provider / model / vision / scope 配置与用量查询（**仅超级用户可用**）。
 
 模型管理语义：
-- ``ai model``：显示当前使用的文本模型（含来源）与操作提示。
+- ``ai model``：显示当前使用的文本模型（含来源）与操作提示（只读）。
 - ``ai model list``：调用 provider API 获取**真实可用模型列表**（本地不存 model-list）。
-- ``ai model set <模型>``：设置文本模型（默认槽位）。设置前实时校验模型在 API
-  可用列表内，设置后回显当前生效模型。
-- ``ai model reset``：清除本群文本模型覆盖，回退 provider 默认。
+- 文本模型设置已移至 ``ai text``（provider + model 成对配置，与 vision 对齐）。
+
+text 管理语义（provider + model 成对配置，与 vision 对称）：
+- ``ai text``：显示当前 scope 的文本模型配置（provider + 模型，含来源）。
+- ``ai text set <provider> <模型>`` / ``ai text set <provider>/<模型>``：
+  设置本群文本模型的 provider 与模型；实时校验模型在 API 可用列表内。
+- ``ai text reset``：清除本群文本模型覆盖，回退全局默认 / provider 默认。
+- ``ai text default <provider> <模型>``：设置全局默认文本模型（仅 SUPERUSER）。
 
 vision 管理语义（独立 provider + 模型，与文本模型解耦）：
 - ``ai vision``：显示当前 scope 的 vision 配置（provider + 模型，含来源）。
@@ -26,15 +31,17 @@ vision 管理语义（独立 provider + 模型，与文本模型解耦）：
 - ``ai search remove <名字>``：删除一个 provider。
 - ``ai config`` 仅代理/渲染语义，不涉及搜索；搜索走 ``ai search``。
 
-provider 管理语义：
-- ``ai provider``：显示全局默认与当前群绑定 + 操作提示。
-- ``ai provider set <id>``（兼容 ``use``）：绑定当前群；``default <id>`` 设全局默认；
-  ``reset`` 清除绑定；``list`` 列出已配置。
+provider 管理语义（只读 + 生命周期，不做 scope 绑定 / 默认切换）：
+- ``ai provider [list]``：列出已配置的 provider（只读）。
 - ``ai setup <id> --url <url> --key <key> [--text <m>]``：
-  一键配置：新增/更新 provider + 设默认 + 绑定当前群（唯一新增入口）。
+  新增/更新 provider + 设默认 + 绑定当前群（唯一新增入口）。
+- ``ai alter <id> [--url/--key/--text/--use-proxy]``：
+  按需修改已有 provider 的个别字段，只提供要改的项，未提供的保持不变。
 - ``ai provider remove <id>``：删除 provider。
 
-其余：``ai status``、``ai stats [provider_id]``、``ai clear [scope]``、
+裸 ``ai`` / ``ai status`` 只显示文本模型 + vision + 搜索状态，不显示 provider 绑定。
+
+其余：``ai stats [provider_id]``、``ai clear [scope]``、
 ``ai contexts [scope]``、``ai tools ...``、``ai persona ...``。
 """
 
@@ -54,7 +61,7 @@ from hoshino.ai import (
     store,
     tools,
 )
-from hoshino.ai.base import get_config
+from hoshino.ai.base import get_config, resolve_provider
 from hoshino.ai.config import mask_url, write_ai_config_env
 from hoshino.ai.provider import ProviderRecord
 from hoshino.core.permission import SUPERUSER
@@ -75,24 +82,26 @@ sv = Service("ai_admin", enable_on_default=True, visible=False)
 
 USAGE = (
     "AI 管理（仅超级用户可用）：\n"
-    "快速上手：\n"
-    "  ai setup <id> --url <u> --key <k> [--text <m>]  一键配置 provider\n"
-    "  ai model              查看当前文本模型\n"
-    "  ai model list         获取真实可用模型（provider API）\n"
-    "  ai model set <模型>   设置文本模型（默认槽位）\n"
-    "  ai vision             查看/设置看图模型（独立 provider + 模型）\n"
-    "  ai search             查看/管理搜索 provider（多 provider，选默认生效）\n"
-    "  ai provider           查看当前 provider\n"
-    "  ai provider set <id>  绑定当前群到指定 provider\n"
+    "Provider 管理：\n"
+    "  ai setup <id> --url <u> --key <k> [--text <m>]  新增/更新 provider\n"
+    "  ai alter <id> [--url/--key/--text/--use-proxy]   按需修改已有 provider\n"
+    "  ai provider [list]                               查看已配置的 provider\n"
+    "  ai provider remove <id>                          删除 provider\n"
+    "模型管理：\n"
+    "  ai text               查看/设置文本模型（provider + model 成对）\n"
+    "  ai vision             查看/设置看图模型（provider + model 成对）\n"
+    "  ai model              查看当前文本模型状态\n"
+    "  ai model list         获取当前 provider 的可用模型列表\n"
+    "搜索：\n"
+    "  ai search             查看/管理搜索 provider\n"
     "其他：\n"
-    "  ai provider list / default <id> / reset / remove\n"
-    "  ai model reset [text] / ai vision set|reset|default\n"
+    "  ai text set|reset|default / ai vision set|reset|default\n"
     "  ai search list / add <名字> <kind> / default|set <名字> / remove\n"
     "  ai status / ai stats [provider_id]\n"
     "  ai clear [scope] / ai contexts [scope] / ai tools ... / ai persona ...\n"
     "  ai config [set <key> <value> | reset <key>]  在线改代理/渲染参数并写盘\n"
     "  ai task research|plan|status|list|approve|deny|cancel|workspaces\n"
-    "用 ai setup / ai vision / ai search / ai persona / ai config 查看参数说明。"
+    "用 ai setup / ai text / ai vision / ai search / ai config 查看参数说明。"
 )
 
 _SETUP_USAGE = (
@@ -128,12 +137,20 @@ _PERSONA_USAGE = (
 
 _MODEL_USAGE = (
     "用法：\n"
-    "  ai model              查看当前文本模型\n"
-    "  ai model list         获取真实可用模型（provider API）\n"
-    "  ai model set <模型>   设置文本模型（默认槽位）\n"
-    "  ai model reset [text] 清除本群文本模型覆盖，回退 provider 默认\n"
-    "示例：ai model set deepseek-v4-flash\n"
-    "看图（vision）请用 `ai vision`：独立配置 provider + 模型。"
+    "  ai model              查看当前文本模型（含来源）\n"
+    "  ai model list         获取当前 provider 的真实可用模型（API）\n"
+    "设置文本模型请用 `ai text`；看图请用 `ai vision`。"
+)
+
+_TEXT_USAGE = (
+    "用法：\n"
+    "  ai text                             查看当前文本模型配置\n"
+    "  ai text set <provider> <模型>        设置本群文本 provider 与模型\n"
+    "  ai text set <provider>/<模型>        同上（斜杠分隔）\n"
+    "  ai text reset                        清除本群文本模型覆盖\n"
+    "  ai text default <provider> <模型>    设置全局默认文本模型（仅 SUPERUSER）\n"
+    "  ai text default none                 清除全局默认文本模型\n"
+    "示例：ai text set my-openai gpt-4o；ai text set my-openai/gpt-4o"
 )
 
 _VISION_USAGE = (
@@ -207,10 +224,14 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
             await send_to_event(bot, event, USAGE)
         case "setup":
             await _handle_setup(bot, event, rest)
+        case "alter":
+            await _handle_alter(bot, event, rest)
         case "provider":
             await _handle_provider(bot, event, rest)
         case "model":
             await _handle_model(bot, event, rest)
+        case "text":
+            await _handle_text(bot, event, rest)
         case "vision":
             await _handle_vision(bot, event, rest)
         case "search":
@@ -262,101 +283,33 @@ def _require_superuser(bot: Bot, event: Event) -> bool:
 
 async def _handle_provider(bot: Bot, event: Event, args: list[str]) -> None:
     if not args:
-        await _provider_status(bot, event)
+        await _provider_list(bot, event)
         return
     action, rest = args[0], args[1:]
-    config = get_config()
     match action:
         case "list":
-            await _provider_list(bot, event, config)
-        case "set" | "use":
-            await _provider_set(bot, event, rest)
-        case "default":
-            await _provider_default(bot, event, rest, config)
-        case "reset":
-            await _provider_reset(bot, event)
+            await _provider_list(bot, event)
         case "remove":
-            await _provider_remove(bot, event, rest, config)
+            await _provider_remove(bot, event, rest)
         case _:
-            await send_to_event(bot, event, USAGE)
+            await send_to_event(bot, event, "用法：ai provider [list] / ai provider remove <id>")
 
 
-async def _provider_status(bot: Bot, event: Event) -> None:
-    """`ai provider`：当前 provider（全局默认 + 本群绑定）+ 操作提示。"""
-    config = get_config()
-    scope_key = event_scope_key(bot, event)
-    bound = store.get_scope_provider(scope_key) if scope_key else None
-    lines = [
-        f"全局默认 provider：`{config.default}`" if config.default else "全局默认 provider：未设置",
-        f"本群绑定：`{bound}`" if bound else "本群绑定：无（回退全局默认）",
-        "设本群：ai provider set <id>；设全局默认：ai provider default <id>",
-        "看已配置：ai provider list；看模型：ai model list",
-    ]
-    await send_to_event(bot, event, "\n".join(lines))
-
-
-async def _provider_list(bot: Bot, event: Event, config) -> None:
+async def _provider_list(bot: Bot, event: Event) -> None:
     records = provider.list_providers()
     if not records:
-        await send_to_event(bot, event, "未配置任何 provider。")
+        await send_to_event(bot, event, "未配置任何 provider。新增请用 `ai setup`。")
         return
     lines = ["已配置的 provider："]
     for record in records:
-        mark = " ← 默认" if record.id == config.default else ""
         proxy_flag = " proxy=on" if record.use_proxy else ""
         lines.append(
             f"- `{record.id}` kind={record.kind} "
             f"text={record.default_text_model or '-'} "
-            f"url={mask_url(record.url)}{proxy_flag}{mark}"
+            f"url={mask_url(record.url)}{proxy_flag}"
         )
-    lines.append("模型列表用 `ai model list` 实时获取；vision 单独配置：ai vision。")
+    lines.append("新增/修改：ai setup / ai alter；模型列表：ai model list")
     await send_to_event(bot, event, "\n".join(lines))
-
-
-async def _provider_default(bot: Bot, event: Event, args: list[str], config) -> None:
-    if not _require_superuser(bot, event):
-        await send_to_event(bot, event, "仅 SUPERUSER 可设置全局默认 provider。")
-        return
-    if not args:
-        await send_to_event(bot, event, "用法：ai provider default <id>")
-        return
-    pid = args[0]
-    if not provider.has_provider(pid):
-        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
-        return
-    store.set_global_value("default_provider", pid)
-    await send_to_event(bot, event, f"已设置全局默认 provider：`{pid}`")
-
-
-async def _provider_set(bot: Bot, event: Event, args: list[str]) -> None:
-    """`ai provider set <id>`：把当前群 scope 绑定到指定 provider。"""
-    gid = get_group_id(event)
-    if gid is None:
-        await send_to_event(bot, event, "私聊不允许切换 provider。")
-        return
-    if not args:
-        await send_to_event(bot, event, "用法：ai provider set <id>")
-        return
-    pid = args[0]
-    if not provider.has_provider(pid):
-        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
-        return
-    scope_key = group_scope_key(gid, platform=platform_key(bot))
-    store.set_scope_provider(scope_key, pid, updated_by=str(get_user_id(event) or ""))
-    await send_to_event(bot, event, f"本群已切换到 provider `{pid}`。")
-
-
-async def _provider_reset(bot: Bot, event: Event) -> None:
-    gid = get_group_id(event)
-    if gid is None:
-        await send_to_event(bot, event, "私聊不允许重置 provider。")
-        return
-    scope_key = group_scope_key(gid, platform=platform_key(bot))
-    cleared = store.clear_scope_provider(scope_key)
-    if cleared:
-        await send_to_event(bot, event, "已清除本群 provider 绑定，回退全局默认。")
-    else:
-        await send_to_event(bot, event, "本群当前没有绑定 provider。")
 
 
 async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
@@ -405,7 +358,70 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
     await send_to_event(bot, event, "\n".join(lines))
 
 
-async def _provider_remove(bot: Bot, event: Event, args: list[str], config) -> None:
+_ALTER_USAGE = (
+    "用法：ai alter <id> [--url <u>] [--key <k>] [--text <m>] [--use-proxy [1|0]]\n"
+    "按需修改已有 provider 的字段，只提供要改的项；未提供的保持不变。\n"
+    "  --url          API 地址\n"
+    "  --key          API Key\n"
+    "  --text         默认文本模型\n"
+    "  --use-proxy 1  走全局代理（AI_PROXY / OUTSIDE_PROXY）\n"
+    "  --use-proxy 0  关闭代理，直连"
+)
+
+
+async def _handle_alter(bot: Bot, event: Event, args: list[str]) -> None:
+    """按需修改已有 provider 的个别字段（不要求全量提供）。"""
+    if not _require_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可修改 provider。")
+        return
+    if not args:
+        await send_to_event(bot, event, _ALTER_USAGE)
+        return
+    pid = args[0]
+    old = provider.get_provider(pid)
+    if old is None:
+        await send_to_event(bot, event, f"provider `{pid}` 不存在，新增请用 `ai setup`。")
+        return
+    opts = _parse_flags(args[1:])
+    if not opts:
+        await send_to_event(bot, event, _ALTER_USAGE)
+        return
+
+    url = opts.get("url", old.url)
+    key = opts.get("key", old.key)
+    default_text_model = opts.get("text", old.default_text_model)
+    use_proxy = old.use_proxy
+    if "use_proxy" in opts:
+        use_proxy = opts["use_proxy"].lower() not in ("0", "false", "no", "off")
+
+    updated = ProviderRecord(
+        id=pid,
+        url=url,
+        key=key,
+        kind=old.kind,
+        default_text_model=default_text_model,
+        use_proxy=use_proxy,
+        temperature=old.temperature,
+        max_tokens=old.max_tokens,
+        timeout_seconds=old.timeout_seconds,
+    )
+    provider.upsert_provider(updated)
+    providers.clear_agent_cache()
+
+    changes: list[str] = []
+    if "url" in opts:
+        changes.append(f"url={mask_url(url)}")
+    if "key" in opts:
+        changes.append("key=***（已更新）")
+    if "text" in opts:
+        changes.append(f"text={default_text_model or '-'}")
+    if "use_proxy" in opts:
+        changes.append(f"use_proxy={'on' if use_proxy else 'off'}")
+    summary = "、".join(changes) if changes else "无变化"
+    await send_to_event(bot, event, f"已更新 provider `{pid}`：{summary}")
+
+
+async def _provider_remove(bot: Bot, event: Event, args: list[str]) -> None:
     if not _require_superuser(bot, event):
         await send_to_event(bot, event, "仅 SUPERUSER 可删除 provider。")
         return
@@ -413,9 +429,6 @@ async def _provider_remove(bot: Bot, event: Event, args: list[str], config) -> N
         await send_to_event(bot, event, "用法：ai provider remove <id>")
         return
     pid = args[0]
-    if pid == config.default:
-        await send_to_event(bot, event, "当前默认 provider 不允许直接删除，请先修改 default。")
-        return
     if not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
@@ -432,24 +445,13 @@ async def _handle_model(bot: Bot, event: Event, args: list[str]) -> None:
     if not args:
         await _model_status(bot, event)
         return
-    action, rest = args[0], args[1:]
+    action = args[0]
     if action in ("show", "status"):
         await _model_status(bot, event)
-        return
-    if action == "list":
+    elif action == "list":
         await _model_list(bot, event)
-        return
-    gid = get_group_id(event)
-    if gid is None:
-        await send_to_event(bot, event, "模型设置仅限群聊。")
-        return
-    scope_key = group_scope_key(gid, platform=platform_key(bot))
-    if action == "set":
-        await _model_set(bot, event, scope_key, rest)
-    elif action == "reset":
-        await _model_reset(bot, event, scope_key, rest)
     else:
-        await _model_status(bot, event)
+        await send_to_event(bot, event, _MODEL_USAGE)
 
 
 async def _scope_provider_id(scope_key: str, config) -> str | None:
@@ -475,13 +477,19 @@ async def _model_status(bot: Bot, event: Event) -> None:
             "当前没有可用 provider：`ai provider list` 查看，`ai provider set <id>` 绑定。",
         )
         return
-    text_model = provider.resolve_text_model(scope_key, pid)
+    text_pid, text_model = provider.resolve_text_model(scope_key, pid)
     overrides = store.get_scope_model_overrides(scope_key or "")
-    source_text = "本群覆盖" if overrides["text_model"] else "provider 默认"
+    if overrides["text_provider"] and overrides["text_model"]:
+        source_text = "本群覆盖"
+    elif store.get_global_value(provider.TEXT_GLOBAL_PROVIDER):
+        source_text = "全局默认"
+    else:
+        source_text = "provider 默认"
+    text_display = f"`{text_pid}` / `{text_model}`" if text_model else "`（未设置）`"
     lines = [
         f"provider：`{pid}`" + ("" if not bound else "（本群绑定）"),
-        f"文本模型：`{text_model or '（未设置）'}`（{source_text}）",
-        "改文本：ai model set <模型>；看图：ai vision（独立 provider + 模型）",
+        f"文本模型：{text_display}（{source_text}）",
+        "改文本：ai text set <provider> <模型>；看图：ai vision",
         "看可用模型：ai model list",
     ]
     await send_to_event(bot, event, "\n".join(lines))
@@ -506,41 +514,138 @@ async def _model_list(bot: Bot, event: Event) -> None:
             bot, event, f"获取 provider `{pid}` 的模型列表失败（网络或端点不支持）。"
         )
         return
-    text_model = provider.resolve_text_model(scope_key, pid)
+    text_pid, text_model = provider.resolve_text_model(scope_key, pid)
     lines = [f"provider `{pid}` 可用模型（{len(models)} 个，来自 API）："]
     for model in models:
-        mark = "当前文本" if model == text_model else ""
+        mark = "当前文本" if text_pid == pid and model == text_model else ""
         lines.append(f"- {model}" + (f"（{mark}）" if mark else ""))
-    lines.append("设置文本：ai model set <模型>；vision 独立配置：ai vision")
+    lines.append("设置文本：ai text set <provider> <模型>；vision：ai vision")
     await send_to_event(bot, event, "\n".join(lines))
 
 
-async def _model_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
-    """`ai model set [text] <模型>`：设置文本模型；实时校验后在 provider API 可用列表内。
+async def _echo_text(bot: Bot, event: Event, scope_key: str, fallback_pid: str, extra: str = "") -> None:
+    """设置/重置后回显当前生效文本模型（含操作提示）。"""
+    text_pid, text_model = provider.resolve_text_model(scope_key, fallback_pid)
+    current = f"`{text_pid}` / `{text_model}`" if text_model else "`（未设置）`"
+    await send_to_event(
+        bot,
+        event,
+        f"当前文本模型：{current}{extra}\n"
+        "改：ai text set <provider> <模型>；看图：ai vision",
+    )
 
-    设置后回显当前生效文本模型。
+
+async def _handle_status(bot: Bot, event: Event) -> None:
+    """``ai`` / ``ai status``：文本模型 + vision + 搜索状态总览。
+
+    刻意不暴露 provider 绑定、代理、渲染等配置细节（看板极简，不泄露内网配置）。
     """
-    if not args:
-        await send_to_event(bot, event, _MODEL_USAGE)
-        return
-    if len(args) == 2 and args[0] == "text":
-        model = args[1]
-    elif len(args) == 1:
-        model = args[0]
+    config = get_config()
+    scope_key = event_scope_key(bot, event)
+
+    # 文本模型
+    fallback_pid = resolve_provider(scope_key, config) if scope_key else None
+    if fallback_pid:
+        text_pid, text_model = provider.resolve_text_model(scope_key, fallback_pid)
+        text_line = (
+            f"文本：`{text_pid}` / `{text_model}`"
+            if text_model
+            else "文本：`（未设置）`"
+        )
     else:
-        await send_to_event(bot, event, "用法：ai model set [text] <模型>")
+        text_line = "文本：`（无可用 provider）`"
+
+    # vision
+    vision_pid, vision_model = provider.resolve_vision(scope_key)
+    vision_line = (
+        f"vision：`{vision_pid}` / `{vision_model}`"
+        if vision_model
+        else "vision：`（未设置）`"
+    )
+
+    # 搜索
+    search_cfg = search.resolve_search_config(scope_key, config)
+    if search_cfg is not None:
+        default_id = store.get_search_default_id()
+        search_label = f"`{default_id}`（`{search_cfg.kind}`）" if default_id else f"`{search_cfg.kind}`"
+        search_line = f"搜索：{search_label}"
+    else:
+        search_line = "搜索：`（未配置）`"
+
+    await send_to_event(bot, event, "\n".join([text_line, vision_line, search_line]))
+
+
+# ------------------------------------------------------------ text
+
+
+async def _handle_text(bot: Bot, event: Event, args: list[str]) -> None:
+    """``ai text``：查看/设置本群文本模型（provider + model 成对配置）。"""
+    if not args:
+        await _text_status(bot, event)
+        return
+    action, rest = args[0], args[1:]
+    if action in ("show", "status"):
+        await _text_status(bot, event)
+        return
+    if action == "default":
+        await _text_default(bot, event, rest)
+        return
+    gid = get_group_id(event)
+    if gid is None:
+        await send_to_event(bot, event, "文本模型设置仅限群聊。")
+        return
+    scope_key = group_scope_key(gid, platform=platform_key(bot))
+    if action == "set":
+        await _text_set(bot, event, scope_key, rest)
+    elif action == "reset":
+        await _text_reset(bot, event, scope_key, rest)
+    else:
+        await send_to_event(bot, event, _TEXT_USAGE)
+
+
+async def _text_status(bot: Bot, event: Event) -> None:
+    """`ai text`：当前 scope 的文本模型配置（provider + model，含来源）。"""
+    config = get_config()
+    scope_key = event_scope_key(bot, event)
+    fallback_pid = await _scope_provider_id(scope_key, config) if scope_key else None
+    overrides = store.get_scope_model_overrides(scope_key or "")
+    text_pid, text_model = provider.resolve_text_model(
+        scope_key, fallback_pid or ""
+    )
+    if overrides["text_provider"] and overrides["text_model"]:
+        source = "本群配置"
+    elif store.get_global_value(provider.TEXT_GLOBAL_PROVIDER):
+        source = "全局默认"
+    else:
+        source = "provider 默认"
+    current = f"`{text_pid}` / `{text_model}`" if text_model else "`（未设置）`"
+    lines = [
+        f"文本模型：{current}（{source}）",
+        "设置本群：ai text set <provider> <模型>（或 <provider>/<模型>）",
+        "清除回退：ai text reset",
+        "全局默认（超管）：ai text default <provider> <模型>",
+    ]
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+async def _text_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
+    """`ai text set <provider> <模型>` / `<provider>/<模型>`。"""
+    actor = str(get_user_id(event) or "")
+    if not args:
+        await send_to_event(bot, event, _TEXT_USAGE)
+        return
+    spec = _parse_provider_model(args)
+    if spec is None:
+        await send_to_event(
+            bot, event, "用法：ai text set <provider> <模型>（或 <provider>/<模型>）"
+        )
+        return
+    pid, model = spec
+    if not provider.has_provider(pid):
+        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
 
     config = get_config()
-    pid = await _scope_provider_id(scope_key, config)
-    if pid is None:
-        await send_to_event(
-            bot,
-            event,
-            "本群没有可用 provider：`ai provider list` 查看，`ai provider set <id>` 绑定。",
-        )
-        return
-
     record = provider.get_provider(pid)
     available = await provider.fetch_available_models(
         record,
@@ -562,69 +667,79 @@ async def _model_set(bot: Bot, event: Event, scope_key: str, args: list[str]) ->
     else:
         warning = "（无法连接 provider 校验，已直接设置）"
 
-    store.set_scope_text_model(scope_key, model, updated_by=str(get_user_id(event) or ""))
-    await _echo_models(bot, event, scope_key, pid, warning)
+    store.set_scope_text(scope_key, pid, model, updated_by=actor)
+    await _echo_text(bot, event, scope_key, pid, warning)
 
 
-async def _model_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
-    """`ai model reset [text]`：清除文本模型覆盖回退 provider 默认，并回显。"""
-    if args and args[0] != "text":
-        await send_to_event(bot, event, "用法：ai model reset [text]")
+async def _text_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
+    """`ai text reset`：清除本群文本模型覆盖，回退全局默认 / provider 默认。"""
+    if args:
+        await send_to_event(bot, event, "用法：ai text reset")
         return
     cleared = store.clear_scope_model_override(scope_key, "text")
     if not cleared:
         await send_to_event(bot, event, "本群当前没有文本模型覆盖。")
         return
     config = get_config()
-    pid = await _scope_provider_id(scope_key, config)
-    if pid is not None:
-        await _echo_models(
-            bot, event, scope_key, pid, "（已清除本群文本模型覆盖，回退 provider 默认）"
+    fallback_pid = await _scope_provider_id(scope_key, config)
+    if fallback_pid is not None:
+        await _echo_text(
+            bot, event, scope_key, fallback_pid, "（已清除本群文本模型覆盖）"
         )
     else:
         await send_to_event(bot, event, "已清除本群文本模型覆盖。")
 
 
-async def _echo_models(bot: Bot, event: Event, scope_key: str, pid: str, extra: str = "") -> None:
-    """设置/重置后回显当前生效文本模型（含操作提示）。"""
-    text_model = provider.resolve_text_model(scope_key, pid)
-    await send_to_event(
-        bot,
-        event,
-        f"当前文本模型：`{text_model or '（未设置）'}`{extra}\n"
-        "改：ai model set <模型>；看图：ai vision（独立 provider + 模型）",
-    )
-
-
-async def _handle_status(bot: Bot, event: Event) -> None:
-    """`ai status` / 裸 `ai`：只显示当前 provider、文本模型与 vision。
-
-    刻意不暴露代理、渲染、历史长度等配置细节（看板保持极简，且不泄露内网配置）。
-    """
-    config = get_config()
-    scope_key = event_scope_key(bot, event)
-    bound = store.get_scope_provider(scope_key) if scope_key else None
-    provider_id = bound or config.default
-    if not provider_id or not provider.has_provider(provider_id):
+async def _text_default(bot: Bot, event: Event, args: list[str]) -> None:
+    """`ai text default <provider> <模型>`：设置全局默认文本模型（仅 SUPERUSER）。"""
+    if not _require_superuser(bot, event):
+        await send_to_event(bot, event, "仅 SUPERUSER 可设置全局默认文本模型。")
+        return
+    if not args:
+        await send_to_event(bot, event, "用法：ai text default <provider> <模型>|none")
+        return
+    if args[0] == "none":
+        if len(args) != 1:
+            await send_to_event(bot, event, "用法：ai text default none")
+            return
+        store.clear_global_value(provider.TEXT_GLOBAL_PROVIDER)
+        store.clear_global_value(provider.TEXT_GLOBAL_MODEL)
+        await send_to_event(bot, event, "已清除全局默认文本模型。")
+        return
+    spec = _parse_provider_model(args)
+    if spec is None:
         await send_to_event(
-            bot,
-            event,
-            "当前没有可用 provider：`ai provider list` 查看，`ai provider set <id>` 绑定。",
+            bot, event, "用法：ai text default <provider> <模型>（或 <provider>/<模型>）"
         )
         return
-    text_model = provider.resolve_text_model(scope_key, provider_id)
-    vision_provider_id, vision_model = provider.resolve_vision(scope_key)
-    vision_line = (
-        f"vision：`{vision_model}`（`{vision_provider_id}`）"
-        if vision_model
-        else "vision：`（未设置）`"
+    pid, model = spec
+    if not provider.has_provider(pid):
+        await send_to_event(bot, event, f"provider `{pid}` 不存在。")
+        return
+
+    config = get_config()
+    record = provider.get_provider(pid)
+    available = await provider.fetch_available_models(
+        record,
+        proxy=provider.resolve_effective_proxy(record, config.proxy),
+        verify=config.web_fetch_verify_ssl,
     )
-    lines = [
-        f"当前 provider：`{provider_id}`",
-        f"文本模型：`{text_model or '（未设置）'}`",
-        vision_line,
-    ]
-    await send_to_event(bot, event, "\n".join(lines))
+    warning = ""
+    if available is not None:
+        if model not in available:
+            sample = "、".join(f"`{m}`" for m in available[:20])
+            await send_to_event(
+                bot,
+                event,
+                f"模型 `{model}` 不在 provider `{pid}` 的可用列表中（API 获取）。\n"
+                f"可用：{sample}{'…' if len(available) > 20 else ''}",
+            )
+            return
+    else:
+        warning = "（无法连接 provider 校验，已直接设置）"
+    store.set_global_value(provider.TEXT_GLOBAL_PROVIDER, pid)
+    store.set_global_value(provider.TEXT_GLOBAL_MODEL, model)
+    await send_to_event(bot, event, f"已设置全局默认文本模型：`{pid}` / `{model}`{warning}")
 
 
 # ------------------------------------------------------------ vision

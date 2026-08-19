@@ -175,16 +175,18 @@ async def _create(bot: Bot, event: Event, kind: str, args: list[str]) -> None:
         await send_to_event(bot, event, ws_error)
         return
 
-    provider_id = resolve_provider(scope_key, config)
-    if provider_id is None:
+    fallback_pid = resolve_provider(scope_key, config)
+    if fallback_pid is None:
         await send_to_event(bot, event, "未配置可用 provider，请联系管理员。")
+        return
+    provider_id, model = provider.resolve_text_model(scope_key, fallback_pid)
+    if not model:
+        await send_to_event(
+            bot, event, f"provider `{provider_id or fallback_pid}` 未配置文本模型，请联系管理员。"
+        )
         return
     if not provider.has_provider(provider_id):
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
-        return
-    model = provider.resolve_text_model(scope_key, provider_id)
-    if not model:
-        await send_to_event(bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。")
         return
 
     approval_mode = (

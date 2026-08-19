@@ -75,11 +75,11 @@ sv = Service("aichat", enable_on_default=False, visible=False)
 
 
 async def _ai_chat_rule(bot: Bot, event: Event) -> bool:
-    
+
     if event.is_tome():
         return get_plaintext(event).lstrip().startswith("#")
     msg = get_event_message(event)
-    unimsg = await to_unimessage(msg, bot=bot, event=event) if msg is not None else None
+    unimsg = await to_unimessage(msg, bot=bot, event=event, attach_reply=False) if msg is not None else None
     return unimsg and unimsg.startswith("#")
 
 
@@ -293,17 +293,19 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     reply_ctx = await _reply_context_text(bot, event)
     if reply_ctx:
         prompt = f"{reply_ctx}\n\n{prompt}"
-    provider_id = resolve_provider(scope_key, config)
-    if provider_id is None:
+    fallback_pid = resolve_provider(scope_key, config)
+    if fallback_pid is None:
         await send_to_event(bot, event, provider_error_message(config))
+        return
+    provider_id, text_model = provider.resolve_text_model(scope_key, fallback_pid)
+    if not text_model:
+        await send_to_event(
+            bot, event, f"provider `{provider_id or fallback_pid}` 未配置文本模型，请联系管理员。"
+        )
         return
     record = provider.get_provider(provider_id)
     if record is None:
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
-        return
-    text_model = provider.resolve_text_model(scope_key, provider_id)
-    if not text_model:
-        await send_to_event(bot, event, f"provider `{provider_id}` 未配置文本模型，请联系管理员。")
         return
     vision_provider_id, vision_model = provider.resolve_vision(scope_key)
 

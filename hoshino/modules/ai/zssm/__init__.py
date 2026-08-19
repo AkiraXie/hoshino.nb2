@@ -223,21 +223,21 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         )
         return
 
-    provider_id = resolve_provider(scope_key, config)
-    if provider_id is None:
+    fallback_pid = resolve_provider(scope_key, config)
+    if fallback_pid is None:
         await send_to_event(bot, event, provider_error_message(config))
         return
-    record = provider.get_provider(provider_id)
-    if record is None:
-        await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
-        return
-    text_model = provider.resolve_text_model(scope_key, provider_id)
+    provider_id, text_model = provider.resolve_text_model(scope_key, fallback_pid)
     if not text_model:
         await send_to_event(
             bot,
             event,
-            f"provider `{provider_id}` 未配置文本模型，请联系管理员。",
+            f"provider `{provider_id or fallback_pid}` 未配置文本模型，请联系管理员。",
         )
+        return
+    record = provider.get_provider(provider_id)
+    if record is None:
+        await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
         return
     vision_provider_id, vision_model = provider.resolve_vision(scope_key)
     vision_record = provider.get_provider(vision_provider_id) if vision_provider_id else None

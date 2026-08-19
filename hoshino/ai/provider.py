@@ -21,12 +21,16 @@ from . import store
 
 KNOWN_KINDS = ("openai_chat", "openai_responses", "anthropic")
 
-# vision 槽的显式禁用哨兵（scope 覆盖为 ``none`` 时强制关闭看图能力）。
+# vision / text 槽的显式禁用哨兵（scope 覆盖为 ``none`` 时强制关闭）。
 VISION_DISABLED = "none"
 
 # 全局默认 vision 配置的 KV key（``ai vision default`` 写入）。
 VISION_GLOBAL_PROVIDER = "default_vision_provider"
 VISION_GLOBAL_MODEL = "default_vision_model"
+
+# 全局默认文本模型配置的 KV key（``ai text default`` 写入）。
+TEXT_GLOBAL_PROVIDER = "default_text_provider"
+TEXT_GLOBAL_MODEL = "default_text_model"
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,16 +182,34 @@ async def fetch_available_models(
 # ---------------------------------------------------------------- 解析
 
 
-def resolve_text_model(scope_key: str | None, provider_id: str) -> str:
-    """解析当前 scope 应使用的纯文本模型（scope 覆盖 > provider 默认）。
+def resolve_text_model(scope_key: str | None, fallback_provider_id: str) -> tuple[str, str]:
+    """解析当前 scope 应使用的文本 (provider_id, model)。
 
-    provider 不存在或未配置时返回空串，由调用方报配置错误。
+    优先级：
+    1. scope 的 text_provider + text_model 成对覆盖（``ai text set``）；
+    2. 全局默认文本配置（``ai text default``）；
+    3. fallback_provider_id 的 ``default_text_model``（provider 自身默认）。
+
+    provider 不存在或未配置模型时对应位置返回空串。
     """
-    record = get_provider(provider_id)
-    if record is None:
-        return ""
     overrides = store.get_scope_model_overrides(scope_key or "")
-    return overrides["text_model"] or record.default_text_model
+
+    # 1. scope 成对覆盖
+    if overrides["text_provider"] and overrides["text_model"]:
+        if has_provider(overrides["text_provider"]):
+            return overrides["text_provider"], overrides["text_model"]
+
+    # 2. 全局默认
+    g_pid = store.get_global_value(TEXT_GLOBAL_PROVIDER) or ""
+    g_model = store.get_global_value(TEXT_GLOBAL_MODEL) or ""
+    if g_pid and g_model and has_provider(g_pid):
+        return g_pid, g_model
+
+    # 3. fallback provider 自身默认
+    record = get_provider(fallback_provider_id)
+    if record is None:
+        return "", ""
+    return fallback_provider_id, record.default_text_model
 
 
 def resolve_vision(scope_key: str | None) -> tuple[str, str]:
