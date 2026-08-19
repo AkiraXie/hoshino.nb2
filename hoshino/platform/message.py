@@ -52,6 +52,7 @@ async def to_unimessage(
     *,
     bot: Bot | None = None,
     event: Event | None = None,
+    attach_reply: bool = True,
 ) -> UniMessage:
     """Convert an outgoing value using its source adapter's message builder."""
 
@@ -88,7 +89,8 @@ async def to_unimessage(
             adapter=OB11Adapter.get_name(),
         )
     if event is not None:
-        await converted.attach_reply(event, bot)
+        if attach_reply:
+            await converted.attach_reply(event, bot)
     return converted
 
 
