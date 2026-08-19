@@ -309,7 +309,6 @@ async def _provider_list(bot: Bot, event: Event) -> None:
             f"text={record.default_text_model or '-'} "
             f"url={mask_url(record.url)}{proxy_flag}"
         )
-    lines.append("新增/修改：ai setup / ai alter；模型列表：ai model list")
     await send_to_event(bot, event, "\n".join(lines))
 
 
@@ -343,20 +342,16 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
     )
     providers.clear_agent_cache()
 
-    lines = [f"已{'更新' if old is not None else '新增'} provider `{pid}`。"]
     store.set_global_value("default_provider", pid)
-    lines.append("已设为全局默认 provider。")
     gid = get_group_id(event)
     if gid is not None:
         scope_key = group_scope_key(gid, platform=platform_key(bot))
         store.set_scope_provider(scope_key, pid, updated_by=str(get_user_id(event) or ""))
-        lines.append("已绑定当前群。")
+    parts = [f"已{'更新' if old is not None else '新增'} `{pid}`"]
     if opts.get("text"):
-        lines.append(f"文本模型：`{opts['text']}`。")
-    lines.append(f"全局代理：{'启用' if use_proxy else '未启用'}（use_proxy）。")
-    lines.append("看图（vision）需单独配置：`ai vision set <provider> <模型>`。")
-    lines.append("用 `ai status` 查看生效配置。")
-    await send_to_event(bot, event, "\n".join(lines))
+        parts.append(f"text=`{opts['text']}`")
+    parts.append(f"proxy={'on' if use_proxy else 'off'}")
+    await send_to_event(bot, event, "、".join(parts))
 
 
 _ALTER_USAGE = (
@@ -490,8 +485,6 @@ async def _model_status(bot: Bot, event: Event) -> None:
     lines = [
         f"provider：`{pid}`" + ("" if not bound else "（本群绑定）"),
         f"文本模型：{text_display}（{source_text}）",
-        "改文本：ai text set <provider> <模型>；看图：ai vision",
-        "看可用模型：ai model list",
     ]
     await send_to_event(bot, event, "\n".join(lines))
 
@@ -516,24 +509,18 @@ async def _model_list(bot: Bot, event: Event) -> None:
         )
         return
     text_pid, text_model = provider.resolve_text_model(scope_key, pid)
-    lines = [f"provider `{pid}` 可用模型（{len(models)} 个，来自 API）："]
+    lines = [f"`{pid}` 可用模型（{len(models)}）："]
     for model in models:
-        mark = "当前文本" if text_pid == pid and model == text_model else ""
-        lines.append(f"- {model}" + (f"（{mark}）" if mark else ""))
-    lines.append("设置文本：ai text set <provider> <模型>；vision：ai vision")
+        mark = " ← 当前" if text_pid == pid and model == text_model else ""
+        lines.append(f"- {model}{mark}")
     await send_to_event(bot, event, "\n".join(lines))
 
 
 async def _echo_text(bot: Bot, event: Event, scope_key: str, fallback_pid: str, extra: str = "") -> None:
-    """设置/重置后回显当前生效文本模型（含操作提示）。"""
+    """设置/重置后回显当前生效文本模型。"""
     text_pid, text_model = provider.resolve_text_model(scope_key, fallback_pid)
     current = f"`{text_pid}` / `{text_model}`" if text_model else "`（未设置）`"
-    await send_to_event(
-        bot,
-        event,
-        f"当前文本模型：{current}{extra}\n"
-        "改：ai text set <provider> <模型>；看图：ai vision",
-    )
+    await send_to_event(bot, event, f"文本模型：{current}{extra}")
 
 
 async def _handle_status(bot: Bot, event: Event) -> None:
@@ -620,13 +607,7 @@ async def _text_status(bot: Bot, event: Event) -> None:
     else:
         source = "provider 默认"
     current = f"`{text_pid}` / `{text_model}`" if text_model else "`（未设置）`"
-    lines = [
-        f"文本模型：{current}（{source}）",
-        "设置本群：ai text set <provider> <模型>（或 <provider>/<模型>）",
-        "清除回退：ai text reset",
-        "全局默认（超管）：ai text default <provider> <模型>",
-    ]
-    await send_to_event(bot, event, "\n".join(lines))
+    await send_to_event(bot, event, f"文本模型：{current}（{source}）")
 
 
 async def _text_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
@@ -656,17 +637,10 @@ async def _text_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -> 
     warning = ""
     if available is not None:
         if model not in available:
-            sample = "、".join(f"`{m}`" for m in available[:20])
-            await send_to_event(
-                bot,
-                event,
-                f"模型 `{model}` 不在 provider `{pid}` 的可用列表中（API 获取）。\n"
-                f"可用：{sample}{'…' if len(available) > 20 else ''}\n"
-                "全部可用模型：ai model list",
-            )
+            await send_to_event(bot, event, f"`{model}` 不在 `{pid}` 可用列表中，用 `ai model list` 查看。")
             return
     else:
-        warning = "（无法连接 provider 校验，已直接设置）"
+        warning = "（未校验）"
 
     store.set_scope_text(scope_key, pid, model, updated_by=actor)
     await _echo_text(bot, event, scope_key, pid, warning)
@@ -728,19 +702,13 @@ async def _text_default(bot: Bot, event: Event, args: list[str]) -> None:
     warning = ""
     if available is not None:
         if model not in available:
-            sample = "、".join(f"`{m}`" for m in available[:20])
-            await send_to_event(
-                bot,
-                event,
-                f"模型 `{model}` 不在 provider `{pid}` 的可用列表中（API 获取）。\n"
-                f"可用：{sample}{'…' if len(available) > 20 else ''}",
-            )
+            await send_to_event(bot, event, f"`{model}` 不在 `{pid}` 可用列表中。")
             return
     else:
-        warning = "（无法连接 provider 校验，已直接设置）"
+        warning = "（未校验）"
     store.set_global_value(provider.TEXT_GLOBAL_PROVIDER, pid)
     store.set_global_value(provider.TEXT_GLOBAL_MODEL, model)
-    await send_to_event(bot, event, f"已设置全局默认文本模型：`{pid}` / `{model}`{warning}")
+    await send_to_event(bot, event, f"全局文本默认：`{pid}` / `{model}`{warning}")
 
 
 # ------------------------------------------------------------ vision
@@ -801,25 +769,14 @@ async def _vision_status(bot: Bot, event: Event) -> None:
     else:
         source = "未配置"
     current = f"`{vision_provider_id}` / `{vision_model}`" if vision_model else "`（未设置）`"
-    lines = [
-        f"vision：{current}（{source}）",
-        "设置本群：ai vision set <provider> <模型>（或 <provider>/<模型>）",
-        "禁用本群：ai vision set none；清除回退全局：ai vision reset",
-        "全局默认（超管）：ai vision default <provider> <模型>",
-    ]
-    await send_to_event(bot, event, "\n".join(lines))
+    await send_to_event(bot, event, f"vision：{current}（{source}）")
 
 
 async def _echo_vision(bot: Bot, event: Event, scope_key: str, extra: str = "") -> None:
-    """设置/重置后回显当前生效 vision（含操作提示）。"""
+    """设置/重置后回显当前生效 vision。"""
     vision_provider_id, vision_model = provider.resolve_vision(scope_key)
     current = f"`{vision_provider_id}` / `{vision_model}`" if vision_model else "`（未设置）`"
-    await send_to_event(
-        bot,
-        event,
-        f"当前 vision：{current}{extra}\n"
-        "改：ai vision set <provider> <模型>；禁用：ai vision set none",
-    )
+    await send_to_event(bot, event, f"vision：{current}{extra}")
 
 
 async def _vision_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
@@ -856,21 +813,13 @@ async def _vision_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -
     warning = ""
     if available is not None:
         if model not in available:
-            sample = "、".join(f"`{m}`" for m in available[:20])
-            await send_to_event(
-                bot,
-                event,
-                f"模型 `{model}` 不在 provider `{pid}` 的可用列表中（API 获取）。\n"
-                f"可用：{sample}{'…' if len(available) > 20 else ''}\n"
-                "全部可用模型：ai model list",
-            )
+            await send_to_event(bot, event, f"`{model}` 不在 `{pid}` 可用列表中。")
             return
     else:
-        warning = "（无法连接 provider 校验，已直接设置）"
+        warning = "（未校验）"
 
     store.set_scope_vision(scope_key, pid, model, updated_by=actor)
-    note = "（vision 模型需真正支持看图，若识别失败请换模型）"
-    await _echo_vision(bot, event, scope_key, warning + note)
+    await _echo_vision(bot, event, scope_key, warning)
 
 
 async def _vision_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) -> None:
@@ -923,19 +872,13 @@ async def _vision_default(bot: Bot, event: Event, args: list[str]) -> None:
     warning = ""
     if available is not None:
         if model not in available:
-            sample = "、".join(f"`{m}`" for m in available[:20])
-            await send_to_event(
-                bot,
-                event,
-                f"模型 `{model}` 不在 provider `{pid}` 的可用列表中（API 获取）。\n"
-                f"可用：{sample}{'…' if len(available) > 20 else ''}",
-            )
+            await send_to_event(bot, event, f"`{model}` 不在 `{pid}` 可用列表中。")
             return
     else:
-        warning = "（无法连接 provider 校验，已直接设置）"
+        warning = "（未校验）"
     store.set_global_value(provider.VISION_GLOBAL_PROVIDER, pid)
     store.set_global_value(provider.VISION_GLOBAL_MODEL, model)
-    await send_to_event(bot, event, f"已设置全局默认 vision：`{pid}` / `{model}`{warning}")
+    await send_to_event(bot, event, f"全局 vision 默认：`{pid}` / `{model}`{warning}")
 
 
 # ------------------------------------------------------------ search
@@ -968,25 +911,13 @@ async def _search_status(bot: Bot, event: Event) -> None:
     default_id = store.get_search_default_id()
     cfg = search.resolve_search_config(scope_key, config)
     if cfg is None:
-        await send_to_event(
-            bot,
-            event,
-            "当前未配置搜索 provider：`ai search add <名字> <deepseek|tavily|bocha> ...`\n"
-            "（默认 deepseek 需 anthropic 兼容聊天 provider 或显式 --key）。",
-        )
+        await send_to_event(bot, event, "搜索未配置。")
         return
-    source = "自定义" if default_id else "默认（继承 anthropic 聊天 provider）"
+    source = "自定义" if default_id else "默认"
     label = f"`{default_id}`（`{cfg.kind}`）" if default_id else f"`{cfg.kind}`"
-    lines = [
-        f"搜索 provider：{label}（{source}）",
-        f"端点：{mask_url(cfg.url)}",
-        "API key：已配置" if cfg.key else "API key：未设置",  # 不展示 key（含脱敏）
-    ]
+    lines = [f"搜索：{label}（{source}）", f"端点：{mask_url(cfg.url)}"]
     if cfg.kind == "deepseek":
         lines.append(f"模型：`{cfg.model}`")
-    lines.append(
-        "管理：ai search list 查看全部；ai search add 添加；ai search default <名字> 切换默认"
-    )
     await send_to_event(bot, event, "\n".join(lines))
 
 
