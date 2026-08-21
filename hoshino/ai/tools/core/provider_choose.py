@@ -1,11 +1,11 @@
-"""core/provider_choose：超级用户调整当前 scope 的 provider / 文本模型 / vision。
+"""core/provider_choose：超级用户调整当前 scope 的文本模型 / vision。
 
-把 ``ai provider set`` / ``ai text set`` / ``ai vision set`` 等管理员命令的语义
-做成 LLM 工具：superuser 可以直接让模型帮自己切换 provider、设定文本模型与
-vision（均为 provider + model 成对配置）。可用模型一律调用 provider API 实时
-获取校验（本地不维护 model-list）。
+把 ``ai text set`` / ``ai vision set`` 等管理员命令的语义做成 LLM 工具：
+superuser 可以直接让模型帮自己设定文本模型与 vision（均为 provider + model
+成对配置）。可用模型一律调用 provider API 实时获取校验（本地不维护 model-list）。
 
-只写 scope 级覆盖（``ai_scope_providers`` / ``ai_scope_models``），不动全局默认。
+provider 是全局资源，不与 scope 绑定；只写 scope 级模型覆盖
+（``ai_scope_models``），不动全局默认。
 """
 
 from __future__ import annotations
@@ -21,11 +21,7 @@ ProviderAction = Literal["status", "provider", "text", "vision", "reset"]
 
 
 def _effective_provider_id(ctx: RunContext[AgentDeps]) -> str:
-    """当前 scope 的有效 provider id（scope 绑定 > 配置默认）；无则空串。"""
-    scope_key = ctx.deps.scope_key or ""
-    bound = store.get_scope_provider(scope_key)
-    if bound and provider.has_provider(bound):
-        return bound
+    """当前生效的 provider id（仅取全局默认）；无则空串。"""
     default = ctx.deps.config.default
     return default if default and provider.has_provider(default) else ""
 
@@ -46,10 +42,9 @@ async def _status_text(ctx: RunContext[AgentDeps], pid: str) -> str:
     scope_key = ctx.deps.scope_key or ""
     lines = [f"当前 scope：`{scope_key or '（未绑定）'}`"]
     if not pid:
-        lines.append("没有可用 provider（scope 未绑定且无默认）。")
+        lines.append("没有可用 provider（未设置默认）。")
         return "\n".join(lines)
-    bound = store.get_scope_provider(scope_key)
-    lines.append(f"provider：`{pid}`" + ("（scope 绑定）" if bound else "（默认）"))
+    lines.append(f"provider：`{pid}`（全局默认）")
     text_pid, text_model = provider.resolve_text_model(scope_key, pid)
     text_source = f"`{text_pid}` / " if text_pid and text_pid != pid else ""
     lines.append(f"纯文本模型：{text_source}`{text_model or '（未配置）'}`")
@@ -95,10 +90,10 @@ async def provider_choose(
     action: ProviderAction,
     value: str = "",
 ) -> str:
-    """管理当前会话的 provider / 文本模型 / vision（仅超级用户可用）。
+    """管理当前会话的文本模型 / vision，以及全局默认 provider（仅超级用户可用）。
 
     - status：查看当前 provider、文本模型与 vision、API 可用模型清单
-    - provider <id>：把当前会话切换到指定 provider
+    - provider <id>：切换全局默认 provider（不与 scope 绑定）
     - text <provider> <model> 或 text <provider>/<model>：设置文本模型
       （provider + model 成对配置；实时校验在 API 可用列表内）
     - vision <provider> <model> 或 vision <provider>/<model>：设置 vision
@@ -119,8 +114,8 @@ async def provider_choose(
             return "用法：provider <id>（可用 id 见 status 或 `ai provider list`）。"
         if not provider.has_provider(value):
             return f"provider `{value}` 不存在。"
-        store.set_scope_provider(scope_key, value, updated_by=actor)
-        return f"已把当前会话切换到 provider `{value}`。"
+        store.set_global_value("default_provider", value)
+        return f"已将全局默认 provider 切换为 `{value}`。"
 
     pid = _effective_provider_id(ctx)
     if not pid:

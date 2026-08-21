@@ -28,17 +28,12 @@ def get_config() -> AIConfig:
 
 
 def resolve_provider(scope_key: str | None, config: AIConfig) -> str | None:
-    """解析当前 scope 应使用的 provider id。
+    """解析当前应使用的 provider id。
 
-    优先级：
-    1. scope 绑定的 provider（存在且 DB 中有效）。scope_key 为 None 时跳过。
-    2. ``AIConfig.default`` 默认 provider（存在且 DB 中有效）。
-    3. 两者都缺失时返回 None，由调用方回复配置错误，不发起请求。
+    provider 是全局资源，不与 scope 绑定；仅取 ``AIConfig.default``
+    （可被 DB ``default_provider`` 覆盖）。scope_key 参数保留以兼容调用方签名，
+    但不再参与解析。
     """
-    if scope_key:
-        bound = store.get_scope_provider(scope_key)
-        if bound and store.has_provider_row(bound):
-            return bound
     if config.default and store.has_provider_row(config.default):
         return config.default
     return None
@@ -49,5 +44,5 @@ def provider_error_message(config: AIConfig) -> str:
     if not store.list_provider_rows():
         return "AI 服务未配置任何 provider，请联系超级用户执行 `ai setup`。"
     if config.default and store.has_provider_row(config.default):
-        return "当前会话未绑定 provider 且默认 provider 无效，请联系管理员。"
-    return "当前会话未绑定 provider，也没有全局默认 provider，请联系管理员。"
+        return "默认 provider 无效，请联系管理员检查配置。"
+    return "未设置默认 provider，请联系管理员执行 `ai setup`。"
