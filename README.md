@@ -2,10 +2,11 @@
 
 Hoshino.nb2 是基于 [NoneBot2](https://github.com/nonebot/nonebot2) 的 HoshinoBot
 迁移与重构项目。项目保留 HoshinoBot 的 Service 与插件组织方式，并通过统一的平台层支持
-OneBot V11、Milky 和 Telegram。
+OneBot V11、Milky 和 Telegram。AI 模块基于 pydantic-ai 构建，参考了
+[DeepSeek Harness](https://github.com/nicepkg/deepseek-harness) 的事件溯源与会话治理思路。
 
-项目当前包含机器人主体、跨平台消息与事件抽象、订阅/内容推送插件，以及一个独立的微博
-图片浏览 Web 应用。
+项目当前包含机器人主体、跨平台消息与事件抽象、AI 对话与管理、订阅/内容推送插件，以及
+一个独立的图片浏览 Web 应用。
 
 ## 主要能力
 
@@ -15,6 +16,10 @@ OneBot V11、Milky 和 Telegram。
 - 基于 UniMessage 的跨平台文本、图片、视频和合并转发
 - 基于 Uninfo 的身份、群成员信息和权限查询
 - 统一的 Target、reaction 和被回应消息抽象
+- **AI 对话**：pydantic-ai Agent + 事件溯源会话历史 + 多对话管理 + persona 三级解析
+- **AI 工具系统**：五类工具（core/computer/bot/web/skill）+ 注册表门控 + 审批流
+- **AI 后台任务**：research/plan 状态机 + 调度器 + capability snapshot 冻结恢复
+- **Provider 治理**：多 provider 全局管理、文本/视觉模型独立 scope 覆盖、实时 API 校验
 - APScheduler 定时任务与订阅推送
 - NoneBug/pytest 跨适配器行为测试
 
@@ -30,12 +35,15 @@ hoshino/platform/ob11/     OneBot V11 隔离实现
 hoshino/platform/milky/    Milky 隔离实现
 hoshino/platform/telegram/ Telegram 隔离实现
 hoshino/content/           内容推送模型与队列
+hoshino/ai/                AI 能力基建包（Agent/provider/persona/tools/task，非插件）
 hoshino/base/              始终加载的内置服务
 hoshino/modules/           按配置加载的业务插件
+hoshino/modules/ai/        AI 插件（chat 对话 / ai_admin 管理 / task_commands 后台任务）
 hoshino/service_config/    各 Service 的业务配置
 nb-tests/                  NoneBug、跨适配器和插件行为测试
 .tests/                    legacy 与微博专项测试
-agent-flow/                架构、插件和 adapter 专题文档
+agent-flow/                架构、AI、插件和 adapter 专题文档
+docs/                      插件开发指南
 image_web/                 图片浏览站点后端（共享基础 + x/weibo provider）
 weibo_image_web/           微博站点前端与启停脚本
 x_image_web/               X 站点前端与启停脚本
@@ -125,6 +133,38 @@ logs/info/hsnYYYYMMDD.log
 logs/error/hsnYYYYMMDD_error.log
 ```
 
+## AI 模块
+
+AI 能力分为两层：`hoshino/ai/` 基建包（非插件）和 `hoshino/modules/ai/` 插件层。
+
+### Provider 与模型
+
+Provider 是全局资源，不与群绑定。只有文本模型和视觉模型支持 scope（群）级覆盖：
+
+```text
+provider（全局）       → ai setup / ai alter / ai provider list / ai provider remove
+文本模型（scope 覆盖）  → ai text set / ai text reset / ai text default
+视觉模型（scope 覆盖）  → ai vision set / ai vision reset / ai vision default
+搜索 provider（独立）   → ai search add / ai search default / ai search list
+```
+
+- `ai model list`：列出所有 provider 的可用模型（API 实时获取），标注当前文本/视觉模型
+- `ai status`：显示当前生效的文本模型 + vision + 搜索状态
+- 文本模型优先级：scope 覆盖 > 全局默认（`ai text default`）> provider 默认
+- 视觉模型优先级：scope 配置 > 全局默认（`ai vision default`）；`none` 显式禁用
+
+### 对话与工具
+
+- `#` 前缀或回复机器人消息触发即时对话
+- 多对话管理：`#new` / `#switch` / `#list` / `#clear`
+- 五类工具（core/computer/bot/web/skill），按 surface 和 scope 类别门控
+- persona 三级解析：scope > 全局 > 默认，支持 `{{variable}}` 模板变量
+- 后台任务：`ai task research|plan` 创建持久化任务，状态机驱动
+
+详细的 AI 模块结构、pydantic-ai 能力使用和自有扩展见
+[AI 模块文档](agent-flow/ai.md)；工具注册表与门控见
+[AI 工具系统](agent-flow/ai-tools.md)。
+
 ## 开发插件
 
 新插件放在 `hoshino/modules/<category>/`，业务代码应使用公共平台 API，不要直接依赖某个
@@ -206,6 +246,9 @@ bash x_image_web/start_dev.sh
 
 - [NoneBot2](https://github.com/nonebot/nonebot2)：机器人框架与插件生态
 - [HoshinoBot](https://github.com/Ice-Cirno/HoshinoBot)：本项目的原始设计与功能基础
+- [DeepSeek Harness](https://github.com/nicepkg/deepseek-harness)：事件溯源会话、拦截瀑布、Goal 语义、persona 模板变量等 AI Agent 架构思路的主要参考来源；pydantic-ai-harness 包提供 Planning / StepPersistence / Skills 能力
+- [pydantic-ai](https://github.com/pydantic/pydantic-ai)：AI Agent 框架，模型循环、工具集、依赖注入与结构化输出
+- [AstrBot](https://github.com/AstrBotDev/AstrBot)：对话管理、历史截断与 skill prompt 组织参考
 - [go-cqhttp](https://github.com/Mrs4s/go-cqhttp)：OneBot QQ 机器人实现与早期生态基础
 - [LLOneBot](https://github.com/LLOneBot/LLOneBot)：基于 QQNT 的 OneBot 实现
 - [Lagrange.Core](https://github.com/LagrangeDev/Lagrange.Core)：现代 QQ 协议实现

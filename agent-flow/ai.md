@@ -36,8 +36,8 @@ hoshino/modules/ai/    插件层（NoneBot 插件，被 bootstrap 按 modules �
 | 文件 | 职责 |
 |---|---|
 | `config.py` | `AIConfig`（默认 provider、护栏、代理、渲染配置）；`AI_*` env 挂载进 `HoshinoConfig` |
-| `base.py` | 配置读取、provider/scope 解析的公共入口（不 import nonebot） |
-| `provider.py` | provider 领域层：DB provider / model-list 校验 / scope 模型覆盖 / 可 hash 的 `ProviderRecord` |
+| `base.py` | 配置读取、provider 解析的公共入口（不 import nonebot）；provider 仅取全局默认 |
+| `provider.py` | provider 领域层：DB provider / model-list 校验 / scope 模型覆盖（text/vision） / 可 hash 的 `ProviderRecord` |
 | `providers.py` | pydantic-ai model / Agent 工厂：按 `(provider_id, 快照, model, 代理)` 缓存 Agent |
 | `runner.py` | `run_agent`：在 `async with agent.iter(...)` 内把图跑到结束；有界重试、RunLog 观测 |
 | `persona.py` | persona 领域层：三级解析（scope > 全局 > 默认）、CRUD/绑定、`{{variable}}` 模板渲染 |
@@ -138,9 +138,10 @@ pydantic-ai 只提供"单次 run"的模型循环；聊天机器人需要的会�
   few-shot（锚定说话方式）、`output.md` 强制输出规范（所有 persona 生效）、
   `ai persona` CRUD 命令与 `persona_manage` 工具。
 - **provider 治理**：provider 存 SQLite（非 env），`ai setup` 一键配置；model-list
-  实时校验（`ai model list` 调 provider API）；scope 绑定 + 全局默认；文本模型
-  provider 只提供默认值，vision 由 `ai vision` 单独配置（独立 provider + 模型：
-  scope 配置 > 全局默认，`none` 显式禁用）。
+  实时校验（`ai model list` 遍历所有 provider 调 API，标注当前文本/视觉模型）；
+  provider 是全局资源，不与群绑定；文本模型和视觉模型各自支持 scope 覆盖
+  （scope > 全局默认 > provider 默认）；vision 由 `ai vision` 单独配置（独立
+  provider + 模型：scope 配置 > 全局默认，`none` 显式禁用）。
 - **后台任务（Task）**：`ai task` 创建 research/plan 任务——状态机
   （created/queued/running/waiting_approval/succeeded/failed/cancelled）、调度器
   （claim/lease/heartbeat、有限重试、持久化取消、启动恢复）、**创建时冻结**
@@ -168,11 +169,13 @@ pydantic-ai 只提供"单次 run"的模型循环；聊天机器人需要的会�
 ## 5. 参考与致谢
 
 AI 模块的设计参考了以下开源项目的能力模型；参考点是**架构思路对齐**，实现均为
-Python/pydantic-ai 原生重写，未直接搬运代码：
+Python/pydantic-ai 原生重写，未直接搬运代码。特别感谢
+[DeepSeek Harness](https://github.com/nicepkg/deepseek-harness) 在事件溯源会话、
+拦截瀑布、Goal 语义和 persona 模板变量等方面提供的核心架构参考。
 
 ### DeepSeek Harness（dsh）
 
-TypeScript + Cordis 的事件溯源 agent 框架：
+TypeScript + Cordis 的事件溯源 agent 框架，AI 模块的主要架构参考来源：
 
 - **事件溯源会话**：append-only `SessionEvent` 日志 + `deriveMessages()` 派生模型
   历史 → 对应 `context.py` 的事件日志与 `derive_messages`（含 `turn/start|end`、

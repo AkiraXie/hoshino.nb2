@@ -55,6 +55,29 @@ hoshino.ai         AI 能力基建包（Agent/persona/provider/工具/task，非
 能力使用与自有扩展见 [AI 模块文档](../agent-flow/ai.md)，工具注册表与门控见
 [AI 工具系统](../agent-flow/ai-tools.md)。
 
+### AI Provider 与模型约定
+
+Provider 是全局资源，不与群绑定。只有文本模型和视觉模型支持 scope（群）级覆盖：
+
+- **provider**：通过 `ai setup` / `ai alter` 管理，全局默认由 `default_provider` 决定
+- **文本模型**：`ai text set <provider> <model>` 设置 scope 覆盖，回退链为
+  scope > 全局默认（`ai text default`）> provider 默认
+- **视觉模型**：`ai vision set <provider> <model>` 独立配置，回退链为
+  scope > 全局默认（`ai vision default`）；`none` 显式禁用
+- **搜索 provider**：独立于聊天 provider，通过 `ai search` 管理
+
+在代码中获取当前生效的 provider / 模型：
+
+```python
+from hoshino.ai.base import get_config, resolve_provider
+from hoshino.ai import provider
+
+config = get_config()
+pid = resolve_provider(scope_key, config)          # 全局默认 provider
+text_pid, text_model = provider.resolve_text_model(scope_key, pid or "")
+vision_pid, vision_model = provider.resolve_vision(scope_key)
+```
+
 ## 3. 最小插件
 
 ```python
