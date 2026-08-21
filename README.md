@@ -41,7 +41,6 @@ hoshino/modules/           按配置加载的业务插件
 hoshino/modules/ai/        AI 插件（chat 对话 / ai_admin 管理 / task_commands 后台任务）
 hoshino/service_config/    各 Service 的业务配置
 nb-tests/                  NoneBug、跨适配器和插件行为测试
-.tests/                    legacy 与微博专项测试
 agent-flow/                架构、AI、插件和 adapter 专题文档
 docs/                      插件开发指南
 image_web/                 图片浏览站点后端（共享基础 + x/weibo provider）
