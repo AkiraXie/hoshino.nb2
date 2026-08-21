@@ -1,95 +1,32 @@
-# Milky adapter
+# Milky 开发指南
 
-## 配置
+编写或修改涉及 Milky adapter 的代码时，遵循以下规则。
 
-项目同时注册 OneBot V11、Telegram 与 Milky adapter。Milky 正向连接需要事件
-WebSocket 和 HTTP API 指向同一个协议端：
+## 核心原则
 
-```ini
-milky_clients=[{"host":"127.0.0.1","port":3000,"access_token":"","secure":false}]
-```
+- **不直接 import Milky 类型**。所有 adapter 交互通过 `hoshino/platform/milky/` 隔离区，业务代码只用公共出口（`GroupID()`、`UniMessage`、`send_to_event()` 等）。
+- **消息 ID 是会话内序列号**，不跨群唯一。持久化时必须同时保存 Target 或 `group_id`，不能只存 `message_id`。
+- **forward ID 不可跨 adapter 复用**。跨 adapter 发送合并转发应提供 constructed node 内容，不要传递其他 adapter 的 forward ID。
 
-也可以使用 webhook 反向上报：
+## Reaction 处理
 
-```ini
-milky_webhook={"host":"127.0.0.1","port":3000,"access_token":"","secure":false}
-```
+reaction handler 使用 `Reaction()` / `ReactedMessage()` DI，不接收平台 Event。统一字段：
 
-协议端必须实现 Milky 1.2 API。`nonebot-plugin-uninfo>=0.11.1` 是必要依赖；旧的
-0.6.10 没有 Milky fetcher，`GroupID()`、`SenderID()` 和成员权限无法跨平台工作。
-
-## 平台边界
-
-Milky 类型、事件访问和 Bot API wrapper 位于 `hoshino/platform/milky/`。业务代码
-继续使用公共出口：
-
-- 身份与权限：`GroupID()`、`SenderID()`、`GroupMemberName()` 和 Uninfo permission
-- 消息：`UniMessage`、`send_to_event()`、`send_to_target()`
-- 合并转发：`send_group_forward()`、`send_private_forward()`
-- reaction：`Reaction()`、`ReactedMessage()` 和 `reaction_event_rule`
-- 群 API：`get_group_list()`、`get_group_member_info()`、`upload_group_file()`
-
-业务 reaction handler 不接收平台 Event 或直接调用 Bot API。统一对象字段为：
-
-| 字段 | 含义 |
+| 字段 | 说明 |
 |---|---|
-| `face_id` | 表情 ID，始终保留为字符串 |
-| `is_add` | 添加为 `True`，取消为 `False` |
-| `message_id` | 被回应的群消息序列号 |
+| `face_id` | 表情 ID（字符串） |
+| `is_add` | True=添加，False=取消 |
+| `message_id` | 被回应的消息序列号 |
 | `group_id` | 群号 |
-| `user_id` | 操作者 QQ 号 |
 | `reaction_type` | `face` 或 `emoji` |
 
-### Reaction 映射
+注意：LLOneBot 的 emoji like 事件只能规范化为添加；OB11 CQ 字符串和原生 Message 不能直接传给 Milky，新插件应构造 `UniMessage`。
 
-| 来源事件 | `face_id` | `is_add` | `reaction_type` |
-|---|---|---|---|
-| OB11 `GroupReactionEvent` | `code` | `sub_type == "add"` | `face` |
-| OB11 `GroupMsgEmojiLikeEvent` | `likes[0].emoji_id` | `True` | `emoji` |
-| Milky `GroupMessageReactionEvent` | `data.face_id` | `data.is_add` | 原值 |
+## 测试要求
 
-LLOneBot 的 `GroupMsgEmojiLikeEvent` 上报当前点赞集合，不提供独立的取消动作，因此
-只能规范化为添加。公共 image/Weibo reaction 消费者会忽略所有取消事件。
+Milky 行为测试必须走完整 dispatch 链路，具体要求见 `milky-plugin-test-protocol.md`。要点：
 
-## 从 OB11 切换的差异
-
-| 类别 | OB11 | Milky | 当前处理 |
-|---|---|---|---|
-| 群消息事件 | 顶层 `group_id/user_id/message_id` | `data.peer_id/sender_id/message_seq` | platform accessor / Uninfo DI |
-| reaction | 两个协议端扩展事件 | 原生 `GroupMessageReactionEvent` | `ReactionInfo` DI |
-| 获取消息 | `get_msg(message_id)` | `get_message(scene, peer_id, seq)` | `ReactedMessage()` DI |
-| 群列表/成员 | dict API | Pydantic model API | wrapper 统一为 dict |
-| 发送群消息 | `send_group_msg` | `send_group_message` | `UniMessage` exporter |
-| @ 消息段 | `at` | `mention` | `UniMessage.at()` |
-| 回复 ID | 全局样式 `message_id` | 会话内 `message_seq` | reaction 同时保留 `group_id` |
-| 群文件 | `upload_group_file(file=...)` | `upload_group_file(path=...)` | wrapper |
-| constructed forward | `send_*_forward_msg` | outgoing `forward` segment | `UniMessage.reference()` |
-
-普通发送会按消息的来源 adapter 先转换为 `UniMessage`，再导出到目标 adapter；因此
-legacy OB11 的常用 Message/MessageSegment 也能发送到 Milky。`call_header` 在 common 层
-通过 Uninfo 取得成员显示名，不会再作为未知参数透传给 Milky API。
-
-constructed forward 在 OB11 与 Milky 上导出为原生合并转发；Telegram 没有等价的
-自定义节点语义，因此 common helper 会保持顺序逐条发送节点内容。
-
-## 尚未兼容的边界
-
-1. 已存在的 OB11 forward ID 与 Milky `forward_id` 都是协议端本地标识，不能跨 adapter
-   直接复用；跨 adapter 发送应提供 constructed node 内容。
-2. OB11 CQ 字符串、原生 `Message`/`MessageSegment` 和 `auto_escape` 语义不能直接传给
-   Milky。common facade 会转换常用 segment；新插件仍应直接构造 `UniMessage`。
-3. `platform/ob11/bootstrap.py` 的 direct `Bot.send()` legacy patch 只在 OB11 注册时应用；
-   Hoshino common facade 的 `call_header` 已跨 adapter 处理，Milky 其余发送使用原生
-   `Bot.send()` 和 UniMessage exporter。
-4. 直接调用 `get_msg`、`send_group_msg`、`get_forward_msg` 等 OB11 API 的测试或 legacy
-   helper 仍是 OB11-only。当前 reaction 原消息获取、群列表、成员信息和群文件已经有
-   common wrapper；其余直接 API 需要按实际业务逐项迁移。
-5. Milky 的消息 ID 是会话内序列号。只持久化 `message_id` 而丢弃群/会话 ID 的业务
-   记录无法保证跨群唯一，持久化时应同时保存 Target 或 `group_id`。
-
-## 验证要求
-
-不要在本文维护测试数量或插件覆盖状态。Milky 行为测试必须通过真实 event model、
-`bot.handle_event()` 和被 stub 的 adapter HTTP 边界，具体要求见
-`agent-flow/milky-plugin-test-protocol.md`。测试不连接真实 QQNT/Milky 协议端；上线前仍需
-人工验证鉴权、WebSocket/webhook 连通、媒体临时 URL 和真实 forward payload。
+1. 用 `MilkyAdapter.json_to_event()` 构造事件，每个用例用唯一 `message_seq`
+2. 调用 `await bot.handle_event(event)`（触发 reply/mention/to_me 预处理）
+3. stub HTTP 边界并断言 action name + target ID + message payload
+4. 不使用真实凭据或连接真实协议端
