@@ -245,9 +245,6 @@ bash x_image_web/start_dev.sh
 
 - [NoneBot2](https://github.com/nonebot/nonebot2)：机器人框架与插件生态
 - [HoshinoBot](https://github.com/Ice-Cirno/HoshinoBot)：本项目的原始设计与功能基础
-- [DeepSeek Harness](https://github.com/nicepkg/deepseek-harness)：事件溯源会话、拦截瀑布、Goal 语义、persona 模板变量等 AI Agent 架构思路的主要参考来源；pydantic-ai-harness 包提供 Planning / StepPersistence / Skills 能力
-- [pydantic-ai](https://github.com/pydantic/pydantic-ai)：AI Agent 框架，模型循环、工具集、依赖注入与结构化输出
-- [AstrBot](https://github.com/AstrBotDev/AstrBot)：对话管理、历史截断与 skill prompt 组织参考
-- [go-cqhttp](https://github.com/Mrs4s/go-cqhttp)：OneBot QQ 机器人实现与早期生态基础
-- [LLOneBot](https://github.com/LLOneBot/LLOneBot)：基于 QQNT 的 OneBot 实现
-- [Lagrange.Core](https://github.com/LagrangeDev/Lagrange.Core)：现代 QQ 协议实现
+- [DeepSeek Harness](https://github.com/nicepkg/deepseek-harness)：AI Agent 架构参考
+- [pydantic-ai](https://github.com/pydantic/pydantic-ai)：AI Agent 框架
+- [go-cqhttp](https://github.com/Mrs4s/go-cqhttp) / [LLOneBot](https://github.com/LLOneBot/LLOneBot) / [Lagrange.Core](https://github.com/LagrangeDev/Lagrange.Core)：QQ 协议实现
