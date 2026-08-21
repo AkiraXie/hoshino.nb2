@@ -2,7 +2,7 @@
 
 模型管理语义：
 - ``ai model``：显示当前使用的文本模型（含来源）与操作提示（只读）。
-- ``ai model list``：调用 provider API 获取**真实可用模型列表**（本地不存 model-list）。
+- ``ai model list``：列出**所有 provider** 的可用模型，并标注当前文本/视觉模型。
 - 文本模型设置已移至 ``ai text``（provider + model 成对配置，与 vision 对齐）。
 
 text 管理语义（provider + model 成对配置，与 vision 对称）：
@@ -91,7 +91,7 @@ USAGE = (
     "  ai text               查看/设置文本模型（provider + model 成对）\n"
     "  ai vision             查看/设置看图模型（provider + model 成对）\n"
     "  ai model              查看当前文本模型状态\n"
-    "  ai model list         获取当前 provider 的可用模型列表\n"
+    "  ai model list         列出所有 provider 的可用模型（标注当前文本/视觉）\n"
     "搜索：\n"
     "  ai search             查看/管理搜索 provider\n"
     "其他：\n"
@@ -138,7 +138,7 @@ _PERSONA_USAGE = (
 _MODEL_USAGE = (
     "用法：\n"
     "  ai model              查看当前文本模型（含来源）\n"
-    "  ai model list         获取当前 provider 的真实可用模型（API）\n"
+    "  ai model list         列出所有 provider 的可用模型（标注当前文本/视觉）\n"
     "设置文本模型请用 `ai text`；看图请用 `ai vision`。"
 )
 
@@ -490,33 +490,50 @@ async def _model_status(bot: Bot, event: Event) -> None:
 
 
 async def _model_list(bot: Bot, event: Event) -> None:
-    """`ai model list`：调用 provider API 获取真实可用模型列表。"""
+    """`ai model list`：列出所有 provider 的可用模型，并标注当前文本/视觉模型。"""
     config = get_config()
     scope_key = event_scope_key(bot, event)
-    pid = await _scope_provider_id(scope_key, config) if scope_key else None
-    if pid is None:
-        await send_to_event(bot, event, "当前没有可用 provider，无法获取模型列表。")
+    records = provider.list_providers()
+    if not records:
+        await send_to_event(bot, event, "未配置任何 provider，无法获取模型列表。")
         return
-    record = provider.get_provider(pid)
-    models = await provider.fetch_available_models(
-        record,
-        proxy=provider.resolve_effective_proxy(record, config.proxy),
-        verify=config.web_fetch_verify_ssl,
+
+    # 当前生效的文本 / vision 模型（用于标记 ← 当前）
+    fallback_pid = resolve_provider(scope_key, config) if scope_key else None
+    text_pid, text_model = (
+        provider.resolve_text_model(scope_key, fallback_pid or "") if fallback_pid else ("", "")
     )
-    if not models:
-        await send_to_event(
-            bot, event, f"获取 provider `{pid}` 的模型列表失败（网络或端点不支持）。"
+    vision_pid, vision_model = provider.resolve_vision(scope_key)
+
+    sections: list[str] = []
+    for record in records:
+        models = await provider.fetch_available_models(
+            record,
+            proxy=provider.resolve_effective_proxy(record, config.proxy),
+            verify=config.web_fetch_verify_ssl,
         )
-        return
-    text_pid, text_model = provider.resolve_text_model(scope_key, pid)
-    lines = [f"`{pid}` 可用模型（{len(models)}）："]
-    for model in models:
-        mark = " ← 当前" if text_pid == pid and model == text_model else ""
-        lines.append(f"- {model}{mark}")
-    await send_to_event(bot, event, "\n".join(lines))
+        if models is None:
+            sections.append(f"`{record.id}`：获取失败（网络或端点不支持）")
+            continue
+        header = f"`{record.id}`（{len(models)} 个模型）："
+        lines = [header]
+        for model in models:
+            marks: list[str] = []
+            if record.id == text_pid and model == text_model:
+                marks.append("← 当前文本")
+            if record.id == vision_pid and model == vision_model:
+                marks.append("← 当前视觉")
+            suffix = f"  {' '.join(marks)}" if marks else ""
+            lines.append(f"- {model}{suffix}")
+        sections.append("\n".join(lines))
+
+    output = "\n\n".join(sections)
+    await send_to_event(bot, event, output)
 
 
-async def _echo_text(bot: Bot, event: Event, scope_key: str, fallback_pid: str, extra: str = "") -> None:
+async def _echo_text(
+    bot: Bot, event: Event, scope_key: str, fallback_pid: str, extra: str = ""
+) -> None:
     """设置/重置后回显当前生效文本模型。"""
     text_pid, text_model = provider.resolve_text_model(scope_key, fallback_pid)
     current = f"`{text_pid}` / `{text_model}`" if text_model else "`（未设置）`"
@@ -535,27 +552,23 @@ async def _handle_status(bot: Bot, event: Event) -> None:
     fallback_pid = resolve_provider(scope_key, config) if scope_key else None
     if fallback_pid:
         text_pid, text_model = provider.resolve_text_model(scope_key, fallback_pid)
-        text_line = (
-            f"文本：`{text_pid}` / `{text_model}`"
-            if text_model
-            else "文本：`（未设置）`"
-        )
+        text_line = f"文本：`{text_pid}` / `{text_model}`" if text_model else "文本：`（未设置）`"
     else:
         text_line = "文本：`（无可用 provider）`"
 
     # vision
     vision_pid, vision_model = provider.resolve_vision(scope_key)
     vision_line = (
-        f"vision：`{vision_pid}` / `{vision_model}`"
-        if vision_model
-        else "vision：`（未设置）`"
+        f"vision：`{vision_pid}` / `{vision_model}`" if vision_model else "vision：`（未设置）`"
     )
 
     # 搜索
     search_cfg = search.resolve_search_config(scope_key, config)
     if search_cfg is not None:
         default_id = store.get_search_default_id()
-        search_label = f"`{default_id}`（`{search_cfg.kind}`）" if default_id else f"`{search_cfg.kind}`"
+        search_label = (
+            f"`{default_id}`（`{search_cfg.kind}`）" if default_id else f"`{search_cfg.kind}`"
+        )
         search_line = f"搜索：{search_label}"
     else:
         search_line = "搜索：`（未配置）`"
@@ -597,9 +610,7 @@ async def _text_status(bot: Bot, event: Event) -> None:
     scope_key = event_scope_key(bot, event)
     fallback_pid = await _scope_provider_id(scope_key, config) if scope_key else None
     overrides = store.get_scope_model_overrides(scope_key or "")
-    text_pid, text_model = provider.resolve_text_model(
-        scope_key, fallback_pid or ""
-    )
+    text_pid, text_model = provider.resolve_text_model(scope_key, fallback_pid or "")
     if overrides["text_provider"] and overrides["text_model"]:
         source = "本群配置"
     elif store.get_global_value(provider.TEXT_GLOBAL_PROVIDER):
@@ -637,7 +648,9 @@ async def _text_set(bot: Bot, event: Event, scope_key: str, args: list[str]) -> 
     warning = ""
     if available is not None:
         if model not in available:
-            await send_to_event(bot, event, f"`{model}` 不在 `{pid}` 可用列表中，用 `ai model list` 查看。")
+            await send_to_event(
+                bot, event, f"`{model}` 不在 `{pid}` 可用列表中，用 `ai model list` 查看。"
+            )
             return
     else:
         warning = "（未校验）"
@@ -658,9 +671,7 @@ async def _text_reset(bot: Bot, event: Event, scope_key: str, args: list[str]) -
     config = get_config()
     fallback_pid = await _scope_provider_id(scope_key, config)
     if fallback_pid is not None:
-        await _echo_text(
-            bot, event, scope_key, fallback_pid, "（已清除本群文本模型覆盖）"
-        )
+        await _echo_text(bot, event, scope_key, fallback_pid, "（已清除本群文本模型覆盖）")
     else:
         await send_to_event(bot, event, "已清除本群文本模型覆盖。")
 
