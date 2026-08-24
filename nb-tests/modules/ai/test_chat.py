@@ -295,12 +295,13 @@ def test_build_model_ignores_env_proxy(monkeypatch):
 # ------------------------------------------------------- provider 解析
 
 
-def test_resolve_provider_scope_overrides_default(tmp_store):
+def test_resolve_provider_uses_default_ignores_scope(tmp_store):
+    """resolve_provider 只看全局默认：scope 绑定不再参与解析（provider 全局化）。"""
     from hoshino.ai.base import resolve_provider
 
     config = _seed_test_providers(tmp_store)
     tmp_store.set_scope_provider("milky:123", "anthropic")
-    assert resolve_provider("milky:123", config) == "anthropic"
+    assert resolve_provider("milky:123", config) == "openai"
     assert resolve_provider("milky:999", config) == "openai"
 
 
@@ -575,7 +576,6 @@ async def test_chat_at_self_with_hash_triggers(monkeypatch, tmp_store):
     assert len(sent) == 1
 
 
-
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_no_provider_configured(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
@@ -672,12 +672,11 @@ async def test_chat_render_failure_falls_back_to_text(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
+async def test_chat_uses_default_provider(monkeypatch, tmp_store):
     from hoshino.modules.ai import chat
 
     _stub_config(monkeypatch, tmp_store)
-    # 该群 scope 绑定 anthropic → build_agent 应收到 anthropic 及其默认模型
-    tmp_store.set_scope_provider("milky:123456", "anthropic")
+    # 无 scope 绑定 → build_agent 收到全局默认 provider（openai）及其默认模型
     captured: dict = {}
 
     def fake_build(
@@ -702,9 +701,9 @@ async def test_chat_scope_provider_overrides_default(monkeypatch, tmp_store):
     bot, event = _milky_group("#hi", user_id=7)
     await bot.handle_event(event)
 
-    assert captured["provider_id"] == "anthropic"
-    assert captured["provider_record"].id == "anthropic"
-    assert captured["model"] == "claude-3-5-sonnet"
+    assert captured["provider_id"] == "openai"
+    assert captured["provider_record"].id == "openai"
+    assert captured["model"] == "gpt-4o-mini"
     assert captured["proxy"] == chat.get_config().proxy
     assert captured["tool_max_retries"] == 3
     assert len(sent) == 1
@@ -1114,8 +1113,8 @@ async def test_chat_busy_replies_when_turn_in_progress(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_run_timeout_keeps_prompt(monkeypatch, tmp_store):
-    """墙钟超时：回复超时提示，本轮提问写入上下文可续问。"""
+async def test_chat_run_timeout_drops_prompt(monkeypatch, tmp_store):
+    """墙钟超时：回复超时提示，本轮提问不写入上下文（避免污染历史）。"""
     import asyncio as _asyncio
 
     from hoshino.ai import sessions
@@ -1153,15 +1152,16 @@ async def test_chat_run_timeout_keeps_prompt(monkeypatch, tmp_store):
     bot, event = _milky_group("#慢慢来", user_id=7)
     await bot.handle_event(event)
 
-    assert "超时" in sent[-1][1].extract_plain_text()
+    assert "处理超时" in sent[-1][1].extract_plain_text()
+    assert "本次对话未记录" in sent[-1][1].extract_plain_text()
     messages = manager.get_active("milky:123456").messages
-    assert len(messages) == 1  # 提问已保留在上下文
+    assert len(messages) == 0  # 提问不写入上下文
     assert slow.prompt == "慢慢来"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_usage_limit_keeps_prompt(monkeypatch, tmp_store):
-    """UsageLimit 超限与超时同语义：保留提问。"""
+async def test_chat_usage_limit_drops_prompt(monkeypatch, tmp_store):
+    """UsageLimit 超限与超时同语义：提问不写入上下文。"""
     from pydantic_ai.exceptions import UsageLimitExceeded
 
     from hoshino.ai import sessions
@@ -1173,8 +1173,9 @@ async def test_chat_usage_limit_keeps_prompt(monkeypatch, tmp_store):
     bot, event = _milky_group("#循环了", user_id=7)
     await bot.handle_event(event)
 
-    assert "超出步数限制" in sent[-1][1].extract_plain_text()
-    assert len(manager.get_active("milky:123456").messages) == 1
+    assert "处理超出步数限制" in sent[-1][1].extract_plain_text()
+    assert "本次对话未记录" in sent[-1][1].extract_plain_text()
+    assert len(manager.get_active("milky:123456").messages) == 0
 
 
 # ------------------------------------------------------- 拦截瀑布（pre-step / retry）

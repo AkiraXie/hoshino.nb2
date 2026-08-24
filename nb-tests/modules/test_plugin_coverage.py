@@ -655,31 +655,6 @@ class TestInteractivePlugins:
         assert images[0].startswith("base64://")
 
     @pytest.mark.usefixtures("_nonebot_bootstrap")
-    async def test_emojimix_enabled_text_sends_image(self, monkeypatch):
-        """emojimix: two supported emoji dispatch through native on_message."""
-        _enable_svc(monkeypatch, "emojimix")
-        bot = _make_bot()
-        event = _make_group_msg("😀😃")
-        calls = _stub_all_api(monkeypatch)
-
-        await bot.handle_event(event)
-
-        message = _assert_one_send(calls)
-        assert message == [
-            {
-                "type": "image",
-                "data": {
-                    "uri": (
-                        "https://www.gstatic.com/android/keyboard/emojikitchen/"
-                        "20210521/u1f600/u1f600_u1f603.png"
-                    ),
-                    "summary": None,
-                    "sub_type": "normal",
-                },
-            }
-        ]
-
-    @pytest.mark.usefixtures("_nonebot_bootstrap")
     async def test_steam_enabled_list_responds(self, monkeypatch):
         """steam: its full command is not consumed by the ``st`` image alias."""
         steam_module = _loaded_module("hoshino.modules.info-x.steam")

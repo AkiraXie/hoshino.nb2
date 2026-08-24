@@ -50,6 +50,12 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# 报告规范化：-v 显示完整用例路径（按 core / modules/<module> 目录自然分组），
+# --tb=short 精简 traceback；分块运行：
+#   core：   uv run pytest nb-tests/test_ai_core_providers.py nb-tests/platform/
+#   modules：uv run pytest nb-tests/modules/
+#   单插件： uv run pytest nb-tests/modules/ai/test_chat.py
+addopts = "-v --tb=short"
 
 [tool.ruff]
 target-version = "py312"

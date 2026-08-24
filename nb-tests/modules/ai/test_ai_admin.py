@@ -224,8 +224,8 @@ async def test_text_set_validates_against_api_list(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "不在 provider" in text
-    assert "gpt-4o-mini" in text  # 可用列表提示
+    assert "不在 `openai` 可用列表" in text
+    assert "ai model list" in text  # 提示用 ai model list 查看可用模型
     overrides = tmp_store.get_scope_model_overrides("milky:123456")
     assert overrides["text_model"] == ""
 
@@ -240,7 +240,7 @@ async def test_text_set_proceeds_when_api_down(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "无法连接 provider 校验" in text
+    assert "（未校验）" in text  # API 不可达时放行并附警告
     assert "`openai` / `gpt-4o`" in text
 
 
@@ -254,7 +254,7 @@ async def test_vision_set_and_disable(monkeypatch, tmp_store):
     bot, event = _milky_group("ai vision set openai gpt-4o")
     await bot.handle_event(event)
     text = sent[0][1].extract_plain_text()
-    assert "当前 vision：`openai` / `gpt-4o`" in text
+    assert "vision：`openai` / `gpt-4o`" in text
     assert tmp_store.get_scope_model_overrides("milky:123456")["vision_provider"] == "openai"
     assert tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == "gpt-4o"
 
@@ -272,6 +272,7 @@ async def test_vision_set_and_disable(monkeypatch, tmp_store):
     bot, event = _milky_group("ai vision reset")
     await bot.handle_event(event)
     assert tmp_store.get_scope_model_overrides("milky:123456") == {
+        "text_provider": "",
         "text_model": "",
         "vision_provider": "",
         "vision_model": "",
@@ -292,7 +293,7 @@ async def test_vision_set_validates_provider_and_model(monkeypatch, tmp_store):
     bot, event = _milky_group("ai vision set openai ghost-1")
     await bot.handle_event(event)
     text = sent[1][1].extract_plain_text()
-    assert "不在 provider" in text
+    assert "不在 `openai` 可用列表" in text
     assert tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == ""
 
 
@@ -307,7 +308,7 @@ async def test_vision_default_global(monkeypatch, tmp_store):
     bot, event = _milky_group("ai vision default openai/gpt-4o")
     await bot.handle_event(event)
     text = sent[0][1].extract_plain_text()
-    assert "已设置全局默认 vision" in text
+    assert "全局 vision 默认：`openai` / `gpt-4o`" in text
     assert tmp_store.get_global_value(VISION_GLOBAL_PROVIDER) == "openai"
     assert tmp_store.get_global_value(VISION_GLOBAL_MODEL) == "gpt-4o"
 
@@ -377,9 +378,8 @@ async def test_search_add_default_and_status(monkeypatch, tmp_store):
     bot, event = _milky_group("ai search")
     await bot.handle_event(event)
     text = sent[2][1].extract_plain_text()
-    assert "搜索 provider：`tavily`（`tavily`）（自定义）" in text
-    assert "tvly-secret-key-123" not in text  # 状态只显示已配置/未设置
-    assert "已配置" in text
+    assert "搜索：`tavily`（`tavily`）（自定义）" in text
+    assert "tvly-secret-key-123" not in text  # 状态不显示 key
     assert "api.tavily.com" in text  # 内置端点
 
 
@@ -429,8 +429,7 @@ async def test_search_status_no_config_hints(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "未配置搜索 provider" in text
-    assert "ai search add" in text
+    assert "搜索未配置。" in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -461,17 +460,16 @@ async def test_text_set_member_rejected(monkeypatch, tmp_store):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_status_shows_minimal_dashboard(monkeypatch, tmp_store):
-    """ai status 只显示当前 provider/文本模型/vision，不暴露代理、渲染等配置细节。"""
-    tmp_store.set_scope_provider("milky:123456", "anthropic")
+    """ai status 只显示文本模型/vision/搜索三行，不暴露代理、渲染等配置细节。"""
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
     bot, event = _milky_group("ai status")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "当前 provider：`anthropic`" in text
-    assert "文本模型：`claude-3-5-sonnet`" in text
+    assert "文本：`openai` / `gpt-4o-mini`" in text
     assert "vision：`（未设置）`" in text
+    assert "搜索：`（未配置）`" in text
     # 极简看板：不暴露代理/渲染/历史限制等
     assert "代理" not in text
     assert "渲染" not in text
@@ -719,12 +717,12 @@ async def test_bare_ai_shows_status(monkeypatch, tmp_store):
     bot, event = _milky_group("ai")
     await bot.handle_event(event)
 
-    # 裸 `ai` 只发送一条状态总览（当前 provider + 文本模型 + vision），不带命令清单。
+    # 裸 `ai` 只发送一条状态总览（文本模型 + vision + 搜索），不带命令清单。
     assert len(sent) == 1
     text = sent[0][1].extract_plain_text()
-    assert "当前 provider" in text
-    assert "文本模型" in text
-    assert "vision" in text
+    assert "文本：" in text
+    assert "vision：" in text
+    assert "搜索：" in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -737,15 +735,12 @@ async def test_setup_one_shot_configures_provider(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "已新增 provider `myllm`" in text
-    assert "已设为全局默认 provider" in text
-    assert "已绑定当前群" in text
-    assert "ai vision set" in text  # vision 单独配置提示
-    # DB 落库（provider 只有默认文本模型）
+    assert "已新增 `myllm`" in text
+    assert "text=`deepseek-v3`" in text
+    # DB 落库（provider 只有默认文本模型；设全局默认）
     row = tmp_store.get_provider_row("myllm")
     assert row["default_text_model"] == "deepseek-v3"
     assert "default_vision_model" not in row
-    assert tmp_store.get_scope_provider("milky:123456") == "myllm"
     assert tmp_store.get_global_value("default_provider") == "myllm"
 
 
@@ -918,7 +913,7 @@ async def test_setup_use_proxy_flag(monkeypatch, tmp_store):
     bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1 --use-proxy")
     await bot.handle_event(event)
     text = sent[0][1].extract_plain_text()
-    assert "全局代理：启用" in text
+    assert "proxy=on" in text
     assert tmp_store.get_provider_row("proxyllm")["use_proxy"] is True
 
     bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1 --use-proxy 0")
