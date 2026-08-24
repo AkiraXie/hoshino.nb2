@@ -13,11 +13,10 @@ from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 
-from conftest import next_seq
+from _helpers import next_seq
 from hoshino.ai.config import AIConfig
 
-# 本文件会触发 uninfo 会话缓存，见 conftest 中 _clear_uninfo_cache 的说明。
-pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
+# _clear_uninfo_cache 由 modules/ai/conftest.py 提供。
 
 
 def _milky_group(

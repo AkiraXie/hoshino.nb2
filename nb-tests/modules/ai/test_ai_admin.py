@@ -11,22 +11,10 @@ from nonebot.adapters.milky.event import FriendMessageEvent as MilkyPrivateMessa
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 
-from conftest import next_seq
+from _helpers import next_seq
 from hoshino.ai.config import AIConfig
 
-# 本文件复用同一（群、用户）组合做不同 role 的权限断言，必须清 uninfo 会话
-# 缓存，见 conftest 中 _clear_uninfo_cache 的说明。
-pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
-
-
-@pytest.fixture(autouse=True)
-def _fresh_conversation_manager(monkeypatch):
-    """每个测试独立 ConversationManager：单例内存缓存会跨测试残留。"""
-    from hoshino.ai import sessions
-
-    manager = sessions.ConversationManager()
-    monkeypatch.setattr(sessions, "conversation_manager", manager)
-    return manager
+# _clear_uninfo_cache 和 _fresh_conversation_manager 由 modules/ai/conftest.py 提供。
 
 
 # ---------------------------------------------------------------- helpers

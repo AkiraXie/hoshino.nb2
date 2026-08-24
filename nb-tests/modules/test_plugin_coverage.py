@@ -25,7 +25,7 @@ from nonebot.adapters.milky.event import GroupMessageReactionEvent
 from nonebot.adapters.milky.utils import clean_params
 from PIL import Image as PILImage
 
-from conftest import next_seq
+from _helpers import next_seq
 
 # ---------------------------------------------------------------------------
 # helpers

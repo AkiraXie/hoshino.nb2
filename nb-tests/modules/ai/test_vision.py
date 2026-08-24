@@ -10,9 +10,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from conftest import next_seq
+from _helpers import next_seq
 
-pytestmark = pytest.mark.usefixtures("_clear_uninfo_cache")
+# _clear_uninfo_cache 由 modules/ai/conftest.py 提供。
 
 
 # ------------------------------------------------------------ helpers

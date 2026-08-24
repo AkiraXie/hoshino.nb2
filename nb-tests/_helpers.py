@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+from itertools import count
 
 from nonebot import get_adapters
 from nonebot.adapters.milky import Adapter as MilkyAdapter
@@ -17,7 +18,14 @@ from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.config import ClientInfo
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 
-from conftest import next_seq
+# 共享 message_seq 计数器：从 conftest.py 迁移到此处，避免子目录 import conftest
+# 时解析到本地 conftest.py 而非根 conftest.py。
+_seq = count(1_000_000)
+
+
+def next_seq() -> int:
+    """返回本 pytest 会话内全局唯一的 message_seq。"""
+    return next(_seq)
 
 
 def _milky_group_message(
