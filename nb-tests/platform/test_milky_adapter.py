@@ -136,8 +136,9 @@ async def test_milky_alconna_commands_parse_without_adapter_branches():
         current_bot.reset(token)
 
 
-@pytest.mark.usefixtures("_nonebot_bootstrap")
+@pytest.mark.usefixtures("_nonebot_bootstrap", "_clear_uninfo_cache")
 async def test_milky_uninfo_dependencies_and_permission(app: App):
+    """uninfo 依赖注入与权限；前置清空缓存避免跨测试会话污染。"""
     from hoshino.platform.depends import GroupID, GroupMemberName, SenderID
     from hoshino.platform.permission import GROUP_ADMIN, GROUP_OWNER
 
