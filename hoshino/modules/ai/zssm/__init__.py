@@ -63,7 +63,9 @@ zssm_cmd = sv.on_command("zssm", only_group=False, only_to_me=False)
 class ZssmOutput(BaseModel):
     """zssm 结构化输出：pydantic-ai output_type 强制校验。"""
 
-    output: str = Field(description="解释正文，不超过 500 汉字")
+    output: str = Field(
+        description="解释正文，纯自然语言叙述，不使用任何 Markdown 语法，不超过 500 汉字"
+    )
     keywords: list[str] = Field(description="1~5 个核心关键词")
     blocked: bool = Field(default=False, description="无法解释时为 true")
 
@@ -83,12 +85,13 @@ image_descriptions 是视觉模型生成的图片描述，urls_in_target 是文�
 
 要求：
 1. 优先解释 focus 指定的部分；没有 focus 时，提取 target 的关键概念并通俗解释。
-2. 图片描述是 AI 生成的、仅为方便你阅读，**可能出错**，对明显矛盾的内容先纠正再解释。
+2. 图片描述是 AI 生成的、仅为方便你阅读，可能出错，对明显矛盾的内容先纠正再解释。
 3. 图片一定要有输出（总结或解释），除非内容无意义或有风险，否则不可以跳过。
 4. 网页等长内容先简要总结，再解释核心概念；普通短文本重点解释专有名词、梗、缩写和背景。
 5. 保持中立、准确、简洁，总长度不超过 500 个汉字；不要和用户继续互动。
 6. 如果没有可解释内容，或无法可靠判断，设置 blocked 为 true。
-7. keywords 必须提取 1~5 个核心关键词（专有名词、概念、人物、事件等），不可为空。"""
+7. keywords 必须提取 1~5 个核心关键词（专有名词、概念、人物、事件等），不可为空。
+8. output 必须是纯自然语言叙述，禁止使用任何 Markdown 语法（包括但不限于 **加粗**、*斜体*、# 标题、- 列表、``` 代码块、[链接]()、> 引用）。用口语化的段落把概念讲清楚，像朋友聊天一样解释。"""
 
 _TIMEOUT_SECONDS = 90.0  # Agent run 超时（含多轮工具调用）
 _MAX_REQUESTS = 6  # 最大模型请求次数（初始 + 工具调用轮次）
