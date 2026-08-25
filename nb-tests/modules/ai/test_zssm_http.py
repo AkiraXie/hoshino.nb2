@@ -1,8 +1,8 @@
 """zssm 完整链路集成测试：真实 build_model + 本地 fake HTTP 服务器。
 
-与 test_zssm.py 的 stub 策略互补——那里 stub _request_explain 验证行为路径；
-这里不 stub，让 zssm 事件真正经 Model.request 向 fake_ai_server 发出 HTTP
-请求，验证"zssm → Model.request → JSON → 解析回复"整条链路。
+与 test_zssm.py 的 stub 策略互补——那里 stub _build_zssm_agent 验证行为路径；
+这里不 stub，让 zssm 事件真正经 Agent 向 fake_ai_server 发出 HTTP
+请求，验证"zssm → Agent（含 web 工具 + ZssmOutput）→ 结构化输出 → 回复"整条链路。
 发消息仍 stub（不依赖真实协议）。
 """
 
@@ -17,6 +17,9 @@ from nonebot.adapters.milky.model.api import MessageResponse
 from _helpers import next_seq
 from hoshino.ai.config import AIConfig
 
+# Fake server 返回合法 JSON 以通过 ZssmOutput 校验。
+# pydantic-ai 使用 response_format / tool_call 强制结构化输出，
+# 但 fake server 只返回纯文本 content，Agent 会把它当 text output 处理。
 _ZSSM_JSON_RESPONSE = {
     "id": "chatcmpl-zssm",
     "object": "chat.completion",
@@ -37,11 +40,11 @@ _ZSSM_JSON_RESPONSE = {
 
 
 @pytest.fixture(autouse=True)
-def _fresh_model_cache(monkeypatch):
-    """每个测试独立 zssm model 缓存：模块级缓存会跨测试残留。"""
+def _fresh_agent_cache(monkeypatch):
+    """每个测试独立 zssm Agent 缓存：模块级缓存会跨测试残留。"""
     from hoshino.modules.ai import zssm
 
-    monkeypatch.setattr(zssm, "_model_cache", {})
+    monkeypatch.setattr(zssm, "_agent_cache", {})
 
 
 def _milky_group(text: str, *, user_id: int = 42, role: str = "member", group_id: int = 123456):
@@ -89,7 +92,7 @@ def _milky_group(text: str, *, user_id: int = 42, role: str = "member", group_id
 
 
 def _stub_http_env(monkeypatch, tmp_store, base_url: str):
-    """provider 指向 fake server；stub 发送，不 stub model 构建。"""
+    """provider 指向 fake server；stub 发送，不 stub agent 构建。"""
     from hoshino.modules.ai import zssm
 
     monkeypatch.setattr(zssm.sv, "check_enabled", lambda scope: True)
@@ -118,7 +121,7 @@ def _stub_http_env(monkeypatch, tmp_store, base_url: str):
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 @pytest.mark.parametrize("fake_ai_server", [_ZSSM_JSON_RESPONSE], indirect=True)
 async def test_zssm_http_full_chain(fake_ai_server, monkeypatch, tmp_store):
-    """完整链路：事件 → Model.request（真实 HTTP）→ JSON 解析 → 转发回复。"""
+    """完整链路：事件 → Agent（真实 HTTP + ZssmOutput）→ 转发回复。"""
     base_url, requests = fake_ai_server
     sent = _stub_http_env(monkeypatch, tmp_store, base_url)
 
@@ -135,8 +138,8 @@ async def test_zssm_http_full_chain(fake_ai_server, monkeypatch, tmp_store):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 @pytest.mark.parametrize("fake_ai_server", [_ZSSM_JSON_RESPONSE], indirect=True)
-async def test_zssm_http_no_tools_in_request(fake_ai_server, monkeypatch, tmp_store):
-    """zssm Model.request 不应携带工具定义（纯文本子请求）。"""
+async def test_zssm_http_injects_web_tools(fake_ai_server, monkeypatch, tmp_store):
+    """zssm Agent 应注入 web 类别工具。"""
     base_url, requests = fake_ai_server
     _stub_http_env(monkeypatch, tmp_store, base_url)
 
@@ -144,6 +147,9 @@ async def test_zssm_http_no_tools_in_request(fake_ai_server, monkeypatch, tmp_st
     await bot.handle_event(event)
 
     assert len(requests) >= 1
-    tools = requests[0]["body"].get("tools")
-    # Model.request 不带工具，tools 应为 None 或空
-    assert not tools
+    tools = requests[0]["body"].get("tools") or []
+    names = {tool.get("function", {}).get("name", "") for tool in tools}
+    # 至少有一个 web 工具被注入（具体取决于运行时哪些可用）
+    web_tool_names = {"web_search", "web_fetch", "browser_use"}
+    injected_web = names & web_tool_names
+    assert injected_web, f"未注入任何 web 工具，实际 tools: {names}"

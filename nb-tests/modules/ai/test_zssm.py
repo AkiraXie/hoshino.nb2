@@ -1,7 +1,7 @@
 """zssm（这是什么）插件测试：文本/回复/图片/权限与错误路径。
 
-zssm 使用单次 Model.request，测试 stub _request_explain 返回预设文本+usage。
-回复方式为转发聊天记录（关键词 / 解释 / 模型统计）。
+zssm 使用 Agent + web 工具 + ZssmOutput 结构化输出，
+测试 stub _build_zssm_agent 返回 FakeAgent，使 run 在单轮内完成。
 """
 
 from __future__ import annotations
@@ -14,21 +14,26 @@ from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.config import ClientInfo
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
-from pydantic_ai.usage import RequestUsage
+from pydantic_ai.usage import RunUsage
 
 from _helpers import next_seq
 from hoshino.ai.config import AIConfig
 
 
 @pytest.fixture(autouse=True)
-def _fresh_model_cache(monkeypatch):
+def _fresh_agent_cache(monkeypatch):
     from hoshino.modules.ai import zssm
 
-    monkeypatch.setattr(zssm, "_model_cache", {})
+    monkeypatch.setattr(zssm, "_agent_cache", {})
 
 
-_DEFAULT_MODEL_TEXT = '{"output":"这是一张显卡","keywords":["显卡"],"blocked":false}'
-_DEFAULT_USAGE = RequestUsage(input_tokens=100, output_tokens=50, cache_read_tokens=30)
+def _make_zssm_output(**kwargs):
+    """构造 ZssmOutput 实例。"""
+    from hoshino.modules.ai.zssm import ZssmOutput
+
+    defaults = {"output": "这是一张显卡", "keywords": ["显卡"], "blocked": False}
+    defaults.update(kwargs)
+    return ZssmOutput(**defaults)
 
 
 def _milky_group(text, *, user_id=42, role="member", group_id=123456, reply=None):
@@ -87,8 +92,55 @@ def _milky_reply(sender_id, text, seq=77):
     }
 
 
-def _stub_env(monkeypatch, tmp_store, *, model_text=_DEFAULT_MODEL_TEXT, with_vision=False):
-    """Stub zssm 环境：_request_explain 返回预设 (text, usage)，捕获发送消息。"""
+class FakeResult:
+    def __init__(self, output=None):
+        self.output = output or _make_zssm_output()
+        self._usage = RunUsage(input_tokens=100, output_tokens=50, requests=1)
+
+    def all_messages(self):
+        return []
+
+    @property
+    def usage(self):
+        return self._usage
+
+
+class FakeAgentRun:
+    def __init__(self, result):
+        self._result = result
+        self.ctx = object()
+        self.result = None
+        self._count = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._count >= 1:
+            self.result = self._result
+            raise StopAsyncIteration
+        self._count += 1
+        return object()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class FakeAgent:
+    def __init__(self, output=None):
+        self._result = FakeResult(output)
+        self.prompt = None
+
+    def iter(self, prompt, **kwargs):
+        self.prompt = prompt
+        return FakeAgentRun(self._result)
+
+
+def _stub_env(monkeypatch, tmp_store, *, zssm_output=None, with_vision=False):
+    """Stub zssm 环境：_build_zssm_agent 返回 FakeAgent，捕获发送消息。"""
     from hoshino.modules.ai import zssm
 
     monkeypatch.setattr(zssm.sv, "check_enabled", lambda scope: True)
@@ -105,14 +157,8 @@ def _stub_env(monkeypatch, tmp_store, *, model_text=_DEFAULT_MODEL_TEXT, with_vi
     if with_vision:
         tmp_store.set_global_value("default_vision_provider", "openai")
         tmp_store.set_global_value("default_vision_model", "gpt-4o")
-
-    captured_prompt: list[str | None] = [None]
-
-    async def fake_request_explain(record, model, user_prompt, *, proxy):
-        captured_prompt[0] = user_prompt
-        return model_text, _DEFAULT_USAGE
-
-    monkeypatch.setattr(zssm, "_request_explain", fake_request_explain)
+    fake = FakeAgent(zssm_output)
+    monkeypatch.setattr(zssm, "_build_zssm_agent", lambda *a, **k: fake)
     sent: list[tuple[int, object]] = []
 
     async def fake_send(self, *, group_id, message):
@@ -120,7 +166,7 @@ def _stub_env(monkeypatch, tmp_store, *, model_text=_DEFAULT_MODEL_TEXT, with_vi
         return MessageResponse(message_seq=8, time=1)
 
     monkeypatch.setattr(MilkyBot, "send_group_message", fake_send)
-    return captured_prompt, sent
+    return fake, sent
 
 
 # ------------------------------------------------------- 正常路径
@@ -128,51 +174,51 @@ def _stub_env(monkeypatch, tmp_store, *, model_text=_DEFAULT_MODEL_TEXT, with_vi
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_zssm_direct_text_explains(monkeypatch, tmp_store):
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
     bot, event = _milky_group("zssm hello world")
     await bot.handle_event(event)
-    payload = json.loads(prompt[0])
+    payload = json.loads(fake.prompt)
     assert payload["target"] == "hello world"
     assert payload["focus"] == ""
-    # 转发消息至少包含关键词和解释
     all_text = " ".join(str(s[1]) for s in sent)
-    assert "显卡" in all_text
+    assert "关键词：显卡" in all_text
+    assert "这是一张显卡" in all_text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_zssm_reply_target_and_focus(monkeypatch, tmp_store):
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
     bot, event = _milky_group("zssm 显卡", reply=_milky_reply(7, "RTX 4090 好贵啊"))
     await bot.handle_event(event)
-    payload = json.loads(prompt[0])
+    payload = json.loads(fake.prompt)
     assert payload["target"] == "RTX 4090 好贵啊" and payload["focus"] == "显卡"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_zssm_empty_target_shows_usage(monkeypatch, tmp_store):
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
     bot, event = _milky_group("zssm")
     await bot.handle_event(event)
     assert "用法：zssm" in str(sent[0][1])
-    assert prompt[0] is None
+    assert fake.prompt is None
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_zssm_without_provider_shows_error(monkeypatch, tmp_store):
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
     tmp_store.delete_provider_row("openai")
     bot, event = _milky_group("zssm 随便什么")
     await bot.handle_event(event)
     assert "AI 服务未配置任何 provider" in str(sent[0][1])
-    assert prompt[0] is None
+    assert fake.prompt is None
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_zssm_urls_passed_in_prompt(monkeypatch, tmp_store):
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
     bot, event = _milky_group("zssm 看看 https://example.com/page 是什么")
     await bot.handle_event(event)
-    payload = json.loads(prompt[0])
+    payload = json.loads(fake.prompt)
     assert "https://example.com/page" in payload.get("urls_in_target", [])
 
 
@@ -180,7 +226,7 @@ async def test_zssm_urls_passed_in_prompt(monkeypatch, tmp_store):
 async def test_zssm_image_with_vision_describes(monkeypatch, tmp_store):
     from hoshino.modules.ai import zssm
 
-    prompt, sent = _stub_env(monkeypatch, tmp_store, with_vision=True)
+    fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=True)
 
     async def fake_images(bot, event):
         return [SimpleNamespace(url="https://x/a.png")]
@@ -193,7 +239,7 @@ async def test_zssm_image_with_vision_describes(monkeypatch, tmp_store):
     monkeypatch.setattr(zssm.image_mod, "describe_image_url", fake_desc)
     bot, event = _milky_group("zssm 这图是啥")
     await bot.handle_event(event)
-    payload = json.loads(prompt[0])
+    payload = json.loads(fake.prompt)
     assert payload["image_descriptions"] == "图片1：图片里有一张显卡"
 
 
@@ -201,7 +247,7 @@ async def test_zssm_image_with_vision_describes(monkeypatch, tmp_store):
 async def test_zssm_image_without_vision_hints(monkeypatch, tmp_store):
     from hoshino.modules.ai import zssm
 
-    prompt, sent = _stub_env(monkeypatch, tmp_store, with_vision=False)
+    fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=False)
 
     async def fake_images(bot, event):
         return [SimpleNamespace(url="https://x/a.png")]
@@ -210,83 +256,121 @@ async def test_zssm_image_without_vision_hints(monkeypatch, tmp_store):
     bot, event = _milky_group("zssm")
     await bot.handle_event(event)
     assert "无法识别图片内容" in str(sent[0][1])
-    assert prompt[0] is None
+    assert fake.prompt is None
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_zssm_forward_contains_stats(monkeypatch, tmp_store):
     """转发消息第三条应包含模型/provider/token 统计。"""
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
     bot, event = _milky_group("zssm hello")
     await bot.handle_event(event)
-    # send_group_forward 最终调 send_group_message，消息为 reference node
     all_text = " ".join(str(s[1]) for s in sent)
     assert "openai" in all_text
     assert "gpt-4o-mini" in all_text
     assert "100" in all_text  # input_tokens
     assert "50" in all_text  # output_tokens
-    assert "30" in all_text  # cache_read_tokens
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_zssm_blocked_response(monkeypatch, tmp_store):
-    prompt, sent = _stub_env(
-        monkeypatch, tmp_store, model_text='{"output":"","keywords":[],"blocked":true}'
-    )
+    blocked_output = _make_zssm_output(output="", keywords=[], blocked=True)
+    fake, sent = _stub_env(monkeypatch, tmp_store, zssm_output=blocked_output)
     bot, event = _milky_group("zssm 神秘代码")
     await bot.handle_event(event)
     all_text = " ".join(str(s[1]) for s in sent)
     assert "（抱歉，我现在还不会这个）" in all_text
 
 
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_zssm_malformed_json_keeps_raw(monkeypatch, tmp_store):
-    prompt, sent = _stub_env(monkeypatch, tmp_store, model_text="不解释了")
-    bot, event = _milky_group("zssm hello")
-    await bot.handle_event(event)
-    all_text = " ".join(str(s[1]) for s in sent)
-    assert "不解释了" in all_text
-
-
 # ------------------------------------------------------- 护栏与错误路径
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_zssm_timeout_reports_timeout(monkeypatch, tmp_store):
-    """Model.request 超时：回复超时提示。"""
+async def test_zssm_run_timeout_reports_timeout(monkeypatch, tmp_store):
+    """Agent run 超时：回复超时提示。"""
+    import asyncio as _asyncio
+
     from hoshino.modules.ai import zssm
 
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
+    monkeypatch.setattr(zssm, "_TIMEOUT_SECONDS", 0.05)
 
-    async def timeout_request(record, model, user_prompt, *, proxy):
-        raise TimeoutError("model request timed out")
+    class SlowRun:
+        def __init__(self):
+            self.ctx = object()
+            self.result = None
 
-    monkeypatch.setattr(zssm, "_request_explain", timeout_request)
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await _asyncio.sleep(5)
+            raise StopAsyncIteration
+
+    class SlowAgent(FakeAgent):
+        def iter(self, prompt, **kwargs):
+            self.prompt = prompt
+            return SlowRun()
+
+    monkeypatch.setattr(zssm, "_build_zssm_agent", lambda *a, **k: SlowAgent())
     bot, event = _milky_group("zssm 慢慢来")
     await bot.handle_event(event)
     assert "解释超时" in str(sent[0][1])
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_zssm_model_error_reports_failure(monkeypatch, tmp_store):
-    """Model.request 抛异常：回复失败提示。"""
+async def test_zssm_agent_error_reports_failure(monkeypatch, tmp_store):
+    """Agent run 抛异常：回复失败提示。"""
     from hoshino.modules.ai import zssm
 
-    prompt, sent = _stub_env(monkeypatch, tmp_store)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
 
-    async def error_request(record, model, user_prompt, *, proxy):
-        raise RuntimeError("model exploded")
+    class ErrorRun(FakeAgentRun):
+        async def __anext__(self):
+            raise RuntimeError("model exploded")
 
-    monkeypatch.setattr(zssm, "_request_explain", error_request)
+    class ErrorAgent(FakeAgent):
+        def iter(self, prompt, **kwargs):
+            self.prompt = prompt
+            return ErrorRun(self._result)
+
+    monkeypatch.setattr(zssm, "_build_zssm_agent", lambda *a, **k: ErrorAgent())
     bot, event = _milky_group("zssm 试试")
     await bot.handle_event(event)
     assert "解释失败" in str(sent[0][1])
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_zssm_empty_response_reports_empty(monkeypatch, tmp_store):
-    """Model.request 返回空文本：回复无内容提示。"""
-    prompt, sent = _stub_env(monkeypatch, tmp_store, model_text="")
+async def test_zssm_run_none_result_reports_empty(monkeypatch, tmp_store):
+    """run 未正常结束（result 为 None）：回复无内容提示。"""
+    from hoshino.modules.ai import zssm
+
+    fake, sent = _stub_env(monkeypatch, tmp_store)
+
+    class NoneRun(FakeAgentRun):
+        def __init__(self):
+            self.ctx = object()
+            self.result = None
+            self._count = 0
+
+        async def __anext__(self):
+            if self._count >= 1:
+                raise StopAsyncIteration
+            self._count += 1
+            return object()
+
+    class NoneAgent(FakeAgent):
+        def iter(self, prompt, **kwargs):
+            self.prompt = prompt
+            return NoneRun()
+
+    monkeypatch.setattr(zssm, "_build_zssm_agent", lambda *a, **k: NoneAgent())
     bot, event = _milky_group("zssm 空结果")
     await bot.handle_event(event)
     assert "模型没有返回内容" in str(sent[0][1])
