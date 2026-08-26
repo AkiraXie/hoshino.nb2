@@ -17,16 +17,26 @@ per_run_step=False 的 DynamicToolset 在 for_run 时只求值一次工具集，
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import os
+import random
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from httpx import TransportError
 from loguru import logger
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import ModelHTTPError, UsageLimitExceeded, UserError
-from pydantic_ai.messages import ModelMessage, UserContent
+from pydantic_ai.exceptions import (
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+    UserError,
+)
+from pydantic_ai.messages import ModelMessage, ModelRequest, UserContent, UserPromptPart
 from pydantic_ai.run import AgentRunResult
 from pydantic_ai.tools import DeferredToolResults
 from pydantic_ai.usage import UsageLimits
@@ -265,6 +275,70 @@ def result_new_messages(result: Any, history: Sequence[ModelMessage]) -> list[Mo
     return list(result.all_messages())[len(history) :]
 
 
+_WRAPUP_INSTRUCTION = (
+    "你已达到本轮工具调用次数的上限。请停止调用任何工具，"
+    "基于已经收集到的信息直接总结回答用户的问题；信息不足的部分如实说明。"
+)
+
+
+def retry_backoff_seconds(attempt: int, *, base: float = 0.5, cap: float = 4.0) -> float:
+    """重试等待：指数退避 + 抖动（attempt 从 1 开始）。"""
+    delay = min(base * (2 ** (attempt - 1)), cap)
+    return delay + random.uniform(0, delay * 0.5)
+
+
+async def _write_spill_file(spill_dir: Path, content: str) -> str | None:
+    """把工具超限内容写入溢出目录（内容 hash 幂等，跨 run 复用）。"""
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+    path = spill_dir / f"tool_{digest}.txt"
+    if not path.exists():
+        try:
+
+            def _do() -> None:
+                spill_dir.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+
+            await asyncio.to_thread(_do)
+        except OSError as exc:
+            logger.warning("AI tool result spill write failed: {}", exc)
+            return None
+    return str(path)
+
+
+async def _spill_oversized_tool_results(history: list[Any], config: Any) -> bool:
+    """run 内把超限工具返回溢出落盘，替换为预览 + 路径提示（幂等，只执行一次）。
+
+    只改本次 run 的临时历史；持久化事件日志仍保留完整工具返回。
+    """
+    max_chars = getattr(config, "tool_result_spill_max_chars", 0) or 0
+    if max_chars <= 0:
+        return False
+    from hoshino import data_dir
+
+    spill_dir = Path(
+        getattr(config, "tool_result_spill_dir", "") or os.path.join(data_dir, "ai_tool_overflow")
+    )
+    changed = False
+    for message in history:
+        for part in getattr(message, "parts", None) or []:
+            if type(part).__name__ != "ToolReturnPart":
+                continue
+            content = getattr(part, "content", None)
+            if not isinstance(content, str) or len(content) <= max_chars:
+                continue
+            path = await _write_spill_file(spill_dir, content)
+            if path is None:
+                continue
+            # 激进策略：>1K 必落盘，对话只留短预览 + 路径，不占用上下文 token。
+            preview = content[:400]
+            part.content = (
+                f"[工具输出过大：完整内容已保存到 {path}，"
+                f"如需细节请用 file 工具读取该文件。]\n{preview}"
+            )
+            changed = True
+    return changed
+
+
 async def run_agent(
     agent: Agent[AgentDeps, Any],
     prompt: UserContent | None,
@@ -299,23 +373,30 @@ async def run_agent(
     # debug 观测：上一步 CallToolsNode 的工具返回大小，供下一步 ModelRequestNode 关联。
     _last_tool_return_chars = 0
     compacted = False
+    spill_done = False
+    wrap_injected = False
 
     async def _observe(node: Any, ctx: GraphRunContext) -> None:
-        nonlocal _last_tool_return_chars, compacted
+        nonlocal _last_tool_return_chars, compacted, spill_done, wrap_injected
         config = getattr(deps, "config", None)
-        if (
-            type(node).__name__ == "ModelRequestNode"
-            and not compacted
-            and getattr(config, "compaction_threshold_chars", 0) > 0
-        ):
-            from . import compaction
+        state = getattr(ctx, "state", None)
+        history = getattr(state, "message_history", None)
+        if type(node).__name__ == "ModelRequestNode" and history:
+            # 1. 超大工具返回溢出落盘（幂等）。
+            if not spill_done:
+                spill_done = await _spill_oversized_tool_results(history, config)
+            # 2. 上下文软压缩（远程接口预留，当前本地摘要兜底）。
+            if not compacted and getattr(config, "compaction_threshold_chars", 0) > 0:
+                from . import compaction
 
-            state = getattr(ctx, "state", None)
-            history = getattr(state, "message_history", None)
-            if history:
-                compacted_history = await compaction.compact_history(deps, list(history))
+                compacted_history = await compaction.compact_history(
+                    deps,
+                    list(history),
+                    model=getattr(agent, "model", None),
+                    request_context=getattr(node, "last_request_context", None),
+                )
                 if compacted_history is not None:
-                    state.message_history[:] = compacted_history
+                    history[:] = compacted_history
                     compacted = True
         if run_log is not None:
             now = time.time()
@@ -324,7 +405,6 @@ async def run_agent(
                 run_log.steps += 1
                 run_log.step_at.append(now)
                 # 度量当前 message_history 规模（debug 日志）。
-                state = getattr(ctx, "state", None)
                 msgs, parts, text_chars = _measure_history(state)
                 elapsed = now - run_log.started_at
                 prev_at = run_log.step_at[-2] if len(run_log.step_at) >= 2 else run_log.started_at
@@ -345,6 +425,18 @@ async def run_agent(
                     f"tool_ret_chars={_last_tool_return_chars:,} "
                     f"elapsed={elapsed:.1f}s delta={delta:.1f}s"
                 )
+                # 3. 步数上限强制收尾：剩余约 2 次请求时注入总结指令。
+                request_limit = getattr(usage_limits, "request_limit", None)
+                if (
+                    request_limit
+                    and run_log.steps >= max(2, int(request_limit) - 2)
+                    and not wrap_injected
+                ):
+                    history.append(
+                        ModelRequest(parts=[UserPromptPart(content=_WRAPUP_INSTRUCTION)])
+                    )
+                    wrap_injected = True
+                    logger.info(f"AI step {run_log.steps} 接近请求上限，注入收尾指令")
             elif name == "CallToolsNode":
                 run_log.tool_calls.extend(tool_call_events_from_node(node))
                 # 度量模型响应中的文本/思考大小（下一步的 tool_return 参考）。
@@ -440,8 +532,9 @@ async def run_agent_with_retry(
     """带 request-error 有界重试的 ``run_agent``。
 
     ``prompt`` 同 ``run_agent``（支持带图 vision UserContent 序列）。
-    重试仅在同时满足：异常被 hook 判定 retry 或落入内置瞬态分类器、且本次 turn
-    尚无工具调用（无副作用，重进 ``agent.iter`` 不会重放工具执行）、且未达上限。
+    重试仅在同时满足：异常被 hook 判定 retry 或落入内置瞬态分类器、或流式空输出、
+    且本次 turn 尚无工具调用（无副作用，重进 ``agent.iter`` 不会重放工具执行）、
+    且未达上限。重试前按指数退避 + 抖动等待（``retry_backoff_*`` 配置）。
     护栏异常（``TimeoutError``/``UsageLimitExceeded``）不重试，直接抛出。
     """
     attempt = 0
@@ -474,10 +567,22 @@ async def run_agent_with_retry(
             )
             decision = hooks.run_request_error_hooks(ctx)
             no_side_effects = run_log is None or not run_log.tool_calls
-            if (
-                (decision.retry or is_transient_error(exc))
+            # 流式空输出（如网关对 stream=true 返回空流）视为可重试的瞬态失败。
+            empty_output = isinstance(exc, UnexpectedModelBehavior) and (
+                "without content or tool calls" in str(exc)
+            )
+            retryable = (
+                (decision.retry or is_transient_error(exc) or empty_output)
                 and no_side_effects
                 and attempt <= max_retries
-            ):
-                continue
-            raise
+            )
+            if not retryable:
+                raise
+            config = getattr(deps, "config", None)
+            await asyncio.sleep(
+                retry_backoff_seconds(
+                    attempt,
+                    base=getattr(config, "retry_backoff_base", 0.5),
+                    cap=getattr(config, "retry_backoff_max", 4.0),
+                )
+            )
