@@ -351,11 +351,13 @@ async def _handle_setup(bot: Bot, event: Event, args: list[str]) -> None:
 
 
 _ALTER_USAGE = (
-    "用法：ai alter <id> [--url <u>] [--key <k>] [--text <m>] [--use-proxy [1|0]]\n"
+    "用法：ai alter <id> [--url <u>] [--key <k>] [--text <m>] [--kind <k>] "
+    "[--use-proxy [1|0]]\n"
     "按需修改已有 provider 的字段，只提供要改的项；未提供的保持不变。\n"
     "  --url          API 地址\n"
     "  --key          API Key\n"
     "  --text         默认文本模型\n"
+    "  --kind         协议格式：openai_chat / openai_responses / anthropic\n"
     "  --use-proxy 1  走全局代理（AI_PROXY / OUTSIDE_PROXY）\n"
     "  --use-proxy 0  关闭代理，直连"
 )
@@ -382,6 +384,16 @@ async def _handle_alter(bot: Bot, event: Event, args: list[str]) -> None:
     url = opts.get("url", old.url)
     key = opts.get("key", old.key)
     default_text_model = opts.get("text", old.default_text_model)
+    kind = old.kind
+    if "kind" in opts:
+        if opts["kind"] not in provider.KNOWN_KINDS:
+            await send_to_event(
+                bot,
+                event,
+                f"不支持的 kind `{opts['kind']}`：可选 " + " / ".join(provider.KNOWN_KINDS),
+            )
+            return
+        kind = opts["kind"]
     use_proxy = old.use_proxy
     if "use_proxy" in opts:
         use_proxy = opts["use_proxy"].lower() not in ("0", "false", "no", "off")
@@ -390,7 +402,7 @@ async def _handle_alter(bot: Bot, event: Event, args: list[str]) -> None:
         id=pid,
         url=url,
         key=key,
-        kind=old.kind,
+        kind=kind,
         default_text_model=default_text_model,
         use_proxy=use_proxy,
         temperature=old.temperature,
@@ -403,6 +415,8 @@ async def _handle_alter(bot: Bot, event: Event, args: list[str]) -> None:
     changes: list[str] = []
     if "url" in opts:
         changes.append(f"url={mask_url(url)}")
+    if "kind" in opts:
+        changes.append(f"kind={kind}")
     if "key" in opts:
         changes.append("key=***（已更新）")
     if "text" in opts:
@@ -565,7 +579,7 @@ async def _handle_status(bot: Bot, event: Event) -> None:
     else:
         search_line = "搜索：`（未配置）`"
 
-    await send_to_event(bot, event, "\n".join([text_line, vision_line, search_line]))
+    await send_to_event(bot, event, f"{text_line}\n{vision_line}\n{search_line}")
 
 
 # ------------------------------------------------------------ text
