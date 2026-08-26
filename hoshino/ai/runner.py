@@ -25,12 +25,12 @@ from typing import Any
 from httpx import TransportError
 from loguru import logger
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import ModelHTTPError, UsageLimitExceeded
+from pydantic_ai.exceptions import ModelHTTPError, UsageLimitExceeded, UserError
 from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.run import AgentRunResult
 from pydantic_ai.tools import DeferredToolResults
 from pydantic_ai.usage import UsageLimits
-from pydantic_graph import GraphRunContext
+from pydantic_graph import End, GraphRunContext
 
 from . import hooks
 from .deps import AgentDeps
@@ -257,6 +257,14 @@ def describe_node(node: Any, ctx: GraphRunContext) -> str | None:
     return None
 
 
+def result_new_messages(result: Any, history: Sequence[ModelMessage]) -> list[ModelMessage]:
+    """Return messages emitted by a run, with legacy test-double compatibility."""
+    new_messages = getattr(result, "new_messages", None)
+    if callable(new_messages):
+        return list(new_messages())
+    return list(result.all_messages())[len(history) :]
+
+
 async def run_agent(
     agent: Agent[AgentDeps, Any],
     prompt: UserContent | None,
@@ -290,9 +298,25 @@ async def run_agent(
 
     # debug 观测：上一步 CallToolsNode 的工具返回大小，供下一步 ModelRequestNode 关联。
     _last_tool_return_chars = 0
+    compacted = False
 
-    def _observe(node: Any, ctx: GraphRunContext) -> None:
-        nonlocal _last_tool_return_chars
+    async def _observe(node: Any, ctx: GraphRunContext) -> None:
+        nonlocal _last_tool_return_chars, compacted
+        config = getattr(deps, "config", None)
+        if (
+            type(node).__name__ == "ModelRequestNode"
+            and not compacted
+            and getattr(config, "compaction_threshold_chars", 0) > 0
+        ):
+            from . import compaction
+
+            state = getattr(ctx, "state", None)
+            history = getattr(state, "message_history", None)
+            if history:
+                compacted_history = await compaction.compact_history(deps, list(history))
+                if compacted_history is not None:
+                    state.message_history[:] = compacted_history
+                    compacted = True
         if run_log is not None:
             now = time.time()
             name = type(node).__name__
@@ -345,8 +369,35 @@ async def run_agent(
             capabilities=capabilities,
             usage_limits=usage_limits,
         ) as agent_run:
-            async for node in agent_run:
-                _observe(node, agent_run.ctx)
+            if not getattr(getattr(deps, "config", None), "stream_requests", False):
+                async for node in agent_run:
+                    await _observe(node, agent_run.ctx)
+            else:
+
+                async def _stream_and_advance(current_node: Any) -> Any:
+                    async with current_node.stream(agent_run.ctx) as stream:
+                        async for _ in stream:
+                            pass
+                    # pydantic-ai exposes no public "stream then advance" hook. Keep this
+                    # version-bound call local so existing node callbacks still observe the run.
+                    return await agent_run._advance_graph(current_node)  # noqa: SLF001
+
+                node = agent_run.next_node
+                while not isinstance(node, End):
+                    await _observe(node, agent_run.ctx)
+                    if type(node).__name__ != "ModelRequestNode":
+                        node = await agent_run.next(node)
+                        continue
+                    try:
+                        # pydantic-ai's public ``next`` always selects non-streaming advancement.
+                        node = await agent_run._run_node_with_hooks(  # noqa: SLF001
+                            node, _stream_and_advance
+                        )
+                    except UserError as exc:
+                        if "does not support streamed requests" not in str(exc):
+                            raise
+                        logger.debug("AI model does not support streaming; using request path")
+                        node = await agent_run.next(node)
             if run_log is not None:
                 run_log.reason = "completed"
                 run_log.ended_at = time.time()

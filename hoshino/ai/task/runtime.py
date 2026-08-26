@@ -154,7 +154,10 @@ async def run_task_run(
     return RunOutcome(
         agent_run_id=result.run_id,
         conversation_id=result.conversation_id,
-        messages_json=context.serialize_messages(list(result.all_messages())),
+        # runner 的软压缩只影响本次模型可见历史；Task 持久化仍保留完整事件历史。
+        messages_json=context.serialize_messages(
+            [*history, *runner.result_new_messages(result, history)]
+        ),
         output=result.output,
         result=result,
         usage={

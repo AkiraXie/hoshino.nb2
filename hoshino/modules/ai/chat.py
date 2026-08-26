@@ -432,9 +432,9 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         return
 
     agent_deps.telemetry.record_success(result)
-    # all_messages() = 传入的 history + 本轮新增；只把新增折成事件 append，
-    # 避免重复记录历史（pydantic-ai 已验证该前缀对齐语义）。
-    new_messages = list(result.all_messages())[len(history) :]
+    # 只把本 run 产生的消息折成事件 append。runner 可能在 run 内软压缩临时历史，
+    # 因此不能再按进入时 history 的长度手工切片。
+    new_messages = runner.result_new_messages(result, history)
     manager.commit_turn(scope_key, new_messages, provider_id, run_log)
     elapsed = run_log.ended_at - run_log.started_at
     usage = metrics.snapshot_from_result(result)
