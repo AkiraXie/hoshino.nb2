@@ -88,9 +88,8 @@ async def to_unimessage(
             OB11Message(message),
             adapter=OB11Adapter.get_name(),
         )
-    if event is not None:
-        if attach_reply:
-            await converted.attach_reply(event, bot)
+    if event is not None and attach_reply:
+        await converted.attach_reply(event, bot)
     return converted
 
 

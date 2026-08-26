@@ -796,9 +796,7 @@ def get_scope_model_overrides(scope_key: str) -> dict[str, str]:
         }
 
 
-def set_scope_text(
-    scope_key: str, provider_id: str, model: str, updated_by: str = ""
-) -> None:
+def set_scope_text(scope_key: str, provider_id: str, model: str, updated_by: str = "") -> None:
     """设置 scope 文本模型覆盖（provider + model 成对 upsert；空串清除该槽）。"""
     now = time.time()
     with Session() as session:

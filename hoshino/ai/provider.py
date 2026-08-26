@@ -195,9 +195,12 @@ def resolve_text_model(scope_key: str | None, fallback_provider_id: str) -> tupl
     overrides = store.get_scope_model_overrides(scope_key or "")
 
     # 1. scope 成对覆盖
-    if overrides["text_provider"] and overrides["text_model"]:
-        if has_provider(overrides["text_provider"]):
-            return overrides["text_provider"], overrides["text_model"]
+    if (
+        overrides["text_provider"]
+        and overrides["text_model"]
+        and has_provider(overrides["text_provider"])
+    ):
+        return overrides["text_provider"], overrides["text_model"]
 
     # 2. 全局默认
     g_pid = store.get_global_value(TEXT_GLOBAL_PROVIDER) or ""
