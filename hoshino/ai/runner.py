@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from httpx import TransportError
+from loguru import logger
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ModelHTTPError, UsageLimitExceeded
 from pydantic_ai.messages import ModelMessage, UserContent
@@ -44,6 +45,19 @@ class RunEvent:
 
 
 @dataclass(slots=True)
+class StepDetail:
+    """单步 model request 的上下文度量快照（debug 观测用）。"""
+
+    step: int = 0
+    msgs: int = 0  # message_history 消息数
+    parts: int = 0  # 所有消息的 parts 总数
+    text_chars: int = 0  # 文本内容总字符数
+    tool_return_chars: int = 0  # 上一步工具返回的文本字符数
+    elapsed: float = 0.0  # 距 run 开始的墙钟秒
+    delta: float = 0.0  # 距上一步的墙钟秒
+
+
+@dataclass(slots=True)
 class RunLog:
     """一次 turn 的进程内观测收集（可观测/审计，非持久化对象）。
 
@@ -57,6 +71,7 @@ class RunLog:
     ended_at: float = 0.0
     steps: int = 0
     step_at: list[float] = field(default_factory=list)  # 每个 model request 完成时刻
+    step_details: list[StepDetail] = field(default_factory=list)  # 每步上下文度量
     tool_calls: list[dict] = field(default_factory=list)  # {name, args_summary}
     reason: str = ""
 
@@ -137,6 +152,46 @@ def redact_args(args: Any) -> str:
                 parts.append(f"{key}={type(value).__name__}")
         return "{" + ", ".join(parts) + "}"
     return type(args).__name__
+
+
+def _measure_history(state: Any) -> tuple[int, int, int]:
+    """度量 message_history 规模：(消息数, parts 总数, 文本字符数)。"""
+    history = getattr(state, "message_history", None) or []
+    msgs = len(history)
+    parts = 0
+    text_chars = 0
+    for msg in history:
+        msg_parts = getattr(msg, "parts", None) or []
+        parts += len(msg_parts)
+        for part in msg_parts:
+            content = getattr(part, "content", None)
+            if isinstance(content, str):
+                text_chars += len(content)
+            elif isinstance(content, list):
+                for item in content:
+                    if isinstance(item, str):
+                        text_chars += len(item)
+                    elif hasattr(item, "text") and isinstance(item.text, str):
+                        text_chars += len(item.text)
+    return msgs, parts, text_chars
+
+
+def _measure_tool_returns(node: Any) -> int:
+    """度量 CallToolsNode 上一步工具返回的文本字符数（duck-typed）。"""
+    response = getattr(node, "model_response", None)
+    if response is None:
+        return 0
+    total = 0
+    # 工具返回在下一步的 message_history 里以 ToolReturnPart 形式出现，
+    # 但 CallToolsNode 自身携带 model_response（模型决定调哪些工具）。
+    # 这里度量的是模型响应中的文本/思考部分大小。
+    for part in getattr(response, "parts", None) or []:
+        name = type(part).__name__
+        if name in ("TextPart", "ThinkingPart"):
+            content = getattr(part, "content", None)
+            if isinstance(content, str):
+                total += len(content)
+    return total
 
 
 def tool_calls_from_node(node: Any) -> list[str]:
@@ -233,15 +288,49 @@ async def run_agent(
     if run_log is not None and run_log.started_at == 0.0:
         run_log.started_at = time.time()
 
+    # debug 观测：上一步 CallToolsNode 的工具返回大小，供下一步 ModelRequestNode 关联。
+    _last_tool_return_chars = 0
+
     def _observe(node: Any, ctx: GraphRunContext) -> None:
+        nonlocal _last_tool_return_chars
         if run_log is not None:
             now = time.time()
             name = type(node).__name__
             if name == "ModelRequestNode":
                 run_log.steps += 1
                 run_log.step_at.append(now)
+                # 度量当前 message_history 规模（debug 日志）。
+                state = getattr(ctx, "state", None)
+                msgs, parts, text_chars = _measure_history(state)
+                elapsed = now - run_log.started_at
+                prev_at = run_log.step_at[-2] if len(run_log.step_at) >= 2 else run_log.started_at
+                delta = now - prev_at
+                detail = StepDetail(
+                    step=run_log.steps,
+                    msgs=msgs,
+                    parts=parts,
+                    text_chars=text_chars,
+                    tool_return_chars=_last_tool_return_chars,
+                    elapsed=elapsed,
+                    delta=delta,
+                )
+                run_log.step_details.append(detail)
+                logger.debug(
+                    f"AI step {run_log.steps} model_request | "
+                    f"msgs={msgs} parts={parts} text_chars={text_chars:,} "
+                    f"tool_ret_chars={_last_tool_return_chars:,} "
+                    f"elapsed={elapsed:.1f}s delta={delta:.1f}s"
+                )
             elif name == "CallToolsNode":
                 run_log.tool_calls.extend(tool_call_events_from_node(node))
+                # 度量模型响应中的文本/思考大小（下一步的 tool_return 参考）。
+                _last_tool_return_chars = _measure_tool_returns(node)
+                calls = tool_call_events_from_node(node)
+                call_names = [c["name"] for c in calls]
+                logger.debug(
+                    f"AI step {run_log.steps} tools | "
+                    f"calls={call_names} resp_chars={_last_tool_return_chars:,}"
+                )
         if on_event is not None:
             on_event(RunEvent(node=node, ctx=ctx))
 
