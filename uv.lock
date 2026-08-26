@@ -764,7 +764,7 @@ requires-dist = [
     { name = "pytz", specifier = "~=2025.2" },
     { name = "simplejson", specifier = ">=3.20.1,<4" },
     { name = "sqlalchemy", specifier = ">=2.0.41,<3" },
-    { name = "twscrape", git = "https://github.com/vladkens/twscrape.git?rev=f4423d6418e2f8d2ca6ee0500f9358e619460d20" },
+    { name = "twscrape", specifier = ">=0.20.1,<0.21" },
     { name = "types-html5lib", specifier = ">=1.1.11.20250516,<2" },
     { name = "urllib3", specifier = ">=2.4.0,<3" },
 ]
@@ -2956,8 +2956,8 @@ wheels = [
 
 [[package]]
 name = "twscrape"
-version = "0.19.1"
-source = { git = "https://github.com/vladkens/twscrape.git?rev=f4423d6418e2f8d2ca6ee0500f9358e619460d20#f4423d6418e2f8d2ca6ee0500f9358e619460d20" }
+version = "0.20.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "beautifulsoup4" },
@@ -2966,6 +2966,10 @@ dependencies = [
     { name = "loguru" },
     { name = "py-machineid" },
     { name = "pyotp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/66/8b/30cb0f511c50681c164a75ecd94e390a8c1b113404108ebaf65f16a7bd39/twscrape-0.20.1.tar.gz", hash = "sha256:09b3b768e701fb71a6f785dba9744f60c96d03308c76abfa66cbf2cdb360eb63", size = 1000312, upload-time = "2026-08-25T16:21:21.008Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/39/e3ea377d785dbe6b74e6371e118b942d2598e551aa7179f09fbc40d30d45/twscrape-0.20.1-py3-none-any.whl", hash = "sha256:bfad943020361fc882b09ac49685e11d65b88743723de419b3d7873fe09d56e3", size = 52288, upload-time = "2026-08-25T16:21:19.81Z" },
 ]
 
 [[package]]

@@ -28,7 +28,7 @@ dependencies = [
     "nonebot-adapter-milky>=1.2.0,<2",
     "nonebot-plugin-uninfo>=0.11.1",
     "pydantic>=2.13.0",
-    "twscrape",
+    "twscrape>=0.20.1,<0.21",
     "pydantic-ai>=2.28.0",
     "markdown-it-py[plugins]>=4.2.0",
     "pygments>=2.20.0",
@@ -136,9 +136,6 @@ include = ["hoshino"]
 
 [tool.hatch.build.targets.wheel]
 include = ["hoshino"]
-
-[tool.uv.sources]
-twscrape = { git = "https://github.com/vladkens/twscrape.git", rev = "f4423d6418e2f8d2ca6ee0500f9358e619460d20" }
 
 [build-system]
 requires = ["hatchling"]
