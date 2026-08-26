@@ -18,8 +18,8 @@ from _helpers import next_seq
 from hoshino.ai.config import AIConfig
 
 # Fake server 返回合法 JSON 以通过 ZssmOutput 校验。
-# pydantic-ai 使用 response_format / tool_call 强制结构化输出，
-# 但 fake server 只返回纯文本 content，Agent 会把它当 text output 处理。
+# 结构化输出走 prompted 模式（thinking 模型不支持强制 tool_choice），
+# 模型的整条文本回复就是 JSON，pydantic-ai 解析并校验为 ZssmOutput。
 _ZSSM_JSON_RESPONSE = {
     "id": "chatcmpl-zssm",
     "object": "chat.completion",

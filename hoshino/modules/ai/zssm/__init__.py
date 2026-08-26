@@ -16,8 +16,8 @@
 1. 收集 target（回复指向内容优先，含转发记录）+ focus（命令参数）；
 2. 图片：事件里的图片走 vision 描述注入 prompt（vision 模型是文本模型的眼睛）；
 3. 解释：Agent run（带 web_search / web_fetch / browser_use 工具），
-   使用 pydantic-ai ``output_type=ZssmOutput`` 强制结构化输出，
-   保证 keywords/output/blocked 字段始终存在且类型正确；
+   使用 pydantic-ai ``PromptedOutput(ZssmOutput)`` 结构化输出（prompt 约定 +
+   本地校验），保证 keywords/output/blocked 字段始终存在且类型正确；
 4. 回复：以转发聊天记录发送——第一条关键词、第二条解释正文、第三条模型调用统计。
 """
 
@@ -30,7 +30,7 @@ from typing import Any
 
 from nonebot.adapters import Bot, Event
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.usage import UsageLimits
 
@@ -150,12 +150,21 @@ def _build_zssm_agent(
         web_tools.append(_browser_use.tool)
 
     toolsets = [FunctionToolset(web_tools)] if web_tools else None
+    # 结构化输出必须走 prompted 模式：deepseek-v4-flash 等 thinking 模型拒绝
+    # 工具强制结构化输出的 ``tool_choice="required"``（上游 400 invalid_request_error
+    # "Thinking mode does not support this tool_choice"，普通对话不受影响——纯文本
+    # 输出只发 tool_choice="auto"）。prompted 用提示词约定 + 文本 JSON 校验达成
+    # 同样的强类型，不发强制 tool_choice，web 工具保持 auto。
     agent = Agent(
         model=model_obj,
         model_settings=model_settings,
         deps_type=AgentDeps,
-        output_type=ZssmOutput,
-        retries={"tools": max(1, tool_max_retries)},
+        output_type=PromptedOutput(
+            ZssmOutput,
+            template="请直接返回一个符合以下 JSON Schema 的 JSON 对象，"
+            "除该 JSON 外不要输出任何其他文字：\n{schema}",
+        ),
+        retries={"tools": max(1, tool_max_retries), "output": max(1, tool_max_retries)},
         system_prompt=_ZSSM_SYSTEM_PROMPT,
         toolsets=toolsets,
     )
