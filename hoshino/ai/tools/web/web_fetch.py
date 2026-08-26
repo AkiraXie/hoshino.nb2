@@ -28,7 +28,8 @@ try:
 except ImportError:  # markdownify 未安装 → 工具不注入
     _to_markdown = None
 
-_MAX_CHARS = 50_000
+_MAX_CHARS = 8_000
+_SUMMARY_SOURCE_MAX = 50_000
 _ALLOWED_SCHEMES = ("http", "https")
 _DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -84,9 +85,19 @@ async def fetch_url_to_markdown(
     else:
         content = text
 
-    if len(content) > max_chars:
-        content = content[:max_chars] + "\n\n[内容已截断]"
+    content = _truncate_at_boundary(content, max_chars)
     return content.strip() or "（空内容）"
+
+
+def _truncate_at_boundary(content: str, max_chars: int) -> str:
+    """Limit markdown without cutting a paragraph or heading in half."""
+    if max_chars <= 0 or len(content) <= max_chars:
+        return content
+    candidate = content[:max_chars]
+    boundary = max(candidate.rfind("\n\n"), candidate.rfind("\n#"))
+    if boundary < max_chars // 2:
+        boundary = max_chars
+    return content[:boundary].rstrip() + "\n\n[内容已截断；如需细节请再次 fetch 原文]"
 
 
 def _parse_extra_headers(raw: str) -> dict[str, str]:
@@ -125,6 +136,8 @@ async def web_fetch(
     url: str,
     user_agent: str = "",
     extra_headers: str = "",
+    max_chars: int | None = None,
+    summarize: bool = True,
 ) -> str:
     """抓取指定网址的网页正文并转为 markdown。
 
@@ -138,6 +151,8 @@ async def web_fetch(
             "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0 Mobile"
         extra_headers: 额外 HTTP 请求头（JSON 对象或 Key: Value 逐行文本），
             与默认 Accept 合并。示例：{"Referer": "https://mp.weixin.qq.com/"}
+        max_chars: 返回正文的最大字符数，默认 8000；需要更多细节时可调大。
+        summarize: 超长正文是否先用轻量模型提取关键事实，默认开启。
     """
     headers: dict[str, str] = {}
     # 始终设置 UA：未指定时用内置浏览器 UA（比 httpx 默认 python-httpx/x.x 更不易被拦）
@@ -148,12 +163,30 @@ async def web_fetch(
         parsed = _parse_extra_headers(extra_headers)
         headers.update(parsed)
 
+    verify_ssl = ctx.deps.config.web_fetch_verify_ssl
+    effective_max_chars = max_chars or ctx.deps.config.web_fetch_max_chars
+    proxy = provider.resolve_tool_proxy(
+        ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
+    )
+    if summarize and ctx.deps.config.web_fetch_summarize:
+        from ... import compaction
+
+        original = await fetch_url_to_markdown(
+            url,
+            verify_ssl=verify_ssl,
+            max_chars=_SUMMARY_SOURCE_MAX,
+            proxy=proxy,
+            extra_headers=headers,
+        )
+        if len(original) > effective_max_chars:
+            summary = await compaction.summarize_text(ctx.deps, original)
+            if summary:
+                return f"{summary}\n\n[原文：{url}]"
     return await fetch_url_to_markdown(
         url,
-        verify_ssl=ctx.deps.config.web_fetch_verify_ssl,
-        proxy=provider.resolve_tool_proxy(
-            ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
-        ),
+        verify_ssl=verify_ssl,
+        max_chars=effective_max_chars,
+        proxy=proxy,
         extra_headers=headers,
     )
 
