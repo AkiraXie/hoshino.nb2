@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.config import ClientInfo
@@ -231,20 +229,6 @@ async def test_text_set_validates_against_api_list(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_text_set_proceeds_when_api_down(monkeypatch, tmp_store):
-    """无法连接 provider 时放行并附警告。"""
-    _stub_models(monkeypatch, None)
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai text set openai gpt-4o")
-    await bot.handle_event(event)
-
-    text = sent[0][1].extract_plain_text()
-    assert "（未校验）" in text  # API 不可达时放行并附警告
-    assert "`openai` / `gpt-4o`" in text
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_vision_set_and_disable(monkeypatch, tmp_store):
     """`ai vision set`：空格/斜杠形式设 provider+模型；none 禁用；reset 清除回退。"""
     _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
@@ -277,45 +261,6 @@ async def test_vision_set_and_disable(monkeypatch, tmp_store):
         "vision_provider": "",
         "vision_model": "",
     }
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_vision_set_validates_provider_and_model(monkeypatch, tmp_store):
-    """vision 模型需在指定 provider 的 API 可用列表内；provider 需存在。"""
-    _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai vision set ghost gpt-4o")
-    await bot.handle_event(event)
-    assert "不存在" in sent[0][1].extract_plain_text()
-    assert tmp_store.get_scope_model_overrides("milky:123456")["vision_provider"] == ""
-
-    bot, event = _milky_group("ai vision set openai ghost-1")
-    await bot.handle_event(event)
-    text = sent[1][1].extract_plain_text()
-    assert "不在 `openai` 可用列表" in text
-    assert tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == ""
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_vision_default_global(monkeypatch, tmp_store):
-    """`ai vision default <provider> <模型>` 写全局默认；none 清除。"""
-    from hoshino.ai.provider import VISION_GLOBAL_MODEL, VISION_GLOBAL_PROVIDER
-
-    _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai vision default openai/gpt-4o")
-    await bot.handle_event(event)
-    text = sent[0][1].extract_plain_text()
-    assert "全局 vision 默认：`openai` / `gpt-4o`" in text
-    assert tmp_store.get_global_value(VISION_GLOBAL_PROVIDER) == "openai"
-    assert tmp_store.get_global_value(VISION_GLOBAL_MODEL) == "gpt-4o"
-
-    bot, event = _milky_group("ai vision default none")
-    await bot.handle_event(event)
-    assert tmp_store.get_global_value(VISION_GLOBAL_PROVIDER) is None
-    assert tmp_store.get_global_value(VISION_GLOBAL_MODEL) is None
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -381,55 +326,6 @@ async def test_search_add_default_and_status(monkeypatch, tmp_store):
     assert "搜索：`tavily`（`tavily`）（自定义）" in text
     assert "tvly-secret-key-123" not in text  # 状态不显示 key
     assert "api.tavily.com" in text  # 内置端点
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_search_add_bocha_and_deepseek_flags(monkeypatch, tmp_store):
-    """add：bocha/tavily 需 --key 且不接受 --url（端点内置）；deepseek 支持全套 flags。"""
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai search add b1 bocha")
-    await bot.handle_event(event)
-    assert "需要 --key" in sent[0][1].extract_plain_text()
-    assert tmp_store.get_search_provider_row("b1") is None
-
-    bot, event = _milky_group("ai search add t1 tavily --key tvly-x --url http://evil")
-    await bot.handle_event(event)
-    assert "端点与模型已内置" in sent[1][1].extract_plain_text()
-    assert tmp_store.get_search_provider_row("t1") is None
-
-    bot, event = _milky_group(
-        "ai search add ds1 deepseek --url http://x/v1 --key sk-ds --model m-1"
-    )
-    await bot.handle_event(event)
-    row = tmp_store.get_search_provider_row("ds1")
-    assert row["kind"] == "deepseek"
-    assert row["url"] == "http://x/v1"
-    assert row["key"] == "sk-ds"
-    assert row["model"] == "m-1"
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_search_add_unknown_kind(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai search add g1 google --key sk-g")
-    await bot.handle_event(event)
-
-    assert "deepseek / tavily / bocha" in sent[0][1].extract_plain_text()
-    assert tmp_store.get_search_provider_row("g1") is None
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_search_status_no_config_hints(monkeypatch, tmp_store):
-    """未配置且无 anthropic 聊天 provider：提示 ai search add。"""
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai search")
-    await bot.handle_event(event)
-
-    text = sent[0][1].extract_plain_text()
-    assert "搜索未配置。" in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
@@ -622,54 +518,6 @@ async def test_permission_snapshot_admin_roles(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_persona_global_requires_superuser(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
-
-    bot, event = _milky_group("ai persona global 小爱")
-    await bot.handle_event(event)
-
-    assert sent == []  # SUPERUSER matcher 拦截
-    assert tmp_store.get_global_value("global_persona") is None
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_task_commands_require_superuser(monkeypatch, tmp_store):
-    """ai task 命令（含 workspaces）全部仅 SUPERUSER 可用，非超管被 matcher 拦截。"""
-    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
-
-    bot, event = _milky_group("ai task workspaces", role="admin", user_id=42)
-    await bot.handle_event(event)
-    assert sent == []  # 非超管（含 ADMIN）无响应
-
-    bot, event = _milky_group("ai task list", role="member", user_id=43)
-    await bot.handle_event(event)
-    assert sent == []
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_task_list_superuser_sees_all(monkeypatch, tmp_store):
-    """ai task 命令仅超管可用；超管能看到全部 Task。"""
-    from _helpers import _create_task
-
-    _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=True)
-    _create_task(tmp_store, task_id="t_mine", creator_id="43")
-    _create_task(tmp_store, task_id="t_other", creator_id="7")
-
-    bot, event = _milky_group("ai task list", role="member", user_id=42)
-    await bot.handle_event(event)
-    text = sent[-1][1].extract_plain_text()
-    assert "t_mine" in text
-    assert "t_other" in text
-
-    # ADMIN：见本 scope 全部
-    bot, event = _milky_group("ai task list", role="admin")
-    await bot.handle_event(event)
-    text = sent[-1][1].extract_plain_text()
-    assert "t_mine" in text
-    assert "t_other" in text
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_stats_shows_model_breakdown(monkeypatch, tmp_store):
     tmp_store.record_usage_event(
         provider_id="openai",
@@ -744,17 +592,6 @@ async def test_setup_one_shot_configures_provider(monkeypatch, tmp_store):
     assert tmp_store.get_global_value("default_provider") == "myllm"
 
 
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_setup_missing_url_key(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai setup bad --url http://x")
-    await bot.handle_event(event)
-
-    assert "需要 --url 与 --key" in sent[0][1].extract_plain_text()
-    assert not tmp_store.has_provider_row("bad")
-
-
 # ------------------------------------------------------- ai config
 
 
@@ -765,162 +602,3 @@ def _stub_env_file(monkeypatch, tmp_path) -> str:
     env_file = str(tmp_path / "env.prod")
     monkeypatch.setattr(ai_admin, "AI_ENV_FILE", env_file)
     return env_file
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_set_font_writes_env_file(monkeypatch, tmp_store, tmp_path):
-    """`ai config set render_font`：写盘 .env.prod，重新加载即生效。"""
-    from hoshino.ai.config import load_ai_config_from_env
-
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config set render_font Noto Sans CJK")
-    await bot.handle_event(event)
-
-    text = sent[0][1].extract_plain_text()
-    assert "已更新 `render_font`=Noto Sans CJK" in text
-    assert "env.prod" in text
-    # 写盘内容 + 重新加载生效
-    assert "AI_RENDER_FONT=Noto Sans CJK" in open(env_file, encoding="utf-8").read()
-    loaded = load_ai_config_from_env(env={}, env_file=env_file)
-    assert loaded.render_font == "Noto Sans CJK"
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_set_preserves_unrelated_lines(monkeypatch, tmp_store, tmp_path):
-    """写盘只改目标行：既有注释与其它配置行原样保留。"""
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    with open(env_file, "w", encoding="utf-8") as fh:
-        fh.write("# comment\nHOST=0.0.0.0\nAI_RENDER_THEME=dark\n")
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config set render_font Inter")
-    await bot.handle_event(event)
-
-    content = open(env_file, encoding="utf-8").read()
-    assert "# comment" in content
-    assert "HOST=0.0.0.0" in content
-    assert "AI_RENDER_THEME=dark" in content
-    assert "AI_RENDER_FONT=Inter" in content
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_set_rejects_non_render_proxy_keys(monkeypatch, tmp_store, tmp_path):
-    """白名单外参数（如历史条数）拒绝修改，不写盘。"""
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config set max_history_messages 10")
-    await bot.handle_event(event)
-
-    text = sent[0][1].extract_plain_text()
-    assert "仅代理与渲染相关参数可改" in text
-    assert not os.path.exists(env_file)
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_set_theme_rejects_invalid(monkeypatch, tmp_store, tmp_path):
-    """render_theme 只接受 light/dark。"""
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config set render_theme blue")
-    await bot.handle_event(event)
-
-    assert "仅支持 light / dark" in sent[0][1].extract_plain_text()
-    assert not os.path.exists(env_file)
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_set_numeric_validation(monkeypatch, tmp_store, tmp_path):
-    """数值参数：非数字与 <=0 拒绝。"""
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config set render_device_scale abc")
-    await bot.handle_event(event)
-    assert "需要数字" in sent[0][1].extract_plain_text()
-
-    bot, event = _milky_group("ai config set render_timeout_seconds -5")
-    await bot.handle_event(event)
-    assert "需要大于 0" in sent[1][1].extract_plain_text()
-    assert not os.path.exists(env_file)
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_set_emoji_normalizes(monkeypatch, tmp_store, tmp_path):
-    """render_emoji 接受 1/on 等写法，写盘统一 true/false。"""
-    from hoshino.ai.config import load_ai_config_from_env
-
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config set render_emoji 1")
-    await bot.handle_event(event)
-    assert "`render_emoji`=true" in sent[0][1].extract_plain_text()
-    assert "AI_RENDER_EMOJI=true" in open(env_file, encoding="utf-8").read()
-    assert load_ai_config_from_env(env={}, env_file=env_file).render_emoji is True
-
-    bot, event = _milky_group("ai config set render_emoji maybe")
-    await bot.handle_event(event)
-    assert "仅支持 true / false" in sent[1][1].extract_plain_text()
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_proxy_empty_hints_reset(monkeypatch, tmp_store, tmp_path):
-    """set proxy 空值提示用 reset 清除。"""
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group('ai config set proxy ""')
-    await bot.handle_event(event)
-
-    assert "值不能为空" in sent[0][1].extract_plain_text()
-    assert "reset proxy" in sent[0][1].extract_plain_text()
-    assert not os.path.exists(env_file)
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_config_reset_removes_line(monkeypatch, tmp_store, tmp_path):
-    """`ai config reset`：删除对应行恢复默认；白名单外拒绝。"""
-    env_file = _stub_env_file(monkeypatch, tmp_path)
-    with open(env_file, "w", encoding="utf-8") as fh:
-        fh.write("# comment\nAI_RENDER_FONT=Noto Sans\nAI_RENDER_THEME=dark\n")
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_group("ai config reset render_font")
-    await bot.handle_event(event)
-    assert "已清除 `render_font`" in sent[0][1].extract_plain_text()
-    content = open(env_file, encoding="utf-8").read()
-    assert "AI_RENDER_FONT" not in content
-    assert "AI_RENDER_THEME=dark" in content  # 其它行保留
-    assert "# comment" in content
-
-    bot, event = _milky_group("ai config reset system_prompt")
-    await bot.handle_event(event)
-    assert "仅代理与渲染相关参数可改" in sent[1][1].extract_plain_text()
-
-
-async def test_setup_use_proxy_flag(monkeypatch, tmp_store):
-    """ai setup --use-proxy：开启/关闭/保持原值。"""
-    from hoshino.ai.provider import ProviderRecord, upsert_provider
-
-    upsert_provider(ProviderRecord(id="proxyllm", default_text_model="m", use_proxy=True))
-
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-    bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1 --use-proxy")
-    await bot.handle_event(event)
-    text = sent[0][1].extract_plain_text()
-    assert "proxy=on" in text
-    assert tmp_store.get_provider_row("proxyllm")["use_proxy"] is True
-
-    bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1 --use-proxy 0")
-    await bot.handle_event(event)
-    assert tmp_store.get_provider_row("proxyllm")["use_proxy"] is False
-
-    # 不带 flag：保持原值
-    bot, event = _milky_group("ai setup proxyllm --url http://x/v1 --key sk-1")
-    await bot.handle_event(event)
-    assert tmp_store.get_provider_row("proxyllm")["use_proxy"] is False

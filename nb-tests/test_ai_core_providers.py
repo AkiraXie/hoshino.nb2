@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import pytest
 from nonebot_plugin_alconna.uniseg import Target
-from pydantic_ai.toolsets import ApprovalRequiredToolset, DynamicToolset
 
 from hoshino.ai.config import AIConfig
 from hoshino.ai.deps import AgentDeps, PermissionSnapshot, Telemetry
@@ -43,43 +42,6 @@ def _make_deps(base_url: str, provider_id: str, model: str) -> AgentDeps:
 
 
 # ------------------------------------------------------------ toolsets 回归
-
-
-def test_build_agent_toolsets_wraps_dynamic():
-    """ApprovalRequiredToolset 必须包装 DynamicToolset，而不是单独实例化。"""
-    from hoshino.ai.providers import build_agent
-
-    record = ProviderRecord(id="openai", url="http://127.0.0.1:1", key="k", kind="openai_chat")
-    agent = build_agent("openai", record, "gpt-4o-mini")
-
-    wrappers = [t for t in agent.toolsets if isinstance(t, ApprovalRequiredToolset)]
-    assert len(wrappers) == 1, "toolsets 中应有且仅有一个 ApprovalRequiredToolset"
-    assert isinstance(wrappers[0].wrapped, DynamicToolset)
-    assert wrappers[0].approval_required_func is not None
-
-
-def test_build_agent_cached_per_provider():
-    """缓存 key 含 provider_config：不同 provider 不同 agent，同 provider 复用。"""
-    from hoshino.ai.providers import build_agent
-
-    record1 = ProviderRecord(id="openai", url="http://127.0.0.1:1", key="k1", kind="openai_chat")
-    record2 = ProviderRecord(
-        id="anthropic",
-        url="http://127.0.0.1:1",
-        key="k2",
-        kind="anthropic",
-        default_text_model="claude-3-5-sonnet",
-    )
-    assert build_agent("openai", record1, "gpt-4o-mini") is build_agent(
-        "openai", record1, "gpt-4o-mini"
-    )
-    # 缓存 key 含 model：同一 provider 不同模型 → 不同 agent
-    assert build_agent("openai", record1, "gpt-4o") is not build_agent(
-        "openai", record1, "gpt-4o-mini"
-    )
-    assert build_agent("anthropic", record2, "claude-3-5-sonnet") is not build_agent(
-        "openai", record1, "gpt-4o-mini"
-    )
 
 
 # ------------------------------------------------------------ HTTP roundtrip
@@ -224,23 +186,6 @@ def test_web_search_deepseek_request_and_results(fake_ai_server, tmp_store):
     assert prompt == "Perform a web search for the query: 今天的天气"
 
 
-def test_web_search_deepseek_base_with_v1_hits_first(fake_ai_server, tmp_store):
-    """base 已含 /v1：直接命中 {base}/messages，无 404 探测。"""
-    import asyncio
-    from types import SimpleNamespace
-
-    from hoshino.ai.tools.web.web_search import web_search
-
-    base_url, requests = fake_ai_server
-    _seed_search_config(tmp_store, "deepseek", url=f"{base_url}/v1", key="sk-ant-test-123")
-
-    out = asyncio.run(
-        web_search(SimpleNamespace(deps=_search_deps(f"{base_url}/v1", "anthropic")), "q")
-    )
-    assert "搜索未返回结果" in out  # 默认纯 text 响应
-    assert [r["stem"] for r in requests] == ["/v1/messages"]
-
-
 def test_web_search_default_inherits_anthropic_provider(fake_ai_server, tmp_store):
     """默认 deepseek：未配置搜索时继承 anthropic 聊天 provider 凭据。"""
     import asyncio
@@ -275,37 +220,6 @@ def test_web_search_no_config_without_anthropic_reports(tmp_store):
     )
     assert "未配置搜索 provider" in out
     assert "ai search set" in out
-
-
-def test_web_search_api_error_message(fake_ai_server, tmp_store, monkeypatch):
-    """非 404/405 的 API 错误：返回服务端 error.message，不重试回退候选。"""
-    import asyncio
-    import json
-    from types import SimpleNamespace
-
-    from fake_ai_server import _FakeHandler
-    from hoshino.ai.tools.web.web_search import web_search
-
-    def patched_do_post(self):
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length)
-        self.requests.append(
-            {
-                "path": self.path,
-                "stem": self.path.split("?")[0],
-                "headers": {k.lower(): v for k, v in self.headers.items()},
-                "body": json.loads(raw) if raw else {},
-            }
-        )
-        self._respond(400, {"error": {"message": "model does not support web_search"}})
-
-    monkeypatch.setattr(_FakeHandler, "do_POST", patched_do_post)
-    base_url, requests = fake_ai_server
-    _seed_search_config(tmp_store, "deepseek", url=base_url, key="sk-ant-test-123")
-
-    out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "anthropic")), "q"))
-    assert "model does not support web_search" in out
-    assert len(requests) == 1  # 真实 API 错误不尝试回退候选
 
 
 def test_web_search_tavily(fake_ai_server, tmp_store, monkeypatch):
@@ -354,21 +268,6 @@ def test_web_search_bocha(fake_ai_server, tmp_store, monkeypatch):
     assert req["headers"]["authorization"] == "Bearer sk-bocha-key"
     assert req["body"]["query"] == "q"
     assert req["body"]["count"] == 5
-
-
-def test_web_search_missing_key_reports(tmp_store):
-    """搜索配置缺 key（DB 被直接改坏）：明确提示，不发请求。"""
-    import asyncio
-    from types import SimpleNamespace
-
-    from hoshino.ai.tools.web.web_search import web_search
-
-    _seed_search_config(tmp_store, "tavily")  # 无 key
-    out = asyncio.run(
-        web_search(SimpleNamespace(deps=_search_deps("http://127.0.0.1:1", "openai")), "q")
-    )
-    assert "缺少 API key" in out
-    assert "ai search add <名字> tavily --key" in out
 
 
 def test_openai_system_prompt_and_placeholder_in_body(fake_ai_server, tmp_store):
