@@ -57,6 +57,15 @@ class AIConfig:
     # web_fetch 抓取网页时的 HTTPS 证书校验开关。默认校验；个别证书异常的
     # 站点/代理环境可改为 False 关闭校验以恢复可用。
     web_fetch_verify_ssl: bool = True
+    # web_fetch 超长正文的默认上限与是否生成轻量摘要。
+    web_fetch_max_chars: int = 8_000
+    web_fetch_summarize: bool = True
+    # 单次 run 的软压缩阈值、保留窗口和摘要模型（空值使用当前模型）。
+    compaction_threshold_chars: int = 120_000
+    compaction_window_size: int = 4
+    compaction_model: str = ""
+    # 启用时优先走 pydantic-ai 内部流式请求；部分 OpenAI 兼容端点不支持，默认关闭。
+    stream_requests: bool = False
     # Markdown 渲染清晰度：Playwright 截图 device scale factor（2.0 = 2x）。
     render_device_scale: float = 2.0
     # 渲染时是否启用彩色 emoji 字体（部分系统无 emoji 字体时关掉可避免方框）。
