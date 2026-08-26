@@ -44,6 +44,24 @@
 - 提交前 `git status --short` + `git diff` 复核：无秘密、无无关改动；公共领域提交在
   message 中标注验证证据（测试数、探针结果）。
 
+### L3 worktree 迁出规则
+
+`git worktree add` 产生的是不含运行时数据的干净 checkout；live 探针/启动验证要读
+真实配置与数据，迁出后需补两个只读软链（`.gitignore` 已覆盖 `data` 与 `.env*`，
+不污染 git status）：
+
+```bash
+git worktree add ../<name> -b feat/xxx HEAD
+cd ../<name>
+ln -s <主仓库绝对路径>/.env.prod .env.prod   # 读 AI_*/OUTSIDE_PROXY 等配置
+ln -s <主仓库绝对路径>/data data            # 读 aichat.db 等运行时数据
+```
+
+注意：`.env.prod`/`data` 已存在时 `ln -s` 会把链接建到目录**里面**（GNU ln 语义），
+先确认目标不存在或用 `rm -rf data` 清理再建；`hoshino.ai.store` 的 DB 路径解析自
+`config.data_dir`（相对 cwd），软链后即指向主仓库 `data/db/aichat.db`。探针只读
+provider 行、不落库时可直接复用主仓库数据，无需复制。
+
 ## 2. 项目概览
 
 NoneBot2 多适配器机器人（OneBot V11 / Milky / Telegram），Python>=3.12，依赖与虚拟环境
@@ -92,7 +110,7 @@ bash weibo_image_web/start_dev.sh / stop_dev.sh        # 一键起停 Vite+后�
 不要把依赖 NoneBot 初始化的 import 移到 `nonebot.init()` 之前；Alconna 必须先作为插件
 加载，否则 matcher 注册可能失败。
 
-常用配置在 `.env.prod`（host/port/debug/superusers/nickname/modules/data/static、各适配器
+常用配置在 `.env.prod`（host/port/debug/superusers/nickname/modules/data、各适配器
 与 APScheduler 配置）。测试必须隔离本机 `.env.prod`（`nb-tests/conftest.py` 已提供最小配置）。
 
 运行时数据在 `data/`（`service/` scope 开关、`db/` SQLite、`image|favorite|video/` 媒体、
