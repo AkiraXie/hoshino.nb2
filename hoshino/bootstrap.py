@@ -16,7 +16,6 @@ def bootstrap() -> None:
 
     # 1. 创建数据目录
     _config.data_dir.mkdir(exist_ok=True)
-    _config.static_dir.mkdir(exist_ok=True)
     data_dir = _config.data_dir
     for sub in ("favorite", "image", "db", "service", "video"):
         (data_dir / sub).mkdir(exist_ok=True)

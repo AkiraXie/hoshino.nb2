@@ -23,7 +23,6 @@ class HoshinoConfig(BaseConfig):
         ]
     )
     data: str = "data"
-    static: str = "static"
     zai: str = "はい！私はいつも貴方の側にいますよ！"
     chrome_path: str = "./chrome-files"
     debug: bool = False
@@ -32,11 +31,6 @@ class HoshinoConfig(BaseConfig):
     def data_dir(self) -> Path:
         """数据目录路径"""
         return Path(self.data).resolve()
-
-    @property
-    def static_dir(self) -> Path:
-        """静态资源目录路径"""
-        return Path(self.static).resolve()
 
     @property
     def modules_dir(self) -> Path:
