@@ -28,8 +28,9 @@ try:
 except ImportError:  # markdownify 未安装 → 工具不注入
     _to_markdown = None
 
-_MAX_CHARS = 8_000
-_SUMMARY_SOURCE_MAX = 50_000
+_MAX_CHARS = 24_000
+# 摘要分支抓取原文的上限（须高于 web_fetch_max_chars，摘要才只在超长时触发）。
+_SUMMARY_SOURCE_MAX = 32_000
 _ALLOWED_SCHEMES = ("http", "https")
 _DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

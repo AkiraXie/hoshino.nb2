@@ -58,8 +58,10 @@ class AIConfig:
     # 站点/代理环境可改为 False 关闭校验以恢复可用。
     web_fetch_verify_ssl: bool = True
     # web_fetch 超长正文的默认上限与是否生成轻量摘要。
-    web_fetch_max_chars: int = 8_000
-    web_fetch_summarize: bool = True
+    # 摘要默认关闭：单次 LLM 摘要请求实测 ~40s（50K 原文输入），是 web_fetch
+    # 步骤的主要耗时来源；开启时摘要输入上限见 web_fetch.py 的 _SUMMARY_SOURCE_MAX。
+    web_fetch_max_chars: int = 24_000
+    web_fetch_summarize: bool = False
     # 单次 run 的软压缩：估算 token 阈值（约 200K window 的 60%）、触发比例、
     # 保留窗口、本地摘要模型（空值使用当前模型）。
     # compaction_threshold_chars 保留作兼容别名（按估算 token 计数）。
