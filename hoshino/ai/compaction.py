@@ -39,6 +39,12 @@ _SUMMARY_INSTRUCTIONS = """Summarize the supplied material for another model con
 Keep facts, dates, numbers, source URLs, decisions, tool outcomes, open questions, and constraints.
 Do not invent details. Use concise plain text."""
 
+_SUMMARY_INSTRUCTIONS_TOPIC_AWARE = """Summarize the supplied material for another model continuing the same task.
+The material contains multiple distinct topics (marked with [Topic N] headers).
+For each topic, provide a separate summary section starting with "【Topic N: <brief title>】".
+Keep facts, dates, numbers, source URLs, decisions, tool outcomes, open questions, and constraints.
+Do not invent details. Use concise plain text."""
+
 # 图片 token 开销估算（参考 OpenAI vision pricing 中位数，宁可偏高触发压缩）。
 _IMAGE_TOKEN_ESTIMATE = 765
 # 中文字符 → token 系数与其它字符 → token 系数（AstrBot EstimateTokenCounter 同款）。
@@ -118,6 +124,30 @@ def _history_text(messages: list[ModelMessage]) -> str:
             elif type(part).__name__ == "ToolCallPart":
                 lines.append(f"ToolCallPart: {getattr(part, 'tool_name', '')}")
     return "\n\n".join(lines)
+
+
+def _history_text_with_topics(messages: list[ModelMessage], threshold: float = 0.08) -> str:
+    """Render history with topic boundary markers for topic-aware summarization.
+
+    Detects topic boundaries in the message history and annotates each topic
+    with a [Topic N] header, making it clear to the summarizer that the history
+    contains multiple distinct topics.
+    """
+    from . import topic
+
+    boundaries = topic.detect_topic_boundaries(messages, threshold=threshold)
+    if len(boundaries) <= 1:
+        # Only one topic, no need for markers
+        return _history_text(messages)
+
+    # Multiple topics detected, annotate them
+    result_lines: list[str] = []
+    for topic_idx, start_idx in enumerate(boundaries):
+        end_idx = boundaries[topic_idx + 1] if topic_idx + 1 < len(boundaries) else len(messages)
+        topic_messages = messages[start_idx:end_idx]
+        result_lines.append(f"\n[Topic {topic_idx + 1}]")
+        result_lines.append(_history_text(topic_messages))
+    return "\n".join(result_lines)
 
 
 def _first_user_request(messages: list[ModelMessage], start: int) -> int | None:
@@ -230,7 +260,18 @@ async def _local_summary_compact(
     if boundary is None or boundary == 0:
         return None
 
-    summary = await summarize_text(deps, _history_text(messages[:boundary]))
+    # 话题感知摘要：如果启用且检测到多个话题，分别摘要并标注边界
+    topic_aware = getattr(deps.config, "compaction_topic_aware", True)
+    old_messages = messages[:boundary]
+    if topic_aware:
+        threshold = getattr(deps.config, "topic_shift_threshold", 0.08)
+        history_text = _history_text_with_topics(old_messages, threshold=threshold)
+        instructions = _SUMMARY_INSTRUCTIONS_TOPIC_AWARE
+    else:
+        history_text = _history_text(old_messages)
+        instructions = _SUMMARY_INSTRUCTIONS
+
+    summary = await summarize_text(deps, history_text, instructions=instructions)
     if summary is None:
         return None
 

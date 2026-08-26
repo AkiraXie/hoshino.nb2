@@ -210,6 +210,22 @@ def prepare_history(
     scope_key: str,
     messages: list[ModelMessage],
     config: AIConfig,
+    new_question: str = "",
 ) -> list[ModelMessage]:
-    """发送给模型前处理好的历史。首期仅做轮次截断。"""
-    return truncate_messages(messages, config.max_history_messages)
+    """发送给模型前处理好的历史。
+
+    1. 按 ``max_history_messages`` 轮次截断；
+    2. 如果启用话题切换检测且提供了 ``new_question``，检测话题边界并截断
+       与新提问无关的旧话题历史。
+    """
+    result = truncate_messages(messages, config.max_history_messages)
+    if new_question and config.topic_shift_detection:
+        from . import topic
+
+        result = topic.truncate_by_topic_shift(
+            result,
+            new_question,
+            threshold=config.topic_shift_threshold,
+            window_size=config.topic_shift_window,
+        )
+    return result

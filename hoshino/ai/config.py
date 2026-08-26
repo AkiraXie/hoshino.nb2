@@ -83,6 +83,13 @@ class AIConfig:
     render_device_scale: float = 2.0
     # 渲染时是否启用彩色 emoji 字体（部分系统无 emoji 字体时关掉可避免方框）。
     render_emoji: bool = True
+    # 话题切换检测：当新提问与历史话题无关时截断旧历史，避免模型强行关联。
+    # 基于关键词 Jaccard 相似度检测；threshold 越低越敏感（更容易判定为话题切换）。
+    topic_shift_detection: bool = True
+    topic_shift_threshold: float = 0.08
+    topic_shift_window: int = 5
+    # 压缩摘要是否标注话题边界（让模型知道历史中有多个话题）。
+    compaction_topic_aware: bool = True
 
 
 def mask_key(key: str) -> str:

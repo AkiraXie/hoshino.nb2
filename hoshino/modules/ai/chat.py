@@ -340,7 +340,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     model_name = text_model
 
     conv = manager.get_active(scope_key)
-    history = context.prepare_history(scope_key, conv.messages, config)
+    history = context.prepare_history(scope_key, conv.messages, config, new_question=prompt)
 
     permissions = await deps.build_permission_snapshot(bot, event)
     agent_deps = deps.construct_chat_deps(
