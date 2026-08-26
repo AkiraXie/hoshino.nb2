@@ -41,6 +41,7 @@ _http_clients: list[httpx.AsyncClient] = []
 # 创建的 http client，clear_agent_cache 关闭 client 后必须一并清空，否则缓存仍
 # 指向已关闭的 client，provider 变更后看图 / zssm 请求失败直至重启。
 _model_caches: list[dict] = []
+_auxiliary_model_cache: dict[tuple[Any, ...], Any] = {}
 
 
 def register_model_cache(cache: dict) -> None:
@@ -175,6 +176,17 @@ def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = Non
             )
         case _:
             raise ValueError(f"未知 provider kind: {provider.kind}")
+
+
+def build_auxiliary_model(provider: ProviderRecord, model: str, *, proxy: str | None = None) -> Any:
+    """构建并缓存摘要等短辅助请求使用的 model。"""
+    key = (provider, model, proxy)
+    cached = _auxiliary_model_cache.get(key)
+    if cached is None:
+        cached = build_model(provider, model, proxy=proxy)
+        _auxiliary_model_cache[key] = cached
+        register_model_cache(_auxiliary_model_cache)
+    return cached
 
 
 OUTPUT_STYLE_HEADER = "\n\n（对了，回复的时候记得按下面的小习惯来：）\n"

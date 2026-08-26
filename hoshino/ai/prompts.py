@@ -17,6 +17,8 @@ TOOL_CALL_PROMPT = """【工具使用策略】
 
 - core（基础，无副作用）：now 查询时间、memory 读写长期记忆、persona_manage 管理人设。
 - web（信息获取）：web_search 原生联网搜索、web_fetch 抓取网页为 markdown。
+  web_fetch 默认只返回约 8000 字；超长页面会优先提取关键事实并附原文链接。
+  需要细节时可把 max_chars 调大或关闭 summarize，但避免无必要地获取全文。
 - skill（能力）：skill_manage 管理、skill_read 读取技能说明，清单见下方。
 - bot（机器人）：service_manage 管理本群服务、send_message 单向发消息。
 - computer（计算机操作）：bash/python/file。高风险，仅本群被管理员显式开启后才可用。

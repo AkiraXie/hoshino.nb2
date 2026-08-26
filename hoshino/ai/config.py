@@ -57,6 +57,28 @@ class AIConfig:
     # web_fetch 抓取网页时的 HTTPS 证书校验开关。默认校验；个别证书异常的
     # 站点/代理环境可改为 False 关闭校验以恢复可用。
     web_fetch_verify_ssl: bool = True
+    # web_fetch 超长正文的默认上限与是否生成轻量摘要。
+    web_fetch_max_chars: int = 8_000
+    web_fetch_summarize: bool = True
+    # 单次 run 的软压缩：估算 token 阈值（约 200K window 的 60%）、触发比例、
+    # 保留窗口、本地摘要模型（空值使用当前模型）。
+    # compaction_threshold_chars 保留作兼容别名（按估算 token 计数）。
+    compaction_threshold_chars: int = 120_000
+    compaction_threshold_ratio: float = 0.82
+    compaction_window_size: int = 4
+    compaction_model: str = ""
+    # 压缩优先尝试 provider 原生远程压缩（如 OpenAI Responses compact）；
+    # 端点不支持/失败时回退本地 LLM 摘要压缩。
+    compaction_remote_first: bool = True
+    # 工具返回内容超过该估算字符数时溢出落盘（run 内替换为短预览+路径提示，
+    # 模型需要细节可读文件）。激进策略：超过 1K 必落盘，避免大内容占用对话 token。
+    tool_result_spill_max_chars: int = 1_000
+    tool_result_spill_dir: str = ""
+    # 模型请求重试的指数退避参数（秒）；429/5xx/网络错误重试前等待。
+    retry_backoff_base: float = 0.5
+    retry_backoff_max: float = 4.0
+    # 启用时优先走 pydantic-ai 内部流式请求；部分 OpenAI 兼容端点不支持，默认关闭。
+    stream_requests: bool = False
     # Markdown 渲染清晰度：Playwright 截图 device scale factor（2.0 = 2x）。
     render_device_scale: float = 2.0
     # 渲染时是否启用彩色 emoji 字体（部分系统无 emoji 字体时关掉可避免方框）。
