@@ -75,8 +75,9 @@ def _find_topic_boundary(
 ) -> int | None:
     """找到与新提问相关的最早话题起点索引。
 
-    从最近的话题边界向前扫描，找到第一个与新提问相似度 >= 阈值的边界。
-    如果所有历史话题都与新提问无关，返回 None（保留全部历史）。
+    从最近的话题边界向前扫描，沿连续相关的话题段向前扩展；
+    遇到第一个无关话题即停（更早的历史与本线程隔着话题断层）。
+    窗口内没有任何相关话题时返回 None（保守保留全部历史）。
 
     Args:
         messages: 完整历史消息列表
@@ -95,7 +96,10 @@ def _find_topic_boundary(
     if not new_kws:
         return None  # 新提问无关键词，保守处理
 
-    # 从最近的话题向前扫描，找到第一个相关的
+    # 从最近的话题向前扫描：相关则继续向前扩展连续相关区间，
+    # 首个无关话题即停——不能在最近一段命中时就返回，否则同话题的
+    # 更早轮次会被误当无关历史截断（多轮连贯对话丢上下文）。
+    boundary_start: int | None = None
     for start_idx, end_idx in reversed(segments[-window_size:]):
         # 提取该段落内所有用户消息的关键词
         topic_kws: set[str] = set()
@@ -113,10 +117,11 @@ def _find_topic_boundary(
         union = len(new_kws | topic_kws)
         similarity = intersection / union if union > 0 else 0.0
 
-        if similarity >= threshold:
-            return start_idx
+        if similarity < threshold:
+            break
+        boundary_start = start_idx
 
-    return None  # 所有历史话题都与新提问无关
+    return boundary_start  # None 表示窗口内没有相关话题，调用方不截断
 
 
 def truncate_by_topic_shift(
