@@ -11,6 +11,35 @@ persona 一视同仁强制生效）。
 from __future__ import annotations
 
 import os
+from datetime import datetime
+
+_WEEKDAY_CN = ("一", "二", "三", "四", "五", "六", "日")
+
+
+def format_now_cn(now: datetime | None = None) -> str:
+    """把本地时间格式化为中文时间戳，如「2026年8月27日 星期三 15:04（2026-08-27）」。"""
+    now = now or datetime.now()
+    weekday = _WEEKDAY_CN[now.weekday()]
+    return f"{now.year}年{now.month}月{now.day}日 星期{weekday} {now.hour:02d}:{now.minute:02d}（{now:%Y-%m-%d}）"
+
+
+def build_time_prompt(now: datetime | None = None) -> str:
+    """生成「当前时间」指令段：锚定当前时刻为叙述基准。
+
+    查新闻/论文/信息要求结果尽量靠近该时刻；叙述时点从该时刻出发，
+    之前的事是过去、之后的事是将来。
+    """
+    return (
+        f"【当前时间】\n"
+        f"现在是{format_now_cn(now)}。\n"
+        "所有时间判断都以这一刻为基准：\n"
+        "- 查新闻、论文、行情等时效信息时，优先选择离当前时间最近的结果；"
+        "有多份材料时以最新为准，并留意信息是否已过时。\n"
+        "- 叙述事件时从当前时间出发：此前发生的是过去，此后的是将来"
+        "（例如 9 月的事是将来的计划，7 月的事是已经发生的过去）。\n"
+        "- 用户提到「最近」「今年」「现在」等相对时间时，按当前时间换算成具体日期再搜索或回答。"
+    )
+
 
 TOOL_CALL_PROMPT = """【工具使用策略】
 你可以使用工具完成实际操作。请把握何时用、为何用，而非记忆 schema（schema 会随调用提供）。

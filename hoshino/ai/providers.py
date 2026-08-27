@@ -195,8 +195,9 @@ OUTPUT_STYLE_HEADER = "\n\n（对了，回复的时候记得按下面的小习�
 async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
     """每 run 解析 persona：Task 用冻结快照，chat 用三级解析。
 
-    最后统一追加「参考对话风格」（示例对话，锚定说话方式）与 Markdown 输出规范
-    （``output.md``），使其对所有 persona / surface 强制生效。
+    最后统一追加「参考对话风格」（示例对话，锚定说话方式）、实时时间戳（查新/
+    时态判断的锚点）与 Markdown 输出规范（``output.md``），使其对所有
+    persona / surface 强制生效。
     """
     task = getattr(ctx.deps, "task", None)
     if task is not None:
@@ -211,10 +212,11 @@ async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
             scope_key=ctx.deps.scope_key,
         )
         dialogs_prompt = prompts.build_dialogs_prompt(persona.resolve_dialogs(ctx.deps.scope_key))
+    time_prompt = f"\n\n{prompts.build_time_prompt()}"
     style = f"{OUTPUT_STYLE_HEADER}{prompts.OUTPUT_STYLE_RULES}"
     if dialogs_prompt:
-        return f"{base}\n\n{dialogs_prompt}{style}"
-    return f"{base}{style}"
+        return f"{base}\n\n{dialogs_prompt}{time_prompt}{style}"
+    return f"{base}{time_prompt}{style}"
 
 
 async def _persona_variables(ctx: RunContext[AgentDeps]) -> dict[str, str]:

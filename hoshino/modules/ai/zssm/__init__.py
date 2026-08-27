@@ -34,7 +34,7 @@ from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.usage import UsageLimits
 
-from hoshino.ai import provider, providers, runner
+from hoshino.ai import prompts, provider, providers, runner
 from hoshino.ai.base import get_config, provider_error_message, resolve_provider
 from hoshino.ai.deps import AgentDeps, build_permission_snapshot, construct_chat_deps
 from hoshino.ai.tools.web import browser_use as _browser_use
@@ -91,7 +91,15 @@ image_descriptions 是视觉模型生成的图片描述，urls_in_target 是文�
 5. 保持中立、准确、简洁，总长度不超过 500 个汉字；不要和用户继续互动。
 6. 如果没有可解释内容，或无法可靠判断，设置 blocked 为 true。
 7. keywords 必须提取 1~5 个核心关键词（专有名词、概念、人物、事件等），不可为空。
-8. output 必须是纯自然语言叙述，禁止使用任何 Markdown 语法（包括但不限于 **加粗**、*斜体*、# 标题、- 列表、``` 代码块、[链接]()、> 引用）。用口语化的段落把概念讲清楚，像朋友聊天一样解释。"""
+8. output 必须是纯自然语言叙述，禁止使用任何 Markdown 语法（包括但不限于 **加粗**、*斜体*、# 标题、- 列表、``` 代码块、[链接]()、> 引用）。用口语化的段落把概念讲清楚，像朋友聊天一样解释。
+9. 搜索新闻、论文等信息时尽量选取靠近【当前时间】的结果；叙述时间从当前时间出发，
+此前的事是过去、此后的事是将来（例如 9 月的事是将来的计划，7 月的事是已发生的过去）。"""
+
+
+def _zssm_system_prompt() -> str:
+    """每次 run 重新生成系统提示词：静态人设 + 实时时间戳（查新/时态判断的锚点）。"""
+    return f"{_ZSSM_SYSTEM_PROMPT}\n\n{prompts.build_time_prompt()}"
+
 
 _TIMEOUT_SECONDS = 90.0  # Agent run 超时（含多轮工具调用）
 _MAX_REQUESTS = 6  # 最大模型请求次数（初始 + 工具调用轮次）
@@ -165,9 +173,10 @@ def _build_zssm_agent(
             "除该 JSON 外不要输出任何其他文字：\n{schema}",
         ),
         retries={"tools": max(1, tool_max_retries), "output": max(1, tool_max_retries)},
-        system_prompt=_ZSSM_SYSTEM_PROMPT,
         toolsets=toolsets,
     )
+    # 动态系统提示词：每次 run 注入实时时间戳（Agent 被缓存，静态字符串会冻结时间）。
+    agent.system_prompt(dynamic=True)(_zssm_system_prompt)
 
     _agent_cache[key] = agent
     return agent
