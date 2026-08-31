@@ -29,7 +29,7 @@ regexs = {
     "bv": re.compile(r"BV[A-Za-z0-9]{10}"),
     "av": re.compile(r"av(\d{6,})"),
     "xhs": re.compile(
-        r"(http:|https:)\/\/(xhslink|(www\.)xiaohongshu).com\/[A-Za-z\d._?%&+\-=\/#@]*"
+        r"(http:|https:)\/\/((xhslink\.(com|cn))|((www\.)xiaohongshu\.com))\/[A-Za-z\d._?%&+\-=\/#@]*"
     ),
     "weibo": re.compile(r"(http:|https:)\/\/weibo\.com\/(\d+)\/(\w+)"),
     "mweibo": re.compile(r"(http:|https:)\/\/m\.weibo\.cn\/(detail|status)\/(\w+)"),

@@ -136,7 +136,7 @@ async def _(msg: tuple[str, str] = set_qa_dep, gid: int = GroupID()):
             obj = Question(question=question, answer=answer, group=gid, user=0)
             session.add(obj)
         session.commit()
-    await group_ques.finish(f"好的我记住{question}了")
+    await group_ques.finish(f"好的我记住'{question}'了")
 
 
 @person_ques.handle()
