@@ -1,9 +1,9 @@
-"""AI 模块 SQLite 持久化：会话历史、scope provider、用量事件。
+"""AI 模块 SQLite 持久化：对话事件、scope provider、用量事件。
 
 沿用仓库现有同步 SQLAlchemy 模式（``DeclarativeBase`` + ``sessionmaker`` +
 ``on_serial_startup`` 建表）。数据库位于 ``data/db/aichat.db``。
 
-``messages_json`` 存原始 JSON 字符串；会话消息的序列化/反序列化由
+对话历史为 append-only 事件日志（``ai_conversation_events``），序列化/反序列化由
 ``context.py``（Pydantic AI ``ModelMessagesTypeAdapter``）负责，store 保持无
 pydantic-ai 依赖，便于独立测试。
 """
@@ -39,18 +39,6 @@ class Base(DeclarativeBase):
     pass
 
 
-class AISession(Base):
-    """scope 会话历史。scope_key 用 ``event_scope_key``，区分群/私聊与 adapter。"""
-
-    __tablename__ = "ai_sessions"
-
-    scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
-    provider_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    messages_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
-    created_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
-
-
 class AIUsageEvent(Base):
     """append-only 用量事件，成功与失败请求都记录。"""
 
@@ -73,7 +61,6 @@ class AIUsageEvent(Base):
 def ensure_schema() -> None:
     Base.metadata.create_all(engine)
     _migrate_missing_columns(engine)
-    migrate_sessions_to_conversations(engine)
 
 
 def _migrate_missing_columns(target_engine) -> None:
@@ -99,67 +86,11 @@ async def _ensure_ai_schema() -> None:
     ensure_schema()
 
 
-# ---------------------------------------------------------------- sessions
-
-
-def save_session_messages(
-    scope_key: str,
-    messages_json: str,
-    provider_id: str = "",
-) -> None:
-    """写入 scope 会话历史。messages_json 为序列化后的 JSON 字符串。"""
-    now = time.time()
-    with Session() as session:
-        obj = session.get(AISession, scope_key)
-        if obj is None:
-            obj = AISession(
-                scope_key=scope_key,
-                provider_id=provider_id,
-                messages_json=messages_json,
-                created_at=now,
-            )
-            session.add(obj)
-        else:
-            obj.messages_json = messages_json
-            obj.provider_id = provider_id or obj.provider_id
-            obj.updated_at = now
-        session.commit()
-
-
-def load_session_messages(scope_key: str) -> str | None:
-    """读取 scope 会话历史 JSON；不存在返回 None。"""
-    with Session() as session:
-        obj = session.get(AISession, scope_key)
-        return obj.messages_json if obj is not None else None
-
-
-def get_session_provider(scope_key: str) -> str | None:
-    """读取会话最近一次使用的 provider_id。"""
-    with Session() as session:
-        obj = session.get(AISession, scope_key)
-        return obj.provider_id if obj is not None else None
-
-
-def clear_session(scope_key: str) -> bool:
-    """删除 scope 会话历史；返回是否真的删除了记录。
-
-    已废弃：多对话模型用 ``clear_conversation_events``；保留供旧命令过渡。
-    """
-    with Session() as session:
-        obj = session.get(AISession, scope_key)
-        if obj is None:
-            return False
-        session.delete(obj)
-        session.commit()
-        return True
-
-
 # ------------------------------------------------------------- conversations
 #
-# Session(scope) → Conversation 双层模型（对齐 AstrBot ConversationManager）：
-# 一个 scope 持有多个命名对话，
-# ``ai_scope_chat_states`` 记录当前激活对话；历史仍是 pydantic-ai messages JSON。
-# ``ai_sessions`` 被取代：启动时幂等迁移为每个 scope 的「默认」对话。
+# scope 持有多个命名对话（对齐 AstrBot ConversationManager）；``ai_scope_chat_states``
+# 记录当前激活对话。历史由 ``ai_conversation_events`` 事件日志派生（append-only），
+# 消息本身不再冗余存储。
 
 
 class AIConversation(Base):
@@ -170,7 +101,6 @@ class AIConversation(Base):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     scope_key: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    messages_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     provider_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
@@ -210,39 +140,6 @@ class AIConversationEvent(Base):
 
 def new_conversation_id() -> str:
     return f"c_{uuid.uuid4().hex[:12]}"
-
-
-def migrate_sessions_to_conversations(target_engine) -> None:
-    """把旧 ``ai_sessions`` 单会话数据迁为「默认」对话（幂等）。
-
-    scope 已有任何对话记录则跳过；旧表保留只读不删除。
-    """
-    session_local = sessionmaker(bind=target_engine, expire_on_commit=False)
-    with session_local() as session:
-        existing_scopes = set(
-            session.execute(select(AIConversation.scope_key).distinct()).scalars().all()
-        )
-        now = time.time()
-        for legacy in session.execute(select(AISession)).scalars():
-            if legacy.scope_key in existing_scopes:
-                continue
-            conv_id = new_conversation_id()
-            session.add(
-                AIConversation(
-                    id=conv_id,
-                    scope_key=legacy.scope_key,
-                    name="默认",
-                    messages_json=legacy.messages_json or "[]",
-                    provider_id=legacy.provider_id or "",
-                    created_at=legacy.created_at,
-                    updated_at=legacy.updated_at,
-                )
-            )
-            session.add(
-                AIScopeChatState(scope_key=legacy.scope_key, active_conv_id=conv_id, updated_at=now)
-            )
-            existing_scopes.add(legacy.scope_key)
-        session.commit()
 
 
 def create_conversation(scope_key: str, conv_id: str, name: str, provider_id: str = "") -> None:
@@ -297,30 +194,6 @@ def find_conversation_by_name(scope_key: str, name: str) -> dict | None:
         return _conversation_to_dict(row) if row is not None else None
 
 
-def save_conversation_messages(conv_id: str, messages_json: str, provider_id: str = "") -> None:
-    now = time.time()
-    with Session() as session:
-        row = session.get(AIConversation, conv_id)
-        if row is None:
-            return
-        row.messages_json = messages_json
-        if provider_id:
-            row.provider_id = provider_id
-        row.updated_at = now
-        session.commit()
-
-
-def clear_conversation_messages(conv_id: str) -> bool:
-    with Session() as session:
-        row = session.get(AIConversation, conv_id)
-        if row is None:
-            return False
-        row.messages_json = "[]"
-        row.updated_at = time.time()
-        session.commit()
-        return True
-
-
 def get_active_conv_id(scope_key: str) -> str | None:
     with Session() as session:
         row = session.get(AIScopeChatState, scope_key)
@@ -346,7 +219,6 @@ def _conversation_to_dict(row: AIConversation) -> dict:
         "id": row.id,
         "scope_key": row.scope_key,
         "name": row.name,
-        "messages_json": row.messages_json,
         "provider_id": row.provider_id,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
@@ -431,47 +303,13 @@ def count_conversation_events(conv_id: str, *, types: tuple[str, ...] | None = N
         return session.execute(stmt).scalar() or 0
 
 
-def migrate_conv_events_if_empty(conv_id: str, events: list[dict]) -> bool:
-    """仅当对话尚无事件时批量写入（幂等、原子，规避并发双写）。
-
-    供加载期把旧 ``messages_json`` 惰性迁移为事件；已迁移则返回 False。
-    """
-    if not events:
-        return False
-    now = time.time()
-    with Session() as session:
-        has = (
-            session.execute(
-                select(AIConversationEvent.conv_id)
-                .where(AIConversationEvent.conv_id == conv_id)
-                .limit(1)
-            ).first()
-            is not None
-        )
-        if has:
-            return False
-        for idx, event in enumerate(events):
-            session.add(
-                AIConversationEvent(
-                    conv_id=conv_id,
-                    seq=idx,
-                    time=now,
-                    type=event["type"],
-                    data_json=json.dumps(event["data"], ensure_ascii=False),
-                )
-            )
-        session.commit()
-        return True
-
-
 def clear_conversation_events(conv_id: str) -> bool:
-    """删除对话全部事件并清空旧 messages_json 列；返回是否有记录。"""
+    """删除对话全部事件；返回是否有记录。"""
     with Session() as session:
         row = session.get(AIConversation, conv_id)
         if row is None:
             return False
         session.execute(delete(AIConversationEvent).where(AIConversationEvent.conv_id == conv_id))
-        row.messages_json = "[]"
         row.updated_at = time.time()
         session.commit()
         return True

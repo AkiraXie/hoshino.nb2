@@ -65,12 +65,6 @@ class _ScopeChat:
 
 def _row_to_conversation(row: dict) -> Conversation:
     events = store.load_conversation_events(row["id"])
-    legacy_json = row.get("messages_json") or ""
-    if not events and legacy_json and legacy_json != "[]":
-        # 旧数据惰性迁移：把 messages_json 折成事件（幂等、原子，规避并发双写）。
-        legacy = context.messages_to_events(context.deserialize_messages(legacy_json))
-        store.migrate_conv_events_if_empty(row["id"], legacy)
-        events = store.load_conversation_events(row["id"])
     return Conversation(
         id=row["id"],
         scope_key=row["scope_key"],
@@ -196,10 +190,7 @@ class ConversationManager:
         active_id = store.get_active_conv_id(scope_key)
         summaries = []
         for row in store.get_conversations(scope_key):
-            # 消息条数 = surface 事件条数（log-only 事件不计）；未迁移的旧对话回退读 messages_json。
             count = store.count_conversation_events(row["id"], types=context.SURFACE_EVENT_TYPES)
-            if count == 0 and row.get("messages_json"):
-                count = len(context.deserialize_messages(row["messages_json"]))
             summaries.append(
                 {
                     "id": row["id"],
