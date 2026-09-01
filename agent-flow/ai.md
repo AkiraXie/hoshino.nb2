@@ -71,4 +71,18 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 - 新增工具：`tools/<category>/xxx.py` + `tools/__init__.py` 注册（见 `ai-tools.md`）
 - 新增配置：`config.py` `AIConfig` 字段
 - 改 provider 支持：`provider.py` + `providers.py`
-- 验证：`uv run pytest nb-tests/test_ai_persona.py nb-tests/test_ai_chat.py -q`
+
+## 6. 验证（简单直接）
+
+本仓库是个人/低流量 bot，**改动真实运行数据、联网探针、重启 bot 都可直接做**，不必畏手畏脚。
+按影响面跑：
+
+- 改动范围小：`uv run pytest nb-tests/modules/ai -q`（AI 相关 e2e）+
+  `uv run ruff check <changed paths>` + `uv run ruff format --check <changed paths>`
+- 公共核心（`hoshino/ai/` 或跨模块）：`uv run pytest nb-tests -q` 全量
+- 需要真实链路：直接在仓库跑 `uv run python nb-tests/one-shot/live_vision_chat_probe.py <图> <问题>`
+  等联网探针（它们读 `.env.prod` 里的 `AI_*` 与 `data/db/aichat.db`，只打印脱敏信息）
+- 改 DB/JSON/API 定义：按 AGENTS.md §1 的「不做兼容」策略，先停 bot、直接改定义并同步 ALTER，
+  改完跑探针/测试验证后再启动
+
+完成即主动本地提交（见 AGENTS.md §1.5）。

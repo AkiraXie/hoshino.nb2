@@ -8,8 +8,9 @@
 - 以当前代码、`pyproject.toml`、测试和实际命令结果为准；文档可能滞后。
 - 先读实现和调用方再修改；改动聚焦，不覆盖工作区已有改动。
 - 完成结论必须有 lint/测试/构建/探针等客观证据；说明未执行或未通过的检查。
-- 不执行生产操作、不用真实机器人凭据或生产群聊测试、不提交 `.env.prod` 中的秘密。
-- **改 DB/JSON/API 定义不做兼容**：bot 不是大型生产服务，不关心任何可用性指标。
+- **本仓库是个人/低流量机器人，不是大型生产服务**：可直接启动/重启 bot、用真实凭据跑联网探针、
+  改动真实运行数据来验证。唯一硬约束是 git 卫生——不把 `.env.prod` 等密钥/凭据提交进 git。
+- **改 DB/JSON/API 定义不做兼容**：bot 不关心任何可用性指标。
   改表/字段/接口定义时不要加兼容层、不做旧→新双写，直接**停掉当前 bot** 再改
   （新定义就是事实源，旧代码、死列、迁移分流一并删除）。改完主动本地提交。
 - 任务完成后按 §1.5 主动本地提交；不 push、不重写 Git 历史。
@@ -24,46 +25,36 @@
 
 ## 1.5 提交、分支与工作区策略
 
-任务开始时先判级并向用户说明工作方式；判级看影响面（是否波及其他模块、是否需全仓库
-验证、是否公共基建设计），不看改动行数。
+本仓库是个人/低流量 bot，**直接在当前分支上改、改完主动提交**，不需要为改动切分支或建
+worktree（那是多人协作/发布版才需要的）。任务开始时简单判一下影响面即可。
 
 | 级别 | 触发条件 | 工作方式 |
 | --- | --- | --- |
 | **L0 琐碎** | typo/注释/纯文档，无行为变化 | 当前分支直接改，并入相关 commit |
 | **L1 常规** | 单文件/单插件局部修复，验证范围明确 | 当前分支直接改，完成后主动提交 |
-| **L2 重大** | 跨模块、影响多插件、新功能、配置/依赖变更、测试基建 | 切 `feat|fix|style/xxx` 分支，分逻辑 commit，用户确认后合并 |
-| **L3 公共领域** | `core/`/`platform/`/`content/`/`util/`/`ai/` 设计重构、ruff 基线、依赖方向/架构契约 | 切分支 + `git worktree` 独立工作区，验证后迁回主仓库 |
+| **L2 重大** | 跨模块、影响多插件、新功能、配置/依赖变更 | 当前分支直接改，分逻辑 commit，主动提交 |
+| **L3 公共领域** | `core/`/`platform/`/`content/`/`util/`/`ai/` 设计重构 | 当前分支直接改；改动前先全仓库搜调用方，验证覆盖全量相关测试 |
 
 提交规则：
 
-- L1+ 完成后主动提交，不等催促；拆逻辑 commit（`fix`/`chore`/`test`/`style` 分开），
+- 主动提交，不等催促；拆逻辑 commit（`fix`/`chore`/`test`/`style` 分开），
   message 用 `type(scope): 中文摘要` + 正文说明关键点与行为变化。
 - 提交门槛（L1+ 全部通过）：`ruff check` / `ruff format --check`（改动范围）、相关 pytest
   （公共核心跑 `pytest nb-tests -q` 全量）、`git diff --check`。
 - 只做本地提交：不 push、不重写历史；不提交 `.env.prod`、日志、缓存、构建产物；
   依赖变更同时提交 `pyproject.toml`+`uv.lock`（前端则 `package.json`+lockfile）。
-- L2 分支与 L3 worktree 的提交未经用户确认不 merge、不 push；迁回主仓库后由用户决定
-  是否 `git worktree remove`。
 - 提交前 `git status --short` + `git diff` 复核：无秘密、无无关改动；公共领域提交在
   message 中标注验证证据（测试数、探针结果）。
 
-### L3 worktree 迁出规则
-
-`git worktree add` 产生的是不含运行时数据的干净 checkout；live 探针/启动验证要读
-真实配置与数据，迁出后需补两个只读软链（`.gitignore` 已覆盖 `data` 与 `.env*`，
-不污染 git status）：
-
-```bash
-git worktree add ../<name> -b feat/xxx HEAD
-cd ../<name>
-ln -s <主仓库绝对路径>/.env.prod .env.prod   # 读 AI_*/OUTSIDE_PROXY 等配置
-ln -s <主仓库绝对路径>/data data            # 读 aichat.db 等运行时数据
-```
-
-注意：`.env.prod`/`data` 已存在时 `ln -s` 会把链接建到目录**里面**（GNU ln 语义），
-先确认目标不存在或用 `rm -rf data` 清理再建；`hoshino.ai.store` 的 DB 路径解析自
-`config.data_dir`（相对 cwd），软链后即指向主仓库 `data/db/aichat.db`。探针只读
-provider 行、不落库时可直接复用主仓库数据，无需复制。
+> 需要读真实配置/数据的 live 探针或启动验证，直接在主仓库跑即可（`.env.prod`、`data/`
+> 都在原位）。确需隔离时再用 `git worktree`，并补两个只读软链（`.gitignore` 已覆盖
+> `data` 与 `.env*`）：
+>
+> ```bash
+> git worktree add ../<name> -b feat/xxx HEAD && cd ../<name>
+> ln -s <主仓库绝对路径>/.env.prod .env.prod
+> ln -s <主仓库绝对路径>/data data
+> ```
 
 ## 2. 项目概览
 
@@ -253,11 +244,11 @@ python-guidelines / piglet / friendly-python；本仓库额外约定：
 
 ### 8.3 测试纪律
 
-1. **不主动补测试**：默认不新增测试，除非用户明确要求。靠既有 e2e 测试 + lint/build
-   + 运行探针验证即可。
-2. **补测试必须是 e2e**：从交互输入到最终产出的完整链条（如 `#消息 → handle_event →
+1. **默认不主动补测试**：靠既有 e2e 测试 + lint/build + 运行探针验证即可。若改动的行为点
+   无 e2e 覆盖且影响明确，可直接补一条 e2e（见 §8.1），不必事先问。
+2. **补的必须是 e2e**：从交互输入到最终产出的完整链条（如 `#消息 → handle_event →
    build_agent → provider HTTP → 渲染 → 发送`），不是流程切片。
-3. **计划阶段先声明**：任务开始时说明是否需要补测试；不得在实施中途自行决定补测。
+3. 改动后主动跑相关测试与探针，把结果写进交付说明；不需要额外审批。
 
 ### 8.4 验证与报告
 
