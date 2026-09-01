@@ -363,9 +363,9 @@ async def test_status_shows_minimal_dashboard(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "文本：`openai` / `gpt-4o-mini`" in text
+    assert "text：`openai` / `gpt-4o-mini`" in text
     assert "vision：`（未设置）`" in text
-    assert "搜索：`（未配置）`" in text
+    assert "search：`（未配置）`" in text
     # 极简看板：不暴露代理/渲染/历史限制等
     assert "代理" not in text
     assert "渲染" not in text
@@ -568,9 +568,9 @@ async def test_bare_ai_shows_status(monkeypatch, tmp_store):
     # 裸 `ai` 只发送一条状态总览（文本模型 + vision + 搜索），不带命令清单。
     assert len(sent) == 1
     text = sent[0][1].extract_plain_text()
-    assert "文本：" in text
+    assert "text：" in text
     assert "vision：" in text
-    assert "搜索：" in text
+    assert "search：" in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

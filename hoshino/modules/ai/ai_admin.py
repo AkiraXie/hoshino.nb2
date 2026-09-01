@@ -554,30 +554,27 @@ async def _handle_status(bot: Bot, event: Event) -> None:
     config = get_config()
     scope_key = event_scope_key(bot, event)
 
-    # 文本模型
     fallback_pid = resolve_provider(scope_key, config) if scope_key else None
     if fallback_pid:
         text_pid, text_model = provider.resolve_text_model(scope_key, fallback_pid)
-        text_line = f"文本：`{text_pid}` / `{text_model}`" if text_model else "文本：`（未设置）`"
+        text_line = f"text：`{text_pid}` / `{text_model}`" if text_model else "text：`（未设置）`"
     else:
-        text_line = "文本：`（无可用 provider）`"
+        text_line = "text：`（无可用 provider）`"
 
-    # vision
     vision_pid, vision_model = provider.resolve_vision(scope_key)
     vision_line = (
         f"vision：`{vision_pid}` / `{vision_model}`" if vision_model else "vision：`（未设置）`"
     )
 
-    # 搜索
     search_cfg = search.resolve_search_config(scope_key, config)
     if search_cfg is not None:
         default_id = store.get_search_default_id()
         search_label = (
             f"`{default_id}`（`{search_cfg.kind}`）" if default_id else f"`{search_cfg.kind}`"
         )
-        search_line = f"搜索：{search_label}"
+        search_line = f"search：{search_label}"
     else:
-        search_line = "搜索：`（未配置）`"
+        search_line = "search：`（未配置）`"
 
     await send_to_event(bot, event, f"{text_line}\n{vision_line}\n{search_line}")
 
