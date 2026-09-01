@@ -355,8 +355,6 @@ async def _handle_alter(bot: Bot, event: Event, args: list[str]) -> None:
         key=key,
         kind=kind,
         use_proxy=use_proxy,
-        temperature=old.temperature,
-        max_tokens=old.max_tokens,
         timeout_seconds=old.timeout_seconds,
     )
     provider.upsert_provider(updated)
@@ -386,7 +384,6 @@ async def _provider_remove(bot: Bot, event: Event, args: list[str]) -> None:
     if not provider.has_provider(pid):
         await send_to_event(bot, event, f"provider `{pid}` 不存在。")
         return
-    store.clear_provider_references(pid)
     provider.remove_provider(pid)
     providers.clear_agent_cache()
     await send_to_event(bot, event, f"已删除 provider `{pid}`。")

@@ -51,14 +51,16 @@ async def test_zssm_structured_output_live():
 
     for row in rows:
         record = provider.ProviderRecord.from_row(row)
-        # 取该 provider 的默认文本模型
-        models = ai_store.list_provider_models(record.id)
-        text_models = [m for m in models if "text" in m.get("capabilities", "")]
-        if not text_models:
-            print(f"  [{record.id}] 无文本模型，跳过")
-            continue
-        text_model = text_models[0]["model"]
         effective_proxy = provider.resolve_effective_proxy(record, config.proxy)
+        # model-list 注册表已移除：可用模型一律经 provider API 实时获取。
+        available = await provider.fetch_available_models(
+            record, proxy=effective_proxy, verify=config.web_fetch_verify_ssl
+        )
+        text_models = available or []
+        if not text_models:
+            print(f"  [{record.id}] 无法获取可用模型，跳过")
+            continue
+        text_model = text_models[0]
 
         for prompt_text in _TEST_PROMPTS:
             payload = {"target": prompt_text, "focus": "", "image_descriptions": ""}

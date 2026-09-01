@@ -233,14 +233,12 @@ def _stub_config(monkeypatch, tmp_store, *, seed_providers: bool = True, **overr
             key="sk-abcdefghij",
             kind="openai_chat",
         )
-        tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
         tmp_store.upsert_provider_row(
             provider_id="anthropic",
             url="https://api.anthropic.com",
             key="sk-ant-1234567890",
             kind="anthropic",
         )
-        tmp_store.upsert_provider_model("anthropic", "claude-3-5-sonnet", "text")
         tmp_store.set_global_value("default_model_provider", "openai")
         tmp_store.set_global_value("default_model", "gpt-4o-mini")
     return config

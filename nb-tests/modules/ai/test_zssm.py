@@ -152,7 +152,6 @@ def _stub_env(monkeypatch, tmp_store, *, zssm_output=None):
         key="sk-abcdefghij",
         kind="openai_chat",
     )
-    tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
     tmp_store.set_global_value("default_model_provider", "openai")
     tmp_store.set_global_value("default_model", "gpt-4o-mini")
     fake = FakeAgent(zssm_output)

@@ -75,10 +75,6 @@ def _build_http_client(proxy: str | None) -> httpx.AsyncClient:
 def build_model_settings(record: ProviderRecord) -> ModelSettings | None:
     """把 provider 行的非 None 采样参数转成 ModelSettings（TypedDict）。"""
     settings: dict[str, Any] = {}
-    if record.temperature is not None:
-        settings["temperature"] = record.temperature
-    if record.max_tokens is not None:
-        settings["max_tokens"] = record.max_tokens
     if record.timeout_seconds is not None:
         settings["timeout"] = record.timeout_seconds
     return ModelSettings(**settings) if settings else None

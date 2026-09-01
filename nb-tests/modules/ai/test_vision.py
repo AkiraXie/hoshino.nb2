@@ -85,7 +85,6 @@ def _stub_env(monkeypatch, tmp_store, *, render_error: bool = False):
         key="sk-abcdefghij",
         kind="openai_chat",
     )
-    tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
     tmp_store.set_global_value("default_model_provider", "openai")
     tmp_store.set_global_value("default_model", "gpt-4o-mini")
 

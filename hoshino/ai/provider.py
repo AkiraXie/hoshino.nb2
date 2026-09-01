@@ -34,8 +34,6 @@ class ProviderRecord:
     key: str = ""
     kind: str = "openai_chat"
     use_proxy: bool = False
-    temperature: float | None = None
-    max_tokens: int | None = None
     timeout_seconds: float | None = None
 
     @classmethod
@@ -46,8 +44,6 @@ class ProviderRecord:
             key=row.get("key", ""),
             kind=row.get("kind", "openai_chat"),
             use_proxy=bool(row.get("use_proxy", False)),
-            temperature=row.get("temperature"),
-            max_tokens=row.get("max_tokens"),
             timeout_seconds=row.get("timeout_seconds"),
         )
 
@@ -74,10 +70,7 @@ def upsert_provider(record: ProviderRecord) -> None:
         url=record.url,
         key=record.key,
         kind=record.kind,
-        default_text_model="",  # 列保留不读；领域层不再写默认模型
         use_proxy=record.use_proxy,
-        temperature=record.temperature,
-        max_tokens=record.max_tokens,
         timeout_seconds=record.timeout_seconds,
     )
 
