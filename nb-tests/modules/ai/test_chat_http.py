@@ -89,9 +89,10 @@ def _seed_openai(tmp_store, base_url: str, *, bad_path: bool = False) -> AIConfi
         url=url,
         key="sk-test-openai",
         kind="openai_chat",
-        default_text_model="gpt-4o-mini",
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
+    tmp_store.set_global_value("default_model_provider", "openai")
+    tmp_store.set_global_value("default_model", "gpt-4o-mini")
     return AIConfig(default="openai", system_prompt="你是测试助手。")
 
 

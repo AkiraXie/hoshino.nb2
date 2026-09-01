@@ -8,9 +8,9 @@
 hoshino/ai/            基建包（非插件）：config / store / providers / provider /
                       persona / prompts / sessions / context / runner / hooks /
                       goal / skills / tools / task / harness / metrics / rendering /
-                      media / vision / errors
+                      media / errors
 hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理命令）、
-                      task_commands.py（ai task）、zssm.py
+                      task_commands.py（ai task）、zssm/
 ```
 
 - 基建包不被 `nonebot.load_plugins` 扫描，插件用 `from hoshino.ai.<submodule>` 直连
@@ -22,7 +22,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 |---|---|
 | `config.py` | `AIConfig` + `AI_*` env 挂载 |
 | `base.py` | 配置读取、provider 解析（仅全局默认） |
-| `provider.py` | provider 领域层：DB CRUD / model-list 校验 / scope 模型覆盖（text/vision） |
+| `provider.py` | provider 领域层：DB CRUD / 可用模型拉取 / 统一 model 槽解析 |
 | `providers.py` | pydantic-ai Model / Agent 工厂，按快照缓存 |
 | `runner.py` | `agent.iter()` 图循环驱动、有界重试、RunLog |
 | `persona.py` | 三级解析（scope > 全局 > 默认）、`{{variable}}` 模板渲染 |
@@ -36,7 +36,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 | `store.py` | SQLite 表层：providers / personas / conversations / events / goals / usage |
 | `metrics.py` | 用量提取与聚合 |
 | `rendering.py` | Markdown → Playwright PNG |
-| `media.py` / `vision.py` | 图片输入与 vision 子请求 |
+| `media.py` | 事件图片压缩为 BinaryContent，构建原生多模态 prompt |
 | `harness.py` | pydantic-ai-harness facade（Planning / StepPersistence，可降级） |
 | `errors.py` | 异常详情提取 |
 | `tools/` | 工具注册表与实现（详见 `ai-tools.md`） |
@@ -46,7 +46,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 
 **Agent 组装**（`providers.py`）：Model 工厂（OpenAI / Anthropic）+ `Agent(deps_type=AgentDeps)` + 动态 system prompt + `ApprovalRequiredToolset(DynamicToolset(...))` + web_search 走独立搜索 provider。
 
-**Run 驱动**（`runner.py`）：`async with agent.iter(...)` 图循环 + `UsageLimits` 护栏 + `DeferredToolResults` 审批恢复 + `RunResult.usage()` 用量落库 + vision 走 `Model.request()` 直接子请求。
+**Run 驱动**（`runner.py`）：`async with agent.iter(...)` 图循环 + `UsageLimits` 护栏 + `DeferredToolResults` 审批恢复 + `RunResult.usage()` 用量落库；含图时 prompt 为文本 + BinaryContent 原生多模态。
 
 **Harness 扩展**（`harness.py`）：Planning 工具 + StepPersistence ledger；import 失败时降级为空，不影响核心运行。
 
@@ -56,13 +56,13 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 - **事件溯源会话**：append-only 事件日志 → `derive_messages` 派生模型历史，log-only 事件不污染输入
 - **多对话管理**：每 scope 多命名对话，turn 锁串行化，`#new/#switch/#list/#clear` 控制
 - **persona 体系**：三级解析 + `{{variable}}` 严格插值 + 示例对话 few-shot + `output.md` 强制规范
-- **provider 治理**：全局资源不与群绑定；文本/视觉模型各自支持 scope 覆盖；`ai model list` 遍历所有 provider
+- **provider 治理**：全局资源不与群绑定；统一 model 槽（scope 覆盖 > 全局默认）；`ai model list` 遍历所有 provider
 - **后台任务**：状态机 + 调度器 + 创建时冻结 capability snapshot，恢复只按冻结展开
 - **审批流**：Task 按冻结的 approval_mode 暂停/恢复 run
 - **Goal 服务**：每 scope 单目标 + revision CAS + round cap
 - **拦截瀑布**：pre-step（reject/rewrite）+ request-error（有界重试）
 - **可观测**：RunLog + 参数/key/url 脱敏 + token 用量落库
-- **聊天体验**：Markdown 图片渲染、引用回复识别、vision、执行护栏
+- **聊天体验**：Markdown 图片渲染、引用回复识别、原生多模态看图、执行护栏
 
 ## 5. 常见任务入口
 

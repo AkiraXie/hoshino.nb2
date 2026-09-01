@@ -139,7 +139,7 @@ class FakeAgent:
         return FakeAgentRun(self._result)
 
 
-def _stub_env(monkeypatch, tmp_store, *, zssm_output=None, with_vision=False):
+def _stub_env(monkeypatch, tmp_store, *, zssm_output=None):
     """Stub zssm 环境：_build_zssm_agent 返回 FakeAgent，捕获发送消息。"""
     from hoshino.modules.ai import zssm
 
@@ -151,12 +151,10 @@ def _stub_env(monkeypatch, tmp_store, *, zssm_output=None, with_vision=False):
         url="https://api.example.com/v1",
         key="sk-abcdefghij",
         kind="openai_chat",
-        default_text_model="gpt-4o-mini",
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
-    if with_vision:
-        tmp_store.set_global_value("default_vision_provider", "openai")
-        tmp_store.set_global_value("default_vision_model", "gpt-4o")
+    tmp_store.set_global_value("default_model_provider", "openai")
+    tmp_store.set_global_value("default_model", "gpt-4o-mini")
     fake = FakeAgent(zssm_output)
     monkeypatch.setattr(zssm, "_build_zssm_agent", lambda *a, **k: fake)
     sent: list[tuple[int, object]] = []
@@ -204,40 +202,65 @@ async def test_zssm_urls_passed_in_prompt(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_zssm_image_with_vision_describes(monkeypatch, tmp_store):
+async def test_zssm_image_native_multimodal_prompt(monkeypatch, tmp_store):
+    """含图：prompt 为 JSON TextContent + BinaryContent，无 image_descriptions。"""
+    from pydantic_ai import BinaryContent
+    from pydantic_ai.messages import TextContent
+
     from hoshino.modules.ai import zssm
 
-    fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=True)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
+    image = BinaryContent(data=b"fakepng", media_type="image/png")
 
     async def fake_images(bot, event):
         return [SimpleNamespace(url="https://x/a.png")]
 
+    async def fake_parts(images, *, config):
+        return [image]
+
     monkeypatch.setattr(zssm.image_mod, "event_images", fake_images)
-
-    async def fake_desc(url, **kw):
-        return "图片里有一张显卡"
-
-    monkeypatch.setattr(zssm.image_mod, "describe_image_url", fake_desc)
+    monkeypatch.setattr(zssm.image_mod, "event_image_parts", fake_parts)
     bot, event = _milky_group("zssm 这图是啥")
     await bot.handle_event(event)
-    payload = json.loads(fake.prompt)
-    assert payload["image_descriptions"] == "图片1：图片里有一张显卡"
+
+    assert isinstance(fake.prompt, list)
+    assert isinstance(fake.prompt[0], TextContent)
+    payload = json.loads(fake.prompt[0].content)
+    assert payload["target"] == "这图是啥"
+    assert "image_descriptions" not in payload
+    assert fake.prompt[1] is image
+    assert len(sent) >= 1
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_zssm_image_without_vision_hints(monkeypatch, tmp_store):
+async def test_zssm_image_only_uses_multimodal(monkeypatch, tmp_store):
+    """仅有图片、无文本时仍走原生多模态，不再报无法识别。"""
+    from pydantic_ai import BinaryContent
+    from pydantic_ai.messages import TextContent
+
     from hoshino.modules.ai import zssm
 
-    fake, sent = _stub_env(monkeypatch, tmp_store, with_vision=False)
+    fake, sent = _stub_env(monkeypatch, tmp_store)
+    image = BinaryContent(data=b"fakepng", media_type="image/png")
 
     async def fake_images(bot, event):
         return [SimpleNamespace(url="https://x/a.png")]
 
+    async def fake_parts(images, *, config):
+        return [image]
+
     monkeypatch.setattr(zssm.image_mod, "event_images", fake_images)
+    monkeypatch.setattr(zssm.image_mod, "event_image_parts", fake_parts)
     bot, event = _milky_group("zssm")
     await bot.handle_event(event)
-    assert "无法识别图片内容" in str(sent[0][1])
-    assert fake.prompt is None
+
+    assert isinstance(fake.prompt, list)
+    assert isinstance(fake.prompt[0], TextContent)
+    payload = json.loads(fake.prompt[0].content)
+    assert payload["target"] == ""
+    assert "image_descriptions" not in payload
+    assert fake.prompt[1] is image
+    assert "无法识别图片内容" not in str(sent[0][1])
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

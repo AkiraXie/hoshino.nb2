@@ -42,8 +42,8 @@
 | `send_message` | bot | medium | chat | 单向发消息 |
 | `web_search` | web | low | chat/task | 联网搜索（deepseek/tavily/博查） |
 | `web_fetch` | web | low | chat/task | 网页转 Markdown |
-| `image_view` | core | low | chat/task | 图片 URL → vision 识别 |
-| `browser_use` | web | medium | chat/task | Playwright 浏览 + vision |
+| `image_view` | core | low | chat/task | 图片 URL → BinaryContent（原生看图） |
+| `browser_use` | web | medium | chat/task | Playwright 浏览截图 → BinaryContent |
 | `skill_read` | skill | low | chat/task | 读技能说明 |
 | `skill_manage` | skill | medium | chat | 技能启停 |
 

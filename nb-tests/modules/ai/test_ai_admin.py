@@ -126,13 +126,12 @@ def _stub_env(monkeypatch, tmp_store, *, superuser: bool = True, **overrides):
     config = AIConfig(**defaults)
     monkeypatch.setattr(ai_admin, "get_config", lambda: config)
 
-    # provider 走 DB（唯一事实源）：预置两个 provider 及其 model-list。
+    # provider 走 DB（唯一事实源）：预置两个 provider；全局默认 model 走 KV。
     tmp_store.upsert_provider_row(
         provider_id="openai",
         url="https://api.example.com/v1",
         key="sk-abcdefghij",
         kind="openai_chat",
-        default_text_model="gpt-4o-mini",
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
     tmp_store.upsert_provider_row(
@@ -140,9 +139,10 @@ def _stub_env(monkeypatch, tmp_store, *, superuser: bool = True, **overrides):
         url="https://api.anthropic.com",
         key="sk-ant-1234567890",
         kind="anthropic",
-        default_text_model="claude-3-5-sonnet",
     )
     tmp_store.upsert_provider_model("anthropic", "claude-3-5-sonnet", "text")
+    tmp_store.set_global_value("default_model_provider", "openai")
+    tmp_store.set_global_value("default_model", "gpt-4o-mini")
 
     saved: list[object] = []
     monkeypatch.setattr(ai_admin.sv, "save_config", lambda new_config: saved.append(new_config))
@@ -196,107 +196,124 @@ def _stub_models(monkeypatch, models: list[str] | None):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_text_set_provider_model(monkeypatch, tmp_store):
-    """`ai text set <provider> <model>` 设置文本模型（成对配置）。"""
+async def test_model_set_provider_model(monkeypatch, tmp_store):
+    """`ai model set <provider> <model>` 设置本群统一 model。"""
     _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group("ai text set openai gpt-4o")
+    bot, event = _milky_group("ai model set openai gpt-4o")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "`openai` / `gpt-4o`" in text
+    assert "model：`openai` / `gpt-4o`" in text
     overrides = tmp_store.get_scope_model_overrides("milky:123456")
-    assert overrides["text_provider"] == "openai"
-    assert overrides["text_model"] == "gpt-4o"
+    assert overrides["provider"] == "openai"
+    assert overrides["model"] == "gpt-4o"
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_text_set_validates_against_api_list(monkeypatch, tmp_store):
+async def test_model_set_validates_against_api_list(monkeypatch, tmp_store):
     """模型不在 provider API 可用列表时拒绝，并给出可用列表。"""
     _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group("ai text set openai ghost-1")
+    bot, event = _milky_group("ai model set openai ghost-1")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
     assert "不在 `openai` 可用列表" in text
-    assert "ai model list" in text  # 提示用 ai model list 查看可用模型
+    assert "ai model list" in text
     overrides = tmp_store.get_scope_model_overrides("milky:123456")
-    assert overrides["text_model"] == ""
+    assert overrides["model"] == ""
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_vision_set_and_disable(monkeypatch, tmp_store):
-    """`ai vision set`：空格/斜杠形式设 provider+模型；none 禁用；reset 清除回退。"""
+async def test_model_set_slash_reset_and_default(monkeypatch, tmp_store):
+    """`ai model set` 斜杠形式；`reset` 清本群；`default` 设全局。"""
+    _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o", "claude-3-5-sonnet"])
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai model set openai/gpt-4o")
+    await bot.handle_event(event)
+    assert tmp_store.get_scope_model_overrides("milky:123456")["model"] == "gpt-4o"
+
+    bot, event = _milky_group("ai model reset")
+    await bot.handle_event(event)
+    assert tmp_store.get_scope_model_overrides("milky:123456") == {
+        "provider": "",
+        "model": "",
+    }
+    assert "已清除本群覆盖" in sent[1][1].extract_plain_text()
+
+    bot, event = _milky_group("ai model default anthropic claude-3-5-sonnet")
+    await bot.handle_event(event)
+    assert tmp_store.get_global_value("default_model_provider") == "anthropic"
+    assert tmp_store.get_global_value("default_model") == "claude-3-5-sonnet"
+    assert "全局 model 默认：`anthropic` / `claude-3-5-sonnet`" in sent[2][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_model_status_shows_source(monkeypatch, tmp_store):
+    """`ai model` 显示当前生效配置与来源（本群覆盖/全局默认）。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai model")
+    await bot.handle_event(event)
+    text = sent[0][1].extract_plain_text()
+    assert "model：`openai` / `gpt-4o-mini`" in text
+    assert "全局默认" in text
+
+    tmp_store.set_scope_model("milky:123456", "openai", "gpt-4o")
+    bot, event = _milky_group("ai model")
+    await bot.handle_event(event)
+    text = sent[1][1].extract_plain_text()
+    assert "model：`openai` / `gpt-4o`" in text
+    assert "本群覆盖" in text
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_model_list_marks_current(monkeypatch, tmp_store):
+    """`ai model list` 列出可用模型并标注当前。"""
     _stub_models(monkeypatch, ["gpt-4o-mini", "gpt-4o"])
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
-    # 空格形式
+    bot, event = _milky_group("ai model list")
+    await bot.handle_event(event)
+
+    text = sent[0][1].extract_plain_text()
+    assert "`openai`" in text
+    assert "gpt-4o-mini" in text
+    assert "← 当前" in text
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_model_set_rejected_in_private(monkeypatch, tmp_store):
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_private("ai model set openai gpt-4o")
+    await bot.handle_event(event)
+
+    assert (
+        "仅限群聊" in sent[0][1].extract_plain_text()
+        or "model 设置仅限群聊" in sent[0][1].extract_plain_text()
+    )
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_legacy_text_vision_silently_ignored(monkeypatch, tmp_store):
+    """`ai text` / `ai vision` 已删除：未知子命令静默忽略。"""
+    _, sent, _ = _stub_env(monkeypatch, tmp_store)
+
+    bot, event = _milky_group("ai text set openai gpt-4o")
+    await bot.handle_event(event)
     bot, event = _milky_group("ai vision set openai gpt-4o")
     await bot.handle_event(event)
-    text = sent[0][1].extract_plain_text()
-    assert "vision：`openai` / `gpt-4o`" in text
-    assert tmp_store.get_scope_model_overrides("milky:123456")["vision_provider"] == "openai"
-    assert tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == "gpt-4o"
 
-    # 斜杠形式
-    bot, event = _milky_group("ai vision set openai/gpt-4o-mini")
-    await bot.handle_event(event)
-    assert tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == "gpt-4o-mini"
-
-    # none 禁用
-    bot, event = _milky_group("ai vision set none")
-    await bot.handle_event(event)
-    assert tmp_store.get_scope_model_overrides("milky:123456")["vision_model"] == "none"
-
-    # reset 清除（回退全局默认）
-    bot, event = _milky_group("ai vision reset")
-    await bot.handle_event(event)
+    assert sent == []
     assert tmp_store.get_scope_model_overrides("milky:123456") == {
-        "text_provider": "",
-        "text_model": "",
-        "vision_provider": "",
-        "vision_model": "",
+        "provider": "",
+        "model": "",
     }
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_vision_status_shows_source(monkeypatch, tmp_store):
-    """`ai vision` 显示当前生效配置与来源（本群配置/全局默认/未配置）。"""
-    from hoshino.ai.provider import VISION_GLOBAL_MODEL, VISION_GLOBAL_PROVIDER
-
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-    bot, event = _milky_group("ai vision")
-    await bot.handle_event(event)
-    assert "（未配置）" in sent[0][1].extract_plain_text()
-
-    tmp_store.set_global_value(VISION_GLOBAL_PROVIDER, "openai")
-    tmp_store.set_global_value(VISION_GLOBAL_MODEL, "gpt-4o")
-    bot, event = _milky_group("ai vision")
-    await bot.handle_event(event)
-    text = sent[1][1].extract_plain_text()
-    assert "`openai` / `gpt-4o`" in text
-    assert "全局默认" in text
-
-    tmp_store.set_scope_vision("milky:123456", "openai", "gpt-4o-mini")
-    bot, event = _milky_group("ai vision")
-    await bot.handle_event(event)
-    text = sent[2][1].extract_plain_text()
-    assert "`openai` / `gpt-4o-mini`" in text
-    assert "本群配置" in text
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_vision_set_rejected_in_private(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_private("ai vision set openai gpt-4o")
-    await bot.handle_event(event)
-
-    assert "仅限群聊" in sent[0][1].extract_plain_text()
 
 
 # ------------------------------------------------------- ai search
@@ -329,26 +346,16 @@ async def test_search_add_default_and_status(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_text_set_rejected_in_private(monkeypatch, tmp_store):
-    _, sent, _ = _stub_env(monkeypatch, tmp_store)
-
-    bot, event = _milky_private("ai text set openai gpt-4o-mini")
-    await bot.handle_event(event)
-
-    assert "仅限群聊" in sent[0][1].extract_plain_text()
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_text_set_member_rejected(monkeypatch, tmp_store):
+async def test_model_set_member_rejected(monkeypatch, tmp_store):
     # role=member 且非 SUPERUSER → 不满足 SUPERUSER permission → matcher 不执行
     _, sent, _ = _stub_env(monkeypatch, tmp_store, superuser=False)
 
-    bot, event = _milky_group("ai text set openai gpt-4o-mini", user_id=42, role="member")
+    bot, event = _milky_group("ai model set openai gpt-4o-mini", user_id=42, role="member")
     await bot.handle_event(event)
 
     assert len(sent) == 0  # SUPERUSER matcher 直接拦截，非超管无响应
     overrides = tmp_store.get_scope_model_overrides("milky:123456")
-    assert overrides["text_model"] == ""
+    assert overrides["model"] == ""
 
 
 # ------------------------------------------------------- status / stats / clear
@@ -356,16 +363,18 @@ async def test_text_set_member_rejected(monkeypatch, tmp_store):
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_status_shows_minimal_dashboard(monkeypatch, tmp_store):
-    """ai status 只显示文本模型/vision/搜索三行，不暴露代理、渲染等配置细节。"""
+    """ai status 只显示 model/搜索两行，不暴露代理、渲染等配置细节。"""
     _, sent, _ = _stub_env(monkeypatch, tmp_store)
 
     bot, event = _milky_group("ai status")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
-    assert "text：`openai` / `gpt-4o-mini`" in text
-    assert "vision：`（未设置）`" in text
-    assert "search：`（未配置）`" in text
+    assert "model：`openai` / `gpt-4o-mini`" in text
+    assert "text：" not in text
+    assert "vision：" not in text
+    # 无显式搜索配置时，默认 deepseek 只借聊天 provider key。
+    assert "search：`deepseek`" in text
     # 极简看板：不暴露代理/渲染/历史限制等
     assert "代理" not in text
     assert "渲染" not in text
@@ -565,30 +574,29 @@ async def test_bare_ai_shows_status(monkeypatch, tmp_store):
     bot, event = _milky_group("ai")
     await bot.handle_event(event)
 
-    # 裸 `ai` 只发送一条状态总览（文本模型 + vision + 搜索），不带命令清单。
+    # 裸 `ai` 只发送一条状态总览（model + 搜索），不带命令清单。
     assert len(sent) == 1
     text = sent[0][1].extract_plain_text()
-    assert "text：" in text
-    assert "vision：" in text
+    assert "model：" in text
+    assert "text：" not in text
+    assert "vision：" not in text
     assert "search：" in text
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_setup_one_shot_configures_provider(monkeypatch, tmp_store):
-    """ai setup：新增 provider + 设默认 + 绑定当前群，一步完成。"""
+    """ai setup：新增 provider + 设全局默认 provider，模型另用 ai model default。"""
     _, sent, saved = _stub_env(monkeypatch, tmp_store)
 
-    bot, event = _milky_group("ai setup myllm --url http://x/v1 --key sk-mykey --text deepseek-v3")
+    bot, event = _milky_group("ai setup myllm --url http://x/v1 --key sk-mykey")
     await bot.handle_event(event)
 
     text = sent[0][1].extract_plain_text()
     assert "已新增 `myllm`" in text
-    assert "text=`deepseek-v3`" in text
-    # DB 落库（provider 只有默认文本模型；设全局默认）
+    assert "text=" not in text
     row = tmp_store.get_provider_row("myllm")
-    assert row["default_text_model"] == "deepseek-v3"
-    assert "default_vision_model" not in row
+    assert row is not None
+    assert row["url"] == "http://x/v1"
     assert tmp_store.get_global_value("default_provider") == "myllm"
 
 

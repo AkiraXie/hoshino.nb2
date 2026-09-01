@@ -1,7 +1,7 @@
-"""AI vision e2e 测试：chat 含图流程走真实 NoneBot dispatch 路径。
+"""AI 原生多模态 e2e 测试：chat 含图流程走真实 NoneBot dispatch 路径。
 
-milky 事件 + stub build_agent/render/send，验证 vision 描述注入、mask 提示、
-无图回退等用户可见行为。
+milky 事件 + stub build_agent/render/send，验证图片 BinaryContent 进入同一
+model 请求、无图回退纯文本等用户可见行为。
 """
 
 from __future__ import annotations
@@ -9,6 +9,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from pydantic_ai import BinaryContent
+from pydantic_ai.messages import TextContent
 
 from _helpers import next_seq
 
@@ -69,8 +71,8 @@ def _milky_group(
     return bot, event
 
 
-def _stub_env(monkeypatch, tmp_store, *, vision_model: str = "", render_error: bool = False):
-    """配置 openai provider（可选全局默认 vision）+ stub render/send。"""
+def _stub_env(monkeypatch, tmp_store, *, render_error: bool = False):
+    """配置 openai provider + 全局默认 model + stub render/send。"""
     from nonebot.adapters.milky import Bot as MilkyBot
     from nonebot.adapters.milky.model.api import MessageResponse
 
@@ -82,12 +84,10 @@ def _stub_env(monkeypatch, tmp_store, *, vision_model: str = "", render_error: b
         url="https://api.example.com/v1",
         key="sk-abcdefghij",
         kind="openai_chat",
-        default_text_model="gpt-4o-mini",
     )
     tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
-    if vision_model:
-        tmp_store.set_global_value("default_vision_provider", "openai")
-        tmp_store.set_global_value("default_vision_model", vision_model)
+    tmp_store.set_global_value("default_model_provider", "openai")
+    tmp_store.set_global_value("default_model", "gpt-4o-mini")
 
     config = AIConfig(default="openai", system_prompt="你是测试助手。")
     monkeypatch.setattr(chat, "get_config", lambda: config)
@@ -117,6 +117,19 @@ def _stub_env(monkeypatch, tmp_store, *, vision_model: str = "", render_error: b
 
 async def _fake_image_segments(bot, event):
     return [SimpleNamespace(url="https://example.com/a.png", path=None, raw=None)]
+
+
+def _stub_image_parts(monkeypatch):
+    """避免真实抓取：事件图直接变成 BinaryContent。"""
+    from hoshino.modules.ai import chat
+
+    image = BinaryContent(data=b"fakepng", media_type="image/png")
+
+    async def fake_to_content(segments, **kwargs):
+        return [image]
+
+    monkeypatch.setattr(chat.ai_media, "image_segments_to_content_async", fake_to_content)
+    return image
 
 
 class _FakeResult:
@@ -175,17 +188,13 @@ class _FakeAgent:
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_image_with_vision_describes_and_answers_with_text(monkeypatch, tmp_store):
-    """含图 + vision 模型：vision 模型描述图片，text 模型作答。"""
+async def test_chat_image_native_multimodal_uses_model(monkeypatch, tmp_store):
+    """含图：同一全局默认 model 原生多模态作答，无 vision 提示。"""
     from hoshino.modules.ai import chat
 
-    _, sent = _stub_env(monkeypatch, tmp_store, vision_model="gpt-4o")
+    _, sent = _stub_env(monkeypatch, tmp_store)
     monkeypatch.setattr(chat, "_event_images", _fake_image_segments)
-
-    async def fake_describe(record, vision_model, content, *, proxy=None):
-        return "图里有一只猫"
-
-    monkeypatch.setattr(chat.vision, "describe_images", fake_describe)
+    _stub_image_parts(monkeypatch)
     captured: dict = {}
 
     def fake_build(provider_id, record, model, **kwargs):
@@ -198,23 +207,19 @@ async def test_chat_image_with_vision_describes_and_answers_with_text(monkeypatc
     bot, event = _milky_group("#这是什么")
     await bot.handle_event(event)
 
-    assert captured["model"] == "gpt-4o-mini"  # 作答始终用 text 模型
+    assert captured["model"] == "gpt-4o-mini"
     assert len(sent) == 1
     assert "未配置 vision 模型" not in sent[0][1].extract_plain_text()
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_image_with_vision_injects_description(monkeypatch, tmp_store):
-    """vision 模型描述被注入 prompt，text 模型据此作答。"""
+async def test_chat_image_prompt_contains_text_and_binary(monkeypatch, tmp_store):
+    """含图 prompt 为 TextContent + BinaryContent，保留原始文本。"""
     from hoshino.modules.ai import chat
 
-    _stub_env(monkeypatch, tmp_store, vision_model="gpt-4o")
+    _stub_env(monkeypatch, tmp_store)
     monkeypatch.setattr(chat, "_event_images", _fake_image_segments)
-
-    async def fake_describe(record, vision_model, content, *, proxy=None):
-        return "图里有一只猫"
-
-    monkeypatch.setattr(chat.vision, "describe_images", fake_describe)
+    image = _stub_image_parts(monkeypatch)
     agent = _FakeAgent(_FakeResult("看到了"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
 
@@ -222,46 +227,26 @@ async def test_chat_image_with_vision_injects_description(monkeypatch, tmp_store
     await bot.handle_event(event)
 
     prompt = agent.prompt
-    assert isinstance(prompt, str)
-    assert "[图片描述]" in prompt
-    assert "图里有一只猫" in prompt
-    assert "这是什么" in prompt
+    assert isinstance(prompt, list)
+    assert isinstance(prompt[0], TextContent)
+    assert "这是什么" in prompt[0].content
+    assert "[图片描述]" not in prompt[0].content
+    assert prompt[1] is image
+    assert isinstance(prompt[1], BinaryContent)
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_image_without_vision_uses_text_and_mask(monkeypatch, tmp_store):
-    """有图但无 vision 模型：text 模型 + 回复带"未配置 vision 模型"提示。"""
+async def test_chat_image_without_fetch_still_answers(monkeypatch, tmp_store):
+    """有图但抓取失败（无 BinaryContent）：仍用同一 model，不提示 vision。"""
     from hoshino.modules.ai import chat
 
-    _, sent = _stub_env(monkeypatch, tmp_store, render_error=True)  # 回退纯文本
+    _, sent = _stub_env(monkeypatch, tmp_store, render_error=True)
     monkeypatch.setattr(chat, "_event_images", _fake_image_segments)
-    captured: dict = {}
 
-    def fake_build(provider_id, record, model, **kwargs):
-        captured["model"] = model
-        return _FakeAgent(_FakeResult("回答"))
-
-    monkeypatch.setattr(chat.providers, "build_agent", fake_build)
-
-    bot, event = _milky_group("#你好")
-    await bot.handle_event(event)
-
-    assert captured["model"] == "gpt-4o-mini"  # text 模型
-    assert len(sent) == 1
-    assert "未配置 vision 模型" in sent[0][1].extract_plain_text()
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_text_without_image_uses_text_model(monkeypatch, tmp_store):
-    """无图消息即使配了 vision 模型也走 text 模型。"""
-    from hoshino.modules.ai import chat
-
-    _stub_env(monkeypatch, tmp_store, vision_model="gpt-4o")
-
-    async def _no_images(bot, event):
+    async def empty_parts(segments, **kwargs):
         return []
 
-    monkeypatch.setattr(chat, "_event_images", _no_images)
+    monkeypatch.setattr(chat.ai_media, "image_segments_to_content_async", empty_parts)
     captured: dict = {}
 
     def fake_build(provider_id, record, model, **kwargs):
@@ -274,3 +259,32 @@ async def test_chat_text_without_image_uses_text_model(monkeypatch, tmp_store):
     await bot.handle_event(event)
 
     assert captured["model"] == "gpt-4o-mini"
+    assert len(sent) == 1
+    assert "未配置 vision 模型" not in sent[0][1].extract_plain_text()
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_text_without_image_uses_model(monkeypatch, tmp_store):
+    """无图消息走同一全局默认 model，prompt 仍是纯文本。"""
+    from hoshino.modules.ai import chat
+
+    _stub_env(monkeypatch, tmp_store)
+
+    async def _no_images(bot, event):
+        return []
+
+    monkeypatch.setattr(chat, "_event_images", _no_images)
+    captured: dict = {}
+    agent = _FakeAgent(_FakeResult("回答"))
+
+    def fake_build(provider_id, record, model, **kwargs):
+        captured["model"] = model
+        return agent
+
+    monkeypatch.setattr(chat.providers, "build_agent", fake_build)
+
+    bot, event = _milky_group("#你好")
+    await bot.handle_event(event)
+
+    assert captured["model"] == "gpt-4o-mini"
+    assert agent.prompt == "你好"

@@ -57,7 +57,6 @@ def test_openai_chat_roundtrip(fake_ai_server, tmp_store):
         url=base_url,
         key="sk-test-openai",
         kind="openai_chat",
-        default_text_model="gpt-4o-mini",
     )
     agent = build_agent("openai", record, "gpt-4o-mini")
     result = agent.run_sync("你好", deps=_make_deps(base_url, "openai", "gpt-4o-mini"))
@@ -83,7 +82,6 @@ def test_anthropic_roundtrip(fake_ai_server, tmp_store):
         url=base_url,
         key="sk-ant-test-123",
         kind="anthropic",
-        default_text_model="claude-3-5-sonnet",
     )
     agent = build_agent("anthropic", record, "claude-3-5-sonnet")
     result = agent.run_sync("你好", deps=_make_deps(base_url, "anthropic", "claude-3-5-sonnet"))
@@ -139,14 +137,15 @@ def _seed_search_config(
 def _seed_chat_provider(
     tmp_store, base_url: str, *, provider_id: str = "anthropic", kind: str = "anthropic"
 ) -> None:
-    """预置聊天 provider 行（deepseek 默认搜索的凭据继承源）。"""
+    """预置聊天 provider 行（deepseek 默认搜索只借 key）。"""
     tmp_store.upsert_provider_row(
         provider_id=provider_id,
         url=base_url,
         key="sk-ant-test-123",
         kind=kind,
-        default_text_model="deepseek-v4-flash",
     )
+    tmp_store.set_global_value("default_model_provider", provider_id)
+    tmp_store.set_global_value("default_model", "deepseek-v4-flash")
 
 
 def test_web_search_deepseek_request_and_results(fake_ai_server, tmp_store):
@@ -186,32 +185,34 @@ def test_web_search_deepseek_request_and_results(fake_ai_server, tmp_store):
     assert prompt == "Perform a web search for the query: 今天的天气"
 
 
-def test_web_search_default_inherits_anthropic_provider(fake_ai_server, tmp_store):
-    """默认 deepseek：未配置搜索时继承 anthropic 聊天 provider 凭据。"""
+def test_web_search_default_borrows_chat_provider_key(fake_ai_server, tmp_store, monkeypatch):
+    """默认 deepseek：未配置搜索时只借聊天 provider key，url/model 用 DEFAULT_*。"""
     import asyncio
     from types import SimpleNamespace
 
     from fake_ai_server import SEARCH_RESPONSE, _FakeHandler
+    from hoshino.ai import search as search_domain
     from hoshino.ai.tools.web.web_search import web_search
 
     _FakeHandler.search_response = SEARCH_RESPONSE
     base_url, requests = fake_ai_server
-    _seed_chat_provider(tmp_store, base_url)  # 无搜索配置 → 走默认继承
+    monkeypatch.setattr(search_domain, "DEFAULT_DEEPSEEK_URL", base_url)
+    _seed_chat_provider(tmp_store, "https://chat.example.com")  # 聊天 url 不参与搜索
 
     out = asyncio.run(web_search(SimpleNamespace(deps=_search_deps(base_url, "anthropic")), "q"))
     assert "示例结果 A" in out
     req = requests[1]  # /messages 404 探测 + /v1/messages 命中
     assert req["headers"]["x-api-key"] == "sk-ant-test-123"
+    assert req["body"]["model"] == "deepseek-v4-flash"
 
 
-def test_web_search_no_config_without_anthropic_reports(tmp_store):
-    """无搜索配置且无 anthropic 聊天 provider：提示未配置，不发请求。"""
+def test_web_search_no_config_without_chat_key_reports(tmp_store):
+    """无搜索配置且无可借聊天 key：提示未配置，不发请求。"""
     import asyncio
     from types import SimpleNamespace
 
     from hoshino.ai.tools.web.web_search import web_search
 
-    _seed_chat_provider(tmp_store, "http://127.0.0.1:1", provider_id="openai", kind="openai_chat")
     out = asyncio.run(
         web_search(
             SimpleNamespace(deps=_search_deps("http://127.0.0.1:1", "openai", model="gpt-4o-mini")),
@@ -280,7 +281,6 @@ def test_openai_system_prompt_and_placeholder_in_body(fake_ai_server, tmp_store)
         url=base_url,
         key="sk-test-openai",
         kind="openai_chat",
-        default_text_model="gpt-4o-mini",
     )
     agent = build_agent("openai", record, "gpt-4o-mini")
     agent.run_sync("hi", deps=_make_deps(base_url, "openai", "gpt-4o-mini"))

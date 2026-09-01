@@ -226,13 +226,12 @@ def _stub_config(monkeypatch, tmp_store, *, seed_providers: bool = True, **overr
     config = AIConfig(**defaults)
     monkeypatch.setattr(chat, "get_config", lambda: config)
     if seed_providers:
-        # provider 存 DB（唯一事实源）：预置两个 provider 及其 model-list。
+        # provider 存 DB（唯一事实源）：预置两个 provider；全局默认 model 走 KV。
         tmp_store.upsert_provider_row(
             provider_id="openai",
             url="https://api.example.com/v1",
             key="sk-abcdefghij",
             kind="openai_chat",
-            default_text_model="gpt-4o-mini",
         )
         tmp_store.upsert_provider_model("openai", "gpt-4o-mini", "text")
         tmp_store.upsert_provider_row(
@@ -240,9 +239,10 @@ def _stub_config(monkeypatch, tmp_store, *, seed_providers: bool = True, **overr
             url="https://api.anthropic.com",
             key="sk-ant-1234567890",
             kind="anthropic",
-            default_text_model="claude-3-5-sonnet",
         )
         tmp_store.upsert_provider_model("anthropic", "claude-3-5-sonnet", "text")
+        tmp_store.set_global_value("default_model_provider", "openai")
+        tmp_store.set_global_value("default_model", "gpt-4o-mini")
     return config
 
 
@@ -270,15 +270,15 @@ def _seed_test_providers(tmp_store) -> AIConfig:
         url="u",
         key="k",
         kind="openai_chat",
-        default_text_model="gpt-4o-mini",
     )
     tmp_store.upsert_provider_row(
         provider_id="anthropic",
         url="u2",
         key="k2",
         kind="anthropic",
-        default_text_model="claude-3-5-sonnet",
     )
+    tmp_store.set_global_value("default_model_provider", "openai")
+    tmp_store.set_global_value("default_model", "gpt-4o-mini")
     return AIConfig(default="openai")
 
 
@@ -414,7 +414,8 @@ async def test_chat_no_provider_configured(monkeypatch, tmp_store):
 
     assert len(sent) == 1
     _, message = sent[0]
-    assert "未配置任何 provider" in message.extract_plain_text()
+    assert "未配置模型" in message.extract_plain_text()
+    assert "ai model default" in message.extract_plain_text()
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

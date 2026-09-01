@@ -19,7 +19,7 @@ OneBot V11、Milky 和 Telegram。AI 模块基于 pydantic-ai 构建，参考了
 - **AI 对话**：pydantic-ai Agent + 事件溯源会话历史 + 多对话管理 + persona 三级解析
 - **AI 工具系统**：五类工具（core/computer/bot/web/skill）+ 注册表门控 + 审批流
 - **AI 后台任务**：research/plan 状态机 + 调度器 + capability snapshot 冻结恢复
-- **Provider 治理**：多 provider 全局管理、文本/视觉模型独立 scope 覆盖、实时 API 校验
+- **Provider 治理**：多 provider 全局管理、统一 model 槽 scope 覆盖、原生多模态看图、实时 API 校验
 - APScheduler 定时任务与订阅推送
 - NoneBug/pytest 跨适配器行为测试
 
@@ -138,19 +138,18 @@ AI 能力分为两层：`hoshino/ai/` 基建包（非插件）和 `hoshino/modul
 
 ### Provider 与模型
 
-Provider 是全局资源，不与群绑定。只有文本模型和视觉模型支持 scope（群）级覆盖：
+Provider 是全局资源，不与群绑定。真正跑哪套 `(provider, model)` 只看统一 model 槽：
 
 ```text
-provider（全局）       → ai setup / ai alter / ai provider list / ai provider remove
-文本模型（scope 覆盖）  → ai text set / ai text reset / ai text default
-视觉模型（scope 覆盖）  → ai vision set / ai vision reset / ai vision default
+provider（全局连接）   → ai setup / ai alter / ai provider list / ai provider remove
+model（唯一槽）        → ai model set / ai model reset / ai model default
 搜索 provider（独立）   → ai search add / ai search default / ai search list
 ```
 
-- `ai model list`：列出所有 provider 的可用模型（API 实时获取），标注当前文本/视觉模型
-- `ai status`：显示当前生效的文本模型 + vision + 搜索状态
-- 文本模型优先级：scope 覆盖 > 全局默认（`ai text default`）> provider 默认
-- 视觉模型优先级：scope 配置 > 全局默认（`ai vision default`）；`none` 显式禁用
+- `ai model list`：列出所有 provider 的可用模型（API 实时获取），标注当前 model
+- `ai status`：显示当前生效的 model + 搜索状态
+- model 优先级：scope 覆盖 > 全局默认（`ai model default`）；两级都空需先配置
+- 含图聊天走同一 model 的原生多模态（压缩 BinaryContent），不再做图片描述子请求
 
 ### 对话与工具
 
