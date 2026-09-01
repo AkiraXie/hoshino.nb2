@@ -1,10 +1,8 @@
-"""web/browser_use：Playwright 浏览网页 → 截图 → vision 模型识别 → 文字描述。
+"""web/browser_use：Playwright 浏览网页 → 截图 → 返回 BinaryContent。
 
 需要看网页内容（而 web_fetch 的纯文本不够、需要"看到"页面布局/截图/渲染结果）
 时使用：用仓库既有 Playwright 设施（``hoshino/util/playwrights.py``）打开页面、
-等渲染完成后整页截图，再把截图交给 vision 模型描述（``ai vision`` 独立配置的
-provider + 模型），返回文字给调用（默认 text）模型。text 模型不需要自己具备
-视觉能力。
+等渲染完成后整页截图，返回图片给当前模型直接看。
 
 安全：只允许 http/https、拒绝私有/回环/保留地址（同 image_view/web_fetch）；
 整体浏览器操作有墙钟超时；截图超限拒绝；页面用完即关。
@@ -18,7 +16,7 @@ from urllib.parse import urlparse
 
 from pydantic_ai import BinaryContent, RunContext
 
-from ... import provider, vision
+from ... import provider
 from ...deps import AgentDeps
 from .net import is_private_host
 
@@ -28,20 +26,14 @@ _BROWSER_TIMEOUT_SECONDS = 45.0
 _VIEWPORT = {"width": 1280, "height": 900}
 
 
-async def browse_page_description(
+async def browse_page_screenshot(
     url: str,
     *,
-    proxy: str | None,
-    record,
-    vision_model: str,
-    prompt: str = "这是网页截图，请描述页面主要内容与关键文字。",
     fetch_proxy: str | None = None,
-) -> str:
-    """Playwright 打开网页 → 截图 → vision 描述（供 browser_use 工具与 zssm 复用）。
+) -> BinaryContent | str:
+    """Playwright 打开网页 → 截图 → BinaryContent（供 browser_use 工具复用）。
 
-    ``proxy``：vision 请求（LLM API）代理；``fetch_proxy``：页面抓取代理
-    （``AI_TOOL_USE_PROXY`` 开启时由调用方传入，默认直连）。
-    校验协议/SSRF → 截图 → vision.describe_images。失败返回错误提示字符串。
+    校验协议/SSRF → 截图。失败返回错误提示字符串。
     """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
@@ -51,19 +43,8 @@ async def browse_page_description(
 
     png = await _screenshot(url, proxy=fetch_proxy)
     if isinstance(png, str):
-        return png  # 错误提示
-    content = [BinaryContent(data=png, media_type="image/png")]
-    try:
-        description = await vision.describe_images(
-            record,
-            vision_model,
-            content,
-            proxy=proxy,
-            prompt=f"网页 {url}\n{prompt}",
-        )
-    except Exception as exc:
-        return f"网页识别失败（{type(exc).__name__}）。"
-    return description or "（网页截图暂无可识别内容）"
+        return png
+    return BinaryContent(data=png, media_type="image/png")
 
 
 async def browser_use(
@@ -71,29 +52,24 @@ async def browser_use(
     url: str,
     prompt: str = "这是网页截图，请描述页面主要内容与关键文字。",
 ):
-    """用 Playwright 打开网页并截图，交给 vision 模型识别，返回文字描述。
+    """用 Playwright 打开网页并截图，返回图片内容供当前模型直接看。
 
     - 用于需要"看"网页（布局/图表/渲染结果）的场景；
-    - 禁止访问私有/内网地址；当前 scope 未配置 vision 时返回提示。
+    - 禁止访问私有/内网地址；
+    - ``prompt`` 保留参数兼容旧调用，实际由模型自行理解截图。
     """
+    del prompt  # 原生多模态：截图直接回传，不再做描述子请求
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES or not parsed.hostname:
         return "仅支持 http/https 网页 URL。"
     if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"
 
-    record, vision_model = vision.resolve_vision_model(ctx)
-    if not vision_model or record is None:
-        return "当前未配置 vision 模型，无法识别网页截图（`ai vision set <provider> <模型>`）。"
-    return await browse_page_description(
+    return await browse_page_screenshot(
         url,
-        proxy=provider.resolve_effective_proxy(record, ctx.deps.config.proxy),
         fetch_proxy=provider.resolve_tool_proxy(
             ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
         ),
-        record=record,
-        vision_model=vision_model,
-        prompt=prompt,
     )
 
 

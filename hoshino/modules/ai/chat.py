@@ -7,16 +7,15 @@
     ``#clear`` / ``#goal ...``；其余内容一律按聊天处理）；
   - 回复消息 + 不 at 任何人 + ``#`` 前缀 → 触发（回复本身不额外放行，仍需 ``#``）。
 - 引用识别：触发后会把回复指向的内容一并交给模型——聊天记录文字、转发消息文字、
-  回复/转发里的图片（vision 路径），而不仅是当前消息本体。
+  回复/转发里的图片（原生多模态），而不仅是当前消息本体。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
   见 ``sessions.py``；轮次按 scope 锁串行化，run 进行中再收消息回忙提示。
 - 执行护栏（持久化不替代超时）：
   run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
   超时/超限把本轮提问写入上下文可续问；provider 异常不写。
 - 模型输出 Markdown 先渲染为图片；渲染失败（超时/浏览器异常）回退纯文本。
-- vision：scope 配置了 vision（独立 provider + 模型，``ai vision``）时，含图
-  消息走 vision 模型（图片经 ImageUrl/BinaryContent 传入）；未配置时保留文本
-  提示（mask），模型不看图。
+- 含图消息：同一 model 一次吃压缩后的 BinaryContent + 真实 prompt（原生多模态）；
+  未配置 model 时提示超级用户 ``ai model default``。
 - 日志只记录 provider id、scope、耗时、错误类型，不打印 key 或完整历史。
 """
 
@@ -47,16 +46,11 @@ from hoshino.ai import (
     rendering,
     runner,
     sessions,
-    vision,
 )
 from hoshino.ai import (
     media as ai_media,
 )
-from hoshino.ai.base import (
-    get_config,
-    provider_error_message,
-    resolve_provider,
-)
+from hoshino.ai.base import get_config
 from hoshino.core.service import Service
 from hoshino.platform import (
     event_scope_key,
@@ -289,55 +283,31 @@ async def _goal_transition(bot: Bot, event: Event, scope_key: str, action: str) 
 
 
 async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str):
-    """单轮聊天：解析 provider/文本模型 + vision → 读当前对话上下文 → run（带护栏）→ 渲染回复。"""
+    """单轮聊天：解析统一 model → 读当前对话上下文 → run（带护栏）→ 渲染回复。"""
     manager = sessions.conversation_manager
     config = get_config()
-    # 引用内容注入：回复指向的聊天记录/转发文字一并交给模型理解（图片走 vision）。
+    # 引用内容注入：回复指向的聊天记录/转发文字一并交给模型理解（图片走多模态）。
     reply_ctx = await _reply_context_text(bot, event)
     if reply_ctx:
         prompt = f"{reply_ctx}\n\n{prompt}"
-    fallback_pid = resolve_provider(scope_key, config)
-    if fallback_pid is None:
-        await send_to_event(bot, event, provider_error_message(config))
-        return
-    provider_id, text_model = provider.resolve_text_model(scope_key, fallback_pid)
-    if not text_model:
-        await send_to_event(
-            bot, event, f"provider `{provider_id or fallback_pid}` 未配置文本模型，请联系管理员。"
-        )
+    provider_id, model_name = provider.resolve_model(scope_key)
+    if not provider_id or not model_name:
+        await send_to_event(bot, event, "未配置模型，请超级用户 `ai model default`。")
         return
     record = provider.get_provider(provider_id)
     if record is None:
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")
         return
-    vision_provider_id, vision_model = provider.resolve_vision(scope_key)
 
-    # 图片识别：vision 模型"看"图产出文字描述 → 交给默认 text 模型作答。
-    # 无图或图解析失败时走纯文本；有图但未配置 vision 时保留 mask 提示。
+    # 原生多模态：事件图压缩为 BinaryContent，与真实 prompt 同请求送给同一 model。
     images = await _event_images(bot, event)
-    no_vision_mask = bool(images and not vision_model)
-    if images and vision_model:
-        vision_record = provider.get_provider(vision_provider_id)
-        # 段转换含本地文件读取（最多 15MB），放线程池执行，避免阻塞事件循环。
-        image_content = await asyncio.to_thread(ai_media.image_segments_to_content, images)
-        if image_content and vision_record is not None:
-            try:
-                description = await vision.describe_images(
-                    vision_record,
-                    vision_model,
-                    image_content,
-                    proxy=provider.resolve_effective_proxy(vision_record, config.proxy),
-                )
-            except Exception as exc:
-                sv.logger.warning(
-                    f"AI 图片描述失败 provider={vision_provider_id} error={type(exc).__name__}"
-                )
-                description = ""
-            if description:
-                prompt = f"[图片描述]\n{description}\n\n[用户消息]\n{prompt}"
-        if not prompt.startswith("[图片描述]"):
-            no_vision_mask = True  # 描述失败，退回提示
-    model_name = text_model
+    image_parts: list = []
+    if images:
+        image_parts = await ai_media.image_segments_to_content_async(
+            images,
+            verify_ssl=config.web_fetch_verify_ssl,
+            proxy=provider.resolve_tool_proxy(config.proxy, tool_use_proxy=config.tool_use_proxy),
+        )
 
     conv = manager.get_active(scope_key)
     history = context.prepare_history(scope_key, conv.messages, config, new_question=prompt)
@@ -352,8 +322,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         model=model_name,
     )
     # pre-step 瀑布：reject（拒绝本轮，不跑模型）/ rewrite（改写模型可见 prompt）。
-    # rewrite 只改进入模型的文本；事件日志按改写后的内容记录（重放保真优先，
-    # 平台聊天记录仍保留用户原话）。本期无默认订阅者。
+    # rewrite 只改进入模型的文本；图片 parts 在 rewrite 后再拼，避免钩子丢图。
     pre = hooks.run_pre_step_hooks(
         hooks.PreStepContext(
             prompt=prompt,
@@ -371,8 +340,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     if pre.action == "rewrite" and pre.prompt is not None:
         prompt = pre.prompt
 
-    # 纯文本作答（图片已由 vision 模型转成文字描述注入 prompt）。
-    prompt_arg: str = prompt
+    prompt_arg = ai_media.build_image_prompt(prompt, image_parts)
 
     agent = providers.build_agent(
         provider_id,
@@ -453,9 +421,6 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     raw = result.output
     # 结尾总结行确定性兜底（prompt 层已禁用，模型偶发用「一句话版本：」等变体收尾）。
     raw = rendering.strip_trailing_summary(raw)
-    if no_vision_mask:
-        # 含图但未配置 vision 模型（或描述失败）：回复开头提示本次未看图。
-        raw = "（目前未配置 vision 模型，图片暂无法识别，请用文字描述图片内容。）\n\n" + raw
     sv.logger.info(
         f"AI 回复 provider={provider_id} scope={scope_key} conv={conv.name} "
         f"model={model_name} 字数={len(raw)} "
@@ -512,7 +477,7 @@ def _message_text(message) -> str:
 async def _reply_context_text(bot: Bot, event: Event) -> str:
     """收集引用内容的文本：回复目标（含 OB11 经 get_msg 拉取）+ 转发消息。
 
-    图片类引用由 ``_event_images`` 走 vision 路径，这里只取文字部分。
+    图片类引用由 ``_event_images`` 走多模态路径，这里只取文字部分。
     """
     parts: list[str] = []
     reply = await get_reply_content(bot, event)

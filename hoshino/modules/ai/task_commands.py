@@ -15,7 +15,7 @@ from nonebot.adapters import Bot, Event
 
 from hoshino.ai import deps as ai_deps
 from hoshino.ai import persona, provider, skills, tools
-from hoshino.ai.base import get_config, resolve_provider
+from hoshino.ai.base import get_config
 from hoshino.ai.task import events as task_events
 from hoshino.ai.task import (
     policy,
@@ -175,15 +175,9 @@ async def _create(bot: Bot, event: Event, kind: str, args: list[str]) -> None:
         await send_to_event(bot, event, ws_error)
         return
 
-    fallback_pid = resolve_provider(scope_key, config)
-    if fallback_pid is None:
-        await send_to_event(bot, event, "未配置可用 provider，请联系管理员。")
-        return
-    provider_id, model = provider.resolve_text_model(scope_key, fallback_pid)
-    if not model:
-        await send_to_event(
-            bot, event, f"provider `{provider_id or fallback_pid}` 未配置文本模型，请联系管理员。"
-        )
+    provider_id, model = provider.resolve_model(scope_key)
+    if not provider_id or not model:
+        await send_to_event(bot, event, "未配置模型，请超级用户 `ai model default`。")
         return
     if not provider.has_provider(provider_id):
         await send_to_event(bot, event, "AI 配置异常：provider 不存在。")

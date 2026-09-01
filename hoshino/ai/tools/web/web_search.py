@@ -1,7 +1,7 @@
 """web/web_search：原生联网搜索工具（provider 解耦，deepseek / tavily / 博查）。
 
 工具本身只做配置解析与代理透传：搜索 provider 由 ``ai search`` 单独配置
-（``hoshino/ai/search.py``，默认 deepseek），与聊天 provider / vision 平级。
+（``hoshino/ai/search.py``，默认 deepseek），与聊天 provider / model 槽解耦。
 三种 provider 的实现（Anthropic Messages + 服务端 web_search_20250305 /
 Tavily API / 博查 API）都在 ``hoshino.ai.search``，工具返回结构化结果文本，
 由调用（text）模型基于结果作答。

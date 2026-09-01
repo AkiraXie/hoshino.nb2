@@ -37,7 +37,7 @@ from .tools import approval_required, build_tool_instructions, resolve_tools
 _agent_cache: dict[tuple[Any, ...], Agent] = {}
 # build_model 创建的 http client，供 clear_agent_cache 关闭，避免泄漏。
 _http_clients: list[httpx.AsyncClient] = []
-# 子请求 model 缓存（vision / zssm）注册到这里：它们与 Agent 共用 build_model
+# 子请求 model 缓存（如 zssm）注册到这里：它们与 Agent 共用 build_model
 # 创建的 http client，clear_agent_cache 关闭 client 后必须一并清空，否则缓存仍
 # 指向已关闭的 client，provider 变更后看图 / zssm 请求失败直至重启。
 _model_caches: list[dict] = []
@@ -300,7 +300,7 @@ def build_agent(
 def clear_agent_cache() -> None:
     """清空 Agent / model 缓存并关闭已创建的 http client（配置变更或测试时使用）。
 
-    ``_model_caches`` 覆盖 vision / zssm 等子请求 model 缓存：它们与 Agent 共用
+    ``_model_caches`` 覆盖 zssm 等子请求 model 缓存：它们与 Agent 共用
     build_model 的 http client，client 关闭后必须同步失效，否则后续请求
     “Cannot send a request, as the client has been closed” 直到重启。
     """
