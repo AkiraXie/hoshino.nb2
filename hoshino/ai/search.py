@@ -1,7 +1,7 @@
 """搜索 provider 领域层：deepseek / tavily / 博查 三种，与聊天 provider 解耦。
 
-与 vision 同思路：搜索单独配置（``ai search`` 命令 + ``ai_search_providers``
-单行表），不再依赖聊天 provider 的 kind。三种内置 provider：
+搜索单独配置（``ai search`` 命令 + ``ai_search_providers`` 表），不依赖聊天
+provider 的协议。三种内置 provider：
 
 - ``deepseek``：Anthropic 兼容 Messages 端点 + 服务端 ``web_search_20250305``
   工具（dsh 同款 wire format），响应解析 ``web_search_tool_result`` 块与
@@ -11,10 +11,10 @@
 - ``bocha``（博查）：``POST https://api.bocha.cn/v1/web-search``（端点写死），
   Bearer 鉴权，``webPages.value[].name/url/snippet``（兼容 Bing 格式）。
 
-默认 deepseek：未配置时继承当前 anthropic 聊天 provider 的 url/key/model
-（存量 DeepSeek 用户零配置可用）；没有可用 anthropic provider 时返回 None，
-由调用方提示 ``ai search set``。代理语义与 web_fetch 等工具一致
-（``AI_TOOL_USE_PROXY`` 开启才走 AI 代理，见 ``provider.resolve_tool_proxy``）。
+默认 deepseek：url/model 固定 ``DEFAULT_DEEPSEEK_*``，不继承聊天 url/model；
+key 可从当前聊天 provider（任意 kind）只借 key。显式 ``ai search`` 覆盖优先。
+代理语义与 web_fetch 等工具一致（``AI_TOOL_USE_PROXY`` 开启才走 AI 代理，
+见 ``provider.resolve_tool_proxy``）。
 """
 
 from __future__ import annotations
@@ -47,44 +47,45 @@ class SearchConfig:
     model: str = ""
 
 
-def _anthropic_chat_provider(scope_key: str | None, config: AIConfig):
-    """当前 scope 的 anthropic kind 聊天 provider（deepseek 默认凭据继承源）。"""
+def _chat_provider_key(scope_key: str | None, config: AIConfig) -> str:
+    """当前聊天 provider 的 API key（任意 kind）；无可借时返回空串。
+
+    deepseek 搜索与聊天协议无关：只借 key，不借 url/model。
+    """
     from . import provider
     from .base import resolve_provider
 
-    provider_id = resolve_provider(scope_key, config)
-    if provider_id is None:
-        return None
-    record = provider.get_provider(provider_id)
-    return record if record is not None and record.kind == "anthropic" else None
+    # 优先统一 model 槽的 provider，再回退全局默认 provider 绑定。
+    pid, _ = provider.resolve_model(scope_key)
+    if not pid:
+        pid = resolve_provider(scope_key, config) or ""
+    if not pid:
+        return ""
+    record = provider.get_provider(pid)
+    return record.key if record is not None else ""
 
 
 def resolve_search_config(scope_key: str | None, config: AIConfig) -> SearchConfig | None:
     """解析当前搜索配置；未配置/kind 未知返回 None（由调用方提示配置）。"""
     row = store.get_search_provider_row()
     if row is None:
-        # 默认 deepseek：继承 anthropic 聊天 provider 凭据。
-        record = _anthropic_chat_provider(scope_key, config)
-        if record is None:
+        # 默认 deepseek：固定 DEFAULT url/model，key 可借自聊天 provider。
+        key = _chat_provider_key(scope_key, config)
+        if not key:
             return None
         return SearchConfig(
             kind="deepseek",
-            url=record.url or DEFAULT_DEEPSEEK_URL,
-            key=record.key,
-            model=record.default_text_model or DEFAULT_DEEPSEEK_MODEL,
+            url=DEFAULT_DEEPSEEK_URL,
+            key=key,
+            model=DEFAULT_DEEPSEEK_MODEL,
         )
     kind = row["kind"]
     if kind == "deepseek":
-        record = _anthropic_chat_provider(scope_key, config)
         return SearchConfig(
             kind="deepseek",
             url=row["url"] or DEFAULT_DEEPSEEK_URL,
-            key=row["key"] or (record.key if record is not None else ""),
-            model=(
-                row["model"]
-                or (record.default_text_model if record is not None else "")
-                or DEFAULT_DEEPSEEK_MODEL
-            ),
+            key=row["key"] or _chat_provider_key(scope_key, config),
+            model=row["model"] or DEFAULT_DEEPSEEK_MODEL,
         )
     if kind == "tavily":
         # 端点写死（api.tavily.com），不接受配置 url。
