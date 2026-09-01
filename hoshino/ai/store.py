@@ -84,6 +84,7 @@ class AIUsageEvent(Base):
 def ensure_schema() -> None:
     Base.metadata.create_all(engine)
     _migrate_missing_columns(engine)
+    _migrate_unify_model_slot(engine)
     migrate_sessions_to_conversations(engine)
 
 
@@ -95,6 +96,8 @@ def _migrate_missing_columns(target_engine) -> None:
         _ensure_column(conn, "ai_providers", "use_proxy", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_scope_models", "vision_provider")
         _ensure_column(conn, "ai_scope_models", "text_provider")
+        _ensure_column(conn, "ai_scope_models", "provider")
+        _ensure_column(conn, "ai_scope_models", "model")
 
 
 def _ensure_column(conn, table: str, column: str, decl: str = "TEXT NOT NULL DEFAULT ''") -> None:
@@ -102,6 +105,59 @@ def _ensure_column(conn, table: str, column: str, decl: str = "TEXT NOT NULL DEF
     cols = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()}
     if cols and column not in cols:
         conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        conn.commit()
+
+
+def _migrate_unify_model_slot(target_engine) -> None:
+    """将旧 vision 槽迁移到统一 model 槽（幂等；不继承 text_*）。"""
+    with target_engine.connect() as conn:
+        cols = {
+            row[1] for row in conn.exec_driver_sql("PRAGMA table_info(ai_scope_models)").fetchall()
+        }
+        if not cols or "provider" not in cols or "model" not in cols:
+            return
+        # scope：vision 非空且非 none → 写入 provider/model（仅当新列仍空）
+        if "vision_provider" in cols and "vision_model" in cols:
+            conn.exec_driver_sql(
+                """
+                UPDATE ai_scope_models
+                SET provider = vision_provider,
+                    model = vision_model
+                WHERE (provider = '' OR provider IS NULL)
+                  AND (model = '' OR model IS NULL)
+                  AND vision_provider != ''
+                  AND vision_model != ''
+                  AND vision_model != 'none'
+                """
+            )
+            conn.commit()
+
+        # 全局 KV：default_vision_* → default_model_*（新键未设时）
+        def _kv(key: str) -> str | None:
+            row = conn.exec_driver_sql(
+                "SELECT value FROM ai_globals WHERE key = ?", (key,)
+            ).fetchone()
+            return row[0] if row else None
+
+        def _set_kv(key: str, value: str) -> None:
+            existing = conn.exec_driver_sql(
+                "SELECT 1 FROM ai_globals WHERE key = ?", (key,)
+            ).fetchone()
+            if existing:
+                conn.exec_driver_sql("UPDATE ai_globals SET value = ? WHERE key = ?", (value, key))
+            else:
+                conn.exec_driver_sql(
+                    "INSERT INTO ai_globals (key, value) VALUES (?, ?)", (key, value)
+                )
+
+        if _kv("default_model_provider") is None:
+            old_pid = _kv("default_vision_provider")
+            if old_pid:
+                _set_kv("default_model_provider", old_pid)
+        if _kv("default_model") is None:
+            old_model = _kv("default_vision_model")
+            if old_model and old_model != "none":
+                _set_kv("default_model", old_model)
         conn.commit()
 
 
@@ -564,10 +620,10 @@ def clear_provider_references(provider_id: str) -> int:
 
 
 class AIProvider(Base):
-    """一个 provider：连接（url/key/kind）+ 默认文本模型 + 采样参数。
+    """一个 provider：连接（url/key/kind）+ 采样参数。
 
-    provider 只提供默认文本模型；vision 由 ``ai vision`` 单独配置
-    （scope 配置 > 全局默认，见 ``provider.resolve_vision``）。
+    默认模型由全局/scope 的统一 model 槽提供（``provider.resolve_model``）；
+    ``default_text_model`` 列保留不读（避免 ALTER DROP）。
     """
 
     __tablename__ = "ai_providers"
@@ -599,13 +655,18 @@ class AIProviderModel(Base):
 
 
 class AIScopeModel(Base):
-    """scope 的模型覆盖。文本模型空串 = 继承 provider 默认；vision 为
-    （provider + 模型）成对配置，空串 = 继承全局默认；``vision_model='none'``
-    = 显式禁用 vision（即使存在全局默认）。"""
+    """scope 的统一 model 覆盖（provider + model）。
+
+    空串 = 继承全局默认（``ai model default``）。旧 ``text_*`` / ``vision_*``
+    列保留不读（迁移一次性写入 ``provider``/``model``）。
+    """
 
     __tablename__ = "ai_scope_models"
 
     scope_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    model: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 旧列保留：迁移源 / 避免 ALTER DROP。
     text_provider: Mapped[str] = mapped_column(Text, nullable=False, default="")
     text_model: Mapped[str] = mapped_column(Text, nullable=False, default="")
     vision_provider: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -778,26 +839,16 @@ def delete_provider_model(provider_id: str, model: str) -> bool:
 
 
 def get_scope_model_overrides(scope_key: str) -> dict[str, str]:
-    """scope 的模型覆盖；无行时返回空串（全部继承 provider/全局默认）。"""
+    """scope 的统一 model 覆盖；无行时返回空串（继承全局默认）。"""
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
         if row is None:
-            return {
-                "text_provider": "",
-                "text_model": "",
-                "vision_provider": "",
-                "vision_model": "",
-            }
-        return {
-            "text_provider": row.text_provider,
-            "text_model": row.text_model,
-            "vision_provider": row.vision_provider,
-            "vision_model": row.vision_model,
-        }
+            return {"provider": "", "model": ""}
+        return {"provider": row.provider, "model": row.model}
 
 
-def set_scope_text(scope_key: str, provider_id: str, model: str, updated_by: str = "") -> None:
-    """设置 scope 文本模型覆盖（provider + model 成对 upsert；空串清除该槽）。"""
+def set_scope_model(scope_key: str, provider_id: str, model: str, updated_by: str = "") -> None:
+    """设置 scope 统一 model 覆盖（provider + model 成对 upsert；空串清除该槽）。"""
     now = time.time()
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
@@ -805,62 +856,34 @@ def set_scope_text(scope_key: str, provider_id: str, model: str, updated_by: str
             session.add(
                 AIScopeModel(
                     scope_key=scope_key,
-                    text_provider=provider_id,
-                    text_model=model,
+                    provider=provider_id,
+                    model=model,
                     updated_by=updated_by,
                     updated_at=now,
                 )
             )
         else:
-            row.text_provider = provider_id
-            row.text_model = model
+            row.provider = provider_id
+            row.model = model
             row.updated_by = updated_by
             row.updated_at = now
         session.commit()
 
 
-def set_scope_vision(scope_key: str, provider_id: str, model: str, updated_by: str = "") -> None:
-    """设置 scope 的 vision 配置（provider + 模型成对 upsert；空串清除该槽）。"""
-    now = time.time()
-    with Session() as session:
-        row = session.get(AIScopeModel, scope_key)
-        if row is None:
-            session.add(
-                AIScopeModel(
-                    scope_key=scope_key,
-                    vision_provider=provider_id,
-                    vision_model=model,
-                    updated_by=updated_by,
-                    updated_at=now,
-                )
-            )
-        else:
-            row.vision_provider = provider_id
-            row.vision_model = model
-            row.updated_by = updated_by
-            row.updated_at = now
-        session.commit()
-
-
-def clear_scope_model_override(scope_key: str, slot: str | None = None) -> bool:
-    """清除 scope 模型覆盖；slot 为 None 时整行删除。返回是否真的有覆盖被清除。
-
-    slot ``vision`` 同时清除 vision 的 provider 与模型（成对配置）。
-    """
+def clear_scope_model(scope_key: str) -> bool:
+    """清除 scope 统一 model 覆盖；返回是否真的有覆盖被清除。"""
     with Session() as session:
         row = session.get(AIScopeModel, scope_key)
         if row is None:
             return False
-        if slot == "text":
-            row.text_provider = ""
-            row.text_model = ""
-            row.updated_at = time.time()
-        elif slot == "vision":
-            row.vision_provider = ""
-            row.vision_model = ""
-            row.updated_at = time.time()
-        else:
+        had = bool(row.provider or row.model)
+        if not had:
             session.delete(row)
+            session.commit()
+            return False
+        row.provider = ""
+        row.model = ""
+        row.updated_at = time.time()
         session.commit()
         return True
 
