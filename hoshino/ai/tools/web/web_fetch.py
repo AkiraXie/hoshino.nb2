@@ -78,6 +78,8 @@ async def fetch_url_to_markdown(
             return f"抓取失败（{type(exc).__name__}）。"
 
     content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type == "application/pdf" or urlparse(url).path.lower().endswith(".pdf"):
+        return "这是 PDF 文件，请使用 file_view 读取，不要使用 web_fetch。"
     text = response.text
     if content_type in ("text/markdown", "text/x-markdown"):
         content = text

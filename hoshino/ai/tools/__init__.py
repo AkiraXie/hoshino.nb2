@@ -24,6 +24,7 @@ from .computer import bash as _bash
 from .computer import file as _file
 from .computer import python as _python
 from .computer import repo_code as _repo_code
+from .core import file_view as _file_view
 from .core import image_view as _image_view
 from .core import memory as _memory
 from .core import now as _now
@@ -157,6 +158,14 @@ REGISTRATIONS: tuple[ToolRegistration, ...] = (
         _image_view.tool,
         "core",
         frozenset({"chat", "task"}),
+    ),
+    ToolRegistration(
+        "file_view",
+        1,
+        _file_view.tool,
+        "core",
+        frozenset({"chat", "task"}),
+        local_access=True,
     ),
     ToolRegistration(
         "browser_use",

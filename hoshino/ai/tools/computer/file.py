@@ -11,12 +11,14 @@ import asyncio
 import os
 from typing import Literal
 
-from pydantic_ai import RunContext
+from pydantic_ai import BinaryContent, RunContext
 
+from ... import documents
 from ...deps import AgentDeps
 from .runtime import computer_workdir
 
 _MAX_WRITE_BYTES = 1024 * 1024
+_MAX_READ_CHARS = 50_000
 _SENSITIVE_PARTS = (
     ".env",
     "credentials",
@@ -45,11 +47,6 @@ def _is_sensitive(resolved: str) -> bool:
 
 
 # 文件 I/O 同步 helper：经 asyncio.to_thread 在线程池执行，避免阻塞事件循环。
-def _read_text(path: str) -> str:
-    with open(path, encoding="utf-8") as f:
-        return f.read(50_000)
-
-
 def _list_entries(path: str) -> list[str]:
     return sorted(os.listdir(path))
 
@@ -65,10 +62,10 @@ async def file(
     path: str,
     mode: FileMode = "read",
     content: str = "",
-) -> str:
+) -> str | BinaryContent:
     """在工作目录内读写文件（限 1MB，delete 为高风险）。
 
-    - read <path>：读取文本内容（前 50k 字符）
+    - read <path>：复用 documents 抽取文本/HTML/PDF；图片返回 BinaryContent
     - list <path>：列出目录条目
     - write <path> <content>：写入（将覆盖已有文件）
     - delete <path>：删除（高风险，请创建 Task 由审批流程执行）
@@ -89,9 +86,15 @@ async def file(
             if not os.path.isfile(resolved):
                 return f"文件不存在：{path}"
             try:
-                data = await asyncio.to_thread(_read_text, resolved)
-            except OSError as exc:
-                return f"读取失败：{exc}"
+                data = await documents.file_view(
+                    resolved,
+                    config=ctx.deps.config,
+                    deps=ctx.deps,
+                )
+            except Exception as exc:
+                return f"读取失败：{type(exc).__name__}：{exc}"
+            if isinstance(data, str) and len(data) > _MAX_READ_CHARS:
+                return f"{data[:_MAX_READ_CHARS]}\n…(截断)"
             return data
 
         case "list":

@@ -37,6 +37,7 @@ from pydantic_ai.usage import UsageLimits
 from hoshino.ai import (
     context,
     deps,
+    documents,
     errors,
     goal,
     hooks,
@@ -62,7 +63,7 @@ from hoshino.platform import (
     send_to_event,
     to_unimessage,
 )
-from hoshino.util.media import get_event_media_segments
+from hoshino.util.media import get_event_file_segments, get_event_media_segments
 
 # aichat 服务仅属于聊天插件（# 触发）：默认关闭，按 scope 启用后才应答。
 sv = Service("aichat", enable_on_default=False, visible=False)
@@ -94,7 +95,9 @@ chat = sv.on_message(
 async def _(bot: Bot, event: Event):
     body = get_plaintext(event).removeprefix("#").strip()
     if not body:
-        return
+        if not await _event_files(bot, event):
+            return
+        body = "请查看用户发送的文件。"
     scope_key = event_scope_key(bot, event)
     if scope_key is None:
         return
@@ -290,6 +293,10 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     reply_ctx = await _reply_context_text(bot, event)
     if reply_ctx:
         prompt = f"{reply_ctx}\n\n{prompt}"
+    files = await _event_files(bot, event)
+    file_ctx, file_parts = await documents.file_segments_to_prompt(files, config=config)
+    if file_ctx:
+        prompt = f"{file_ctx}\n\n{prompt}"
     provider_id, model_name = provider.resolve_model(scope_key)
     if not provider_id or not model_name:
         await send_to_event(bot, event, "未配置模型，请超级用户 `ai model default`。")
@@ -308,6 +315,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
             verify_ssl=config.web_fetch_verify_ssl,
             proxy=provider.resolve_tool_proxy(config.proxy, tool_use_proxy=config.tool_use_proxy),
         )
+    image_parts.extend(file_parts)
 
     conv = manager.get_active(scope_key)
     history = context.prepare_history(scope_key, conv.messages, config, new_question=prompt)
@@ -466,7 +474,21 @@ def _make_stream_logger(
 
 
 def _message_text(message) -> str:
-    """提取消息对象的纯文本（duck-typed：优先 extract_plain_text）。"""
+    """提取消息对象的纯文本，忽略图片、文件等非文本段。"""
+    segments = getattr(message, "__iter__", None)
+    if callable(segments):
+        text_parts = []
+        for segment in message:
+            if getattr(segment, "type", None) != "text":
+                continue
+            data = getattr(segment, "data", {})
+            text = data.get("text") if isinstance(data, dict) else None
+            if text:
+                text_parts.append(str(text))
+        if text_parts:
+            return "".join(text_parts)
+        if message:
+            return ""
     extract = getattr(message, "extract_plain_text", None)
     if callable(extract):
         with contextlib.suppress(Exception):
@@ -498,6 +520,15 @@ async def _event_images(bot: Bot, event: Event) -> list:
         return await get_event_media_segments(bot, event, UniImage)
     except Exception as exc:
         sv.logger.warning(f"AI 媒体段解析失败 error={type(exc).__name__}")
+        return []
+
+
+async def _event_files(bot: Bot, event: Event) -> list:
+    """提取事件中的文件段（含回复引用/转发）；失败按无文件处理。"""
+    try:
+        return await get_event_file_segments(bot, event)
+    except Exception as exc:
+        sv.logger.warning(f"AI 文件段解析失败 error={type(exc).__name__}")
         return []
 
 

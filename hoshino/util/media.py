@@ -13,6 +13,7 @@ from typing import Any
 from nonebot.adapters import Bot, Event
 from nonebot.log import logger
 from nonebot.typing import T_State
+from nonebot_plugin_alconna.uniseg import File as UniFile
 from nonebot_plugin_alconna.uniseg import Image as UniImage
 from nonebot_plugin_alconna.uniseg import UniMessage
 from nonebot_plugin_alconna.uniseg import Video as UniVideo
@@ -22,9 +23,12 @@ from hoshino import fav_dir, img_dir, video_dir
 from hoshino.platform import (
     get_event_message,
     get_forwarded_messages,
+    get_media_url,
     get_reply_content,
     to_unimessage,
 )
+from hoshino.platform.milky.files import file_segments as milky_file_segments
+from hoshino.platform.milky.types import Message as MilkyMessage
 from hoshino.types import MessageLike
 
 from . import aiohttpx
@@ -91,6 +95,47 @@ async def get_event_media_segments(
                 seen.add(identity)
                 segments.append(segment)
     return segments
+
+
+async def get_event_file_segments(bot: Bot, event: Event) -> list[UniFile]:
+    """Collect downloadable files from the event, reply, and forwarded messages.
+
+    Milky's adapter has an incoming File segment but its UniSeg builder does
+    not expose it, so that adapter is handled by its platform isolation layer.
+    """
+    messages = [get_event_message(event)]
+    reply = await get_reply_content(bot, event)
+    if reply is not None:
+        messages.append(reply)
+    messages.extend(await get_forwarded_messages(bot, event))
+
+    files: list[UniFile] = []
+    seen: set[tuple[str, ...]] = set()
+    for message in messages:
+        if message is None:
+            continue
+        if isinstance(message, MilkyMessage):
+            converted = await milky_file_segments(message, bot=bot, event=event)
+        else:
+            converted_message = await to_unimessage(message, bot=bot, event=event)
+            converted = [segment for segment in converted_message if isinstance(segment, UniFile)]
+            for segment in converted:
+                if not segment.url:
+                    try:
+                        segment.url = await get_media_url(bot, segment)
+                    except Exception:
+                        segment.url = None
+        for segment in converted:
+            identity = (
+                str(segment.id or ""),
+                str(segment.url or ""),
+                str(segment.path or ""),
+                str(segment.name or ""),
+            )
+            if identity not in seen:
+                seen.add(identity)
+                files.append(segment)
+    return files
 
 
 async def get_event_image_segments(bot: Bot, event: Event, state: T_State) -> bool:
@@ -243,6 +288,7 @@ def random_image_or_video_by_path(
 __all__ = [
     "SUPERUSER_IMAGE_LIST",
     "SUPERUSER_VIDEO_LIST",
+    "get_event_file_segments",
     "get_event_image_segments",
     "get_event_media_segments",
     "get_event_video_segments",

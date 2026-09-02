@@ -1,6 +1,7 @@
 """Platform abstraction — OB11-shaped helpers + generic send/target"""
 
 from .bot import (
+    get_file_url,
     get_group_list,
     get_group_member_info,
     get_media_download_headers,
@@ -89,6 +90,7 @@ __all__ = [
     "forward_reacted_message",
     "get_event_message",
     "get_event_value",
+    "get_file_url",
     "get_forwarded_messages",
     "get_group_id",
     "get_group_list",

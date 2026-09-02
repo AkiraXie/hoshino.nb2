@@ -24,6 +24,42 @@ async def get_media_url(bot: Bot, media) -> str | None:
     return None
 
 
+async def get_file_url(bot: Bot, event, media) -> str | None:
+    """Resolve an incoming Milky file segment to a downloadable URL.
+
+    Milky file segments intentionally contain no URL.  The download API also
+    differs between group and friend messages, so keep scene/peer handling in
+    the adapter boundary.
+    """
+    data = getattr(media, "data", None)
+    if not isinstance(data, dict):
+        return None
+    file_id = data.get("file_id")
+    if not file_id:
+        return None
+
+    event_data = getattr(event, "data", None)
+    scene = getattr(event_data, "message_scene", None)
+    peer_id = getattr(event_data, "peer_id", None)
+    if scene in {"group", "temp"}:
+        group = getattr(event_data, "group", None)
+        group_id = getattr(group, "group_id", None) or peer_id
+        if group_id is None:
+            return None
+        return await bot.get_group_file_download_url(
+            group_id=int(group_id),
+            file_id=str(file_id),
+        )
+    file_hash = data.get("file_hash")
+    if peer_id is None or not file_hash:
+        return None
+    return await bot.get_private_file_download_url(
+        user_id=int(peer_id),
+        file_id=str(file_id),
+        file_hash=str(file_hash),
+    )
+
+
 async def get_group_list(bot: Bot) -> list[dict[str, Any]]:
     return [model_dump(group) for group in await bot.get_group_list()]
 

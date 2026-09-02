@@ -8,6 +8,7 @@ from typing import Any
 from nonebot.adapters import Bot
 from nonebot_plugin_alconna.uniseg.fallback import FallbackStrategy
 
+from hoshino.platform.milky.bot import get_file_url as milky_get_file_url
 from hoshino.platform.milky.bot import get_group_list as milky_get_group_list
 from hoshino.platform.milky.bot import (
     get_group_member_info as milky_get_group_member_info,
@@ -63,6 +64,13 @@ async def get_media_url(bot: Bot, media: Any) -> str | None:
     if isinstance(bot, TelegramBot):
         return await telegram_get_media_url(bot, media)
     return await ob11_get_media_url(bot, media)
+
+
+async def get_file_url(bot: Bot, event, media: Any) -> str | None:
+    """Resolve an adapter-native incoming file to a downloadable URL."""
+    if isinstance(bot, MilkyBot):
+        return await milky_get_file_url(bot, event, media)
+    return await get_media_url(bot, media)
 
 
 async def get_group_member_info(
