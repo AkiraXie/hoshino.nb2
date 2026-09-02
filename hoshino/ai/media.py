@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 import httpx
 from loguru import logger
+from PIL import Image as PILImage
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import TextContent
 
@@ -49,8 +50,6 @@ def compress_image_bytes(data: bytes) -> bytes:
     if len(data) <= _COMPRESS_THRESHOLD:
         return data
     try:
-        from PIL import Image as PILImage
-
         image = PILImage.open(BytesIO(data))
         image.thumbnail((4096, 4096))
         if image.mode != "RGB":
@@ -124,7 +123,7 @@ async def fetch_image_url(
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return "仅支持 http/https 图片 URL。"
 
-    # SSRF：延迟导入避免 media→tools 循环。
+    # 函数内 import：避免 media → tools.web.net → tools.__init__ → image_view → media 循环。
     from hoshino.ai.tools.web.net import is_private_host
 
     if await is_private_host(parsed.hostname):

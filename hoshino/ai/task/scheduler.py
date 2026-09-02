@@ -15,9 +15,12 @@ import traceback
 import uuid
 
 from loguru import logger
+from nonebot import get_bots
 from pydantic_ai.tools import DeferredToolResults
 
 from hoshino.core.hooks import on_post_startup, on_shutdown
+from hoshino.platform.message import send_to_target
+from hoshino.platform.target import load_target, platform_key
 
 from .. import errors, metrics
 from ..base import get_config
@@ -540,10 +543,6 @@ def _pick_bot(adapter_name: str):
 
     不能随手取第一个在线 bot：跨适配器的 Target 无法经由它发送，会永久失败。
     """
-    from nonebot import get_bots
-
-    from hoshino.platform import platform_key
-
     bots = get_bots()
     if not bots:
         return None
@@ -558,9 +557,6 @@ def _pick_bot(adapter_name: str):
 
 async def _deliver(item: dict) -> bool:
     """向持久化 Target 发送一条 outbox 通知；失败返回 False（由 outbox 重试）。"""
-    from hoshino.platform import send_to_target
-    from hoshino.platform.target import load_target
-
     try:
         target = load_target(item["target_json"])
         task = task_store.get_task(item["task_id"])

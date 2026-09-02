@@ -28,6 +28,7 @@ import json
 from typing import Any
 
 from nonebot.adapters import Bot, Event
+from nonebot_plugin_alconna.uniseg import UniMessage
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.messages import TextContent
@@ -45,6 +46,7 @@ from hoshino.core.service import Service
 from hoshino.platform import (
     event_scope_key,
     get_forwarded_messages,
+    get_group_id,
     get_reply_content,
     is_group_event,
     send_group_forward,
@@ -209,16 +211,12 @@ async def _send_forward_result(
     stats_text: str,
 ) -> None:
     """以转发聊天记录发送三条消息：关键词、解释、模型调用统计。"""
-    from nonebot_plugin_alconna.uniseg import UniMessage
-
     messages = [
         UniMessage.text(keyword_text) if keyword_text else UniMessage.text("关键词：（无）"),
         UniMessage.text(explanation),
         UniMessage.text(stats_text),
     ]
     if is_group_event(event):
-        from hoshino.platform import get_group_id
-
         group_id = get_group_id(event)
         if group_id is not None:
             await send_group_forward(bot, group_id, messages, nickname="zssm")

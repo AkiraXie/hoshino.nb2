@@ -42,7 +42,9 @@ from pydantic_ai.tools import DeferredToolResults
 from pydantic_ai.usage import UsageLimits
 from pydantic_graph import End, GraphRunContext
 
-from . import hooks
+from hoshino import data_dir
+
+from . import compaction, hooks
 from .deps import AgentDeps
 
 
@@ -313,8 +315,6 @@ async def _spill_oversized_tool_results(history: list[Any], config: Any) -> bool
     max_chars = getattr(config, "tool_result_spill_max_chars", 0) or 0
     if max_chars <= 0:
         return False
-    from hoshino import data_dir
-
     spill_dir = Path(
         getattr(config, "tool_result_spill_dir", "") or os.path.join(data_dir, "ai_tool_overflow")
     )
@@ -387,8 +387,6 @@ async def run_agent(
                 spill_done = await _spill_oversized_tool_results(history, config)
             # 2. 上下文软压缩（远程接口预留，当前本地摘要兜底）。
             if not compacted and getattr(config, "compaction_threshold_chars", 0) > 0:
-                from . import compaction
-
                 compacted_history = await compaction.compact_history(
                     deps,
                     list(history),

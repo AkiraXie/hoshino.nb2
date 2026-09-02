@@ -15,6 +15,7 @@ from nonebot.adapters import Bot, Event
 
 from hoshino.ai import deps as ai_deps
 from hoshino.ai import persona, provider, skills, tools
+from hoshino.ai import store as ai_store
 from hoshino.ai.base import get_config
 from hoshino.ai.task import events as task_events
 from hoshino.ai.task import (
@@ -287,8 +288,6 @@ async def _create(bot: Bot, event: Event, kind: str, args: list[str]) -> None:
 
 def ai_store_get_scope_persona(scope_key: str) -> int | None:
     """scope 级 persona id（capability snapshot 冻结用）。"""
-    from hoshino.ai import store as ai_store
-
     return ai_store.get_scope_persona_id(scope_key)
 
 

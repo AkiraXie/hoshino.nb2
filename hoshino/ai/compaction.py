@@ -30,7 +30,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import ModelRequestParameters, ModelSettings
 
-from . import provider, providers
+from . import provider, providers, topic
 from .deps import AgentDeps
 
 _SUMMARY_PREFIX = "[Earlier context summary]\n"
@@ -133,8 +133,6 @@ def _history_text_with_topics(messages: list[ModelMessage], threshold: float = 0
     with a [Topic N] header, making it clear to the summarizer that the history
     contains multiple distinct topics.
     """
-    from . import topic
-
     boundaries = topic.detect_topic_boundaries(messages, threshold=threshold)
     if len(boundaries) <= 1:
         # Only one topic, no need for markers

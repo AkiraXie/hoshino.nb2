@@ -13,6 +13,8 @@ from typing import Any
 
 from pydantic_ai.tools import DeferredToolRequests
 
+from hoshino.platform.target import load_target
+
 from .. import (
     context,
     harness,
@@ -73,8 +75,6 @@ def permission_to_json(permissions: PermissionSnapshot) -> str:
 
 def build_task_deps(ctx: TaskContext, config) -> AgentDeps:
     """构造 Task surface 的 AgentDeps。bot/event 恒为 None（后台运行）。"""
-    from hoshino.platform.target import load_target
-
     return AgentDeps(
         surface="task",
         scope_key=ctx.scope_key,

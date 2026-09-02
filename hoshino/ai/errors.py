@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import json
+
 _GROUP_NAMES = ("ExceptionGroup", "BaseExceptionGroup")
 _DEFAULT_LIMIT = 800
 
@@ -31,8 +33,6 @@ def _body_text(body) -> str | None:
     if isinstance(body, str):
         return body
     try:
-        import json
-
         return json.dumps(body, ensure_ascii=False)
     except Exception:
         return repr(body)

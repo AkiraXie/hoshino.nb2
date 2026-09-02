@@ -172,6 +172,7 @@ async def web_fetch(
         ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
     )
     if summarize and ctx.deps.config.web_fetch_summarize:
+        # 函数内 import：避免 web_fetch → compaction → providers → tools → web_fetch 循环。
         from ... import compaction
 
         original = await fetch_url_to_markdown(

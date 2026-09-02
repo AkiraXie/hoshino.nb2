@@ -21,7 +21,10 @@ from dataclasses import dataclass, field
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
 
+from hoshino.core.hooks import on_shutdown
+
 from . import context, store
+from .base import get_config
 
 DEFAULT_CONVERSATION_NAME = "默认"
 
@@ -130,8 +133,6 @@ class ConversationManager:
     # ------------------------------------------------------------------ 读
 
     def _limits(self) -> tuple[int, int]:
-        from .base import get_config
-
         config = get_config()
         return config.chat_memory_scopes, config.chat_memory_conversations
 
@@ -332,8 +333,6 @@ conversation_manager = ConversationManager()
 
 
 def _register_lifecycle() -> None:
-    from hoshino.core.hooks import on_shutdown
-
     @on_shutdown
     async def _flush_chat_contexts() -> None:
         conversation_manager.flush_all()

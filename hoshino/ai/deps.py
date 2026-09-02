@@ -14,13 +14,17 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.adapters import Bot, Event
 
+from hoshino.platform.event import get_user_id
+from hoshino.platform.superuser import is_superuser
+
 from . import metrics
 from .config import AIConfig
 
 if TYPE_CHECKING:
-    # Target 仅用于类型注解（from __future__ import annotations 下求值推迟）；
+    # Target 仅用于类型注解（from __future__ import annotations 下求值推迟）。
     # 运行时导入会经 tools→deps 链在 NoneBot 加载 alconna 插件前触发
     # "Module nonebot_plugin_alconna is not loaded as a plugin!"。
+    # construct_chat_deps 对 platform.target 的函数内 import 同因。
     from nonebot_plugin_alconna.uniseg import Target
 
 RuntimeSurface = Literal["chat", "task"]
@@ -79,15 +83,13 @@ class Telemetry:
 
 async def build_permission_snapshot(bot: Bot, event: Event) -> PermissionSnapshot:
     """从当前事件构造权限快照。uninfo 解析失败时退化为仅 SUPERUSER 判断。"""
-    from hoshino.platform.event import get_user_id
-    from hoshino.platform.superuser import is_superuser
-
     user_id = get_user_id(event)
     uid = str(user_id) if user_id is not None else None
     is_super = bool(uid is not None and is_superuser(bot, user_id))
     is_admin = is_super
     if uid is not None:
         # uninfo 会话解析是尽力而为：失败回退为非管理员判定（fail-safe），不阻塞。
+        # 函数内 import：uninfo 插件未加载时 ImportError 也走同一 fail-safe。
         with contextlib.suppress(Exception):
             from nonebot_plugin_uninfo import get_session
 
@@ -112,7 +114,8 @@ def construct_chat_deps(
     model: str,
 ) -> AgentDeps:
     """构造即时聊天 surface 的 AgentDeps。"""
-    from hoshino.platform import event_scope_key, target_from_event
+    # 函数内 import：platform.target 顶层依赖 alconna.uniseg，须在插件加载后。
+    from hoshino.platform.target import event_scope_key, target_from_event
 
     scope_key = event_scope_key(bot, event)
     return AgentDeps(

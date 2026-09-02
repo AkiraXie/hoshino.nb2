@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 
 from pydantic_ai import BinaryContent, RunContext
 
+from hoshino.util import playwrights
+
 from ... import provider
 from ...deps import AgentDeps
 from .net import is_private_host
@@ -79,8 +81,6 @@ async def _screenshot(url: str, *, proxy: str | None) -> bytes | str:
     ``proxy``：页面抓取代理（可选）。Chromium 上下文级代理仅在显式传入时生效，
     默认直连（Playwright 不读取系统代理）。
     """
-    from hoshino.util import playwrights
-
     try:
         browser = await asyncio.wait_for(playwrights.get_b(), timeout=20.0)
     except Exception as exc:

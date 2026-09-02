@@ -23,6 +23,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from . import store as ai_store
+
 try:
     from pydantic_ai_harness.planning import (
         InMemoryPlanStore,
@@ -59,8 +61,6 @@ def harness_available() -> bool:
 
 def _plan_db_path() -> str | None:
     """Task plan 与 task store 共用同一 SQLite 文件（跟随测试 monkeypatch 的 engine）。"""
-    from . import store as ai_store
-
     database = getattr(ai_store.engine.url, "database", None)
     return database if database else None
 

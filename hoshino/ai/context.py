@@ -20,6 +20,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
+from . import topic
 from .config import AIConfig
 
 
@@ -220,8 +221,6 @@ def prepare_history(
     """
     result = truncate_messages(messages, config.max_history_messages)
     if new_question and config.topic_shift_detection:
-        from . import topic
-
         result = topic.truncate_by_topic_shift(
             result,
             new_question,

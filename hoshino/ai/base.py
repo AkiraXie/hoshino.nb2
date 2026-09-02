@@ -3,10 +3,15 @@
 Service 不再在此定义：``aichat``（chat.py）与 ``ai_admin``（ai_admin.py，
 含 ai task 命令）各自持有。配置由 ``hoshino/ai/config.py`` 的挂载机制注入
 ``HoshinoConfig``（.env.prod），运行时默认 provider 可被 DB 覆盖
-（``ai provider default``）。本模块不 ``import nonebot``，不作为插件加载。
+（``ai provider default``）。本模块不作为插件加载；经 ``hoshino.core.config``
+读取已挂载的 ``AIConfig``（该路径会触及 nonebot 的配置基类）。
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
+
+from hoshino.core.config import config as hsn
 
 from . import store
 from .config import AIConfig
@@ -18,10 +23,6 @@ def get_config() -> AIConfig:
     ``default`` 优先取运行时 DB 覆盖（``ai provider default`` 写入），
     其次取 env 的 ``AI_DEFAULT_PROVIDER``。
     """
-    from dataclasses import replace
-
-    from hoshino.core.config import config as hsn
-
     base = hsn.ai
     default = store.get_global_value("default_provider") or base.default
     return base if default == base.default else replace(base, default=default)

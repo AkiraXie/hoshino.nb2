@@ -19,6 +19,8 @@ from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import TextLexer, get_lexer_by_name
 
+from hoshino.util.playwrights import get_b
+
 from .config import AIConfig
 
 _PYGMENTS_STYLE: dict[str, str] = {"light": "default", "dark": "monokai"}
@@ -245,10 +247,6 @@ def build_full_html(
 
 async def render_markdown(markdown_text: str, config: AIConfig) -> bytes:
     """渲染 Markdown 为 PNG bytes。依赖 Chromium，可能较慢。"""
-    # 惰性导入：hoshino.util.playwrights 顶层依赖 NoneBot 已初始化，
-    # 而本模块的纯函数需在无 NoneBot 环境（如纯函数测试）下可用。
-    from hoshino.util.playwrights import get_b
-
     html_body = markdown_to_html(markdown_text)
     html = build_full_html(
         html_body,

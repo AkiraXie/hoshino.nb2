@@ -23,7 +23,8 @@ from dataclasses import dataclass
 
 import httpx
 
-from . import store
+from . import provider, store
+from .base import resolve_provider
 from .config import AIConfig
 
 SEARCH_KINDS = ("deepseek", "tavily", "bocha")
@@ -52,9 +53,6 @@ def _chat_provider_key(scope_key: str | None, config: AIConfig) -> str:
 
     deepseek 搜索与聊天协议无关：只借 key，不借 url/model。
     """
-    from . import provider
-    from .base import resolve_provider
-
     # 优先统一 model 槽的 provider，再回退全局默认 provider 绑定。
     pid, _ = provider.resolve_model(scope_key)
     if not pid:

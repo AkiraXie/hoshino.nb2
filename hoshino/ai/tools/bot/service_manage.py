@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic_ai import RunContext
 
+from hoshino.core.service import Service
+
 from ...deps import AgentDeps
 
 ServiceAction = Literal["status", "enable", "disable"]
@@ -23,8 +25,6 @@ async def service_manage(
 
     仅作用于当前会话所在群/会话。
     """
-    from hoshino.core.service import Service
-
     sv = Service.get_loaded_services().get("aichat")
     if sv is None:
         return "aichat 服务未加载。"

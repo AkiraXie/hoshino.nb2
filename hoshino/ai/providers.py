@@ -222,6 +222,7 @@ async def _persona_variables(ctx: RunContext[AgentDeps]) -> dict[str, str]:
     if event is None:
         return variables
     try:
+        # 函数内 import：uninfo 未加载时走 except，保留空串不阻塞主流程。
         from nonebot_plugin_uninfo import get_session
 
         session = await get_session(bot=ctx.deps.bot, event=event)

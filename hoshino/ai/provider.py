@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 from hoshino.util.proxy import get_outside_proxy
 
 from . import store
@@ -127,8 +129,6 @@ async def fetch_available_models(
     anthropic 依次尝试 ``{url}/v1/models`` 与 ``{url}/models``（x-api-key）。
     网络/鉴权/端点不支持等任何失败返回 None，由调用方给出提示。
     """
-    import httpx
-
     if not record.url or not record.key:
         return None
     base = record.url.rstrip("/")
