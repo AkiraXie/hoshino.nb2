@@ -5,6 +5,8 @@ from pathlib import Path
 from nonebot.config import Config as BaseConfig
 from pydantic import Field
 
+from hoshino.ai.config import mount_into_hsnconfig
+
 
 class HoshinoConfig(BaseConfig):
     """Hoshino配置类"""
@@ -45,19 +47,7 @@ class HoshinoConfig(BaseConfig):
 
 
 def _mount_config_extensions(hsn_cls) -> None:
-    """触发各插件配置挂载（字段定义在各自模块，这里只调用，避免循环导入）。
-
-    当前挂载：``hoshino/ai/config.py`` 的 ``AIConfig`` → ``ai_*`` 字段
-    （env 名 ``AI_*``，写于 .env.prod / .env.prod.example）。
-    """
-    try:
-        from hoshino.ai.config import mount_into_hsnconfig
-    except ModuleNotFoundError as exc:
-        # 仅当目标模块（含其父包）本身缺失时视为可选扩展跳过挂载；
-        # 其它真实导入错误（如 ai 模块内部依赖缺失）不应被静默吞掉。
-        if exc.name in {"hoshino.ai", "hoshino.ai.config"}:
-            return
-        raise
+    """挂载 ``hoshino/ai/config.py`` 的 ``AIConfig`` → ``ai_*`` 字段（env ``AI_*``）。"""
     mount_into_hsnconfig(hsn_cls)
 
 

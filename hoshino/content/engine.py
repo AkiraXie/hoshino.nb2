@@ -4,14 +4,9 @@ import time
 from asyncio import Queue
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Protocol, Self, TypeVar
 
 from hoshino.types import MessageLike
-
-try:
-    from typing import Self
-except ImportError:
-    from typing import Self
 
 
 class Queueable(Protocol):

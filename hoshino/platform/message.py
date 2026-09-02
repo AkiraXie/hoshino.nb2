@@ -28,6 +28,8 @@ from hoshino.platform.ob11.message import video_segment as video_segment
 from hoshino.platform.ob11.types import Adapter as OB11Adapter
 from hoshino.platform.ob11.types import Message as OB11Message
 from hoshino.platform.ob11.types import MessageSegment as OB11MessageSegment
+from hoshino.platform.superuser import superuser_ids_for_bot
+from hoshino.platform.target import private_target
 from hoshino.platform.telegram.types import Adapter as TelegramAdapter
 from hoshino.platform.telegram.types import Bot as TelegramBot
 from hoshino.platform.telegram.types import Message as TelegramMessage
@@ -284,3 +286,10 @@ async def send_to_event_or_fallback(
         )
     except SerializeFailed:
         return await bot.send(event, message, **kwargs)
+
+
+async def send_to_superuser(bot: Bot, message: MessageLike = "") -> None:
+    """Send a private message to every superuser configured for ``bot``."""
+    for superuser in superuser_ids_for_bot(bot):
+        await asyncio.sleep(0.5)
+        await send_to_target(bot, private_target(superuser), message)

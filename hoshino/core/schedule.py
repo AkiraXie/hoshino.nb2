@@ -1,16 +1,25 @@
+import sys
 from collections.abc import Awaitable, Callable
 from functools import wraps
 from typing import Any
 
+import nonebot
 from apscheduler import job
 from loguru import logger
 
+# schedule 仅在插件加载后使用；未加载时 require，已导入则跳过。
+from nonebot.plugin import get_plugin
+
+if (
+    get_plugin("nonebot_plugin_apscheduler") is None
+    and "nonebot_plugin_apscheduler" not in sys.modules
+):
+    nonebot.require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler as _scheduler
+
 
 def _get_scheduler():
-    """惰性 import APScheduler，避免模块级 import 时要求 nonebot.init()。"""
-    from nonebot_plugin_apscheduler import scheduler
-
-    return scheduler
+    return _scheduler
 
 
 def wrapper(

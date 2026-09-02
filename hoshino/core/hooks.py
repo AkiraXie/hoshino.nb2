@@ -2,6 +2,10 @@
 
 bootstrap() 前收集回调，bootstrap() 时统一下发到真实 driver。
 使得 ``from hoshino.hooks import on_startup`` 在 nonebot.init() 前也能正常使用。
+
+``import nonebot`` / ``nonebot.message`` 在 init 前是安全的；不安全的是在 init
+前调用 ``get_driver()``。因此本模块顶层 import nonebot，仅在 ``_replayed`` 后
+才 ``get_driver()``。
 """
 
 from __future__ import annotations
@@ -10,7 +14,10 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
+import nonebot
 from loguru import logger
+from nonebot.message import event_preprocessor as _event_preprocessor
+from nonebot.message import run_preprocessor as _run_preprocessor
 
 # 持有后台任务强引用，防止 task 被 GC；done 回调中移除并记录异常。
 _background_tasks: set[asyncio.Task] = set()
@@ -49,9 +56,6 @@ class _Registry:
 
     def on_startup(self, func: Callable) -> Callable:
         if self._replayed:
-            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
-            import nonebot
-
             return nonebot.get_driver().on_startup(func)
         self._startup.append(func)
         return func
@@ -59,8 +63,6 @@ class _Registry:
     def on_serial_startup(self, func: Callable) -> Callable:
         """串行 startup 回调，按注册顺序依次执行，阻塞 server 启动。"""
         if self._replayed:
-            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
-            import nonebot
 
             async def _wrapper():
                 await func()
@@ -72,8 +74,6 @@ class _Registry:
     def on_post_startup(self, func: Callable) -> Callable:
         """Server 启动后执行的后台任务，不阻塞启动。"""
         if self._replayed:
-            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
-            import nonebot
 
             async def _wrapper():
                 spawn(func())
@@ -84,46 +84,31 @@ class _Registry:
 
     def on_shutdown(self, func: Callable) -> Callable:
         if self._replayed:
-            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
-            import nonebot
-
             return nonebot.get_driver().on_shutdown(func)
         self._shutdown.append(func)
         return func
 
     def on_bot_connect(self, func: Callable) -> Callable:
         if self._replayed:
-            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
-            import nonebot
-
             return nonebot.get_driver().on_bot_connect(func)
         self._bot_connect.append(func)
         return func
 
     def on_bot_disconnect(self, func: Callable) -> Callable:
         if self._replayed:
-            # Lazy import: hooks are registered before nonebot.init() during bootstrap.
-            import nonebot
-
             return nonebot.get_driver().on_bot_disconnect(func)
         self._bot_disconnect.append(func)
         return func
 
     def run_preprocessor(self, func: Callable) -> Callable:
         if self._replayed:
-            # Lazy import: nonebot.message is only safe after nonebot initialization.
-            from nonebot.message import run_preprocessor as _rp
-
-            return _rp(func)
+            return _run_preprocessor(func)
         self._preprocessors.append(func)
         return func
 
     def event_preprocessor(self, func: Callable) -> Callable:
         if self._replayed:
-            # Lazy import: nonebot.message is only safe after nonebot initialization.
-            from nonebot.message import event_preprocessor as _rp
-
-            return _rp(func)
+            return _event_preprocessor(func)
         self._event_preprocessors.append(func)
         return func
 
@@ -139,10 +124,6 @@ class _Registry:
             spawn(_run_post())
 
     def replay(self, driver) -> None:
-        # Lazy import: nonebot.message is only safe after nonebot initialization.
-        from nonebot.message import event_preprocessor as _ep
-        from nonebot.message import run_preprocessor as _rp
-
         if self._serial_startup or self._post_startup:
             driver.on_startup(self._run_serial_and_post)
         for fn in self._startup:
@@ -154,9 +135,9 @@ class _Registry:
         for fn in self._bot_disconnect:
             driver.on_bot_disconnect(fn)
         for fn in self._preprocessors:
-            _rp(fn)
+            _run_preprocessor(fn)
         for fn in self._event_preprocessors:
-            _ep(fn)
+            _event_preprocessor(fn)
 
         self._replayed = True
         self._startup.clear()

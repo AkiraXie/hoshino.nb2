@@ -37,7 +37,8 @@ from pydantic_ai.usage import UsageLimits
 
 from hoshino.ai import documents, prompts, provider, providers, runner
 from hoshino.ai.base import get_config
-from hoshino.ai.deps import AgentDeps, build_permission_snapshot, construct_chat_deps
+from hoshino.ai.deps import AgentDeps
+from hoshino.ai.deps_build import build_permission_snapshot, construct_chat_deps
 from hoshino.ai.tools.core import file_view as _file_view
 from hoshino.ai.tools.web import browser_use as _browser_use
 from hoshino.ai.tools.web import web_fetch as _web_fetch

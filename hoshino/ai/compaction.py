@@ -30,7 +30,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import ModelRequestParameters, ModelSettings
 
-from . import provider, providers, topic
+from . import models, provider, topic
 from .deps import AgentDeps
 
 _SUMMARY_PREFIX = "[Earlier context summary]\n"
@@ -219,7 +219,7 @@ async def summarize_text(
     if not selected_model:
         return None
 
-    model = providers.build_auxiliary_model(
+    model = models.build_auxiliary_model(
         record,
         selected_model,
         proxy=provider.resolve_effective_proxy(record, deps.config.proxy),
@@ -233,7 +233,7 @@ async def summarize_text(
     try:
         response = await model.request(
             [request],
-            providers.build_model_settings(record) or ModelSettings(),
+            models.build_model_settings(record) or ModelSettings(),
             ModelRequestParameters(),
         )
     except Exception as exc:

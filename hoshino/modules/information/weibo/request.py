@@ -7,8 +7,11 @@ from hoshino.platform import send_to_superuser
 from hoshino.util.command import sucmd
 from hoshino.util.cookies import save_cookies
 
+from .db import remove_subscriptions_by_uid, uid_has_any_subscription
+from .internal.post_runtime import set_parse_weibo_with_id
 from .internal.request_runtime import (
     WeiboRequestError,
+    configure_missing_target_handlers,
     get_weibo_list,
     get_weibo_new,
     get_weibocookies,
@@ -17,7 +20,16 @@ from .internal.request_runtime import (
     parse_weibo_with_id,
 )
 from .pw import get_weibo_cookies_from_local
+from .sub import uid_manager
 from .sv import sv
+
+# 解环：向 leaf runtime 注入解析/清理能力，避免函数内 import。
+set_parse_weibo_with_id(parse_weibo_with_id)
+configure_missing_target_handlers(
+    remove_subscriptions_by_uid=remove_subscriptions_by_uid,
+    uid_has_any_subscription=uid_has_any_subscription,
+    uid_manager=uid_manager,
+)
 
 wbck = sucmd("weibocookies", aliases={"wbck", "rfwb"})
 

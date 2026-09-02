@@ -13,7 +13,7 @@ import uuid
 
 from nonebot.adapters import Bot, Event
 
-from hoshino.ai import deps as ai_deps
+from hoshino.ai import deps_build as ai_deps
 from hoshino.ai import persona, provider, skills, tools
 from hoshino.ai import store as ai_store
 from hoshino.ai.base import get_config

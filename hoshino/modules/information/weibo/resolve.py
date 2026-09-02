@@ -16,6 +16,7 @@ from hoshino.platform import (
 
 from .fav import append_fav
 from .internal.post_runtime import get_cached_weibo_uid_id
+from .internal.request_runtime import parse_mapp_weibo, parse_weibo_with_id
 from .sv import sv
 
 weibo_regexs = {
@@ -78,9 +79,6 @@ async def handle_weibo_reaction(bot: Bot, state: T_State):
 
     else:
         try:
-            # Lazy import: request facade imports post runtime used by this resolver.
-            from .request import parse_mapp_weibo, parse_weibo_with_id
-
             if name == "weibo" or name == "mweibo":
                 _, _, post_id = matched.groups()
                 post = await parse_weibo_with_id(post_id)

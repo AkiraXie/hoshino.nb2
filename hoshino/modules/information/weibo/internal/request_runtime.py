@@ -594,6 +594,22 @@ class WeiboRequestRuntime:
         self.visitor_source = _VisitorSource(self.session, self.parser)
         self._missing_target_queue: asyncio.Queue[str] = asyncio.Queue()
         self._missing_target_set: set[str] = set()
+        # provider：由 request facade 注入，避免 request_runtime → sub/db 循环。
+        self._remove_subscriptions_by_uid = None
+        self._uid_has_any_subscription = None
+        self._uid_manager = None
+
+    def set_missing_target_handlers(
+        self,
+        *,
+        remove_subscriptions_by_uid,
+        uid_has_any_subscription,
+        uid_manager,
+    ) -> None:
+        """注册账号不存在时的订阅清理回调。"""
+        self._remove_subscriptions_by_uid = remove_subscriptions_by_uid
+        self._uid_has_any_subscription = uid_has_any_subscription
+        self._uid_manager = uid_manager
 
     async def get_weibocookies(self) -> dict:
         return await self.session.get_cookies()
@@ -658,9 +674,15 @@ class WeiboRequestRuntime:
                 self._missing_target_queue.task_done()
 
     async def process_missing_target(self, target: str) -> None:
-        # Lazy import: subscription runtime imports this request runtime for polling.
-        from ..db import remove_subscriptions_by_uid, uid_has_any_subscription
-        from ..sub import uid_manager
+        remove_subscriptions_by_uid = self._remove_subscriptions_by_uid
+        uid_has_any_subscription = self._uid_has_any_subscription
+        uid_manager = self._uid_manager
+        if (
+            remove_subscriptions_by_uid is None
+            or uid_has_any_subscription is None
+            or uid_manager is None
+        ):
+            raise RuntimeError("weibo missing-target handlers 未注入")
 
         confirmed = await self._confirm_missing_target(target)
         if not confirmed:
@@ -702,6 +724,20 @@ class WeiboRequestRuntime:
 
 
 _runtime = WeiboRequestRuntime()
+
+
+def configure_missing_target_handlers(
+    *,
+    remove_subscriptions_by_uid,
+    uid_has_any_subscription,
+    uid_manager,
+) -> None:
+    """由 request facade 注入订阅清理依赖。"""
+    _runtime.set_missing_target_handlers(
+        remove_subscriptions_by_uid=remove_subscriptions_by_uid,
+        uid_has_any_subscription=uid_has_any_subscription,
+        uid_manager=uid_manager,
+    )
 
 
 async def get_weibocookies() -> dict:

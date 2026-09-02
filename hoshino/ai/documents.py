@@ -11,22 +11,14 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import httpx
+from markdownify import markdownify
 from pydantic_ai import BinaryContent
+from pypdf import PdfReader
 
 from hoshino import data_dir
 from hoshino.ai import media
+from hoshino.ai.net import is_private_host
 from hoshino.ai.tools.computer.runtime import computer_workdir
-from hoshino.ai.tools.web.net import is_private_host
-
-try:
-    from markdownify import markdownify
-except ImportError:  # pragma: no cover - dependency is declared, but keep imports optional
-    markdownify = None
-
-try:
-    from pypdf import PdfReader
-except ImportError:  # pragma: no cover - dependency is declared
-    PdfReader = None
 
 MAX_FILE_BYTES = 15 * 1024 * 1024
 INLINE_MAX_CHARS = 24_000
@@ -177,8 +169,6 @@ def _decode_text(raw: bytes) -> str:
 
 
 def _read_pdf(path: Path) -> str:
-    if PdfReader is None:
-        raise RuntimeError("PDF 解析依赖未安装。")
     reader = PdfReader(str(path))
     return "\n\n".join(page.extract_text() or "" for page in reader.pages).strip()
 
@@ -199,7 +189,7 @@ def _read_path(path: Path, name: str, mimetype: str | None = None) -> ReadDocume
     else:
         text = _decode_text(raw)
         if suffix in _HTML_EXTENSIONS or guessed_type in {"text/html", "application/xhtml+xml"}:
-            text = markdownify(text) if markdownify is not None else text
+            text = markdownify(text)
     return ReadDocument(name=name, path=path, size=size, text=text.strip())
 
 

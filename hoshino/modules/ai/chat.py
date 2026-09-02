@@ -36,7 +36,6 @@ from pydantic_ai.usage import UsageLimits
 
 from hoshino.ai import (
     context,
-    deps,
     documents,
     errors,
     goal,
@@ -48,6 +47,7 @@ from hoshino.ai import (
     runner,
     sessions,
 )
+from hoshino.ai import deps_build as deps
 from hoshino.ai import (
     media as ai_media,
 )

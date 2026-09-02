@@ -39,6 +39,7 @@ from .message import (
     message_from_parts,
     send_to_event,
     send_to_event_or_fallback,
+    send_to_superuser,
     send_to_target,
     text_message,
     to_unimessage,
@@ -55,7 +56,6 @@ from .reaction import (
 from .superuser import (
     adapter_superuser_prefix,
     is_superuser,
-    send_to_superuser,
     superuser_ids_for_bot,
     superuser_key,
 )

@@ -3,28 +3,24 @@
 chat 与 task 两个 surface 共用同一 ``AgentDeps`` 定义；``bot``/``event`` 是可选运行时
 依赖（后台 Task 恢复时可能不可用）。只把每次 run
 真正变化的状态注入 deps，固定的 store/logger/factory 不注入（设计审查结论）。
+
+本模块只含类型与 Telemetry，不 ``require`` 插件——测试与 compaction/tools 可安全
+顶层 import。依赖 alconna/uninfo 的构造函数见 ``deps_build``。
 """
 
 from __future__ import annotations
 
-import contextlib
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from nonebot.adapters import Bot, Event
 
-from hoshino.platform.event import get_user_id
-from hoshino.platform.superuser import is_superuser
-
 from . import metrics
 from .config import AIConfig
 
 if TYPE_CHECKING:
-    # Target 仅用于类型注解（from __future__ import annotations 下求值推迟）。
-    # 运行时导入会经 tools→deps 链在 NoneBot 加载 alconna 插件前触发
-    # "Module nonebot_plugin_alconna is not loaded as a plugin!"。
-    # construct_chat_deps 对 platform.target 的函数内 import 同因。
+    # 唯一允许的延迟 import：类型专用（配合 from __future__ import annotations）。
     from nonebot_plugin_alconna.uniseg import Target
 
 RuntimeSurface = Literal["chat", "task"]
@@ -79,56 +75,3 @@ class Telemetry:
             latency_ms=(time.perf_counter() - self._start) * 1000,
             error=error,
         )
-
-
-async def build_permission_snapshot(bot: Bot, event: Event) -> PermissionSnapshot:
-    """从当前事件构造权限快照。uninfo 解析失败时退化为仅 SUPERUSER 判断。"""
-    user_id = get_user_id(event)
-    uid = str(user_id) if user_id is not None else None
-    is_super = bool(uid is not None and is_superuser(bot, user_id))
-    is_admin = is_super
-    if uid is not None:
-        # uninfo 会话解析是尽力而为：失败回退为非管理员判定（fail-safe），不阻塞。
-        # 函数内 import：uninfo 插件未加载时 ImportError 也走同一 fail-safe。
-        with contextlib.suppress(Exception):
-            from nonebot_plugin_uninfo import get_session
-
-            session = await get_session(bot=bot, event=event)
-            member = session.member if session is not None else None
-            if member is not None:
-                # 与 uninfo ADMIN() 语义一致：member.role 是 Role 对象，
-                # 需按 role.id 判定（"ADMINISTRATOR"/"OWNER"）。
-                role_ids = {role.id for role in member.roles or []}
-                if role_ids & {"ADMINISTRATOR", "OWNER"}:
-                    is_admin = True
-    return PermissionSnapshot(user_id=uid, is_superuser=is_super, is_admin=is_admin)
-
-
-def construct_chat_deps(
-    bot: Bot,
-    event: Event,
-    config: AIConfig,
-    permissions: PermissionSnapshot,
-    *,
-    provider_id: str,
-    model: str,
-) -> AgentDeps:
-    """构造即时聊天 surface 的 AgentDeps。"""
-    # 函数内 import：platform.target 顶层依赖 alconna.uniseg，须在插件加载后。
-    from hoshino.platform.target import event_scope_key, target_from_event
-
-    scope_key = event_scope_key(bot, event)
-    return AgentDeps(
-        surface="chat",
-        scope_key=scope_key,
-        target=target_from_event(bot, event),
-        config=config,
-        permissions=permissions,
-        bot=bot,
-        event=event,
-        telemetry=Telemetry(
-            provider_id=provider_id,
-            scope_key=scope_key or "",
-            model=model,
-        ),
-    )

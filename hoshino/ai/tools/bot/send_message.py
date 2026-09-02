@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pydantic_ai import RunContext
 
+from hoshino.platform.message import send_to_event
+
 from ...deps import AgentDeps
 
 _MAX_MESSAGE_CHARS = 2000
@@ -25,8 +27,5 @@ async def send_message(ctx: RunContext[AgentDeps], message: str) -> str:
         return f"消息过长（限 {_MAX_MESSAGE_CHARS} 字符）。"
     if ctx.deps.bot is None or ctx.deps.event is None:
         return "当前环境不支持发送消息。"
-    # 函数内 import：platform.message 顶层依赖 alconna/uninfo，tools 包可能在插件加载前被拉起。
-    from hoshino.platform.message import send_to_event
-
     await send_to_event(ctx.deps.bot, ctx.deps.event, message)
     return "消息已发送。"

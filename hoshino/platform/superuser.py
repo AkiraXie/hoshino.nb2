@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
 
 from nonebot.adapters import Bot
-
-if TYPE_CHECKING:
-    from .message import MessageLike
 
 
 def adapter_superuser_prefix(bot: Bot) -> str:
@@ -54,21 +49,9 @@ def superuser_ids_for_bot(
     return result
 
 
-async def send_to_superuser(bot: Bot, message: MessageLike = "") -> None:
-    """Send a private message to every superuser configured for ``bot``."""
-    # These facades depend on platform events, which import superuser helpers.
-    from .message import send_to_target
-    from .target import private_target
-
-    for superuser in superuser_ids_for_bot(bot):
-        await asyncio.sleep(0.5)
-        await send_to_target(bot, private_target(superuser), message)
-
-
 __all__ = [
     "adapter_superuser_prefix",
     "is_superuser",
-    "send_to_superuser",
     "superuser_ids_for_bot",
     "superuser_key",
 ]

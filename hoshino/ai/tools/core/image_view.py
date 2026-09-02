@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from pydantic_ai import BinaryContent, RunContext
 
-from hoshino.ai.tools.web.net import is_private_host
+from hoshino.ai.net import is_private_host
 
 from ... import media, provider
 from ...deps import AgentDeps

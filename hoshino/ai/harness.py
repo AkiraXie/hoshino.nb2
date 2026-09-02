@@ -23,39 +23,29 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from pydantic_ai_harness.planning import (
+    InMemoryPlanStore,
+    PlanStore,
+    SqlitePlanStore,
+)
+from pydantic_ai_harness.planning import (
+    Planning as _HarnessPlanning,
+)
+from pydantic_ai_harness.skills import Skills as _HarnessSkills
+from pydantic_ai_harness.step_persistence import (
+    InMemoryStepStore,
+)
+from pydantic_ai_harness.step_persistence import (
+    StepPersistence as _HarnessStepPersistence,
+)
+
 from . import store as ai_store
 
-try:
-    from pydantic_ai_harness.planning import (
-        InMemoryPlanStore,
-        PlanStore,
-        SqlitePlanStore,
-    )
-    from pydantic_ai_harness.planning import (
-        Planning as _HarnessPlanning,
-    )
-    from pydantic_ai_harness.skills import Skills as _HarnessSkills
-    from pydantic_ai_harness.step_persistence import (
-        InMemoryStepStore,
-    )
-    from pydantic_ai_harness.step_persistence import (
-        StepPersistence as _HarnessStepPersistence,
-    )
-
-    _HARNESS_AVAILABLE = True
-except ImportError:  # pragma: no cover - 降级路径，按 __all__ 之外不可达
-    InMemoryPlanStore = None  # type: ignore[assignment,misc]
-    PlanStore = None  # type: ignore[assignment,misc]
-    SqlitePlanStore = None  # type: ignore[assignment,misc]
-    InMemoryStepStore = None  # type: ignore[assignment,misc]
-    _HarnessPlanning = None  # type: ignore[assignment]
-    _HarnessStepPersistence = None  # type: ignore[assignment]
-    _HarnessSkills = None  # type: ignore[assignment]
-    _HARNESS_AVAILABLE = False
+_HARNESS_AVAILABLE = True
 
 
 def harness_available() -> bool:
-    """harness 是否可用（版本满足且可 import）。"""
+    """harness 是否可用（声明依赖已安装则为 True）。"""
     return _HARNESS_AVAILABLE
 
 

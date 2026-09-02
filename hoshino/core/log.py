@@ -1,6 +1,9 @@
 import os
 import sys
 
+# twscrape mutates the process-global Loguru logger on import; load it before
+# Hoshino sinks so the opt-in X plugin cannot strip NoneBot handlers later.
+import twscrape as _twscrape  # noqa: F401
 from nonebot.log import default_format, logger
 
 from hoshino.core.config import config
@@ -35,13 +38,6 @@ class Filter:
 _configured = False
 
 
-def _prime_logger_mutating_dependencies() -> None:
-    # twscrape configures the process-global Loguru logger during import.  Load
-    # it before installing Hoshino's sinks so loading the opt-in X plugin later
-    # cannot remove NoneBot's log format or file handlers.
-    import twscrape  # noqa: F401
-
-
 def configure() -> None:
     """配置 loguru handlers。由 bootstrap() 调用。"""
     global _configured
@@ -49,7 +45,6 @@ def configure() -> None:
         return
     _configured = True
 
-    _prime_logger_mutating_dependencies()
     log_root = "logs/"
     log_info_root = "logs/info/"
     log_error_root = "logs/error/"

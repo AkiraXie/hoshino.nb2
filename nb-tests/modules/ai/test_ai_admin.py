@@ -507,7 +507,7 @@ async def test_permission_snapshot_admin_roles(monkeypatch, tmp_store):
     """build_permission_snapshot 按 uninfo role.id 识别 admin/owner，member 否。"""
     from nonebot import get_driver
 
-    from hoshino.ai import deps as ai_deps
+    from hoshino.ai import deps_build as ai_deps
 
     monkeypatch.setattr(get_driver().config, "superusers", set())
 

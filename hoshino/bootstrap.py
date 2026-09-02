@@ -4,6 +4,7 @@ import nonebot
 
 from hoshino.core import hooks
 from hoshino.core.config import config as _config
+from hoshino.core.log import configure as _log_configure
 from hoshino.platform.ob11.bootstrap import apply_patches
 from hoshino.platform.ob11.events import GroupMsgEmojiLikeEvent, GroupReactionEvent
 from hoshino.platform.ob11.types import Adapter as OB11Adapter
@@ -31,9 +32,6 @@ def bootstrap() -> None:
         apply_telegram_patches()
 
     # 4. 配置日志
-    # Lazy import: hoshino.log imports hoshino.service state used by bootstrap patches.
-    from hoshino.core.log import configure as _log_configure
-
     _log_configure()
 
     # 5. 下发所有延迟 hook 到真实 driver

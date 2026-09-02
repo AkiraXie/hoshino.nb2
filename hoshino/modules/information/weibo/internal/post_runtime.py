@@ -1,7 +1,7 @@
 import asyncio
 import json
 import shutil
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import batched
@@ -30,6 +30,16 @@ from ..sv import sv
 
 if TYPE_CHECKING:
     from ..post import WeiboPost
+
+# provider：由 request facade 注入，避免 post_runtime ↔ request_runtime 循环。
+_ParseWeiboWithId = Callable[[str], Awaitable["WeiboPost | None"]]
+_parse_weibo_with_id: _ParseWeiboWithId | None = None
+
+
+def set_parse_weibo_with_id(fn: _ParseWeiboWithId) -> None:
+    """注册微博详情解析函数（request 包加载时注入）。"""
+    global _parse_weibo_with_id
+    _parse_weibo_with_id = fn
 
 
 weibo_img_dir = config.data_dir / "weiboimages"
@@ -309,10 +319,9 @@ class _PostArchiveStore:
 
     async def _refetch(self, uid: str, post_id: str) -> PostMessage | None:
         sv.logger.warning(f"weibo post not found in cache, refetching: uid={uid} post_id={post_id}")
-        # Lazy import: request facade imports this runtime through post/WeiboPost.
-        from ..request import parse_weibo_with_id
-
-        post = await parse_weibo_with_id(post_id)
+        if _parse_weibo_with_id is None:
+            raise RuntimeError("weibo parse_weibo_with_id provider 未注入")
+        post = await _parse_weibo_with_id(post_id)
         if not post:
             return None
         return await post.get_message()

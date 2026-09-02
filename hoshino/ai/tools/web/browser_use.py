@@ -16,11 +16,11 @@ from urllib.parse import urlparse
 
 from pydantic_ai import BinaryContent, RunContext
 
+from hoshino.ai.net import is_private_host
 from hoshino.util import playwrights
 
 from ... import provider
 from ...deps import AgentDeps
-from .net import is_private_host
 
 _ALLOWED_SCHEMES = ("http", "https")
 _MAX_SHOT_BYTES = 15 * 1024 * 1024

@@ -19,6 +19,8 @@ from PIL import Image as PILImage
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import TextContent
 
+from hoshino.ai.net import is_private_host
+
 _MAX_BYTES = 15 * 1024 * 1024
 _COMPRESS_THRESHOLD = 10 * 1024 * 1024
 _COMPRESS_MAX = 10 * 1024 * 1024
@@ -122,9 +124,6 @@ async def fetch_image_url(
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return "仅支持 http/https 图片 URL。"
-
-    # 函数内 import：避免 media → tools.web.net → tools.__init__ → image_view → media 循环。
-    from hoshino.ai.tools.web.net import is_private_host
 
     if await is_private_host(parsed.hostname):
         return "拒绝访问私有/内网地址。"

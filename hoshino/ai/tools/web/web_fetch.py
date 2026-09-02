@@ -17,16 +17,13 @@ import json
 from urllib.parse import urlparse
 
 import httpx
+from markdownify import markdownify as _to_markdown
 from pydantic_ai import RunContext
 
-from ... import provider
-from ...deps import AgentDeps
-from .net import is_private_host
+from hoshino.ai.net import is_private_host
 
-try:
-    from markdownify import markdownify as _to_markdown
-except ImportError:  # markdownify 未安装 → 工具不注入
-    _to_markdown = None
+from ... import compaction, provider
+from ...deps import AgentDeps
 
 _MAX_CHARS = 24_000
 # 摘要分支抓取原文的上限（须高于 web_fetch_max_chars，摘要才只在超长时触发）。
@@ -84,7 +81,7 @@ async def fetch_url_to_markdown(
     if content_type in ("text/markdown", "text/x-markdown"):
         content = text
     elif content_type in ("", "text/html", "application/xhtml+xml"):
-        content = _to_markdown(text) if _to_markdown is not None else text
+        content = _to_markdown(text)
     else:
         content = text
 
@@ -172,9 +169,6 @@ async def web_fetch(
         ctx.deps.config.proxy, tool_use_proxy=ctx.deps.config.tool_use_proxy
     )
     if summarize and ctx.deps.config.web_fetch_summarize:
-        # 函数内 import：避免 web_fetch → compaction → providers → tools → web_fetch 循环。
-        from ... import compaction
-
         original = await fetch_url_to_markdown(
             url,
             verify_ssl=verify_ssl,
@@ -195,5 +189,4 @@ async def web_fetch(
     )
 
 
-# markdownify 缺失时置 None：注册表据此跳过注入（与其它可选依赖工具一致）。
-tool = web_fetch if _to_markdown is not None else None
+tool = web_fetch
