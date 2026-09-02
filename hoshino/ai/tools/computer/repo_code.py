@@ -64,8 +64,9 @@ _NORMS = """【开发规范（AGENTS.md 要点）】
 - 结论必须有 lint/测试/构建/运行探针等客观证据；说明未执行或未通过的检查
 - 不执行生产操作、不用真实机器人凭据或生产群聊测试、不提交 .env.prod 中的秘密
 - 除非用户明确要求，不主动提交/推送 Git
-- plan/调查报告/执行报告统一落 agent-plan-report/（已 gitignore；禁写 token/秘密，
-  只记脱敏后的键名、数量、路径、命令结果与验证结论）
+- 默认不信任 agent-plan-report/ 旧稿（含 archived/）；流程规范只信 AGENTS.md 与
+  agent-flow/。调研/规划/报告由当前任务自行产出，需要落盘时仍写 agent-plan-report/
+  （gitignore；禁写 token/秘密，只记脱敏键名、数量、路径、命令结果与验证结论）
 
 Python 风格（§7）：3.12 兼容；import 分组置顶；函数内 import 仅限循环依赖/可选依赖；
 异步 I/O 不用阻塞调用；资源用 with 管理；捕获 Exception 不捕 BaseException；
@@ -78,9 +79,10 @@ Python 风格（§7）：3.12 兼容；import 分组置顶；函数内 import �
 改动再跑 uv run pytest nb-tests -q；前端改动跑前端 build。"""
 
 _FLOW = """【agent 工作流程】
-协作约定：Agent 的 plan / 调查报告 / 执行报告统一放 agent-plan-report/（gitignore，
-禁写 secrets，只记录脱敏后的键名/路径/命令结果/验证结论）。plan 阶段不改业务代码，
-用户确认后再执行，并在同一目录补执行结果与未覆盖风险。
+协作约定：默认不信任 agent-plan-report/ 旧稿（含 archived/）。流程规范只信 AGENTS.md
+与 agent-flow/；调研/规划/报告由当前任务自行产出。需要落盘时仍写 agent-plan-report/
+（gitignore，禁写 secrets，只记脱敏键名/路径/命令结果/验证结论）。plan 阶段不改业务
+代码，用户确认后再执行，并在同一目录补执行结果与未覆盖风险。
 
 专题文档（agent-flow/）：
 - architecture.md：分层与 adapter 隔离边界

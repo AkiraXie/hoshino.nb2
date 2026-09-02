@@ -17,11 +17,14 @@
 
 协作计划与报告：
 
-- plan/调查/执行报告统一落 `agent-plan-report/`（已 gitignore，不写 token/cookie/密码，
-  只记脱敏键名、数量、路径、命令结果、验证结论）；plan 阶段不改业务代码，用户确认后执行。
-- 专题文档在 `agent-flow/`（architecture / ai / ai-tools / milky / telegram /
-  milky-plugin-test-protocol）与 `docs/plugin-development.md`；与代码冲突时以代码和测试
-  为准，并在任务范围内更新过时文档。
+- **默认不信任 `agent-plan-report/` 里已有内容**（含 `archived/`）。那里是某次会话的草稿，
+  会过时、会和代码冲突。流程规范只信本文件与 `agent-flow/`（architecture / ai / ai-tools /
+  milky / telegram / milky-plugin-test-protocol）以及 `docs/plugin-development.md`；
+  与代码冲突时以代码和测试为准，并在任务范围内更新过时的 `agent-flow`/本文件。
+- 调研、规划、执行报告由**当前任务的 agent 自己产出**，不靠翻旧报告续摊。需要落盘时仍写
+  `agent-plan-report/`（已 gitignore；不写 token/cookie/密码，只记脱敏键名、数量、路径、
+  命令结果、验证结论）。plan 阶段不改业务代码，用户确认后执行。过时稿归档到
+  `agent-plan-report/archived/`，归档件同样不可作为后续依据。
 
 ## 1.5 提交、分支与工作区策略
 
