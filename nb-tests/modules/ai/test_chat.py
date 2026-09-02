@@ -299,11 +299,6 @@ async def test_chat_hash_strips_prefix_and_sends_image(monkeypatch, tmp_store):
     _stub_config(monkeypatch, tmp_store)
     agent = FakeAgent(FakeResult("**你好**"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
-
-    async def fake_render(md, cfg):
-        return b"FAKEPNG"
-
-    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
     sent = _stub_send(monkeypatch)
 
@@ -490,17 +485,12 @@ async def test_chat_uses_default_provider(monkeypatch, tmp_store):
 
 
 def _chat_env(monkeypatch, tmp_store, **config_overrides):
-    """聊天行为测试公共 stub：config/provider/render/service/send。"""
+    """聊天行为测试公共 stub：config/provider/service/send。"""
     from hoshino.modules.ai import chat
 
     _stub_config(monkeypatch, tmp_store, **config_overrides)
     agent = FakeAgent(FakeResult("回答"))
     monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
-
-    async def fake_render(md, cfg):
-        return b"FAKEPNG"
-
-    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
     sent = _stub_send(monkeypatch)
     return agent, sent

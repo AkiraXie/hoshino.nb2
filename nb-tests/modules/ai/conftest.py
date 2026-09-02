@@ -20,6 +20,20 @@ def _fresh_conversation_manager(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _stub_render_markdown(monkeypatch):
+    """默认 stub Markdown 渲染，避免 Playwright 跨 function loop 失效拖到 30s。
+
+    需要验证渲染失败回退的用例可再 monkeypatch 覆盖本 stub。
+    """
+    from hoshino.ai import rendering
+
+    async def fake_render(md, cfg):
+        return b"FAKEPNG"
+
+    monkeypatch.setattr(rendering, "render_markdown", fake_render)
+
+
+@pytest.fixture(autouse=True)
 def _auto_clear_uninfo_cache(_clear_uninfo_cache):
     """自动清空 uninfo 缓存：AI 测试复用同一（群、用户）组合做不同 role 断言。
 

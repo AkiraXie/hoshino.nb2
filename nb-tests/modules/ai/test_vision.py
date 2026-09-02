@@ -94,15 +94,10 @@ def _stub_env(monkeypatch, tmp_store, *, render_error: bool = False):
 
     if render_error:
 
-        async def fake_render(md, cfg):
+        async def broken_render(md, cfg):
             raise RuntimeError("render boom")
 
-    else:
-
-        async def fake_render(md, cfg):
-            return b"FAKEPNG"
-
-    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
+        monkeypatch.setattr(chat.rendering, "render_markdown", broken_render)
 
     sent: list = []
 

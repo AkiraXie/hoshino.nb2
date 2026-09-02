@@ -103,11 +103,6 @@ async def test_chat_full_http_roundtrip(fake_ai_server, monkeypatch, tmp_store):
 
     monkeypatch.setattr(chat, "get_config", lambda: _seed_openai(tmp_store, base_url))
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
-
-    async def fake_render(md, cfg):
-        return b"FAKEPNG"
-
-    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
     sent = _stub_send(monkeypatch)
 
     bot, event = _milky_group("#你好", user_id=7)
@@ -184,11 +179,6 @@ async def test_chat_http_empty_function_call_placeholder_succeeds(
 
     monkeypatch.setattr(chat, "get_config", lambda: _seed_openai(tmp_store, base_url))
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
-
-    async def fake_render(md, cfg):
-        return b"FAKEPNG"
-
-    monkeypatch.setattr(chat.rendering, "render_markdown", fake_render)
     sent = _stub_send(monkeypatch)
 
     bot, event = _milky_group("#你好", user_id=7)
