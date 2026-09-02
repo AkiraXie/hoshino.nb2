@@ -64,6 +64,9 @@ line-length = 100
 src = ["hoshino", "image_web", "nb-tests", "run.py"]
 
 [tool.ruff.lint]
+# preview：仅为启用 PLC0415（import-outside-toplevel）。与 AGENTS.md §7 一致。
+# 其它 preview 规则暂 ignore，避免一次打开整批噪音；需要时再逐条解禁。
+preview = true
 select = [
     "E4", "E7", "E9", "F",   # pyflakes / 核心 pycodestyle
     "I",                     # isort
@@ -79,7 +82,7 @@ select = [
     "TRY",                   # tryceratops
     "PIE",                   # flake8-pie
     "FLY",                   # flynt
-    "PLC", "PLW",            # pylint 子集
+    "PLC", "PLW",            # pylint 子集（含 preview PLC0415）
     "SLF",                   # flake8-self（私有成员访问）
     "S",                     # flake8-bandit
     "DTZ",                   # flake8-datetimez
@@ -117,6 +120,11 @@ ignore = [
     # 项目惯例是在 raise 处直接携带上下文明确的中文消息，为每条消息定义异常类
     # 会造成大量近空类，收益不成比例。
     "TRY003",
+    # preview 闸门副作用：本仓库只想强制 PLC0415，下列 preview 规则尚未纳入风格闸。
+    "RUF029", "RUF031", "RUF052", "RUF056", "RUF059",
+    "UP046",
+    "PLW0108",
+    "PLC1901", "PLC0207",
 ]
 
 [tool.ruff.lint.per-file-ignores]

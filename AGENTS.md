@@ -226,12 +226,19 @@ Telegram 无法枚举所有聊天，依赖全群列表的功能必须明确降�
 通用规范（Ruff、Google 风格、Pythonic 惯用法）见仓库 `.claude/skills/` 下的
 python-guidelines / piglet / friendly-python；本仓库额外约定：
 
-- 保持 Python 3.12 兼容；import 按 stdlib / third-party / local 分组置顶。**默认禁止函数内
-  import**：写代码时先置顶，不要“预防性 lazy”。仅当满足下列之一且**必须在 import 旁用
-  一行注释写明原因**时才允许：① 已验证的循环依赖（用 import 图说明边）；② 可选依赖
-  （`try/except ImportError` 或缺失时明确降级）；③ 插件加载时序约束（如 alconna/uninfo
-  未加载前不可 import）；④ 确实昂贵且该路径很少走到的初始化。禁止用“可能慢/可能循环/
-  看起来更干净”当理由。审查/改 AI 模块时主动扫一遍函数内 import 并清掉不合规项。
+- 保持 Python 3.12 兼容；import 按 stdlib / third-party / local 分组**强制置顶**。
+- **禁止函数内 / 类体内 import（硬约束）**：Ruff `PLC0415`（preview）强制；不要用 lazy
+  import 绕过结构问题。遇到障碍时按下面顺序**先解问题**，而不是 bypass：
+  1. **循环依赖**：优先调整文件/包边界（下沉共享符号到无环模块、拆 facade、反向依赖
+     改回调/协议）。禁止用函数内 import「先跑起来」。
+  2. **可选依赖**：用 **resolve / provider** 在模块边界解析能力（例如模块级
+     `resolve_xxx()` 返回可调用对象或 `None`，或注册表注入），调用方只依赖稳定接口；
+     不要在业务函数里 `import`。已写入 `pyproject.toml` 的依赖直接顶层 import，不要假装可选。
+  3. **插件加载时序**（alconna / uninfo / apscheduler 等）：在 import 插件符号之前用
+     `nonebot.require("nonebot_plugin_…")` 约束加载；不要把 `from nonebot_plugin_…`
+     藏进函数。`require` 放在模块顶部（或该模块内、首次使用插件符号之前的顶层语句）。
+  4. **唯一允许的延迟 import**：`if TYPE_CHECKING:` 块里的类型专用 import（配合
+     `from __future__ import annotations`）。这是真例外；其余情况一律不鼓励 lazy。
 - 优先小函数和明确数据流；仅在维护状态或匹配既有抽象时新增类。
 - 异步 I/O 不用阻塞调用；共享 HTTP client 在 hook 中初始化和关闭；资源用 `with` 管理；
   捕获 `Exception` 不捕获 `BaseException`；不写吞错的裸 `except`，日志带操作上下文但
