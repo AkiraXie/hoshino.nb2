@@ -37,8 +37,6 @@ def _split_question_and_answer(message: UniMessage) -> tuple[str, UniMessage] | 
     for segment in message:
         if not found_separator and segment.type == "text":
             question, separator, remaining = segment.text.partition("你答")
-            if not separator:
-                question, separator, remaining = segment.text.partition("答")
             question_parts.append(question)
             if separator:
                 found_separator = True
@@ -156,7 +154,7 @@ async def _(msg: tuple[str, str] = set_qa_dep, gid: int = GroupID(), uid: int = 
             obj = Question(question=question, answer=answer, group=gid, user=uid)
             session.add(obj)
         session.commit()
-    await person_ques.finish(f"好的我记住{question}了")
+    await person_ques.finish(f"好的我记住'{question}'了")
 
 
 @del_gqa.handle()
