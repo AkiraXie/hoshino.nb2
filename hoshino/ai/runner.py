@@ -386,7 +386,7 @@ async def run_agent(
             if not spill_done:
                 spill_done = await _spill_oversized_tool_results(history, config)
             # 2. 上下文软压缩（远程接口预留，当前本地摘要兜底）。
-            if not compacted and getattr(config, "compaction_threshold_chars", 0) > 0:
+            if not compacted and getattr(config, "compaction_window_tokens", 0) > 0:
                 compacted_history = await compaction.compact_history(
                     deps,
                     list(history),
@@ -534,8 +534,15 @@ async def run_agent_with_retry(
     且本次 turn 尚无工具调用（无副作用，重进 ``agent.iter`` 不会重放工具执行）、
     且未达上限。重试前按指数退避 + 抖动等待（``retry_backoff_*`` 配置）。
     护栏异常（``TimeoutError``/``UsageLimitExceeded``）不重试，直接抛出。
+
+    **上下文溢出恢复**：当 provider 报告请求超过模型上下文窗口
+    （``compaction.is_context_overflow``），且尚无工具副作用时，用
+    ``compaction.compact_history(force=True)`` 强制压缩消息历史后重试
+    （``compaction_overflow_retries`` 次，对齐 dsh 的 context-overflow 恢复）。
     """
     attempt = 0
+    overflow_attempts = 0
+    overflow_retries = int(getattr(deps.config, "compaction_overflow_retries", 1) or 0)
     while True:
         try:
             return await run_agent(
@@ -554,6 +561,31 @@ async def run_agent_with_retry(
         except (TimeoutError, UsageLimitExceeded):
             raise
         except Exception as exc:
+            no_side_effects = run_log is None or not run_log.tool_calls
+            # 上下文溢出：强制压缩历史后重试（对齐 dsh context-overflow）。
+            if compaction.is_context_overflow(exc):
+                if (
+                    no_side_effects
+                    and overflow_attempts < overflow_retries
+                    and message_history is not None
+                ):
+                    overflow_attempts += 1
+                    compacted = await compaction.compact_history(
+                        deps,
+                        list(message_history),
+                        model=getattr(agent, "model", None),
+                        force=True,
+                    )
+                    if compacted is not None and len(compacted) < len(message_history):
+                        logger.warning(
+                            "AI run context overflow; compacted history scope={} messages={}→{}",
+                            deps.scope_key,
+                            len(message_history),
+                            len(compacted),
+                        )
+                        message_history = compacted
+                        continue
+                raise
             attempt += 1
             ctx = hooks.RequestErrorContext(
                 exc=exc,
@@ -564,7 +596,6 @@ async def run_agent_with_retry(
                 deps=deps,
             )
             decision = hooks.run_request_error_hooks(ctx)
-            no_side_effects = run_log is None or not run_log.tool_calls
             # 流式空输出（如网关对 stream=true 返回空流）视为可重试的瞬态失败。
             empty_output = isinstance(exc, UnexpectedModelBehavior) and (
                 "without content or tool calls" in str(exc)

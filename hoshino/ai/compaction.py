@@ -3,20 +3,24 @@
 只影响单次 Agent run 的内存历史；调用方仍持久化原始事件日志，压缩不丢可审计
 数据。
 
-压缩策略（触发 → 远程 → 本地 → 复核）：
-1. 估算历史 token，超过 ``compaction_threshold_chars × compaction_threshold_ratio``
-   时触发；
+压缩策略（触发 → 远程 → 本地 → 复核；对齐 dsh compaction 语义）：
+1. 估算历史 token，超过 ``compaction_window_tokens × compaction_threshold_ratio``
+   （默认 82%）时触发；``compact_history(force=True)`` 用于模型返回“超过窗口”错误
+   时的强制压缩（绕过常规阈值）；
 2. 远程压缩（预留接口 ``try_remote_compact``，当前恒返回 None 由本地兜底）：
    provider 原生 compact（如 OpenAI Responses ``/responses/compact``）不可用或失败时
    回退本地；
-3. 本地压缩：窗口外历史由轻量模型生成摘要，以独立的 user/assistant 消息对注入
-   到保留轮之前（与 AstrBot LLMSummaryCompressor 同模式，避免单条消息内多个
-   UserPromptPart 的兼容风险）；
+3. 本地压缩：窗口外历史由轻量模型生成摘要（上限 ``compaction_summary_max_tokens``
+   token），以独立的 user/assistant 消息对注入到保留 tail 之前；保留 tail 按
+   ``window × compaction_retain_ratio``（默认 10%）的 token 预算逐字保留、不切半轮
+   （与 AstrBot LLMSummaryCompressor 同模式，避免单条消息内多个 UserPromptPart 的
+   兼容风险）；
 4. 复核：压缩后重新估算，仍超阈值时按轮折半截断兜底。
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from loguru import logger
@@ -87,13 +91,28 @@ def _estimate_text(text: str) -> int:
     return int(cjk * _CJK_TOKEN_PER_CHAR + (len(text) - cjk) * _OTHER_TOKEN_PER_CHAR)
 
 
+def _compaction_window(config) -> int:
+    """估算上下文窗口（token 计数）；0 或负表示关闭压缩。"""
+    window = getattr(config, "compaction_window_tokens", 0) or 0
+    return int(window) if window > 0 else 0
+
+
 def _compaction_threshold(config) -> int:
-    """压缩触发的估算 token 阈值（0 或负表示关闭）。"""
-    limit = getattr(config, "compaction_threshold_chars", 0) or 0
-    if limit <= 0:
+    """压缩触发的估算 token 阈值（0 或负表示关闭）：window × threshold_ratio。"""
+    window = _compaction_window(config)
+    if window <= 0:
         return 0
     ratio = getattr(config, "compaction_threshold_ratio", 0.82) or 0.82
-    return max(1, int(limit * min(max(ratio, 0.0), 1.0)))
+    return max(1, int(window * min(max(ratio, 0.0), 1.0)))
+
+
+def _compaction_retain_tokens(config) -> int:
+    """逐字保留的上下文 token 预算：window × retain_ratio。"""
+    window = _compaction_window(config)
+    if window <= 0:
+        return 0
+    ratio = getattr(config, "compaction_retain_ratio", 0.10) or 0.10
+    return max(1, int(window * min(max(ratio, 0.0), 1.0)))
 
 
 def message_text_chars(messages: list[ModelMessage]) -> int:
@@ -148,17 +167,6 @@ def _history_text_with_topics(messages: list[ModelMessage], threshold: float = 0
     return "\n".join(result_lines)
 
 
-def _first_user_request(messages: list[ModelMessage], start: int) -> int | None:
-    """Find a safe retained-round boundary at or after ``start``."""
-    for index in range(start, len(messages)):
-        message = messages[index]
-        if isinstance(message, ModelRequest) and any(
-            isinstance(part, UserPromptPart) for part in message.parts
-        ):
-            return index
-    return None
-
-
 def _user_round_starts(messages: list[ModelMessage]) -> list[int]:
     """所有 user 轮起始下标（用于折半截断按轮对齐）。"""
     return [
@@ -167,6 +175,36 @@ def _user_round_starts(messages: list[ModelMessage]) -> list[int]:
         if isinstance(message, ModelRequest)
         and any(isinstance(part, UserPromptPart) for part in message.parts)
     ]
+
+
+def _retained_tail_start(messages: list[ModelMessage], retain_tokens: int) -> int:
+    """逐字保留尾部的最早消息下标（按 token 预算、不切半轮）。
+
+    从最新消息向前累加估算 token，直到超出 ``retain_tokens``；再把起点对齐到
+    最近的「整轮」边界，避免出现与 tool call 脱节的孤儿消息。返回 0 表示整段
+    历史都在保留预算内（无可压缩）、或单个超大单元无法安全切分。
+    """
+    if retain_tokens <= 0 or not messages:
+        return 0
+    tokens = 0
+    index = len(messages)
+    while index > 0:
+        delta = estimate_tokens([messages[index - 1]])
+        if tokens + delta > retain_tokens:
+            break
+        tokens += delta
+        index -= 1
+    if index == len(messages) and tokens == 0:
+        # 连最新一条消息都超出保留预算 → 仍保留最新一整轮（不可切分单元）。
+        starts = _user_round_starts(messages)
+        index = starts[-1] if starts else len(messages) - 1
+    # 对齐到 index 之前最近的轮边界（整轮保留，宁可略超预算也不切半轮）。
+    boundary = 0
+    for start in _user_round_starts(messages):
+        if start > index:
+            break
+        boundary = start
+    return boundary
 
 
 def truncate_by_halving(messages: list[ModelMessage]) -> list[ModelMessage]:
@@ -206,7 +244,8 @@ async def summarize_text(
     text: str,
     *,
     instructions: str = _SUMMARY_INSTRUCTIONS,
-    max_chars: int = 2_000,
+    max_chars: int = 12_000,
+    max_tokens: int = 2048,
     model_name: str = "",
 ) -> str | None:
     """Use the current provider for a bounded, best-effort auxiliary summary."""
@@ -230,10 +269,13 @@ async def summarize_text(
             UserPromptPart(content=text),
         ]
     )
+    settings = models.build_model_settings(record) or {}
+    if max_tokens > 0:
+        settings = dict(**settings, max_tokens=max_tokens)
     try:
         response = await model.request(
             [request],
-            models.build_model_settings(record) or ModelSettings(),
+            ModelSettings(**settings),
             ModelRequestParameters(),
         )
     except Exception as exc:
@@ -252,10 +294,14 @@ async def _local_summary_compact(
     deps: AgentDeps,
     messages: list[ModelMessage],
 ) -> list[ModelMessage] | None:
-    """窗口外历史生成摘要，以 user/assistant 消息对注入保留轮之前。"""
-    window_size = max(1, getattr(deps.config, "compaction_window_size", 4))
-    boundary = _first_user_request(messages, max(0, len(messages) - window_size))
-    if boundary is None or boundary == 0:
+    """窗口外历史生成摘要，以 user/assistant 消息对注入保留 tail 之前。
+
+    保留 tail 按 ``window × retain_ratio`` 的 token 预算逐字保留、按整轮对齐，
+    不切半轮；窗口外历史交给本地模型摘要。
+    """
+    retain_tokens = _compaction_retain_tokens(deps.config)
+    boundary = _retained_tail_start(messages, retain_tokens)
+    if boundary <= 0:
         return None
 
     # 话题感知摘要：如果启用且检测到多个话题，分别摘要并标注边界
@@ -269,7 +315,13 @@ async def _local_summary_compact(
         history_text = _history_text(old_messages)
         instructions = _SUMMARY_INSTRUCTIONS
 
-    summary = await summarize_text(deps, history_text, instructions=instructions)
+    max_tokens = getattr(deps.config, "compaction_summary_max_tokens", 2048) or 2048
+    summary = await summarize_text(
+        deps,
+        history_text,
+        instructions=instructions,
+        max_tokens=max_tokens,
+    )
     if summary is None:
         return None
 
@@ -286,13 +338,19 @@ async def compact_history(
     *,
     model: Any = None,
     request_context: Any = None,
+    force: bool = False,
 ) -> list[ModelMessage] | None:
     """压缩单次 run 的临时历史；未触发/压缩失败返回 None（保持原历史）。
 
-    ``model``/``request_context`` 供未来远程压缩使用（预留）。
+    ``force=True`` 用于 provider 确认“超过窗口”后的强制压缩：绕过常规压力阈值
+    （模型真实窗口可能小于估算窗口，需无条件压缩再重试）。``model``/
+    ``request_context`` 供未来远程压缩使用（预留）。
     """
+    window = _compaction_window(deps.config)
+    if window <= 0:
+        return None
     threshold = _compaction_threshold(deps.config)
-    if threshold <= 0 or estimate_tokens(messages) <= threshold:
+    if not force and (threshold <= 0 or estimate_tokens(messages) <= threshold):
         return None
 
     # 远程压缩优先（预留接口；当前恒 None → 本地兜底）。
@@ -302,7 +360,9 @@ async def compact_history(
         except Exception:
             remote = None
         if remote is not None:
-            compacted = [remote, *messages[-max(1, deps.config.compaction_window_size) :]]
+            retain_tokens = _compaction_retain_tokens(deps.config)
+            retained_start = _retained_tail_start(messages, retain_tokens)
+            compacted = [remote, *messages[retained_start:]]
             if estimate_tokens(compacted) < estimate_tokens(messages):
                 return compacted
 
@@ -310,7 +370,7 @@ async def compact_history(
     if compacted is None:
         return None
 
-    # 复核：压缩后仍超阈值 → 按轮折半兜底。
+    # 复核：压缩后仍超阈值 → 按轮折半兜底（force 时阈值仍取自窗口，避免过大保留）。
     if estimate_tokens(compacted) > threshold:
         compacted = truncate_by_halving(compacted)
 
@@ -323,3 +383,35 @@ async def compact_history(
         estimate_tokens(compacted),
     )
     return compacted
+
+
+# ------------------------------------------------------------ 上下文溢出判定
+#
+# provider 报告的“请求超过模型上下文窗口”错误（openai_chat 400 / curl 413 等）
+# 触发强制压缩重试，与 dsh 的 ``context-overflow`` 触发对齐。
+
+_CONTEXT_OVERFLOW_STATUSES = {400, 408, 413, 414}
+
+_CONTEXT_OVERFLOW_PATTERN = re.compile(
+    r"(?:context length|max\w* context|context window|input is too long|"
+    r"input text too long|too many tokens|prompt is too long|"
+    r"context_length_exceeded|exceeded\w* context|maximum\w* token)"
+)
+
+
+def is_context_overflow(exc: Exception) -> bool:
+    """判定 provider 是否报告请求超过模型上下文窗口（触发强制压缩重试）。
+
+    只匹配 4xx 状态码 + 上下文相关短语，避免把“无效 token/授权”等 400 误判为溢出。
+    """
+    status = getattr(exc, "status_code", None)
+    if status not in _CONTEXT_OVERFLOW_STATUSES:
+        return False
+    text = str(exc)
+    for attr in ("body", "message"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="replace")
+        if isinstance(value, str) and value and value not in text:
+            text += f" {value}"
+    return _CONTEXT_OVERFLOW_PATTERN.search(text.lower()) is not None

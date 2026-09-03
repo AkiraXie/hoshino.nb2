@@ -24,7 +24,7 @@ class AIConfig:
     default: str = ""
     # 默认人设取 prompts.DEFAULT_SYSTEM_PROMPT。
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
-    max_history_messages: int = 64
+    max_history_messages: int = 32
     render_timeout_seconds: float = 30.0
     render_theme: ThemeKind = "light"
     # Markdown 渲染主字体（CSS font-family 首项）。默认 Inter（拉丁），中文按字体栈
@@ -51,6 +51,11 @@ class AIConfig:
     # 上下文内存缓存（LRU）：驻留 scope 数与每 scope 驻留对话数，超限先 flush 再逐出。
     chat_memory_scopes: int = 256
     chat_memory_conversations: int = 4
+    # 闲置超时自动新建对话：开关与时长分开设置。当前激活对话闲置超过
+    # ``chat_idle_timeout_seconds`` 秒后，下一条聊天消息会自动新建并切到新对话
+    # （相当于自动清空上下文；可用 ``#switch`` 找回旧对话）。0 或关掉则不自动切换。
+    chat_idle_timeout_enabled: bool = True
+    chat_idle_timeout_seconds: float = 10800.0
     # 工具调用失败重试预算（pydantic-ai 默认 1）。web_fetch 等抓取工具偶发失败
     # 会触发 "exceeded max retries" 直接杀掉整轮 run，调高以容错。
     tool_max_retries: int = 3
@@ -62,15 +67,20 @@ class AIConfig:
     # 步骤的主要耗时来源；开启时摘要输入上限见 web_fetch.py 的 _SUMMARY_SOURCE_MAX。
     web_fetch_max_chars: int = 24_000
     web_fetch_summarize: bool = False
-    # 单次 run 的软压缩：估算 token 阈值（约 200K window 的 60%）、触发比例、
-    # 保留窗口、本地摘要模型（空值使用当前模型）。
-    # compaction_threshold_chars 保留作兼容别名（按估算 token 计数）。
-    compaction_threshold_chars: int = 120_000
+    # 单次 run 的软压缩（对齐 dsh compaction 语义）：以估算上下文窗口
+    # ``compaction_window_tokens``（估算 token 计数，非字符）为基准。历史估算
+    # token 达到 ``window × compaction_threshold_ratio``（默认 82%）时触发压缩：
+    # 把窗口外历史交给 LLM 生成摘要（输出上限 ``compaction_summary_max_tokens``
+    # token），保留最近 ``window × compaction_retain_ratio``（默认 10%）逐字上下文；
+    # 模型返回“超过窗口”错误时强制压缩并重试（``compaction_overflow_retries`` 次）。
+    # ``compaction_remote_first`` 预留 provider 原生远程压缩（如 OpenAI Responses
+    # compact），端点不支持/失败时回退本地 LLM 摘要压缩。
+    compaction_window_tokens: int = 120_000
     compaction_threshold_ratio: float = 0.82
-    compaction_window_size: int = 4
+    compaction_retain_ratio: float = 0.10
+    compaction_summary_max_tokens: int = 2048
+    compaction_overflow_retries: int = 1
     compaction_model: str = ""
-    # 压缩优先尝试 provider 原生远程压缩（如 OpenAI Responses compact）；
-    # 端点不支持/失败时回退本地 LLM 摘要压缩。
     compaction_remote_first: bool = True
     # 工具返回内容超过该估算字符数时溢出落盘（run 内替换为短预览+路径提示，
     # 模型需要细节可读文件）。激进策略：超过 1K 必落盘，避免大内容占用对话 token。
