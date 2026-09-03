@@ -317,7 +317,11 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         )
     image_parts.extend(file_parts)
 
-    conv = manager.get_active(scope_key)
+    conv = manager.maybe_idle_new(
+        scope_key,
+        enabled=config.chat_idle_timeout_enabled,
+        idle_seconds=config.chat_idle_timeout_seconds,
+    )
     history = context.prepare_history(scope_key, conv.messages, config, new_question=prompt)
 
     permissions = await deps.build_permission_snapshot(bot, event)

@@ -261,6 +261,25 @@ class ConversationManager:
         store.clear_conversation_events(conv.id)
         return had_content
 
+    def maybe_idle_new(
+        self,
+        scope_key: str,
+        *,
+        enabled: bool,
+        idle_seconds: float,
+    ) -> Conversation:
+        """闲置超时自动新建对话：当前激活对话闲置超过 ``idle_seconds`` 时新建并切换。
+
+        返回（可能新建的）当前激活对话；``enabled=False`` 或 ``idle_seconds<=0``
+        时不自动切换，直接返回当前激活对话。新建对话自动命名（首个为「默认」）。
+        """
+        conv = self.get_active(scope_key)
+        if not enabled or idle_seconds <= 0:
+            return conv
+        if time.time() - conv.updated_at < idle_seconds:
+            return conv
+        return self.create(scope_key)
+
     def commit_turn(
         self,
         scope_key: str,
