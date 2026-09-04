@@ -58,15 +58,22 @@ class RunEvent:
 
 @dataclass(slots=True)
 class StepDetail:
-    """单步 model request 的上下文度量快照（debug 观测用）。"""
+    """单步 model request 的上下文度量快照（debug 观测用）。
+
+    上下文度量与 ``delta`` 在请求发出前快照；``duration``/``elapsed`` 在下一
+    节点事件到达时结算——图节点事件在开始执行前触发，事件间隔属于刚执行完的
+    节点（与 zssm ``_RunChain`` 同一归因规则）。请求未完成（中途失败/超时）
+    时耗时字段保持 0。
+    """
 
     step: int = 0
     msgs: int = 0  # message_history 消息数
     parts: int = 0  # 所有消息的 parts 总数
     text_chars: int = 0  # 文本内容总字符数
     tool_return_chars: int = 0  # 上一步工具返回的文本字符数
-    elapsed: float = 0.0  # 距 run 开始的墙钟秒
-    delta: float = 0.0  # 距上一步的墙钟秒
+    delta: float = 0.0  # 上一步完成 → 本步发出的间隔（主要是中间的工具执行）
+    duration: float = 0.0  # 本次 model request 自身耗时（发出 → 响应完整返回）
+    elapsed: float = 0.0  # 该步完成时刻距 run 开始的墙钟秒
 
 
 @dataclass(slots=True)
@@ -76,7 +83,9 @@ class RunLog:
     ``run_agent`` 在迭代图节点时填充 steps / step_at / tool_calls；
     started_at 在首次进入时设置（跨 retry 尝试不重置），ended_at / reason 在
     退出或异常时设置。``reason`` 取值：completed | error | timeout |
-    max-requests | aborted。
+    max-requests | aborted。step_at / step_details 耗时在下一步事件到达时结算
+    （节点事件先于执行触发，间隔归因给刚完成的节点）；请求未完成（失败/超时）
+    则不结算。
     """
 
     started_at: float = 0.0
@@ -399,12 +408,13 @@ async def run_agent(
 
     # debug 观测：上一步 CallToolsNode 的工具返回大小，供下一步 ModelRequestNode 关联。
     _last_tool_return_chars = 0
+    _last_request_start = 0.0
     compacted = False
     spill_done = False
     wrap_injected = False
 
     async def _observe(node: Any, ctx: GraphRunContext) -> None:
-        nonlocal _last_tool_return_chars, compacted, spill_done, wrap_injected
+        nonlocal _last_tool_return_chars, _last_request_start, compacted, spill_done, wrap_injected
         config = getattr(deps, "config", None)
         state = getattr(ctx, "state", None)
         history = getattr(state, "message_history", None)
@@ -428,27 +438,25 @@ async def run_agent(
             name = type(node).__name__
             if name == "ModelRequestNode":
                 run_log.steps += 1
-                run_log.step_at.append(now)
+                _last_request_start = now
                 # 度量当前 message_history 规模（debug 日志）。
                 msgs, parts, text_chars = _measure_history(state)
-                elapsed = now - run_log.started_at
-                prev_at = run_log.step_at[-2] if len(run_log.step_at) >= 2 else run_log.started_at
-                delta = now - prev_at
-                detail = StepDetail(
-                    step=run_log.steps,
-                    msgs=msgs,
-                    parts=parts,
-                    text_chars=text_chars,
-                    tool_return_chars=_last_tool_return_chars,
-                    elapsed=elapsed,
-                    delta=delta,
+                prev_done = run_log.step_at[-1] if run_log.step_at else run_log.started_at
+                run_log.step_details.append(
+                    StepDetail(
+                        step=run_log.steps,
+                        msgs=msgs,
+                        parts=parts,
+                        text_chars=text_chars,
+                        tool_return_chars=_last_tool_return_chars,
+                        delta=now - prev_done,
+                    )
                 )
-                run_log.step_details.append(detail)
                 logger.debug(
-                    f"AI step {run_log.steps} model_request | "
+                    f"AI step {run_log.steps} model_request start | "
                     f"msgs={msgs} parts={parts} text_chars={text_chars:,} "
                     f"tool_ret_chars={_last_tool_return_chars:,} "
-                    f"elapsed={elapsed:.1f}s delta={delta:.1f}s"
+                    f"gap={now - prev_done:.1f}s"
                 )
                 # 3. 步数上限强制收尾：剩余约 2 次请求时注入总结指令。
                 request_limit = getattr(usage_limits, "request_limit", None)
@@ -467,6 +475,17 @@ async def run_agent(
                 run_log.tool_calls.extend(calls)
                 # 度量模型响应中的文本/思考大小（下一步的 tool_return 参考）。
                 _last_tool_return_chars = _measure_tool_returns(node)
+                # 上一个 model request 恰在本事件前执行完毕：在此结算其耗时。
+                # 事件在节点开始前触发，间隔归因给刚完成的节点（同 zssm _RunChain）。
+                if run_log.step_details:
+                    detail = run_log.step_details[-1]
+                    detail.duration = now - _last_request_start
+                    detail.elapsed = now - run_log.started_at
+                    run_log.step_at.append(now)
+                    logger.debug(
+                        f"AI step {run_log.steps} model_request done | "
+                        f"duration={detail.duration:.1f}s elapsed={detail.elapsed:.1f}s"
+                    )
                 joined = " ｜ ".join(f"{c['name']}{c['args_summary']}" for c in calls)
                 logger.debug(
                     f"AI step {run_log.steps} tools | "
