@@ -9,9 +9,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 from typing import Any
 
 import httpx
+from loguru import logger
 from pydantic import ValidationError
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -28,6 +30,31 @@ _http_clients: list[httpx.AsyncClient] = []
 # 创建的 http client，client 关闭后必须一并清空。
 _model_caches: list[dict] = []
 _auxiliary_model_cache: dict[tuple[Any, ...], Any] = {}
+
+# 排障开关：设 AI_LOG_REQUEST_PAYLOAD=1 时，AI http client 把发往 provider 的
+# 请求体截断后打到 DEBUG 日志（runner 的常规观测只有规模度量，模型实际收到
+# 什么——system prompt / 历史 / 工具 schema——默认不可见）。在 client 构建时读
+# env 而非 AIConfig：build_model 不持配置，且这是临时排障设施，不进配置面。
+_PAYLOAD_ENV = "AI_LOG_REQUEST_PAYLOAD"
+_PAYLOAD_MAX_CHARS = 2000
+
+
+def _payload_dump_enabled() -> bool:
+    return os.environ.get(_PAYLOAD_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+async def _log_request_payload(request: httpx.Request) -> None:
+    """httpx request hook：截断打印请求体（空体如 GET /models 跳过）。"""
+    body = request.read().decode("utf-8", "replace")
+    if not body:
+        return
+    shown = body if len(body) <= _PAYLOAD_MAX_CHARS else body[:_PAYLOAD_MAX_CHARS]
+    if len(shown) < len(body):
+        shown += f"…（截断，共 {len(body):,} 字符）"
+    # 尖括号转义：payload 常含 </tag> 形态文本，loguru colorize 会误解析。
+    logger.debug(
+        "AI request {} {} payload={}", request.method, request.url, shown.replace("<", "\\<")
+    )
 
 
 def register_model_cache(cache: dict) -> None:
@@ -53,6 +80,7 @@ def _build_http_client(proxy: str | None) -> httpx.AsyncClient:
         proxy=_httpx_proxy(proxy),
         trust_env=False,
         timeout=httpx.Timeout(60.0),
+        event_hooks={"request": [_log_request_payload]} if _payload_dump_enabled() else None,
     )
     _http_clients.append(client)
     return client
