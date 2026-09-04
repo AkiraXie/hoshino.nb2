@@ -78,7 +78,7 @@ async def _ai_chat_rule(bot: Bot, event: Event) -> bool:
         if msg is not None
         else None
     )
-    return unimsg and unimsg.startswith("#")
+    return unimsg and unimsg.lstrip().startswith("#")
 
 
 # 默认 block=True，避免命中消息继续落到其他 on_message 规则。
