@@ -174,7 +174,7 @@ def _chain_event(node: Any) -> tuple[str, ...] | None:
 
 
 def _format_chain(chain: list[tuple[tuple[str, ...], float]]) -> str:
-    """把 (条目名, 距上一节点秒) 序列格式化为 ``model-request 2.4s → web-search 2.0s``。
+    """把 (条目名, 节点自身耗时秒) 序列格式化为 ``model-request 2.4s → web-search 2.0s``。
 
     同一节点内的并行同名调用折叠为 ``web-fetch×2``。
     """
@@ -189,6 +189,33 @@ def _format_chain(chain: list[tuple[tuple[str, ...], float]]) -> str:
         label = "+".join(f"{t}×{counts[t]}" if counts[t] > 1 else t for t in order)
         parts.append(f"{label} {delta:.1f}s")
     return " → ".join(parts)
+
+
+class _RunChain:
+    """Agent run 步骤链收集：把事件间隔归因给该间隔内真正执行的节点。
+
+    pydantic-ai 在节点**开始执行前**产出节点事件，因此相邻事件的时间差等于
+    上一个节点的执行耗时。若把 delta 记在刚启动的节点名下，整条链会错位一格
+    （工具耗时被记到下一步 model-request 上），且最后一次 model-request
+    （产出最终输出的那次，往往最久）会被记到无链条目的 End 事件上而完全丢失，
+    总耗时与步骤之和就对不上。这里用 pending 标签：下一事件到达时，
+    把间隔结算给上一节点。
+    """
+
+    def __init__(self) -> None:
+        self.entries: list[tuple[tuple[str, ...], float]] = []
+        self._pending: tuple[str, ...] | None = None
+        self._prev_at = time.monotonic()
+
+    def on_event(self, ev: runner.RunEvent) -> float:
+        """结算上一节点的耗时并登记当前节点；返回距上一事件的秒数。"""
+        now = time.monotonic()
+        delta = now - self._prev_at
+        if self._pending is not None:
+            self.entries.append((self._pending, delta))
+        self._pending = _chain_event(ev.node)
+        self._prev_at = now
+        return delta
 
 
 def _build_zssm_agent(
@@ -350,22 +377,16 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
     )
 
     # Agent run 观测：info 级实时日志（与 chat 的 stream_logger 同构）+ 状态链
-    # 收集（每节点距上一节点的秒数），供第三条转发消息的总耗时与步骤链展示。
+    # 收集，供第三条转发消息的总耗时与步骤链展示。节点事件在开始执行前触发，
+    # delta 是刚执行完的上一节点耗时，日志标注「上一步」避免误读为本步耗时。
     run_log = runner.RunLog()
-    chain: list[tuple[tuple[str, ...], float]] = []
-    prev_at = time.time()
+    chain = _RunChain()
 
     def on_event(ev: runner.RunEvent) -> None:
-        nonlocal prev_at
-        now = time.time()
-        delta = now - prev_at
-        prev_at = now
-        entry = _chain_event(ev.node)
-        if entry is not None:
-            chain.append((entry, delta))
+        delta = chain.on_event(ev)
         desc = runner.describe_node(ev.node, ev.ctx)
         if desc is not None:
-            suffix = f" · {delta:.1f}s" if delta >= 0.05 else ""
+            suffix = f" · 上一步 {delta:.1f}s" if delta >= 0.05 else ""
             sv.logger.info(f"zssm 实时 {_log_safe(desc)}{suffix}")
 
     # Agent run（含工具调用循环 + 结构化输出校验）
@@ -413,7 +434,7 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
     stats_text = (
         f"📊 {provider_id} / {model_name}\n"
         f"输入: {input_tokens} | 缓存命中: {cache_read} | 输出: {output_tokens}\n"
-        f"⏱ 总耗时 {elapsed:.1f}s：{_format_chain(chain)}"
+        f"⏱ 总耗时 {elapsed:.1f}s：{_format_chain(chain.entries)}"
     )
 
     header = f"关键词：{keyword_text}" if keyword_text else ""

@@ -456,20 +456,21 @@ def _make_stream_logger(
 ) -> Callable[[runner.RunEvent], None]:
     """构造实时日志回调：每个模型请求/工具调用节点即时打印，不再攒到最后。
 
-    供 ``run_agent_with_retry(on_event=...)`` 使用；每行带相对上一节点的耗时。
-    思考/中间文本（introspection）不落日志（原始设计也不落）。
+    供 ``run_agent_with_retry(on_event=...)`` 使用。pydantic-ai 在节点开始执行前
+    触发事件，事件间隔等于刚执行完的上一节点耗时，故标注「上一步」避免误读为
+    本步耗时。思考/中间文本（introspection）不落日志（原始设计也不落）。
     """
-    prev = time.time()
+    prev = time.monotonic()
 
     def on_event(ev: runner.RunEvent) -> None:
         nonlocal prev
-        now = time.time()
+        now = time.monotonic()
         delta = now - prev
         prev = now
         desc = runner.describe_node(ev.node, ev.ctx)
         if desc is None:
             return
-        suffix = f" · {delta:.1f}s" if delta >= 0.05 else ""
+        suffix = f" · 上一步 {delta:.1f}s" if delta >= 0.05 else ""
         sv.logger.info(
             f"AI 实时 provider={provider_id} scope={scope_key} conv={conv_name} "
             f"model={model_name} {_log_safe(desc)}{suffix}"
