@@ -56,6 +56,8 @@ class Telemetry:
     provider_id: str
     scope_key: str
     model: str
+    # 所属命名对话（chat surface 传入；无对话的 surface 为空串）。
+    conversation_id: str = ""
     _start: float = field(default_factory=time.perf_counter)
 
     def record_success(self, result) -> None:
@@ -63,6 +65,7 @@ class Telemetry:
             provider_id=self.provider_id,
             scope_key=self.scope_key,
             model=self.model,
+            conversation_id=self.conversation_id,
             snapshot=metrics.snapshot_from_result(result),
             latency_ms=(time.perf_counter() - self._start) * 1000,
         )
@@ -72,6 +75,7 @@ class Telemetry:
             provider_id=self.provider_id,
             scope_key=self.scope_key,
             model=self.model,
+            conversation_id=self.conversation_id,
             latency_ms=(time.perf_counter() - self._start) * 1000,
             error=error,
         )

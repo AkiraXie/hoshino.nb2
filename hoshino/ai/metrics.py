@@ -60,12 +60,14 @@ def record_success(
     model: str,
     snapshot: UsageSnapshot,
     latency_ms: float,
+    conversation_id: str = "",
 ) -> None:
     """记录一次成功请求的用量。"""
     store.record_usage_event(
         provider_id=provider_id,
         scope_key=scope_key,
         model=model,
+        conversation_id=conversation_id,
         request_tokens=snapshot.request_tokens,
         response_tokens=snapshot.response_tokens,
         cache_read_tokens=snapshot.cache_read_tokens,
@@ -82,12 +84,14 @@ def record_error(
     model: str,
     latency_ms: float,
     error: str,
+    conversation_id: str = "",
 ) -> None:
     """记录一次失败请求（不消耗 token 或无法取得用量）。"""
     store.record_usage_event(
         provider_id=provider_id,
         scope_key=scope_key,
         model=model,
+        conversation_id=conversation_id,
         latency_ms=latency_ms,
         error=error[:500] or "error",
     )

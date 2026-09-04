@@ -60,6 +60,7 @@ def construct_chat_deps(
     *,
     provider_id: str,
     model: str,
+    conversation_id: str = "",
 ) -> AgentDeps:
     """构造即时聊天 surface 的 AgentDeps。"""
     scope_key = event_scope_key(bot, event)
@@ -75,5 +76,6 @@ def construct_chat_deps(
             provider_id=provider_id,
             scope_key=scope_key or "",
             model=model,
+            conversation_id=conversation_id,
         ),
     )

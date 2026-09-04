@@ -332,6 +332,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         permissions,
         provider_id=provider_id,
         model=model_name,
+        conversation_id=conv.id,
     )
     # pre-step 瀑布：reject（拒绝本轮，不跑模型）/ rewrite（改写模型可见 prompt）。
     # rewrite 只改进入模型的文本；图片 parts 在 rewrite 后再拼，避免钩子丢图。

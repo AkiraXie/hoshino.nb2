@@ -48,6 +48,8 @@ class AIUsageEvent(Base):
     ts: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
     provider_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
     scope_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 事件所属对话（chat surface 的命名对话；task/zssm 等无对话时为空串）。
+    conversation_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
     model: Mapped[str] = mapped_column(Text, nullable=False, default="")
     request_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     response_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -71,6 +73,7 @@ def _migrate_missing_columns(target_engine) -> None:
         _ensure_column(conn, "ai_providers", "use_proxy", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "ai_scope_models", "provider")
         _ensure_column(conn, "ai_scope_models", "model")
+        _ensure_column(conn, "ai_usage_events", "conversation_id")
 
 
 def _ensure_column(conn, table: str, column: str, decl: str = "TEXT NOT NULL DEFAULT ''") -> None:
@@ -673,6 +676,7 @@ def record_usage_event(
     provider_id: str,
     scope_key: str,
     model: str = "",
+    conversation_id: str = "",
     request_tokens: int = 0,
     response_tokens: int = 0,
     cache_read_tokens: int = 0,
@@ -687,6 +691,7 @@ def record_usage_event(
                 ts=time.time(),
                 provider_id=provider_id,
                 scope_key=scope_key,
+                conversation_id=conversation_id,
                 model=model,
                 request_tokens=request_tokens,
                 response_tokens=response_tokens,
@@ -704,11 +709,12 @@ def aggregate_usage(
     provider_id: str | None = None,
     model: str | None = None,
     since_ts: float | None = None,
+    conversation_id: str | None = None,
 ) -> dict[str, Any]:
     """聚合用量指标。
 
-    provider_id / model 为空时分别表示全部 provider / 全部模型；
-    since_ts 为空时统计全部时间。
+    provider_id / model / conversation_id 为空时分别表示全部 provider /
+    全部模型 / 全部对话；since_ts 为空时统计全部时间。
     返回：事件数、总 token、平均延迟、缓存命中率、错误数等。
     """
     filters = []
@@ -718,6 +724,8 @@ def aggregate_usage(
         filters.append(AIUsageEvent.model == model)
     if since_ts is not None:
         filters.append(AIUsageEvent.ts >= since_ts)
+    if conversation_id:
+        filters.append(AIUsageEvent.conversation_id == conversation_id)
 
     with Session() as session:
         stmt = select(

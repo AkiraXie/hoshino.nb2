@@ -588,7 +588,7 @@ async def _model_default(bot: Bot, event: Event, args: list[str]) -> None:
 
 
 async def _handle_status(bot: Bot, event: Event) -> None:
-    """``ai`` / ``ai status``：model + 搜索状态总览。"""
+    """``ai`` / ``ai status``：model + 当前对话用量 + 搜索状态总览。"""
     config = get_config()
     scope_key = event_scope_key(bot, event)
 
@@ -597,17 +597,40 @@ async def _handle_status(bot: Bot, event: Event) -> None:
         f"model：`{model_pid}` / `{model}`" if model_pid and model else "model：`（未设置）`"
     )
 
+    lines = [model_line]
+    conv_line = _conversation_usage_line(scope_key, model_pid, model)
+    if conv_line:
+        lines.append(conv_line)
+
     search_cfg = search.resolve_search_config(scope_key, config)
     if search_cfg is not None:
         default_id = store.get_search_default_id()
         search_label = (
             f"`{default_id}`（`{search_cfg.kind}`）" if default_id else f"`{search_cfg.kind}`"
         )
-        search_line = f"search：{search_label}"
+        lines.append(f"search：{search_label}")
     else:
-        search_line = "search：`（未配置）`"
+        lines.append("search：`（未配置）`")
 
-    await send_to_event(bot, event, f"{model_line}\n{search_line}")
+    await send_to_event(bot, event, "\n".join(lines))
+
+
+def _conversation_usage_line(scope_key: str, model_pid: str, model: str) -> str:
+    """当前激活对话的用量行：对话名 + 生效 model + 输入/缓存/输出 token。
+
+    无激活对话返回空串（对话从未使用时聚合值为 0，同样展示）。
+    """
+    conv_id = store.get_active_conv_id(scope_key)
+    if not conv_id:
+        return ""
+    conv = store.get_conversation(conv_id)
+    conv_name = conv["name"] if conv else "（未知）"
+    usage = store.aggregate_usage(conversation_id=conv_id)
+    return (
+        f"对话：`{conv_name}`（`{model_pid}` / `{model}`）"
+        f" token 输入 {usage['request_tokens']:,} / "
+        f"缓存 {usage['cache_read_tokens']:,} / 输出 {usage['response_tokens']:,}"
+    )
 
 
 # ------------------------------------------------------------ search
