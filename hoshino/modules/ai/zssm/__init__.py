@@ -17,7 +17,9 @@
 3. 解释：Agent run（带 web_search / web_fetch / browser_use 工具），
    使用 pydantic-ai ``PromptedOutput(ZssmOutput)`` 结构化输出（prompt 约定 +
    本地校验），保证 keywords/output/blocked 字段始终存在且类型正确；
-4. 回复：以转发聊天记录发送——第一条关键词、第二条解释正文、第三条模型调用统计。
+4. 回复：以转发聊天记录发送——第一条关键词、第二条解释正文、第三条模型
+   调用统计（token + 总耗时 + 步骤时间链，如
+   ``model-request 2.4s → web-search 2.0s → …``）。
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 from typing import Any
 
 from nonebot.adapters import Bot, Event
@@ -149,6 +152,43 @@ def _format_keywords(keywords: list[str]) -> str:
             seen.add(stripped)
             deduped.append(stripped)
     return " | ".join(deduped)
+
+
+def _log_safe(text: str) -> str:
+    """转义 loguru 颜色标签语法（``<tag>``），避免工具负载被误解析为颜色指令。"""
+    return text.replace("<", "\\<")
+
+
+def _chain_event(node: Any) -> tuple[str, ...] | None:
+    """把图节点折叠为状态链条目名（``model-request`` / ``web-fetch`` 等）。
+
+    CallToolsNode 按调用顺序展开工具名（下划线转连字符）；无调用的节点返回 None。
+    """
+    name = type(node).__name__
+    if name == "ModelRequestNode":
+        return ("model-request",)
+    if name == "CallToolsNode":
+        calls = runner.tool_calls_from_node(node)
+        return tuple(c.replace("_", "-") for c in calls) or None
+    return None
+
+
+def _format_chain(chain: list[tuple[tuple[str, ...], float]]) -> str:
+    """把 (条目名, 距上一节点秒) 序列格式化为 ``model-request 2.4s → web-search 2.0s``。
+
+    同一节点内的并行同名调用折叠为 ``web-fetch×2``。
+    """
+    parts: list[str] = []
+    for names, delta in chain:
+        counts: dict[str, int] = {}
+        order: list[str] = []
+        for tool in names:
+            if tool not in counts:
+                order.append(tool)
+            counts[tool] = counts.get(tool, 0) + 1
+        label = "+".join(f"{t}×{counts[t]}" if counts[t] > 1 else t for t in order)
+        parts.append(f"{label} {delta:.1f}s")
+    return " → ".join(parts)
 
 
 def _build_zssm_agent(
@@ -309,6 +349,25 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         tool_max_retries=config.tool_max_retries,
     )
 
+    # Agent run 观测：info 级实时日志（与 chat 的 stream_logger 同构）+ 状态链
+    # 收集（每节点距上一节点的秒数），供第三条转发消息的总耗时与步骤链展示。
+    run_log = runner.RunLog()
+    chain: list[tuple[tuple[str, ...], float]] = []
+    prev_at = time.time()
+
+    def on_event(ev: runner.RunEvent) -> None:
+        nonlocal prev_at
+        now = time.time()
+        delta = now - prev_at
+        prev_at = now
+        entry = _chain_event(ev.node)
+        if entry is not None:
+            chain.append((entry, delta))
+        desc = runner.describe_node(ev.node, ev.ctx)
+        if desc is not None:
+            suffix = f" · {delta:.1f}s" if delta >= 0.05 else ""
+            sv.logger.info(f"zssm 实时 {_log_safe(desc)}{suffix}")
+
     # Agent run（含工具调用循环 + 结构化输出校验）
     try:
         result = await asyncio.wait_for(
@@ -317,6 +376,8 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
                 user_prompt,
                 deps=agent_deps,
                 usage_limits=UsageLimits(request_limit=_MAX_REQUESTS),
+                run_log=run_log,
+                on_event=on_event,
             ),
             timeout=_TIMEOUT_SECONDS,
         )
@@ -343,14 +404,16 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         keyword_text = _format_keywords(zssm_result.keywords)
         explanation = zssm_result.output.strip()
 
-    # 模型调用统计
+    # 模型调用统计：token + 总耗时 + 步骤时间链（经历哪些节点、各花多久）。
     usage = result.usage
     input_tokens = getattr(usage, "input_tokens", 0) or 0
     output_tokens = getattr(usage, "output_tokens", 0) or 0
     cache_read = getattr(usage, "cache_read_tokens", 0) or 0
+    elapsed = run_log.ended_at - run_log.started_at
     stats_text = (
         f"📊 {provider_id} / {model_name}\n"
-        f"输入: {input_tokens} | 缓存命中: {cache_read} | 输出: {output_tokens}"
+        f"输入: {input_tokens} | 缓存命中: {cache_read} | 输出: {output_tokens}\n"
+        f"⏱ 总耗时 {elapsed:.1f}s：{_format_chain(chain)}"
     )
 
     header = f"关键词：{keyword_text}" if keyword_text else ""

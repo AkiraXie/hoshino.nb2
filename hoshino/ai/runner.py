@@ -166,6 +166,33 @@ def redact_args(args: Any) -> str:
     return type(args).__name__
 
 
+def summarize_args(args: Any, limit: int = 50) -> str:
+    """提取工具调用主负载摘要（URL / 查询词 / 路径等），超限截断加 …。
+
+    与 ``redact_args`` 的「键名 + 长度」脱敏互补：实时日志需要看到模型
+    到底在抓哪个网站、搜什么词、读哪个文件，因此取字符串参数原值展示，
+    超长截断，换行折叠为单行。
+    """
+    if args is None:
+        return ""
+    if isinstance(args, str):
+        text = args
+    elif isinstance(args, dict):
+        pieces = []
+        for key, value in args.items():
+            if isinstance(value, str) and value:
+                pieces.append(f"{key}={value}")
+            elif isinstance(value, bytes):
+                pieces.append(f"{key}=<bytes:{len(value)}>")
+            elif value is not None:
+                pieces.append(f"{key}={type(value).__name__}")
+        text = ", ".join(pieces)
+    else:
+        text = str(args)
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
 def _measure_history(state: Any) -> tuple[int, int, int]:
     """度量 message_history 规模：(消息数, parts 总数, 文本字符数)。"""
     history = getattr(state, "message_history", None) or []
@@ -206,54 +233,54 @@ def _measure_tool_returns(node: Any) -> int:
     return total
 
 
+def _tool_call_parts(node: Any) -> list[tuple[str, Any]]:
+    """duck-typed 提取 CallToolsNode 的 (tool_name, args) 序列。
+
+    容忍 pydantic-ai 版本差异；非 ``CallToolsNode`` 或解析失败返回空列表。
+    """
+    if type(node).__name__ != "CallToolsNode":
+        return []
+    response = getattr(node, "model_response", None)
+    calls: list[tuple[str, Any]] = []
+    for part in getattr(response, "parts", None) or []:
+        name = getattr(part, "tool_name", None)
+        if name:
+            calls.append((str(name), getattr(part, "args", None)))
+    return calls
+
+
 def tool_calls_from_node(node: Any) -> list[str]:
     """从图节点提取本步发起的工具调用名（duck-typed，容忍 pydantic-ai 版本差异）。
 
     供失败日志标注“失败前调用过哪些工具”（如 web_search），帮助定位是模型
     侧问题还是工具侧问题。非 ``CallToolsNode`` 或解析失败一律返回空列表。
     """
-    if type(node).__name__ != "CallToolsNode":
-        return []
-    response = getattr(node, "model_response", None)
-    parts = getattr(response, "parts", None) or []
-    names: list[str] = []
-    for part in parts:
-        name = getattr(part, "tool_name", None)
-        if name:
-            names.append(str(name))
-    return names
+    return [name for name, _ in _tool_call_parts(node)]
 
 
 def tool_call_events_from_node(node: Any) -> list[dict]:
     """从图节点提取本步发起的工具调用事件（name + 脱敏参数摘要）。
 
-    与 ``tool_calls_from_node`` 同 duck-typed 识别；额外取 ``part.args`` 做脱敏，
-    供 ``RunLog.tool_calls`` 落 ``tool/call`` 事件。非 ``CallToolsNode`` 或解析
-    失败返回空列表。
+    参数走 ``redact_args`` 脱敏，供 ``RunLog.tool_calls`` 落 ``tool/call``
+    持久化事件。非 ``CallToolsNode`` 或解析失败返回空列表。
     """
-    if type(node).__name__ != "CallToolsNode":
-        return []
-    response = getattr(node, "model_response", None)
-    parts = getattr(response, "parts", None) or []
-    events: list[dict] = []
-    for part in parts:
-        name = getattr(part, "tool_name", None)
-        if name:
-            events.append(
-                {
-                    "name": str(name),
-                    "args_summary": redact_args(getattr(part, "args", None)),
-                }
-            )
-    return events
+    return [
+        {"name": name, "args_summary": redact_args(args)} for name, args in _tool_call_parts(node)
+    ]
+
+
+def tool_call_briefs_from_node(node: Any) -> list[tuple[str, str]]:
+    """工具调用的主负载摘要（URL / 查询词 / 路径，50 字截断），供实时日志。"""
+    return [(name, summarize_args(args)) for name, args in _tool_call_parts(node)]
 
 
 def describe_node(node: Any, ctx: GraphRunContext) -> str | None:
     """把单个图节点转成实时日志描述；无内容的节点返回 None。
 
-    供 chat 的实时日志回调使用（每步即时打印，不再攒到最后）：
+    供 chat / zssm 的实时日志回调使用（info 级别，每步即时打印，不再攒到最后）：
     - ModelRequestNode → 上一步动作摘要（用户提问 / 工具结果 / 重试）；
-    - CallToolsNode → 本步发起的工具调用清单（脱敏参数）。
+    - CallToolsNode → 本步发起的工具调用清单（主负载摘要，50 字截断：
+      web_fetch 抓哪个网站、web_search 搜什么词、file_view 读哪个文件）。
     """
     name = type(node).__name__
     if name == "ModelRequestNode":
@@ -261,10 +288,10 @@ def describe_node(node: Any, ctx: GraphRunContext) -> str | None:
         detail = _last_message_summary(state)
         return f"model_request · {detail}" if detail else "model_request"
     if name == "CallToolsNode":
-        calls = tool_call_events_from_node(node)
+        calls = tool_call_briefs_from_node(node)
         if not calls:
             return None
-        joined = " | ".join(f"{c['name']}{c['args_summary']}" for c in calls)
+        joined = " | ".join(f"{name}({brief})" if brief else name for name, brief in calls)
         return f"tools · {joined}"
     return None
 
@@ -436,14 +463,14 @@ async def run_agent(
                     wrap_injected = True
                     logger.info(f"AI step {run_log.steps} 接近请求上限，注入收尾指令")
             elif name == "CallToolsNode":
-                run_log.tool_calls.extend(tool_call_events_from_node(node))
+                calls = tool_call_events_from_node(node)
+                run_log.tool_calls.extend(calls)
                 # 度量模型响应中的文本/思考大小（下一步的 tool_return 参考）。
                 _last_tool_return_chars = _measure_tool_returns(node)
-                calls = tool_call_events_from_node(node)
-                call_names = [c["name"] for c in calls]
+                joined = " ｜ ".join(f"{c['name']}{c['args_summary']}" for c in calls)
                 logger.debug(
                     f"AI step {run_log.steps} tools | "
-                    f"calls={call_names} resp_chars={_last_tool_return_chars:,}"
+                    f"calls={joined} resp_chars={_last_tool_return_chars:,}"
                 )
         if on_event is not None:
             on_event(RunEvent(node=node, ctx=ctx))
