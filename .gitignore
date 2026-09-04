@@ -157,5 +157,6 @@ dmypy.json
 ./package.json
 chrome*
 
-# 临时一次性探针测试（联网），默认不收集执行；运行方式见文件内注释
-nb-tests/one-shot/
+# one-shot 联网探针 fixtures 里的探针图片（上面全局 *.png/*.jpg 仍作用于其余目录）
+!nb-tests/one-shot/live1.jpg
+!nb-tests/one-shot/test-live.png

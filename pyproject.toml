@@ -132,6 +132,11 @@ ignore = [
 # 测试内阻塞文件 IO 也是常态。
 "nb-tests/*" = ["S101", "S105", "S106", "S108", "S501", "SLF001", "ASYNC230", "SIM115"]
 ".tests/*" = ["S101", "S105", "S106", "S108", "S501", "SLF001", "ASYNC230", "SIM115"]
+# one-shot live 探针（ONE_SHOT_LIVE 门控的联网测试）：pytest 收集期先于 nonebug
+# 的 nonebot 初始化，顶层 import hoshino 会因 core.schedule 的 nonebot.require
+# 失败，因此 hoshino/nonebot import 一律延迟到测试函数内；探针也刻意复用插件
+# 私有 helper（_build_zssm_agent / _DEFAULT_UA 等）做真实链路观测。
+"nb-tests/one-shot/*" = ["PLC0415", "PLC2701"]
 # 插件包内的测试文件同测试夹具处理。
 "hoshino/modules/interactive/qbitorrent/test_qbit.py" = ["S105", "S501"]
 # info-x 目录名含连字符（importlib 按配置加载），无法改为合法模块名。

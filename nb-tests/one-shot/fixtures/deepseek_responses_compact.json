@@ -1,0 +1,9 @@
+{
+  "base_url": "https://api.deepseek.com",
+  "sample_turns": [
+    {"role": "user", "text": "你好"},
+    {"role": "assistant", "text": "你好！有什么可以帮你？"},
+    {"role": "user", "text": "帮我查一下明日方舟16章更新时间"},
+    {"role": "assistant", "text": "好的，我先搜索一下。"}
+  ]
+}

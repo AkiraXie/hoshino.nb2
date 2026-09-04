@@ -1,0 +1,7 @@
+{
+  "base_url": "https://api.deepseek.com/anthropic",
+  "model": "deepseek-v4-flash",
+  "baseline_prompt": "用一句话回答：1+1=?",
+  "compact_summary": "用户询问过方舟更新时间，已搜索到结果。",
+  "compact_prompt": "基于以上摘要继续回答"
+}

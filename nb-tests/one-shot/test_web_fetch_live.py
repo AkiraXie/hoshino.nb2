@@ -16,15 +16,17 @@ from __future__ import annotations
 import os
 
 import pytest
+from _live import load_fixture
 
 pytestmark = [
     pytest.mark.skipif(
         not os.environ.get("ONE_SHOT_LIVE"),
-        reason="临时联网探针：设置 ONE_SHOT_LIVE=1 才运行",
+        reason="联网探针：设置 ONE_SHOT_LIVE=1 才运行",
     ),
 ]
 
-WECHAT_URL = "https://mp.weixin.qq.com/s/8maraWkChNFu27tgRZiA_Q"
+_FIXTURE = load_fixture("web_fetch")
+WECHAT_URL = _FIXTURE["wechat_url"]
 
 
 async def test_wechat_default_ua_fetches_content():

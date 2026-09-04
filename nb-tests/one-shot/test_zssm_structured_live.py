@@ -15,18 +15,16 @@ import json
 import os
 
 import pytest
+from _live import load_fixture
 
 pytestmark = [
     pytest.mark.skipif(
         not os.environ.get("ONE_SHOT_LIVE"),
-        reason="临时联网探针：设置 ONE_SHOT_LIVE=1 才运行",
+        reason="联网探针：设置 ONE_SHOT_LIVE=1 才运行",
     ),
 ]
 
-_TEST_PROMPTS = [
-    "RTX 5090 和 RTX 4090 有什么区别",
-    "什么是量子纠缠",
-]
+_FIXTURE = load_fixture("zssm_structured")
 
 
 async def test_zssm_structured_output_live():
@@ -62,7 +60,7 @@ async def test_zssm_structured_output_live():
             continue
         text_model = text_models[0]
 
-        for prompt_text in _TEST_PROMPTS:
+        for prompt_text in _FIXTURE["prompts"]:
             payload = {"target": prompt_text, "focus": "", "image_descriptions": ""}
             user_prompt = json.dumps(payload, ensure_ascii=False)
 
