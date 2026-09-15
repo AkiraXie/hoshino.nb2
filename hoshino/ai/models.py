@@ -22,6 +22,7 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
+from . import redact
 from .provider import ProviderRecord
 
 # build_model 创建的 http client，供 clear_model_resources 关闭，避免泄漏。
@@ -44,13 +45,17 @@ def _payload_dump_enabled() -> bool:
 
 
 async def _log_request_payload(request: httpx.Request) -> None:
-    """httpx request hook：截断打印请求体（空体如 GET /models 跳过）。"""
+    """httpx request hook：截断打印请求体（空体如 GET /models 跳过）。
+
+    请求体里的思考内容（历史回传的 reasoning/thinking）经 ``redact`` 打码，
+    日志只保留规模；其余字段原样截断，排障价值不变。
+    """
     body = request.read().decode("utf-8", "replace")
     if not body:
         return
-    shown = body if len(body) <= _PAYLOAD_MAX_CHARS else body[:_PAYLOAD_MAX_CHARS]
-    if len(shown) < len(body):
-        shown += f"…（截断，共 {len(body):,} 字符）"
+    shown = redact.strip_thinking_json(body)
+    if len(shown) > _PAYLOAD_MAX_CHARS:
+        shown = f"{shown[:_PAYLOAD_MAX_CHARS]}…（截断，原文 {len(body):,} 字符）"
     # 尖括号转义：payload 常含 </tag> 形态文本，loguru colorize 会误解析。
     logger.debug(
         "AI request {} {} payload={}", request.method, request.url, shown.replace("<", "\\<")
