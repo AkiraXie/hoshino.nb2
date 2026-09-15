@@ -69,8 +69,8 @@ class StepDetail:
     step: int = 0
     msgs: int = 0  # message_history 消息数
     parts: int = 0  # 所有消息的 parts 总数
-    text_chars: int = 0  # 文本内容总字符数
-    tool_return_chars: int = 0  # 上一步工具返回的文本字符数
+    text_chars: int = 0  # 文本+思考内容总字符数（含 ThinkingPart 的 raw_content）
+    response_chars: int = 0  # 上一步模型响应的文本+思考字符数
     delta: float = 0.0  # 上一步完成 → 本步发出的间隔（主要是中间的工具执行）
     duration: float = 0.0  # 本次 model request 自身耗时（发出 → 响应完整返回）
     elapsed: float = 0.0  # 该步完成时刻距 run 开始的墙钟秒
@@ -141,19 +141,6 @@ def _last_message_summary(state: Any) -> str:
     return " ｜ ".join(pieces)
 
 
-def _response_introspection(node: Any) -> str:
-    """提取 CallToolsNode 的 model_response 中思考/中间文本摘要（观测用）。"""
-    response = getattr(node, "model_response", None)
-    parts = getattr(response, "parts", None) or []
-    pieces: list[str] = []
-    for part in parts:
-        if type(part).__name__ in ("ThinkingPart", "TextPart"):
-            content = getattr(part, "content", None)
-            if content:
-                pieces.append(summarize_content(content, 120))
-    return " ｜ ".join(pieces)
-
-
 def redact_args(args: Any) -> str:
     """把工具参数脱敏为「键名 + 值长度」摘要，不落完整参数（供 tool/call 事件）。
 
@@ -202,8 +189,32 @@ def summarize_args(args: Any, limit: int = 50) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
+def _part_chars(part: Any) -> int:
+    """一个消息部件的文本字符数（duck-typed）。
+
+    ``content`` 覆盖 TextPart / UserPromptPart / ToolCallPart（str 或 TextContent 列表）；
+    ThinkingPart 另有一份原始 CoT 在 ``provider_details['raw_content']``（Responses
+    形态：summary 为空、正文走 reasoning_text），必须一并计入，否则思考规模恒为 0。
+    """
+    total = 0
+    content = getattr(part, "content", None)
+    if isinstance(content, str):
+        total += len(content)
+    elif isinstance(content, list):
+        for item in content:
+            if isinstance(item, str):
+                total += len(item)
+            elif hasattr(item, "text") and isinstance(item.text, str):
+                total += len(item.text)
+    details = getattr(part, "provider_details", None)
+    raw = details.get("raw_content") if isinstance(details, dict) else None
+    if isinstance(raw, list):
+        total += sum(len(chunk) for chunk in raw if isinstance(chunk, str))
+    return total
+
+
 def _measure_history(state: Any) -> tuple[int, int, int]:
-    """度量 message_history 规模：(消息数, parts 总数, 文本字符数)。"""
+    """度量 message_history 规模：(消息数, parts 总数, 文本+思考字符数)。"""
     history = getattr(state, "message_history", None) or []
     msgs = len(history)
     parts = 0
@@ -211,35 +222,19 @@ def _measure_history(state: Any) -> tuple[int, int, int]:
     for msg in history:
         msg_parts = getattr(msg, "parts", None) or []
         parts += len(msg_parts)
-        for part in msg_parts:
-            content = getattr(part, "content", None)
-            if isinstance(content, str):
-                text_chars += len(content)
-            elif isinstance(content, list):
-                for item in content:
-                    if isinstance(item, str):
-                        text_chars += len(item)
-                    elif hasattr(item, "text") and isinstance(item.text, str):
-                        text_chars += len(item.text)
+        text_chars += sum(_part_chars(part) for part in msg_parts)
     return msgs, parts, text_chars
 
 
-def _measure_tool_returns(node: Any) -> int:
-    """度量 CallToolsNode 上一步工具返回的文本字符数（duck-typed）。"""
+def _measure_response_chars(node: Any) -> int:
+    """度量 CallToolsNode 上一步模型响应的文本 + 思考字符数（duck-typed）。"""
     response = getattr(node, "model_response", None)
     if response is None:
         return 0
-    total = 0
     # 工具返回在下一步的 message_history 里以 ToolReturnPart 形式出现，
     # 但 CallToolsNode 自身携带 model_response（模型决定调哪些工具）。
     # 这里度量的是模型响应中的文本/思考部分大小。
-    for part in getattr(response, "parts", None) or []:
-        name = type(part).__name__
-        if name in ("TextPart", "ThinkingPart"):
-            content = getattr(part, "content", None)
-            if isinstance(content, str):
-                total += len(content)
-    return total
+    return sum(_part_chars(part) for part in getattr(response, "parts", None) or [])
 
 
 def _tool_call_parts(node: Any) -> list[tuple[str, Any]]:
@@ -407,14 +402,14 @@ async def run_agent(
         run_log.started_at = time.time()
 
     # debug 观测：上一步 CallToolsNode 的工具返回大小，供下一步 ModelRequestNode 关联。
-    _last_tool_return_chars = 0
+    _last_response_chars = 0
     _last_request_start = 0.0
     compacted = False
     spill_done = False
     wrap_injected = False
 
     async def _observe(node: Any, ctx: GraphRunContext) -> None:
-        nonlocal _last_tool_return_chars, _last_request_start, compacted, spill_done, wrap_injected
+        nonlocal _last_response_chars, _last_request_start, compacted, spill_done, wrap_injected
         config = getattr(deps, "config", None)
         state = getattr(ctx, "state", None)
         history = getattr(state, "message_history", None)
@@ -448,14 +443,14 @@ async def run_agent(
                         msgs=msgs,
                         parts=parts,
                         text_chars=text_chars,
-                        tool_return_chars=_last_tool_return_chars,
+                        response_chars=_last_response_chars,
                         delta=now - prev_done,
                     )
                 )
                 logger.debug(
                     f"AI step {run_log.steps} model_request start | "
                     f"msgs={msgs} parts={parts} text_chars={text_chars:,} "
-                    f"tool_ret_chars={_last_tool_return_chars:,} "
+                    f"resp_chars={_last_response_chars:,} "
                     f"gap={now - prev_done:.1f}s"
                 )
                 # 3. 步数上限强制收尾：剩余约 2 次请求时注入总结指令。
@@ -473,8 +468,8 @@ async def run_agent(
             elif name == "CallToolsNode":
                 calls = tool_call_events_from_node(node)
                 run_log.tool_calls.extend(calls)
-                # 度量模型响应中的文本/思考大小（下一步的 tool_return 参考）。
-                _last_tool_return_chars = _measure_tool_returns(node)
+                # 度量模型响应中的文本 + 思考大小（下一步 prompt 规模的参考）。
+                _last_response_chars = _measure_response_chars(node)
                 # 上一个 model request 恰在本事件前执行完毕：在此结算其耗时。
                 # 事件在节点开始前触发，间隔归因给刚完成的节点（同 zssm _RunChain）。
                 if run_log.step_details:
@@ -489,7 +484,7 @@ async def run_agent(
                 joined = " ｜ ".join(f"{c['name']}{c['args_summary']}" for c in calls)
                 logger.debug(
                     f"AI step {run_log.steps} tools | "
-                    f"calls={joined} resp_chars={_last_tool_return_chars:,}"
+                    f"calls={joined} resp_chars={_last_response_chars:,}"
                 )
         if on_event is not None:
             on_event(RunEvent(node=node, ctx=ctx))

@@ -95,7 +95,7 @@ def print_step_details(run_log: Any) -> None:
     for detail in run_log.step_details:
         print(
             f"  step {detail.step}: msgs={detail.msgs} parts={detail.parts} "
-            f"text_chars={detail.text_chars:,} tool_ret_chars={detail.tool_return_chars:,} "
+            f"text_chars={detail.text_chars:,} resp_chars={detail.response_chars:,} "
             f"duration={detail.duration:.1f}s delta={detail.delta:.1f}s elapsed={detail.elapsed:.1f}s"
         )
 
