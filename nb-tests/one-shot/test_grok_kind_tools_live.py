@@ -11,11 +11,10 @@ provider url/key、同一问题，分别以两种 kind 构建真实 agent（同�
 与工具集），并抓取 provider 原始响应体，对比模型是否真的发起 function_call、
 以及解析出的 ModelResponse parts。
 
-**实测结论**：与 kind 无关，是模型偶发行为。单次探针里失败的反而是 openai_chat
-（原始响应 ``content``/``reasoning_content`` 都有、``tool_calls`` 为空，模型只写了
-「我先搜…」就停），openai_responses 正常跑完 6 步 13 次工具调用。chat 用
-``output_type=str``，这段预告文本即被框架当作最终答案结束 run。两种 kind 都需
-重跑几次才能判断倾向，不要把单次结果当成 kind 差异。
+**实测结论**：与 kind 无关，是模型偶发行为。openai_chat 常把预告写进 ``content``
+（``reasoning_content`` 另有思考、``tool_calls`` 为空）；openai_responses 常夹带未请求
+的原生 ``web_search_call``，同条 ``message`` 会被框架当思考清掉。chat 现用
+``TextOutput(guard_reply)`` 打回预告。两种 kind 都需重跑几次才能判断倾向。
 
 只读 aichat.db 的 grok provider 行（key 不打印）；结果打印 stdout，不落库。
 """
@@ -90,7 +89,22 @@ def _raw_summary(body: str) -> list[str]:
             if kind == "function_call":
                 summary.append(f"function_call({item.get('name')})")
             elif kind == "reasoning":
-                summary.append(f"reasoning(summary={len(item.get('summary') or [])})")
+                texts = [block.get("text") or "" for block in (item.get("summary") or [])]
+                summary.append(
+                    f"reasoning(summary={len(texts)} chars={sum(len(t) for t in texts)})"
+                )
+            elif kind == "message":
+                texts = []
+                for content in item.get("content") or []:
+                    if isinstance(content, dict) and content.get("type") == "output_text":
+                        texts.append(content.get("text") or "")
+                joined = "".join(texts)
+                summary.append(f"message(text={len(joined)}字 preview={joined[:80]!r})")
+            elif kind == "web_search_call":
+                action = item.get("action") or {}
+                summary.append(
+                    f"web_search_call(status={item.get('status')} query={action.get('query')!r})"
+                )
             else:
                 summary.append(str(kind))
         return summary
@@ -115,17 +129,22 @@ async def _ask(kind: str) -> dict[str, Any]:
     record = _grok_record(kind)
     deps = build_deps(config, "grok", MODEL, PROBE_SCOPE)
     response_bodies: list[dict] = []
+    run_log = runner.RunLog()
+    result = None
+    error = ""
     with _capture_raw(response_bodies):
         agent = build_agent(config, "grok", record, MODEL)
-    run_log = runner.RunLog()
-    result = await runner.run_agent_with_retry(
-        agent,
-        QUESTION,
-        deps=deps,
-        message_history=[],
-        usage_limits=UsageLimits(request_limit=12),
-        run_log=run_log,
-    )
+        try:
+            result = await runner.run_agent_with_retry(
+                agent,
+                QUESTION,
+                deps=deps,
+                message_history=[],
+                usage_limits=UsageLimits(request_limit=12),
+                run_log=run_log,
+            )
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
     parts: list[str] = []
     for message in result.new_messages() if result else []:
         for part in message.parts:
@@ -145,8 +164,15 @@ async def _ask(kind: str) -> dict[str, Any]:
         "reason": run_log.reason,
         "tools": [call["name"] for call in run_log.tool_calls],
         "output": (result.output if result else "") or "",
+        "error": error,
         "parts": parts,
         "raw": [_raw_summary(entry["body"]) for entry in response_bodies],
+        "raw_keys": [
+            sorted(json.loads(entry["body"]))[:12]
+            if entry["body"].lstrip().startswith("{")
+            else ["<non-json>"]
+            for entry in response_bodies
+        ],
     }
 
 
@@ -156,9 +182,13 @@ async def test_grok_two_kinds_tool_calling():
     for outcome in outcomes:
         print(f"\n===== kind={outcome['kind']} =====")
         print(f"steps={outcome['steps']} reason={outcome['reason']} tools={outcome['tools']}")
+        if outcome["error"]:
+            print(f"error={outcome['error']}")
         print(f"parts={outcome['parts']}")
-        for index, summary in enumerate(outcome["raw"]):
-            print(f"raw[{index}]: {summary}")
+        for index, (summary, keys) in enumerate(
+            zip(outcome["raw"], outcome["raw_keys"], strict=True)
+        ):
+            print(f"raw[{index}]: {summary} keys={keys}")
         print(f"output[:200]={outcome['output'][:200]!r}")
     for outcome in outcomes:
         if not outcome["tools"]:

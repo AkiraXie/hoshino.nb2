@@ -13,23 +13,30 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import ClassVar
 
-OPENAI_RESPONSE = {
-    "id": "chatcmpl-fake",
-    "object": "chat.completion",
-    "created": 1677652288,
-    "model": "gpt-4o-mini",
-    "choices": [
-        {
-            "index": 0,
-            "message": {"role": "assistant", "content": "你好，我是 OpenAI 回复"},
-            "finish_reason": "stop",
-        }
-    ],
-    "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-}
+
+def openai_text_response(content: str, *, model: str = "gpt-4o-mini") -> dict:
+    """构造一份 ``/chat/completions`` 纯文本回复，供测试按序号轮换。"""
+    return {
+        "id": "chatcmpl-fake",
+        "object": "chat.completion",
+        "created": 1677652288,
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
+OPENAI_RESPONSE = openai_text_response("你好，我是 OpenAI 回复")
 
 ANTHROPIC_RESPONSE = {
     "id": "msg_fake_01",
@@ -134,6 +141,8 @@ class _FakeHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     requests: ClassVar[list[dict]] = []
     custom_response: ClassVar[dict | None] = None  # 测试注入的 /chat/completions 响应
+    custom_responses: ClassVar[list[dict] | None] = None  # 按请求序号轮换的 completions 响应
+    _custom_index: ClassVar[int] = 0
     search_response: ClassVar[dict | None] = None  # 测试注入的 /v1/messages 响应（deepseek 搜索）
     tavily_response: ClassVar[dict | None] = None  # 测试注入的 /search 响应（tavily 搜索）
     bocha_response: ClassVar[dict | None] = None  # 测试注入的 /v1/web-search 响应（博查搜索）
@@ -152,7 +161,7 @@ class _FakeHandler(BaseHTTPRequestHandler):
         stem = self.path.split("?")[0]
         self.requests.append(self._record(raw))
         if stem == "/chat/completions":
-            self._respond(200, self.custom_response or OPENAI_RESPONSE)
+            self._respond(200, self._next_chat_response())
         elif stem == "/v1/messages":
             self._respond(200, self.search_response or ANTHROPIC_RESPONSE)
         elif stem == "/search":
@@ -170,6 +179,14 @@ class _FakeHandler(BaseHTTPRequestHandler):
         else:
             self._respond(404, {"error": "not found"})
 
+    def _next_chat_response(self) -> dict:
+        sequence = type(self).custom_responses
+        if sequence:
+            idx = min(type(self)._custom_index, len(sequence) - 1)
+            type(self)._custom_index += 1
+            return sequence[idx]
+        return self.custom_response or OPENAI_RESPONSE
+
     def _respond(self, status: int, payload: dict) -> None:
         data = json.dumps(payload).encode()
         self.send_response(status)
@@ -183,6 +200,12 @@ class _FakeHandler(BaseHTTPRequestHandler):
         pass
 
 
+def set_chat_responses(payloads: Sequence[dict]) -> None:
+    """按请求序号轮换 ``/chat/completions`` 响应；用尽后重复最后一份。"""
+    _FakeHandler.custom_responses = list(payloads)
+    _FakeHandler._custom_index = 0
+
+
 def start_fake_server(payload: dict | None = None) -> tuple[str, list[dict], callable]:
     """启动 fake HTTP 服务器。
 
@@ -193,6 +216,8 @@ def start_fake_server(payload: dict | None = None) -> tuple[str, list[dict], cal
     """
     _FakeHandler.requests = []
     _FakeHandler.custom_response = payload
+    _FakeHandler.custom_responses = None
+    _FakeHandler._custom_index = 0
     _FakeHandler.search_response = None
     _FakeHandler.tavily_response = None
     _FakeHandler.bocha_response = None

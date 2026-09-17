@@ -10,9 +10,12 @@ HTTP 请求，验证请求格式（路径、鉴权 header、body）与响应解�
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from nonebot_plugin_alconna.uniseg import Target
 
+from fake_ai_server import openai_text_response, set_chat_responses
 from hoshino.ai.config import AIConfig
 from hoshino.ai.deps import AgentDeps, PermissionSnapshot, Telemetry
 from hoshino.ai.provider import ProviderRecord
@@ -290,3 +293,51 @@ def test_openai_system_prompt_and_placeholder_in_body(fake_ai_server, tmp_store)
     assert "system" in roles
     system = next(m for m in req["body"]["messages"] if m["role"] == "system")
     assert "你是测试助手" in system["content"]
+
+
+def test_openai_preamble_is_retried_in_run(fake_ai_server, tmp_store):
+    """短预告文本不能当最终回复：同轮再请求一次，输出取第二份正文。"""
+    from hoshino.ai.providers import build_agent
+
+    base_url, requests = fake_ai_server
+    set_chat_responses(
+        [
+            openai_text_response("先查一下靠谱的医学说法～"),
+            openai_text_response("急性期先休息，肿消了再慢慢动。"),
+        ]
+    )
+    record = ProviderRecord(
+        id="openai",
+        url=base_url,
+        key="sk-test-openai",
+        kind="openai_chat",
+    )
+    agent = build_agent("openai", record, "gpt-4o-mini")
+    result = agent.run_sync(
+        "腰酸背疼怎么判断急性期",
+        deps=_make_deps(base_url, "openai", "gpt-4o-mini"),
+    )
+
+    assert result.output == "急性期先休息，肿消了再慢慢动。"
+    assert len(requests) == 2
+    second = json.dumps(requests[1]["body"], ensure_ascii=False)
+    assert "不要只口头预告" in second
+
+
+def test_openai_short_greeting_is_not_retried(fake_ai_server, tmp_store):
+    """短寒暄不误伤：只发一次请求。"""
+    from hoshino.ai.providers import build_agent
+
+    base_url, requests = fake_ai_server
+    set_chat_responses([openai_text_response("早呀早呀！")])
+    record = ProviderRecord(
+        id="openai",
+        url=base_url,
+        key="sk-test-openai",
+        kind="openai_chat",
+    )
+    agent = build_agent("openai", record, "gpt-4o-mini")
+    result = agent.run_sync("早啊", deps=_make_deps(base_url, "openai", "gpt-4o-mini"))
+
+    assert result.output == "早呀早呀！"
+    assert len(requests) == 1
