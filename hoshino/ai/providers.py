@@ -13,6 +13,7 @@ from typing import Any
 from loguru import logger
 from nonebot_plugin_uninfo import get_session
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.output import TextOutput
 from pydantic_ai.toolsets import (
     ApprovalRequiredToolset,
     DynamicToolset,
@@ -28,6 +29,7 @@ from .models import (
     clear_model_resources,
     register_model_cache,
 )
+from .preamble import guard_reply
 from .provider import ProviderRecord
 from .tools import approval_required, build_tool_instructions, resolve_tools
 
@@ -134,7 +136,8 @@ def build_agent(
             model=model_obj,
             model_settings=model_settings,
             deps_type=AgentDeps,
-            retries={"tools": max(1, tool_max_retries)},
+            output_type=TextOutput(guard_reply),
+            retries={"tools": max(1, tool_max_retries), "output": 1},
             toolsets=[
                 # 常驻挂载：approval_required 按 deps 判定，chat（task=None）从不审批。
                 # ApprovalRequiredToolset 是 WrapperToolset，需包装 DynamicToolset。

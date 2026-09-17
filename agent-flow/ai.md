@@ -61,6 +61,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 - **审批流**：Task 按冻结的 approval_mode 暂停/恢复 run
 - **Goal 服务**：每 scope 单目标 + revision CAS + round cap
 - **拦截瀑布**：pre-step（reject/rewrite）+ request-error（有界重试）
+- **预告文本拦截**：`preamble.py` + `TextOutput` guard；有工具却只吐「我先搜一下」时同轮打回一次
 - **可观测**：RunLog + 参数/key/url 脱敏 + 实时工具日志（info 级带主负载摘要，
   50 字截断）+ token 用量落库（含 conversation_id，`ai status` 可查当前对话用量）
 - **聊天体验**：Markdown 图片渲染、引用回复识别、原生多模态看图、执行护栏

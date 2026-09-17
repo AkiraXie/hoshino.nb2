@@ -10,14 +10,17 @@ import asyncio
 import contextlib
 import json
 import os
+from dataclasses import replace
 from typing import Any
 
 import httpx
 from loguru import logger
 from pydantic import ValidationError
 from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.messages import NativeToolCallPart, NativeToolReturnPart
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
+from pydantic_ai.native_tools import WebSearchTool
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
@@ -150,6 +153,39 @@ def _drop_empty_function_call(response: Any) -> None:
                 message.function_call = None
 
 
+class _DropUnrequestedBuiltinSearch(OpenAIResponsesModel):
+    """丢掉未请求的 Responses 原生 web_search_call。
+
+    grok 等 OpenAI 兼容网关即使请求里没挂 builtin ``web_search``，也会返回
+    ``web_search_call``。pydantic-ai 把它映射成 ``NativeToolCallPart`` 后，
+    CallToolsNode 会把同条响应里的 ``message`` 当思考清掉，run 只剩 thinking
+    → 空响应打回。我们走自己的 ``web_search`` function tool，不启用原生搜索，
+    这些 item 应忽略，让正文走文本终局。
+    """
+
+    def _process_response(self, response: Any, model_settings: Any, model_request_parameters: Any):
+        processed = super()._process_response(response, model_settings, model_request_parameters)
+        native_kinds = {type(tool).kind for tool in model_request_parameters.native_tools}
+        if WebSearchTool.kind in native_kinds:
+            return processed
+        kept = [
+            part
+            for part in processed.parts
+            if not (
+                isinstance(part, NativeToolCallPart | NativeToolReturnPart)
+                and part.tool_name == WebSearchTool.kind
+            )
+        ]
+        if len(kept) == len(processed.parts):
+            return processed
+        logger.info(
+            "AI 忽略未请求的原生 web_search_call model={} dropped={}",
+            self.model_name,
+            len(processed.parts) - len(kept),
+        )
+        return replace(processed, parts=kept)
+
+
 def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = None) -> Any:
     """按 provider.kind 与显式 model 名构建 pydantic-ai model。"""
     if not model:
@@ -165,7 +201,7 @@ def build_model(provider: ProviderRecord, model: str, *, proxy: str | None = Non
                 ),
             )
         case "openai_responses":
-            return OpenAIResponsesModel(
+            return _DropUnrequestedBuiltinSearch(
                 model,
                 provider=OpenAIProvider(
                     api_key=provider.key, base_url=url, http_client=http_client
