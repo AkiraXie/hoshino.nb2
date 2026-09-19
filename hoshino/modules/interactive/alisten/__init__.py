@@ -2,12 +2,14 @@ from nonebot.params import Depends
 from sqlalchemy import select
 
 from hoshino import hsn_nickname
+from hoshino.core.permission import SUPERUSER
 from hoshino.platform.depends import GroupID, GroupMemberName, ParamText
 from hoshino.platform.permission import ADMIN
 
 from .util import (
     AlistenClient,
     AlistenConfig,
+    AlistenCookieError,
     Session,
     get_client,
     get_config,
@@ -17,6 +19,16 @@ from .util import (
 
 configset = sv.on_command("听歌房配置", aliases={"alistenconfig"}, permission=ADMIN)
 configshow = sv.on_command("听歌房显示配置", aliases={"alistenshowconfig"}, permission=ADMIN)
+configtoken = sv.on_command(
+    "听歌房token",
+    aliases={"alistentoken"},
+    permission=SUPERUSER,
+)
+cookiecmd = sv.on_command(
+    "听歌房cookie",
+    aliases={"alistencookie", "听歌房ck"},
+    permission=SUPERUSER,
+)
 
 
 @configset.handle()
@@ -58,12 +70,55 @@ async def _(text: str = ParamText(), gid: int = GroupID()):
 async def _(config: AlistenConfig | None = Depends(get_config)):
     if not config:
         await configshow.finish("当前没有配置听歌房")
+    token_hint = "已配置" if (config.token or "").strip() else "未配置"
     await configshow.finish(
         "听歌房配置如下\n"
         f"服务器地址: {config.server_url}\n"
         f"房间ID: {config.house_id}\n"
         f"房间密码: {config.house_password}\n"
+        f"token: {token_hint}\n"
     )
+
+
+@configtoken.handle()
+async def _(
+    text: str = ParamText(),
+    config: AlistenConfig | None = Depends(get_config),
+):
+    if not config:
+        await configtoken.finish("当前没有配置听歌房")
+    token = text.strip()
+    if not token:
+        await configtoken.finish("用法: 听歌房token <token>")
+    with Session() as session:
+        stmt = select(AlistenConfig).where(AlistenConfig.gid == config.gid)
+        row = session.execute(stmt).scalar_one_or_none()
+        if not row:
+            await configtoken.finish("当前没有配置听歌房")
+        row.token = token
+        session.commit()
+        update_client(row)
+    await configtoken.finish("听歌房 token 已更新")
+
+
+@cookiecmd.handle()
+async def _(
+    text: str = ParamText(),
+    client: AlistenClient | None = Depends(get_client),
+):
+    if not client:
+        await cookiecmd.finish("当前没有配置听歌房")
+    cookie = text.strip()
+    try:
+        if not cookie:
+            status = await client.cookie_status()
+            hint = "已设置" if status.is_set else "未设置"
+            await cookiecmd.finish(f"听歌房 cookie {hint}")
+        result = await client.set_cookie(cookie)
+    except AlistenCookieError as exc:
+        await cookiecmd.finish(exc.reason)
+    persist_hint = "并已持久化" if result.persisted else "（运行时已生效，但持久化失败）"
+    await cookiecmd.finish(f"听歌房 cookie 已更新{persist_hint}")
 
 
 pickmusic = sv.on_command("点歌", aliases={"pickmusic"}, compact=False)
