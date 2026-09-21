@@ -153,3 +153,4 @@ async def test_zssm_http_injects_web_tools(fake_ai_server, monkeypatch, tmp_stor
     web_tool_names = {"web_search", "web_fetch", "browser_use"}
     injected_web = names & web_tool_names
     assert injected_web, f"未注入任何 web 工具，实际 tools: {names}"
+    assert "hoshino_nb2_code" in names, f"未注入仓库知识工具，实际 tools: {names}"

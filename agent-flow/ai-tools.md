@@ -34,10 +34,10 @@
 | `memory` | core | medium | chat/task | scope 隔离长期记忆 |
 | `persona_manage` | core | medium | chat/task | 人设 CRUD/绑定 |
 | `provider_choose` | core | medium | chat/task | provider/模型切换（仅 superuser） |
+| `hoshino_nb2_code` | core | low | chat/task | 仓库知识（只读，chat/zssm 默认可用） |
 | `bash` | computer | high | task | shell（需显式开启） |
 | `python` | computer | high | task | Python 执行 |
 | `file` | computer | medium→high | chat/task | 工作目录内读写删（参数级风险） |
-| `hoshino_nb2_code` | computer | low | chat/task | 仓库知识（只读） |
 | `service_manage` | bot | medium | chat | 服务开关 |
 | `send_message` | bot | medium | chat | 单向发消息 |
 | `web_search` | web | low | chat/task | 联网搜索（deepseek/tavily/博查） |
@@ -49,7 +49,9 @@
 
 ## hoshino_nb2_code
 
-仓库知识工具（只读），子命令：`overview`（概览）、`norms`（规范）、`flow`（工作流）、`ai_module`（AI 模块指南）、`read <path>`（读文件）。路径限制在仓库根目录内，敏感路径（`.env*`、`.git`、`data/`、凭据等）直接拒绝。
+仓库知识工具（只读，**core 类别**，chat / zssm 默认注入，不必开 computer）。子命令：`overview`（概览）、`norms`（规范）、`flow`（工作流）、`ai_module`（AI 模块指南）、`help [query]`（命令 help / USAGE / Alconna `get_help()`）、`read <path>`（读文件）。路径限制在仓库根目录内，敏感路径（`.env*`、`.git`、`data/`、凭据等）直接拒绝。
+
+询问机器人本身时优先 `help`：例如用户说 `zssm`、`ai model reset`、`#help ai model set`，先调 `help` 拿 USAGE/模块说明，需要实现细节再 `read` 对应源文件。
 
 ## 新增工具
 

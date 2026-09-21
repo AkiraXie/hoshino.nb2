@@ -23,13 +23,13 @@ from .bot import service_manage as _service_manage
 from .computer import bash as _bash
 from .computer import file as _file
 from .computer import python as _python
-from .computer import repo_code as _repo_code
 from .core import file_view as _file_view
 from .core import image_view as _image_view
 from .core import memory as _memory
 from .core import now as _now
 from .core import persona_manage as _persona_manage
 from .core import provider_choose as _provider_choose
+from .core import repo_code as _repo_code
 from .skill import skill_manage as _skill_manage
 from .skill import skill_read as _skill_read
 from .web import browser_use as _browser_use
@@ -84,6 +84,15 @@ REGISTRATIONS: tuple[ToolRegistration, ...] = (
         risk="medium",
     ),
     ToolRegistration(
+        "hoshino_nb2_code",
+        1,
+        _repo_code.hoshino_nb2_code,
+        "core",
+        frozenset({"chat", "task"}),
+        risk="low",
+        local_access=True,
+    ),
+    ToolRegistration(
         "bash",
         1,
         _bash.bash,
@@ -109,15 +118,6 @@ REGISTRATIONS: tuple[ToolRegistration, ...] = (
         frozenset({"chat", "task"}),
         risk="medium",
         risk_for=_file.risk_for_file,
-        local_access=True,
-    ),
-    ToolRegistration(
-        "hoshino_nb2_code",
-        1,
-        _repo_code.hoshino_nb2_code,
-        "computer",
-        frozenset({"chat", "task"}),
-        risk="low",
         local_access=True,
     ),
     ToolRegistration(

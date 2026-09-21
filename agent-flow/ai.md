@@ -52,7 +52,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 
 ## 4. 自建扩展
 
-- **工具治理**：注册表 + `resolve_tools` 按 surface/scope/live-event 过滤；授权与注入分离
+- **工具治理**：注册表 + `resolve_tools` 按 surface/scope/live-event 过滤；授权与注入分离。`hoshino_nb2_code` 属于 core，chat/zssm 默认可用，用来查仓库知识和命令 help
 - **事件溯源会话**：append-only 事件日志 → `derive_messages` 派生模型历史，log-only 事件不污染输入
 - **多对话管理**：每 scope 多命名对话，turn 锁串行化，`#new/#switch/#list/#clear` 控制
 - **persona 体系**：三级解析 + `{{variable}}` 严格插值 + 示例对话 few-shot + `output.md` 强制规范

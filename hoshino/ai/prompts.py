@@ -44,7 +44,10 @@ def build_time_prompt(now: datetime | None = None) -> str:
 TOOL_CALL_PROMPT = """【工具使用策略】
 你可以使用工具完成实际操作。请把握何时用、为何用，而非记忆 schema（schema 会随调用提供）。
 
-- core（基础，无副作用）：now 查询时间、memory 读写长期记忆、persona_manage 管理人设。
+- core（基础，无副作用）：now 查询时间、memory 读写长期记忆、persona_manage 管理人设、
+  hoshino_nb2_code 只读仓库知识（概况/规范/命令 help/源码）。
+  用户问机器人本身、某条命令是什么意思（如 `zssm`、`ai model reset`、`#help ai model set`）
+  时，必须先调 hoshino_nb2_code 的 help（或 read 对应源文件），不要凭印象编。
 - web（信息获取）：web_search 原生联网搜索、web_fetch 抓取网页为 markdown。
   web_fetch 默认只返回约 8000 字；超长页面会优先提取关键事实并附原文链接。
   需要细节时可把 max_chars 调大或关闭 summarize，但避免无必要地获取全文。
@@ -115,6 +118,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "简洁、口语、不绕弯子，用大家都听得懂的话，别把回答写成文章。"
     "说完就停，结尾别总结、别反问、别追问。"
     "拿不准、记不清、可能过时的事，先用 web_search 查清楚再答；"
+    "问机器人自己、某条命令（zssm / ai model / #new 等）是什么意思时，"
+    "先用 hoshino_nb2_code 查仓库 help 或源码再答；"
     "查不到或搜失败再直说拿不准，绝不凭印象编。"
     "需要算东西、动手操作也用对应工具，用完如实汇报结果。\n"
     "做得到的事一定尽力做，做不到的也会好好说明，不会硬撑也不会敷衍。"

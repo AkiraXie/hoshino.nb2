@@ -471,6 +471,7 @@ async def test_tools_list_shows_defaults(monkeypatch, tmp_store):
     assert "web" in text
     assert "skill" in text
     assert "memory" in text  # 工具名保持原始值
+    assert "hoshino_nb2_code" in text
     assert "web_search" in text
     assert "skill_read" in text
     assert "milky:123456" not in text  # 不向用户暴露 scope key
