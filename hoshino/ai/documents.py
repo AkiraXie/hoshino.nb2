@@ -183,8 +183,13 @@ def _read_path(path: Path, name: str, mimetype: str | None = None) -> ReadDocume
     if suffix == ".pdf" or guessed_type == "application/pdf":
         text = _read_pdf(path)
     elif suffix in _IMAGE_EXTENSIONS or guessed_type.startswith("image/"):
-        compressed = media.compress_image_bytes(raw)
-        image = BinaryContent(data=compressed, media_type="image/jpeg")
+        normalized = media.normalize_image_bytes(raw)
+        if normalized is None:
+            raise ValueError("图片格式不受支持（仅 JPEG/PNG/GIF）。")
+        image_data, image_type = normalized
+        if len(image_data) > MAX_FILE_BYTES:
+            raise ValueError("图片处理后超过 15MB 限制。")
+        image = BinaryContent(data=image_data, media_type=image_type)
         return ReadDocument(name=name, path=path, size=size, image=image)
     else:
         text = _decode_text(raw)

@@ -1,9 +1,10 @@
-"""web/image_view：抓取图片 URL，返回压缩后的 BinaryContent 给调用模型。
+"""web/image_view：抓取图片 URL，返回规范为 JPEG/PNG/GIF 的 BinaryContent。
 
 网络行为与 web_fetch 一致：``trust_env=False``（规避 socks 环境变量崩溃）、
 ``verify=config.web_fetch_verify_ssl``、SSRF 防护（拒绝私有/回环/保留地址）、
-30s 超时、跟随重定向。超过阈值的图片先压缩（PIL thumbnail + JPEG/80）再返回，
-压缩后仍超限才拒绝。失败返回错误提示字符串。
+30s 超时、跟随重定向。图片先按字节判定真实格式并规范为 JPEG/PNG/GIF
+（webp/avif 等重新编码，带透明存 PNG，否则 JPEG），超阈值再压缩；处理后仍
+超限才拒绝。失败返回错误提示字符串。
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ async def fetch_image_as_content(
     verify_ssl: bool,
     fetch_proxy: str | None = None,
 ) -> BinaryContent | str:
-    """抓取图片 URL 并压缩为 BinaryContent（供 image_view 工具与其它入口复用）。"""
+    """抓取图片 URL 并规范为 JPEG/PNG/GIF 的 BinaryContent（供 image_view 工具与其它入口复用）。"""
     return await media.fetch_image_url(url, verify_ssl=verify_ssl, proxy=fetch_proxy)
 
 

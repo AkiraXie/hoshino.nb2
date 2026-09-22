@@ -1,14 +1,16 @@
 """事件图片 → pydantic-ai 原生多模态输入内容。
 
-把 UniImage 段转成压缩后的 ``BinaryContent``（本地 path/raw 直接读；远程
-http(s) 先抓再压），与文本一起作为 ``UserContent`` 序列传给同一 model。
+把 UniImage 段转成归一化后的 ``BinaryContent``（本地 path/raw 直接读；远程
+http(s) 先抓再归一化），与文本一起作为 ``UserContent`` 序列传给同一 model。
 不依赖会过期的 IM ``ImageUrl``。解析失败的段跳过并日志，不阻塞主流程。
+
+出站图片一律规范成 JPEG/PNG/GIF：webp/avif/bmp 等格式 provider 可能拒收，
+扩展名与真实格式也可能不一致，因此按字节判定并重新编码。
 """
 
 from __future__ import annotations
 
 import asyncio
-import mimetypes
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlparse
@@ -24,61 +26,71 @@ from hoshino.ai.net import is_private_host
 _MAX_BYTES = 15 * 1024 * 1024
 _COMPRESS_THRESHOLD = 10 * 1024 * 1024
 _COMPRESS_MAX = 10 * 1024 * 1024
-_IMAGE_MEDIA_TYPES = ("image/png", "image/jpeg", "image/webp", "image/gif")
+_MAX_DIMENSION = (4096, 4096)
+_JPEG_QUALITY = 80
+_PASSTHROUGH_FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "GIF": "image/gif"}
 
 
-def _bytes_media_type(path: str) -> str:
-    """按本地文件扩展名推断图片 media_type；未知按 image/png。"""
-    guessed, _ = mimetypes.guess_type(path)
-    if guessed and guessed.startswith("image/"):
-        return guessed
-    return "image/png"
+def _has_alpha(image: PILImage.Image) -> bool:
+    return image.mode in {"RGBA", "LA", "PA"} or (
+        image.mode == "P" and "transparency" in image.info
+    )
 
 
-def _media_type_from_content_type(content_type: str | None) -> str:
-    if content_type:
-        ct = content_type.split(";")[0].strip().lower()
-        if ct in _IMAGE_MEDIA_TYPES:
-            return ct
-    return "image/png"
+def _reencode_image(image: PILImage.Image) -> tuple[bytes, str]:
+    """重新编码为 PNG（保留透明）或 JPEG；动图只保留首帧。"""
+    image.seek(0)
+    image.thumbnail(_MAX_DIMENSION)
+    buffered = BytesIO()
+    if _has_alpha(image):
+        image.convert("RGBA").save(buffered, format="PNG")
+        return buffered.getvalue(), "image/png"
+    image.convert("RGB").save(buffered, format="JPEG", quality=_JPEG_QUALITY)
+    return buffered.getvalue(), "image/jpeg"
 
 
-def _jpeg_media_if_compressed(data: bytes, fallback: str) -> str:
-    return "image/jpeg" if data[:2] == b"\xff\xd8" else fallback
+def normalize_image_bytes(data: bytes) -> tuple[bytes, str] | None:
+    """把图片规范成 JPEG/PNG/GIF，返回 ``(data, media_type)``；无法解码返回 None。
 
-
-def compress_image_bytes(data: bytes) -> bytes:
-    """把图片压缩到阈值以下（thumbnail + JPEG/80）；原图已达标则原样返回。"""
-    if len(data) <= _COMPRESS_THRESHOLD:
-        return data
+    已是达标格式且未超压缩阈值的原样返回（保留动图）；其余格式（webp/avif/bmp…）
+    或超阈值图片重新编码：带透明通道存 PNG，否则存 JPEG（动图只留首帧，多数
+    provider 也只读首帧）。
+    """
     try:
-        image = PILImage.open(BytesIO(data))
-        image.thumbnail((4096, 4096))
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-        buffered = BytesIO()
-        image.save(buffered, format="JPEG", quality=80)
-        return buffered.getvalue()
-    except Exception:
-        return data
+        with PILImage.open(BytesIO(data)) as image:
+            media_type = _PASSTHROUGH_FORMATS.get((image.format or "").upper())
+            if media_type and len(data) <= _COMPRESS_THRESHOLD:
+                return data, media_type
+            return _reencode_image(image)
+    except Exception as exc:
+        logger.warning(f"AI 图片解码失败（非 JPEG/PNG/GIF）error={type(exc).__name__}")
+        return None
+
+
+def _content_from_bytes(data: bytes, *, origin: str) -> BinaryContent | None:
+    """归一化 + 限长；不合格返回 None 并日志。"""
+    if len(data) > _MAX_BYTES:
+        logger.warning(f"AI 图片超过大小限制，跳过 origin={origin!r}")
+        return None
+    normalized = normalize_image_bytes(data)
+    if normalized is None:
+        logger.warning(f"AI 图片无法规范为 JPEG/PNG/GIF，跳过 origin={origin!r}")
+        return None
+    normalized_data, media_type = normalized
+    if len(normalized_data) > _COMPRESS_MAX:
+        logger.warning(f"AI 图片规范后仍超限，跳过 origin={origin!r}")
+        return None
+    return BinaryContent(data=normalized_data, media_type=media_type)
 
 
 def _read_local(path: str) -> bytes | None:
-    """读取本地图片字节并压缩；失败/超限返回 None。"""
+    """读取本地图片字节；失败返回 None。"""
     try:
         with open(path, "rb") as f:
-            data = f.read()
+            return f.read()
     except OSError as exc:
         logger.warning(f"AI 图片读取失败 path={path!r} error={type(exc).__name__}")
         return None
-    if len(data) > _MAX_BYTES:
-        logger.warning(f"AI 图片超过大小限制，跳过 path={path!r}")
-        return None
-    data = compress_image_bytes(data)
-    if len(data) > _COMPRESS_MAX:
-        logger.warning(f"AI 图片压缩后仍超限，跳过 path={path!r}")
-        return None
-    return data
 
 
 def _local_segment_to_content(segment) -> BinaryContent | None:
@@ -91,26 +103,15 @@ def _local_segment_to_content(segment) -> BinaryContent | None:
         data = _read_local(path)
         if data is None:
             return None
-        return BinaryContent(
-            data=data, media_type=_jpeg_media_if_compressed(data, _bytes_media_type(path))
-        )
+        return _content_from_bytes(data, origin=path)
     if isinstance(raw, bytes) and raw:
-        if len(raw) > _MAX_BYTES:
-            logger.warning("AI 图片超过大小限制，跳过（raw bytes）")
-            return None
-        data = compress_image_bytes(raw)
-        if len(data) > _COMPRESS_MAX:
-            logger.warning("AI 图片压缩后仍超限，跳过（raw bytes）")
-            return None
-        return BinaryContent(data=data, media_type=_jpeg_media_if_compressed(data, "image/png"))
+        return _content_from_bytes(raw, origin="raw")
     if url.startswith("file://"):
         local = url.removeprefix("file://")
         data = _read_local(local)
         if data is None:
             return None
-        return BinaryContent(
-            data=data, media_type=_jpeg_media_if_compressed(data, _bytes_media_type(local))
-        )
+        return _content_from_bytes(data, origin=local)
     return None
 
 
@@ -120,7 +121,7 @@ async def fetch_image_url(
     verify_ssl: bool = True,
     proxy: str | None = None,
 ) -> BinaryContent | str:
-    """抓取远程图片并压缩为 BinaryContent；失败返回错误提示字符串。"""
+    """抓取远程图片并规范为 JPEG/PNG/GIF 的 BinaryContent；失败返回错误提示字符串。"""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return "仅支持 http/https 图片 URL。"
@@ -147,14 +148,14 @@ async def fetch_image_url(
     if len(data) > _MAX_BYTES:
         return f"图片超过大小限制（{_MAX_BYTES // (1024 * 1024)}MB）。"
 
-    data = await asyncio.to_thread(compress_image_bytes, data)
-    if len(data) > _COMPRESS_MAX:
-        return f"图片压缩后仍超过 {_COMPRESS_MAX // (1024 * 1024)}MB。"
+    normalized = await asyncio.to_thread(normalize_image_bytes, data)
+    if normalized is None:
+        return "图片格式不受支持（仅 JPEG/PNG/GIF）。"
+    normalized_data, media_type = normalized
+    if len(normalized_data) > _COMPRESS_MAX:
+        return f"图片处理后仍超过 {_COMPRESS_MAX // (1024 * 1024)}MB。"
 
-    media = _jpeg_media_if_compressed(
-        data, _media_type_from_content_type(response.headers.get("content-type"))
-    )
-    return BinaryContent(data=data, media_type=media)
+    return BinaryContent(data=normalized_data, media_type=media_type)
 
 
 def image_segments_to_content(segments: list) -> list[Any]:
@@ -177,11 +178,11 @@ async def image_segments_to_content_async(
     verify_ssl: bool = True,
     proxy: str | None = None,
 ) -> list[Any]:
-    """异步转换图片段：本地/raw 压缩；远程 http(s) 抓取再压缩为 BinaryContent。"""
+    """异步转换图片段：本地/raw 规范为 JPEG/PNG/GIF；远程 http(s) 抓取后同样规范。"""
     parts: list[Any] = []
     for segment in segments:
         url = (getattr(segment, "url", "") or "").strip()
-        local = _local_segment_to_content(segment)
+        local = await asyncio.to_thread(_local_segment_to_content, segment)
         if local is not None:
             parts.append(local)
             continue
