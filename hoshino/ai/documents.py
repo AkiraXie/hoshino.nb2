@@ -48,7 +48,7 @@ class ReadDocument:
     path: Path
     size: int
     text: str | None = None
-    image: BinaryContent | None = None
+    images: tuple[BinaryContent, ...] = ()
 
 
 def _safe_name(name: str, default: str = "file.bin") -> str:
@@ -183,14 +183,10 @@ def _read_path(path: Path, name: str, mimetype: str | None = None) -> ReadDocume
     if suffix == ".pdf" or guessed_type == "application/pdf":
         text = _read_pdf(path)
     elif suffix in _IMAGE_EXTENSIONS or guessed_type.startswith("image/"):
-        normalized = media.normalize_image_bytes(raw)
-        if normalized is None:
-            raise ValueError("图片格式不受支持（仅 JPEG/PNG/GIF）。")
-        image_data, image_type = normalized
-        if len(image_data) > MAX_FILE_BYTES:
-            raise ValueError("图片处理后超过 15MB 限制。")
-        image = BinaryContent(data=image_data, media_type=image_type)
-        return ReadDocument(name=name, path=path, size=size, image=image)
+        images = media.image_bytes_to_contents(raw, origin=name)
+        if not images:
+            raise ValueError("图片无法处理（仅支持 JPEG/PNG/GIF，处理后上限 10MB）。")
+        return ReadDocument(name=name, path=path, size=size, images=tuple(images))
     else:
         text = _decode_text(raw)
         if suffix in _HTML_EXTENSIONS or guessed_type in {"text/html", "application/xhtml+xml"}:
@@ -225,8 +221,10 @@ async def file_view(
 ):
     """Read a supported local path or HTTP(S) URL; images are native model content."""
     document = await read_document(source, config=config, deps=deps)
-    if document.image is not None:
-        return document.image
+    if document.images:
+        if len(document.images) == 1:
+            return document.images[0]
+        return list(document.images)
     return _line_window(document.text or "（空内容）", start_line, end_line)
 
 
@@ -241,9 +239,14 @@ async def file_segments_to_prompt(segments, *, config) -> tuple[str, list[Binary
         except Exception as exc:
             text_parts.append(f"[文件 {name}]\n读取失败：{type(exc).__name__}。")
             continue
-        if document.image is not None:
-            text_parts.append(f"[文件 {name}]\n这是一个图片文件，请直接查看附件内容。")
-            image_parts.append(document.image)
+        if document.images:
+            frame_hint = (
+                f"（动图，已抽取 {len(document.images)} 个代表帧，按时间先后排列）"
+                if len(document.images) > 1
+                else ""
+            )
+            text_parts.append(f"[文件 {name}]\n这是一个图片文件{frame_hint}，请直接查看附件内容。")
+            image_parts.extend(document.images)
         elif document.text is not None and len(document.text) <= INLINE_MAX_CHARS:
             text_parts.append(f"[文件 {name}]\n{document.text or '（空内容）'}")
         else:

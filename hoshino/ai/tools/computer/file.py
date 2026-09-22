@@ -62,10 +62,11 @@ async def file(
     path: str,
     mode: FileMode = "read",
     content: str = "",
-) -> str | BinaryContent:
+) -> str | BinaryContent | list[BinaryContent]:
     """在工作目录内读写文件（限 1MB，delete 为高风险）。
 
     - read <path>：复用 documents 抽取文本/HTML/PDF；图片返回 BinaryContent
+      （动图返回按时间排列的多张代表帧）
     - list <path>：列出目录条目
     - write <path> <content>：写入（将覆盖已有文件）
     - delete <path>：删除（高风险，请创建 Task 由审批流程执行）
