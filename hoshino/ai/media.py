@@ -26,7 +26,8 @@ from hoshino.ai.net import is_private_host
 _MAX_BYTES = 15 * 1024 * 1024
 _COMPRESS_THRESHOLD = 10 * 1024 * 1024
 _COMPRESS_MAX = 10 * 1024 * 1024
-_MAX_DIMENSION = (4096, 4096)
+_MAX_SIDE = 4096
+_MAX_DIMENSION = (_MAX_SIDE, _MAX_SIDE)
 _JPEG_QUALITY = 80
 _PASSTHROUGH_FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "GIF": "image/gif"}
 
@@ -52,14 +53,19 @@ def _reencode_image(image: PILImage.Image) -> tuple[bytes, str]:
 def normalize_image_bytes(data: bytes) -> tuple[bytes, str] | None:
     """把图片规范成 JPEG/PNG/GIF，返回 ``(data, media_type)``；无法解码返回 None。
 
-    已是达标格式且未超压缩阈值的原样返回（保留动图）；其余格式（webp/avif/bmp…）
-    或超阈值图片重新编码：带透明通道存 PNG，否则存 JPEG（动图只留首帧，多数
-    provider 也只读首帧）。
+    已是达标格式、未超压缩阈值**且单边不超过 4096 像素**的原样返回（保留动图）；
+    超阈值、超尺寸或其余格式（webp/avif/bmp…）重新编码：带透明通道存 PNG，否则
+    存 JPEG（动图只留首帧，多数 provider 也只读首帧）。
+
+    尺寸必须在这里收口：长截图（群聊转发的小说截图常见 884x9644）本身是合法
+    JPEG，但会超过 provider 的单边像素上限（DeepSeek 为 8192px，≥15 张图时降到
+    4096px），被以「unsupported image / 格式不支持」这种误导性文案拒收。
     """
     try:
         with PILImage.open(BytesIO(data)) as image:
             media_type = _PASSTHROUGH_FORMATS.get((image.format or "").upper())
-            if media_type and len(data) <= _COMPRESS_THRESHOLD:
+            oversized = max(image.size) > _MAX_SIDE
+            if media_type and not oversized and len(data) <= _COMPRESS_THRESHOLD:
                 return data, media_type
             return _reencode_image(image)
     except Exception as exc:
