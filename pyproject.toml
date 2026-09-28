@@ -36,6 +36,7 @@ dependencies = [
     "markdownify>=1.2.3",
     "pypdf>=6.0.0,<7",
     "pydantic-ai-harness==0.18.1",
+    "latex2mathml>=3.81.1",
 ]
 
 [project.scripts]
