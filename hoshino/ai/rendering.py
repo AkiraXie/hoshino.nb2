@@ -1,7 +1,8 @@
 """Markdown → HTML → Playwright PNG 渲染。
 
-链路：``markdown-it-py`` 渲染 Markdown 到 HTML（服务端 pygments 高亮代码块），
-内嵌 CSS 后交给仓库既有 Playwright 设施截图成 PNG。
+链路：``markdown-it-py`` 渲染 Markdown 到 HTML（服务端 pygments 高亮代码块、
+LaTeX 数学公式经 ``latex2mathml`` 转 MathML 由 Chromium 原生排版），内嵌 CSS
+后交给仓库既有 Playwright 设施截图成 PNG。
 
 ``markdown_to_html`` / ``build_full_html`` 为纯函数，便于测试；真正依赖浏览器的
 ``render_markdown`` 在 chat 插件中用 ``asyncio.wait_for`` 包裹，超时或异常统一回退
@@ -11,10 +12,18 @@
 from __future__ import annotations
 
 import re
+from html import escape
 from typing import Any
 
+from latex2mathml.converter import convert as latex_to_mathml
+from loguru import logger
 from markdown_it import MarkdownIt
+from markdown_it.rules_block import StateBlock
+from markdown_it.rules_inline import StateInline
+from mdit_py_plugins.amsmath import amsmath_plugin
+from mdit_py_plugins.dollarmath import dollarmath_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
+from mdit_py_plugins.utils import is_code_block
 from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import TextLexer, get_lexer_by_name
@@ -109,6 +118,16 @@ html, body {{
 }}
 .md-body th {{ background: var(--code-bg); color: var(--accent); }}
 .md-body img {{ max-width: 100%; border-radius: 6px; }}
+.md-body math {{
+  font-family: "Latin Modern Math", "STIX Two Math", "Noto Sans Math",
+    "DejaVu Math TeX Gyre", "Cambria Math", serif;
+  font-size: 1.05em;
+}}
+.md-body .math.block, .md-body .math.amsmath {{
+  margin: 1em 0;
+  text-align: center;
+}}
+.md-body code.math-raw {{ white-space: pre-wrap; }}
 .md-body hr {{ border: none; border-top: 1px solid var(--border); margin: 1em 0; }}
 .md-body .task-list-item {{
   list-style: none;
@@ -200,9 +219,140 @@ def _pygments_fence(tokens: list[Any], idx: int, options: Any, env: Any) -> str:
     return f'<pre class="codehilite"><code>{body}</code></pre>'
 
 
+# 段落终止链：公式块出现在上一行文字之后时不带空行也要断开成独立块。
+_PARAGRAPH_TERMINATORS = ["paragraph", "reference", "blockquote", "list", "footnote_def"]
+
+
+def _render_latex(latex: str, *, display_mode: bool) -> str:
+    """LaTeX → MathML；转换失败退回原始 LaTeX，至少让公式源码可见。"""
+    try:
+        return latex_to_mathml(latex, display="block" if display_mode else "inline")
+    except Exception as exc:  # latex2mathml 对未知命令/未闭合环境抛多种异常
+        logger.warning(
+            f"LaTeX 转 MathML 失败，按原文渲染 error={type(exc).__name__} latex={latex[:80]!r}"
+        )
+        return f'<code class="math-raw">{escape(latex)}</code>'
+
+
+def _render_inline_math(content: str, options: dict[str, Any]) -> str:
+    """dollarmath 渲染器签名：``(content, {"display_mode": bool}) -> str``。"""
+    return _render_latex(content, display_mode=bool(options.get("display_mode")))
+
+
+def _render_math_inline_double(
+    _self: Any, tokens: list[Any], idx: int, _options: Any, _env: Any
+) -> str:
+    """同一行里的 ``$$...$$``：dollarmath 默认包 ``<div>`` 会撕开段落，这里按行内处理。"""
+    content = str(tokens[idx].content).strip()
+    return f'<span class="math inline">{_render_latex(content, display_mode=False)}</span>'
+
+
+def _render_block_math(content: str) -> str:
+    """amsmath 渲染器签名 ``(content) -> str``；该插件只产出独立成块的公式。"""
+    return _render_latex(content, display_mode=True)
+
+
+def _is_escaped(src: str, pos: int) -> bool:
+    """判断 pos 处的字符是否被反斜杠转义（奇数个前置反斜杠为转义）。"""
+    backslashes = 0
+    idx = pos - 1
+    while idx >= 0 and src[idx] == "\\":
+        backslashes += 1
+        idx -= 1
+    return backslashes % 2 == 1
+
+
+def _math_inline_bracket(state: StateInline, silent: bool) -> bool:
+    """``\\(...\\)`` 行内公式，产出与 dollarmath ``$...$`` 相同的 token。"""
+    if state.src[state.pos : state.pos + 2] != "\\(" or _is_escaped(state.src, state.pos):
+        return False
+    closing = state.src.find("\\)", state.pos + 2)
+    if closing < 0:
+        return False
+    content = state.src[state.pos + 2 : closing].strip()
+    if not content:
+        return False
+    if not silent:
+        token = state.push("math_inline", "math", 0)
+        token.content = content
+        token.markup = "\\("
+    state.pos = closing + 2
+    return True
+
+
+def _parse_math_block(
+    state: StateBlock,
+    start_line: int,
+    end_line: int,
+    silent: bool,
+    open_delim: str,
+    close_delim: str,
+) -> bool:
+    """解析独立成块的公式，可跨行；silent（段落终止探测）只判断不产出 token。"""
+    if is_code_block(state, start_line):
+        return False
+    start = state.bMarks[start_line] + state.tShift[start_line]
+    if state.src[start : start + len(open_delim)] != open_delim:
+        return False
+    closing_line = start_line
+    closing = state.src.find(close_delim, start + len(open_delim))
+    while closing < 0 or closing > state.eMarks[closing_line]:
+        closing_line += 1
+        if closing_line >= end_line:
+            return False
+        closing = state.src.find(close_delim, state.bMarks[closing_line])
+    content = state.src[start + len(open_delim) : closing].strip()
+    if not content:
+        return False
+    state.line = closing_line + 1
+    if not silent:
+        token = state.push("math_block", "math", 0)
+        token.block = True
+        token.content = content
+        token.markup = open_delim
+        token.map = [start_line, state.line]
+    return True
+
+
+def _math_block_dollar(state: StateBlock, start_line: int, end_line: int, silent: bool) -> bool:
+    """``$$...$$`` 块级公式。"""
+    return _parse_math_block(state, start_line, end_line, silent, "$$", "$$")
+
+
+def _math_block_bracket(state: StateBlock, start_line: int, end_line: int, silent: bool) -> bool:
+    """``\\[...\\]`` 块级公式。"""
+    return _parse_math_block(state, start_line, end_line, silent, "\\[", "\\]")
+
+
+def _math_plugin(md: MarkdownIt) -> None:
+    """补上 ``\\(...\\)`` / ``\\[...\\]`` 定界符，并让块级公式成为段落终止符。
+
+    dollarmath 只认美元符，且它的 ``$$`` 块规则没有 alt 终止链、在终止探测时
+    还会推 token（会把前一段正文吞掉），因此这里整体替换成自己的实现。
+    """
+    md.inline.ruler.before("escape", "math_inline_bracket", _math_inline_bracket)
+    md.block.ruler.at("math_block", _math_block_dollar, {"alt": _PARAGRAPH_TERMINATORS})
+    md.block.ruler.before(
+        "fence", "math_block_bracket", _math_block_bracket, {"alt": _PARAGRAPH_TERMINATORS}
+    )
+
+
 def make_markdown() -> MarkdownIt:
     """构建配置好插件与高亮渲染的 MarkdownIt 实例。"""
     md = MarkdownIt("gfm-like", {"html": True, "linkify": True}).use(tasklists_plugin)
+    # allow_digits=False 跟随 GitHub 规则：闭合的 $ 后面不能紧跟数字，避免把
+    # 「花了 $20，值 $30」这类价格文本误判成行内公式。
+    md.use(
+        dollarmath_plugin,
+        renderer=_render_inline_math,
+        allow_digits=False,
+        allow_space=True,
+        allow_blank_lines=True,
+        double_inline=True,
+    )
+    md.use(amsmath_plugin, renderer=_render_block_math)
+    md.use(_math_plugin)
+    md.add_render_rule("math_inline_double", _render_math_inline_double)
     md.renderer.rules["fence"] = _pygments_fence
     return md
 

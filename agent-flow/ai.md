@@ -35,7 +35,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 | `deps.py` | `AgentDeps`（surface/scope/target/config/权限/bot/event/telemetry/task） |
 | `store.py` | SQLite 表层：providers / personas / conversations / events / goals / usage |
 | `metrics.py` | 用量提取与聚合 |
-| `rendering.py` | Markdown → Playwright PNG |
+| `rendering.py` | Markdown → Playwright PNG（pygments 代码高亮；LaTeX 公式经 `latex2mathml` 转 MathML 交给 Chromium 排版，认 `$…$` / `$$…$$` / `\(…\)` / `\[…\]` / amsmath 环境） |
 | `media.py` | 事件图片规范为 JPEG/PNG 的 BinaryContent（按字节判格式 + 压缩 + 单边 ≤4096px）；动图抽首/中/尾帧当多张静态图，构建原生多模态 prompt |
 | `harness.py` | pydantic-ai-harness facade（Planning / StepPersistence，可降级） |
 | `errors.py` | 异常详情提取 |
