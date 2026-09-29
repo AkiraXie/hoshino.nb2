@@ -37,7 +37,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 | `metrics.py` | 用量提取与聚合 |
 | `rendering.py` | Markdown → Playwright PNG（pygments 代码高亮；LaTeX 公式经 `latex2mathml` 转 MathML 交给 Chromium 排版，认 `$…$` / `$$…$$` / `\(…\)` / `\[…\]` / amsmath 环境） |
 | `media.py` | 事件图片规范为 JPEG/PNG 的 BinaryContent（按字节判格式 + 压缩 + 单边 ≤4096px）；动图抽首/中/尾帧当多张静态图，构建原生多模态 prompt |
-| `reply.py` | 回复交付形态：`reply` 输出工具（文档即 `deliver_reply` docstring）+ 形态判定 `needs_image` + 纯文本化 `to_plain_text` |
+| `reply.py` | 回复交付形态：`reply` 输出工具（文档即 `deliver_reply` docstring）+ 排版判定 `needs_image` + 纯文本分段 `split_plain_text` + 归一 `to_delivery` |
 | `harness.py` | pydantic-ai-harness facade（Planning / StepPersistence，可降级） |
 | `errors.py` | 异常详情提取 |
 | `tools/` | 工具注册表与实现（详见 `ai-tools.md`） |
@@ -63,7 +63,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 - **Goal 服务**：每 scope 单目标 + revision CAS + round cap
 - **拦截瀑布**：pre-step（reject/rewrite）+ request-error（有界重试）
 - **预告文本拦截**：`preamble.py` + `TextOutput` guard；有工具却只吐「我先搜一下」时同轮打回一次（`reply` 工具走同一个 `guard_preamble`，不能绕路）
-- **回复形态**：`reply.py` 的 `reply` 输出工具让模型显式选「纯文本消息 / Markdown 图片」（工具文档写清两种场景）；模型直接写文字终局时按内容判定——含 Markdown 语法走图片，否则发纯文本，text 形态统一过 `to_plain_text` 抹语法
+- **回复形态**：`reply.py` 的 `reply` 输出工具让模型显式选「纯文本消息 / Markdown 图片」（工具文档用 MUST 级别写清两种场景）；交付前按硬规则归一——正文带 Markdown / 中文式排版记号一律走图片（模型声明的 text 会被改判，图片是保底），干净文字才走纯文本；纯文本按自然段与 140~210 字窗口分段，逐条发出
 - **可观测**：RunLog + 参数/key/url 脱敏 + 实时工具日志（info 级带主负载摘要，
   50 字截断）+ token 用量落库（含 conversation_id，`ai status` 可查当前对话用量）
 - **聊天体验**：Markdown 图片渲染、纯文本形态、引用回复识别、原生多模态看图、执行护栏

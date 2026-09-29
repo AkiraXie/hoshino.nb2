@@ -104,8 +104,9 @@ _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
   （强制输出规范，所有 persona 生效）
 - persona.py：三级 persona 解析（scope > 全局 > 默认）与 {{variable}} 模板渲染
 - providers.py：build_agent 组装（model/动态 system prompt/工具集/输出形态）
-- reply.py：回复交付形态（纯文本消息 / Markdown 图片）：reply 输出工具、形态判定、
-  纯文本化，工具文档即该模块的 deliver_reply docstring
+- reply.py：回复交付形态（纯文本消息 / Markdown 图片）：reply 输出工具、排版判定
+  （带 Markdown/排版记号一律图片，图片是保底）、纯文本分段（140~210 字/条），
+  工具文档即该模块的 deliver_reply docstring
 - runner.py：run_agent 驱动、describe_node 实时日志、重试
 - store.py / metrics.py：SQLite 持久化与用量统计（ai stats 数据源）
 - tools/：注册表 tools/__init__.py REGISTRATIONS（分类/风险/surface）与实现

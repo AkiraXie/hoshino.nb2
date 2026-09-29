@@ -64,10 +64,15 @@ chat 的最终回复有「纯文本消息」和「Markdown 图片」两种形态
 「形态 + 正文」一次交出来并结束本轮，`result.output` 是 `Reply`。
 
 - 不进 `REGISTRATIONS`：它不是可按类别/scope 开关的能力，而是 chat 的交付出口，恒可用；
-- 工具文档（模型看到的 description）就是 `deliver_reply` 的 docstring，写清两种形态的
-  适用场景与纯文本的硬性要求；
-- 交付前 `reply.to_delivery` 归一形态：工具显式选择优先，否则按 `needs_image` 判定
-  （含 Markdown 语法走图片）；text 形态统一过 `to_plain_text` 抹掉残留语法；
+- 工具文档（模型看到的 description）就是 `deliver_reply` 的 docstring：MUST / MUST NOT /
+  SHOULD 级别写明两种形态的适用场景、纯文本必须平铺直叙（不得出现任何排版记号）、
+  拿不准一律选图片（图片是保底）；
+- 交付前 `reply.to_delivery` 按硬规则归一形态：正文检出 Markdown / 中文式排版记号
+  （`needs_image`）→ 一律图片，模型声明的 `text` 也会改判（`Delivery.escalated`）；
+  否则按模型声明或文本终局自动判定；
+- text 形态由 `split_plain_text` 分段：空行分隔的自然段各自成一条消息，单段超长按
+  句子边界切成 140~210 字（`SEGMENT_MIN_CHARS`/`SEGMENT_MAX_CHARS`）的几条，
+  chat 逐条发送（条间留 0.3s 间隔）；
 - 预告文本守卫对两条路都生效（`preamble.guard_preamble`），不能靠调工具绕开。
 
 ## 新增工具
