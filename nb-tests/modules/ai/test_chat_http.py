@@ -125,6 +125,75 @@ async def test_chat_full_http_roundtrip(fake_ai_server, monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_http_plain_short_reply_sends_single_message(
+    fake_ai_server, monkeypatch, tmp_store
+):
+    """聊天场景：简短纯文本回复 → 单条普通消息（不是合并转发）。"""
+    base_url, requests = fake_ai_server
+    from hoshino.modules.ai import chat
+
+    monkeypatch.setattr(chat, "get_config", lambda: _seed_openai(tmp_store, base_url))
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+    content = "早啊，今天也要加油哦，记得吃早饭。"
+    set_chat_responses([openai_text_response(content)])
+
+    bot, event = _milky_group("#早", user_id=7)
+    await bot.handle_event(event)
+
+    assert len(requests) == 1
+    assert len(sent) == 1
+    _, message = sent[0]
+    assert [seg.type for seg in message] == ["text"]
+    assert message.extract_plain_text() == content
+
+
+# 讲内容场景的长纯文本：无 Markdown/排版记号，三段 >210 字 → 必触发分段。
+_LONG_PLAIN_REPLY = (
+    "TCP 三次握手要解决的核心问题是双方都要确认彼此的收发能力，同时协商好初始序列号，"
+    "防止网络里滞留的旧连接请求突然送达，让服务端白白开出资源。"
+    "第一次握手客户端发出 SYN，服务端由此知道客户端能发、自己能收。"
+    "\n\n"
+    "第二次握手服务端回 SYN 加 ACK，客户端收到后就确认了双方收发都正常，"
+    "但服务端此时还不能确定客户端是否真的收到了自己的应答。"
+    "第三次握手客户端再回一个 ACK，服务端这才确认自己能发、对方能收，连接正式建立。"
+    "\n\n"
+    "如果只有两次握手，服务端无法确认应答是否送达，失效的历史连接请求一到就会浪费资源。"
+    "所以三次不是玄学，而是在不可靠网络上达成双方收发能力共识所需的最小次数，两次不够，四次多余。"
+)
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_http_long_plain_reply_bundles_forward_record(
+    fake_ai_server, monkeypatch, tmp_store
+):
+    """讲内容场景：长纯文本回复分段后整合成一条合并转发聊天记录（不逐条刷）。"""
+    base_url, requests = fake_ai_server
+    from hoshino.ai import reply
+    from hoshino.modules.ai import chat
+
+    monkeypatch.setattr(chat, "get_config", lambda: _seed_openai(tmp_store, base_url))
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+    set_chat_responses([openai_text_response(_LONG_PLAIN_REPLY)])
+
+    bot, event = _milky_group("#讲讲三次握手", user_id=7)
+    await bot.handle_event(event)
+
+    assert len(requests) == 1
+    expected = reply.split_plain_text(_LONG_PLAIN_REPLY)
+    assert len(expected) >= 2, "探针文本必须够长以触发分段"
+    # 一次 API 调用、一条合并转发记录，节点正文即各分段
+    assert len(sent) == 1
+    _, message = sent[0]
+    assert len(message) == 1
+    forward = message[0]
+    assert forward.type == "forward"
+    nodes = forward.data["messages"]
+    assert [node.segments.extract_plain_text() for node in nodes] == expected
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_http_agent_error_falls_back_to_text(fake_ai_server, monkeypatch, tmp_store):
     """fake server 返回 404（模拟 provider 异常）→ chat 回复失败提示而不是崩溃。"""
     base_url, requests = fake_ai_server

@@ -73,6 +73,47 @@ def _milky_group(
     return bot, event
 
 
+def _milky_friend(
+    text: str,
+    *,
+    user_id: int = 42,
+) -> tuple[MilkyBot, object]:
+    from nonebot import get_adapters
+    from nonebot.adapters.milky import Adapter as MilkyAdapter
+    from nonebot.adapters.milky.config import ClientInfo
+    from nonebot.adapters.milky.event import FriendMessageEvent
+
+    adapter = get_adapters()[MilkyAdapter.get_name()]
+    bot = MilkyBot(adapter, self_id="10000", info=ClientInfo())
+    event = adapter.json_to_event(
+        {
+            "event_type": "message_receive",
+            "time": 1,
+            "self_id": 10000,
+            "data": {
+                "message_scene": "friend",
+                "peer_id": user_id,
+                "message_seq": next_seq(),
+                "sender_id": user_id,
+                "time": 1,
+                "segments": [{"type": "text", "data": {"text": text}}],
+                # uninfo 的 milky fetcher 对 friend 场景断言 data.friend 存在。
+                "friend": {
+                    "user_id": user_id,
+                    "nickname": "Alice",
+                    "sex": "unknown",
+                    "qid": str(user_id),
+                    "remark": "",
+                    "category": {"category_id": 1, "category_name": "默认分组"},
+                },
+            },
+        }
+    )
+    assert isinstance(event, FriendMessageEvent)
+    event.to_me = False
+    return bot, event
+
+
 class FakeResult:
     def __init__(
         self,
@@ -432,6 +473,91 @@ async def test_chat_render_failure_falls_back_to_text(monkeypatch, tmp_store):
     assert len(sent) == 1
     _, message = sent[0]
     assert message.extract_plain_text() == "**你好**"
+
+
+# 讲内容场景的长纯文本：无 Markdown/排版记号，三段 >210 字 → 必触发分段。
+_LONG_PLAIN_REPLY = (
+    "TCP 三次握手要解决的核心问题是双方都要确认彼此的收发能力，同时协商好初始序列号，"
+    "防止网络里滞留的旧连接请求突然送达，让服务端白白开出资源。"
+    "第一次握手客户端发出 SYN，服务端由此知道客户端能发、自己能收。"
+    "\n\n"
+    "第二次握手服务端回 SYN 加 ACK，客户端收到后就确认了双方收发都正常，"
+    "但服务端此时还不能确定客户端是否真的收到了自己的应答。"
+    "第三次握手客户端再回一个 ACK，服务端这才确认自己能发、对方能收，连接正式建立。"
+    "\n\n"
+    "如果只有两次握手，服务端无法确认应答是否送达，失效的历史连接请求一到就会浪费资源。"
+    "所以三次不是玄学，而是在不可靠网络上达成双方收发能力共识所需的最小次数，两次不够，四次多余。"
+)
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_private_long_reply_bundles_forward_record(monkeypatch, tmp_store):
+    """私聊场景：长纯文本分段后走 private forward，一条合并转发记录（不逐条刷）。"""
+    from hoshino.ai import reply
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch, tmp_store)
+    agent = FakeAgent(FakeResult(_LONG_PLAIN_REPLY))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent: list[tuple[int, object]] = []
+
+    async def fake_send_private_message(self, *, user_id, message):
+        sent.append((user_id, message))
+        return MessageResponse(message_seq=8, time=1)
+
+    monkeypatch.setattr(MilkyBot, "send_private_message", fake_send_private_message)
+
+    bot, event = _milky_friend("#讲讲三次握手", user_id=7)
+    await bot.handle_event(event)
+
+    expected = reply.split_plain_text(_LONG_PLAIN_REPLY)
+    assert len(expected) >= 2, "探针文本必须够长以触发分段"
+    assert len(sent) == 1
+    user_id, message = sent[0]
+    assert user_id == 7
+    assert len(message) == 1
+    forward = message[0]
+    assert forward.type == "forward"
+    nodes = forward.data["messages"]
+    assert [node.segments.extract_plain_text() for node in nodes] == expected
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_render_failure_long_fallback_bundles_forward_record(monkeypatch, tmp_store):
+    """渲染失败回退：长 Markdown 原文分段后同样整合成一条合并转发记录。"""
+    from hoshino.ai import reply
+    from hoshino.modules.ai import chat
+
+    _stub_config(monkeypatch, tmp_store)
+    content = (
+        "## 推荐方案\n\n"
+        + "这一段先说明背景与约束，解释为什么不能只看单项指标来做选择。" * 8
+        + "\n\n"
+        + "这一段给出具体步骤与注意事项，提醒常见误区并说明如何验证结果。" * 8
+    )
+    agent = FakeAgent(FakeResult(content))
+    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: agent)
+
+    async def broken_render(md, cfg):
+        raise TimeoutError("browser timeout")
+
+    monkeypatch.setattr(chat.rendering, "render_markdown", broken_render)
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    bot, event = _milky_group("#讲讲方案", user_id=7)
+    await bot.handle_event(event)
+
+    expected = reply.split_plain_text(content)
+    assert len(expected) >= 2
+    assert len(sent) == 1
+    _, message = sent[0]
+    assert len(message) == 1
+    forward = message[0]
+    assert forward.type == "forward"
+    nodes = forward.data["messages"]
+    assert [node.segments.extract_plain_text() for node in nodes] == expected
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")

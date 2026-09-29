@@ -5,10 +5,12 @@
     ONE_SHOT_LIVE=1 uv run pytest nb-tests/one-shot/test_reply_format_live.py -s -q
 
 与 ``hoshino/modules/ai/chat.py`` 同构（provider/模型解析、build_agent、
-run_agent_with_retry、护栏），对闲聊 / 事实搜索 / 待复制内容 / 对比分析 /
-知识讲解各发起一轮真实对话，检查：
+run_agent_with_retry、护栏），对闲聊 / 事实搜索 / 待复制内容 / 长文纯文本 /
+对比分析 / 知识讲解各发起一轮真实对话，检查：
 
 - 闲聊、事实、待复制内容 → 走纯文本（``format=text``，或直接写不带 Markdown 的文字）；
+- 明确要求长文但直接打字的 → 走纯文本且分成多条（实际发送时整合成一条合并转发
+  聊天记录，探针只观测分段数与长度，不真正发送）；
 - 对比、知识整理 → 走图片（``format=image``，或写了 Markdown 被自动判定为图片）。
 
 只读配置与 provider 行，不落库；结果打印到 stdout 并落
@@ -34,14 +36,21 @@ pytestmark = [
 
 PROBE_SCOPE = "probe:reply-format-live"
 
-# (场景, 提问, 期望形态)
-CASES: list[tuple[str, str, str]] = [
-    ("闲聊", "早啊，今天也要加油哦", "text"),
-    ("事实", "现在北京时间几点？顺便说下今天星期几", "text"),
-    ("待复制", "给我三条最常用的 git 命令，我要直接复制到终端里用", "text"),
-    ("翻译复述", "把这句话原样翻成英文：这个功能下周上线，记得提前通知测试。", "text"),
-    ("对比分析", "对比一下 Redis 和 Memcached，从数据结构、持久化、适用场景几个方面说", "image"),
-    ("知识讲解", "讲讲 TCP 三次握手到底在解决什么问题，为什么两次不行", "image"),
+# (场景, 提问, 期望形态, 期望最少消息条数)
+CASES: list[tuple[str, str, str, int]] = [
+    ("闲聊", "早啊，今天也要加油哦", "text", 1),
+    ("事实", "现在北京时间几点？顺便说下今天星期几", "text", 1),
+    ("待复制", "给我三条最常用的 git 命令，我要直接复制到终端里用", "text", 1),
+    ("翻译复述", "把这句话原样翻成英文：这个功能下周上线，记得提前通知测试。", "text", 1),
+    (
+        "长文纯文本",
+        "把 HTTPS 建立连接时客户端和服务器之间发生了什么，"
+        "用几段大白话详细讲给我听，直接打字发我，不要做图",
+        "text",
+        2,
+    ),
+    ("对比分析", "对比一下 Redis 和 Memcached，从数据结构、持久化、适用场景几个方面说", "image", 1),
+    ("知识讲解", "讲讲 TCP 三次握手到底在解决什么问题，为什么两次不行", "image", 1),
 ]
 
 
@@ -105,21 +114,31 @@ async def test_reply_format_selection():
     print(f"provider={provider_id} model={model}")
 
     results: list[dict[str, Any]] = []
-    for scene, question, want in CASES:
+    for scene, question, want, min_messages in CASES:
         print(f"\n{'=' * 70}\n[{scene}] {question}", flush=True)
         res = await _ask(agent, deps, question, config)
-        res.update({"scene": scene, "question": question, "want": want})
+        res.update(
+            {
+                "scene": scene,
+                "question": question,
+                "want": want,
+                "min_messages": min_messages,
+            }
+        )
         results.append(res)
         if not res["ok"]:
             print(f"❌ [{res['elapsed']:.1f}s] {res['error']}")
             continue
-        hit = "✅" if res["format"] == want else "⚠️"
+        enough = res["messages"] >= min_messages
+        hit = "✅" if res["format"] == want and enough else "⚠️"
         origin = "工具选择" if res["chosen"] else "自动判定"
         if res["escalated"]:
             origin += "·Markdown改判"
+        bundle = "（合并转发记录）" if res["messages"] > 1 else ""
+        short = "" if enough else f" ← 期望至少 {min_messages} 条"
         print(
             f"{hit} 形态={res['format']}（期望 {want}）· {origin} · "
-            f"消息={res['messages']}{res['lengths'] or ''} · "
+            f"消息={res['messages']}{bundle}{res['lengths'] or ''}{short} · "
             f"[{res['elapsed']:.1f}s] steps={res['steps']} "
             f"工具={res['tools'] or '无'} tokens={res['usage'].total_tokens}"
         )
@@ -133,6 +152,7 @@ async def test_reply_format_selection():
         origin = "工具选择" if r["chosen"] else "自动判定"
         if r["escalated"]:
             origin += "·Markdown改判"
+        bundle = "（发送时整合成一条合并转发记录）" if r["messages"] > 1 else ""
         lines += [
             f"## [{r['scene']}] 期望 {r['want']} → 实际 {r['format']}（{origin}）",
             "",
@@ -141,7 +161,7 @@ async def test_reply_format_selection():
             (
                 f"- 耗时 {r['elapsed']:.1f}s / steps {r['steps']} / "
                 f"tokens {r['usage'].total_tokens} / 工具 {r['tools'] or '无'} / "
-                f"分段 {r['messages']} 条 {r['lengths']}"
+                f"分段 {r['messages']} 条 {r['lengths']}{bundle}"
             ),
             "",
             "```text",
