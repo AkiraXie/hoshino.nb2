@@ -14,6 +14,7 @@ from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageE
 from nonebot.adapters.milky.model.api import MessageResponse
 
 from _helpers import next_seq
+from fake_ai_server import openai_text_response, set_chat_responses
 from hoshino.ai.config import AIConfig
 
 # _clear_uninfo_cache 由 modules/ai/conftest.py 提供。
@@ -104,6 +105,8 @@ async def test_chat_full_http_roundtrip(fake_ai_server, monkeypatch, tmp_store):
     monkeypatch.setattr(chat, "get_config", lambda: _seed_openai(tmp_store, base_url))
     monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
     sent = _stub_send(monkeypatch)
+    # 回复带 Markdown 结构 → 形态判定为图片（纯文字回复走纯文本消息，见 test_ai_chat.py）。
+    set_chat_responses([openai_text_response("## 你好\n\n- 一\n- 二")])
 
     bot, event = _milky_group("#你好", user_id=7)
     await bot.handle_event(event)
@@ -153,7 +156,7 @@ _EMPTY_FUNCTION_CALL_RESPONSE = {
             "index": 0,
             "message": {
                 "role": "assistant",
-                "content": "好的！给你推荐几个不用开火就能搞定的选择～",
+                "content": "## 推荐\n\n- 不开火的选择一\n- 不开火的选择二",
                 "function_call": {"name": None, "arguments": None},
             },
             "finish_reason": "stop",
