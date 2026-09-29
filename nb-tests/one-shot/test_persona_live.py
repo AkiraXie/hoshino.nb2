@@ -47,7 +47,7 @@ async def _ask(agent: Any, deps: Any, question: str, config: Any) -> dict[str, A
     """单轮对话：与 chat.py 相同的 run 路径与护栏。"""
     from pydantic_ai.usage import UsageLimits
 
-    from hoshino.ai import metrics, runner
+    from hoshino.ai import metrics, reply, runner
 
     run_log = runner.RunLog()
     started = time.perf_counter()
@@ -68,9 +68,12 @@ async def _ask(agent: Any, deps: Any, question: str, config: Any) -> dict[str, A
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "elapsed": elapsed}
 
     usage = metrics.snapshot_from_result(result)
+    # 输出可能是 reply 工具交回的 Reply（形态 + 正文），归一后再记录。
+    delivered = reply.to_delivery(result.output)
     return {
         "ok": True,
-        "text": result.output,
+        "text": delivered.content,
+        "format": delivered.format,
         "elapsed": time.perf_counter() - started,
         "steps": run_log.steps,
         "usage": usage,
@@ -95,13 +98,10 @@ async def test_persona_domains():
     assert questions, f"领域过滤后没有问题：wanted={wanted}"
 
     config = load_config()
-    provider_id = config.default
+    provider_id, model = provider.resolve_model(PROBE_SCOPE)
+    assert provider_id and model, "未配置默认文本模型（请先 `ai model default`）"
     record = provider.get_provider(provider_id)
     assert record is not None, f"provider `{provider_id}` 不存在于 aichat.db"
-    model = provider.resolve_text_model(PROBE_SCOPE, provider_id)
-    if isinstance(model, tuple):
-        _, model = model
-    assert model, f"provider `{provider_id}` 未配置文本模型"
 
     deps = build_deps(config, provider_id, model, PROBE_SCOPE)
     agent = build_agent(config, provider_id, record, model)
@@ -120,7 +120,7 @@ async def test_persona_domains():
             results.append(res)
             if res["ok"]:
                 print(
-                    f"✅ [{res['elapsed']:.1f}s] steps={res['steps']} "
+                    f"✅ 形态={res['format']} [{res['elapsed']:.1f}s] steps={res['steps']} "
                     f"tokens={res['usage'].total_tokens}（in {res['usage'].request_tokens}"
                     f" / out {res['usage'].response_tokens}）"
                 )
@@ -140,7 +140,8 @@ async def test_persona_domains():
             f"## [{r['domain']}] {r['question']}",
             "",
             (
-                f"- 耗时 {r['elapsed']:.1f}s / steps {r['steps']} / "
+                f"- 形态 {r.get('format', '-')} / 耗时 {r['elapsed']:.1f}s / "
+                f"steps {r['steps']} / "
                 f"tokens {r['usage'].total_tokens}（in {r['usage'].request_tokens} "
                 f"/ out {r['usage'].response_tokens}）/ "
                 f"工具 {[t['name'] for t in r['tools']] or '无'}"
