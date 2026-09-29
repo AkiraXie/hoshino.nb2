@@ -14,9 +14,9 @@
   run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
   超时/超限把本轮提问写入上下文可续问；provider 异常不写。
 - 回复形态二选一，由模型通过 ``reply`` 输出工具决定：纯文本消息（闲聊、事实、
-  要复制的内容）或 Markdown 图片（调研/对比/总结/知识等结构化长文）。模型直接
-  写文字终局时按内容判定形态——写了 Markdown 语法走图片，否则发纯文本。
-  图片渲染失败（超时/浏览器异常）回退纯文本。
+  要复制的内容）或 Markdown 图片（调研/对比/总结/知识等结构化长文）。带 Markdown
+  或排版记号的正文一律按图片交付（模型声明 text 也会改判，图片是保底）；纯文本
+  正文按自然段与 140~210 字窗口分段，逐条发出。图片渲染失败回退纯文本。
 - 含图消息：同一 model 一次吃压缩后的 BinaryContent + 真实 prompt（原生多模态）；
   未配置 model 时提示超级用户 ``ai model default``。
 - 日志只记录 provider id、scope、耗时、错误类型，不打印 key 或完整历史。
@@ -71,6 +71,9 @@ from hoshino.util.media import get_event_file_segments, get_event_media_segments
 
 # aichat 服务仅属于聊天插件（# 触发）：默认关闭，按 scope 启用后才应答。
 sv = Service("aichat", enable_on_default=False, visible=False)
+
+# 纯文本回复分成多条时，条与条之间的间隔（秒）。
+_SEGMENT_SEND_GAP_SECONDS = 0.3
 
 
 async def _ai_chat_rule(bot: Bot, event: Event) -> bool:
@@ -436,18 +439,22 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     )
 
     raw = result.output
-    # 交付形态：模型调过 reply 工具就按它声明的形态；文本终局按内容判定
-    # （写了 Markdown → 图片，没写 → 纯文本消息）。
+    # 交付形态：带 Markdown / 排版记号一律图片（模型声明的 text 也会改判）；
+    # 干净文字走纯文本消息，按自然段与 140~210 字窗口分段逐条发。
     delivered = reply.to_delivery(raw)
     # 结尾总结行确定性兜底（prompt 层已禁用，模型偶发用「一句话版本：」等变体收尾）。
     content = rendering.strip_trailing_summary(delivered.content)
+    origin = "工具选择" if delivered.source == "tool" else "自动判定"
+    if delivered.escalated:
+        origin += "·Markdown改判图片"
+    segments = reply.split_plain_text(content) if delivered.format == "text" else [content]
     sv.logger.info(
         f"AI 回复 provider={provider_id} scope={scope_key} conv={conv.name} "
-        f"model={model_name} 形态={delivered.format}"
-        f"（{'工具选择' if isinstance(raw, reply.Reply) else '自动判定'}）"
-        f" 字数={len(content)} 摘要「{_log_safe(runner.summarize_content(content, 120))}」"
+        f"model={model_name} 形态={delivered.format}（{origin}）"
+        f" 消息={len(segments)} 字数={len(content)} "
+        f"摘要「{_log_safe(runner.summarize_content(content, 120))}」"
     )
-    await _send_result(bot, event, content, delivered.format, config, provider_id)
+    await _send_result(bot, event, segments, delivered.format, config, provider_id)
 
 
 def _log_safe(text: str) -> str:
@@ -547,12 +554,22 @@ async def _event_files(bot: Bot, event: Event) -> list:
 
 
 async def _send_result(
-    bot: Bot, event: Event, content: str, fmt: reply.ReplyFormat, config, provider_id: str
+    bot: Bot,
+    event: Event,
+    segments: list[str],
+    fmt: reply.ReplyFormat,
+    config,
+    provider_id: str,
 ) -> None:
-    """按形态交付：纯文本直接发文字，图片形态渲染 Markdown（失败回退原文）。"""
+    """按形态交付：纯文本逐条发消息，图片形态渲染 Markdown（失败回退原文）。"""
     if fmt == "text":
-        await send_to_event(bot, event, content)
+        for index, segment in enumerate(segments):
+            if index:
+                # 连续发送看起来像刷屏，也可能撞平台频控：多条之间留一点间隔。
+                await asyncio.sleep(_SEGMENT_SEND_GAP_SECONDS)
+            await send_to_event(bot, event, segment)
         return
+    content = segments[0]
     try:
         png = await asyncio.wait_for(
             rendering.render_markdown(content, config),

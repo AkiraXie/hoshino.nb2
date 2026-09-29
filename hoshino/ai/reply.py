@@ -1,18 +1,27 @@
 """回复交付形态：纯文本消息 or Markdown 图片。
 
-chat surface 的最终回复有两种形态，交付前必须先定下来：
+chat surface 的最终回复有两种形态，交付前必须先定下来，规则是硬的：
 
-- **text**：纯文本消息，聊天框里直接显示、能随手复制；不允许任何 Markdown 语法。
+- **text**：纯文本消息，聊天框里直接显示、能随手复制；**MUST NOT** 含任何 Markdown
+  语法或排版意图（标题、加粗、列表、表格、代码围栏、行内代码、链接、公式、
+  项目符号 / 中文序号 / 【小标题】这类「看起来像排版」的写法都算）。发出前按
+  自然段与 140~210 字浮动窗口分段，逐条发到会话里。
 - **image**：Markdown → PNG，适合分节分点、需要排版才看得清的长内容。
 
-形态由 ``reply`` **输出工具**决定（``providers.build_agent`` 把它挂进 chat 的
-``output_type``）：模型调它一次，就把「形态 + 正文」一起交出来，run 随之结束，
-``result.output`` 是 ``Reply``。模型没调工具时（直接写文字终局）由
-``needs_image`` 按内容判定：写了 Markdown 语法就是 Markdown（走图片），
-没写就是纯文本（走文字消息）——与「Markdown 图片 / 纯文本消息」这个二分一致。
+**图片是保底**。判定顺序（``to_delivery``）：
 
-本模块是「形态判定 + 纯文本化」的纯逻辑，加一个输出工具函数；判定与转换部分不依赖
-会话状态，可直接单独调用（``to_delivery`` / ``to_plain_text`` / ``needs_image``）。
+1. 正文里出现 Markdown / 排版记号 → 一律 image，模型声明的 text 也会被改判
+   （``escalated``）——Markdown 只允许出现在图片里；
+2. 没有排版记号时，模型调过 ``reply`` 工具就按它声明的形态；
+3. 模型直接写文字终局（没调工具）时按内容判定：干净的口语化文字走 text，
+   含排版记号走 image（同 1）。
+
+形态由 ``reply`` **输出工具**决定（``providers.build_agent`` 把它挂进 chat 的
+``output_type``）：模型调它一次就把「形态 + 正文」一起交出来，run 随之结束，
+``result.output`` 是 ``Reply``。
+
+本模块是「形态判定 + 分段」的纯逻辑，加一个输出工具函数；判定与分段部分不依赖
+会话状态，可直接单独调用（``to_delivery`` / ``split_plain_text`` / ``needs_image``）。
 """
 
 from __future__ import annotations
@@ -32,13 +41,32 @@ ReplyFormat = Literal["text", "image"]
 # 工具名即模型看到的名字：它交付的就是「回复」本身，不是某个副作用的开关。
 TOOL_NAME = "reply"
 
+# 纯文本分段窗口（微博/推特长度量级）：只在单段超长时才按句子边界切，
+# 目标是把每条消息控制在 min~max 之间，避免一条几十行的文字墙。
+SEGMENT_MIN_CHARS = 140
+SEGMENT_MAX_CHARS = 210
+
 
 @dataclass(frozen=True, slots=True)
 class Reply:
-    """一次交付：正文 + 形态。"""
+    """模型通过 ``reply`` 工具声明的一次交付：正文 + 形态。"""
 
     content: str
     format: ReplyFormat
+
+
+@dataclass(frozen=True, slots=True)
+class Delivery:
+    """归一后的最终交付（供发送与日志）。
+
+    ``source``：形态来自模型显式选择还是文本终局自动判定；``escalated`` 记录
+    「声明 text 但正文含 Markdown，被改判为图片」这一次数（观测用）。
+    """
+
+    content: str
+    format: ReplyFormat
+    source: Literal["tool", "auto"]
+    escalated: bool = False
 
 
 async def deliver_reply(
@@ -48,28 +76,33 @@ async def deliver_reply(
 ) -> Reply:
     """交付本轮回复给用户，并决定它是纯文本消息还是 Markdown 图片。
 
-    调用本工具即结束本轮：调用后不要再输出任何文字，也要等其它工具
-    （搜索 / 抓取 / 看图 / 读文件等）都调完之后再调它。
+    调用本工具即结束本轮：调用后不要再输出任何文字；搜索 / 抓取 / 看图 / 读文件
+    等工具都调完之后再调它。
 
-    format 按「用户拿到这条回复要做什么」二选一：
+    format 二选一，规则是硬的（MUST 级别，违反会被系统改判）：
 
-    - text：纯文本消息，聊天框里直接显示、能随手复制。
-      硬性要求：content 里不要出现任何 Markdown 语法——不写 # 标题、**加粗**、
-      - 列表、| 表格 |、``` 代码围栏、`行内代码`、[链接](url)、$公式$；也不要
-      以 # 开头（会被当成指令再次触发机器人）。要用户复制走的命令、代码、配置，
-      直接写成一行行普通文字。
+    - text：纯文本消息。正文 MUST 是平铺直叙的普通文字——MUST NOT 出现任何
+      Markdown 语法或排版记号：# 标题、**加粗**、- 列表、| 表格 |、``` 代码围栏、
+      `行内代码`、[链接](url)、$公式$、• 项目符号、一、/ 1、这类序号、【小标题】。
+      也 MUST NOT 以 # 开头（会被当成指令再次触发机器人）。要用户复制走的命令、
+      代码、配置，就一行行原样直写。
+      **系统会在发送前检查正文：只要检出 Markdown，这一条就会强制按图片发出**
+      （那样用户就复制不到了），所以想发文字就 MUST 一个字都不排版。
       用于：闲聊寒暄与简短回答；结论、建议、说明一件事；搜索结果 / 天气 / 价格 /
       时间等「念出来就行」的事实；OCR、读图、翻译等原文复述；用户要复制走的内容；
       用户说了「发文字」「直接打字」。
-    - image：把 Markdown 渲染成图片，可以用完整 Markdown——标题、加粗、列表、
+      正文由系统自动分段发送：整条短就是一条消息；长了按自然段与 140～210 字的
+      窗口切成几条（空行是首选断点）。MUST NOT 靠换行、缩进、序号去做视觉排版。
+    - image：把 Markdown 渲染成图片，可以放心用完整 Markdown——标题、加粗、列表、
       表格、代码块、行内代码、LaTeX 公式。
-      用于需要「排版才看得清」的成篇内容：调研与资料整理、多对象或多方案对比、
+      SHOULD 用于需要排版才看得清的成篇内容：调研与资料整理、多对象或多方案对比、
       归纳总结、时间线 / 信息流 / 历史脉络讲述、知识讲解与教程、长篇结构化说明；
-      用户说了「整理成图」「做张图」。
+      用户说了「整理成图」「做张图」时 MUST 用它。
+      MUST NOT 用 image 交付一两句话就能说清的东西——用户要的是能读能复制的文字。
 
-    拿不准时：一句话能说清、或者用户只关心内容本身（要读要抄要复制）→ text；
-    内容要分节分点对照着看、长到在聊天框里会糊成一团 → image。
-    倾向 text：短回答没做成图片不会更差，闲聊被做成图片却很难用。
+    **保底规则：拿不准场景该用哪种时，MUST 选 image。** 判断不了要不要排版，
+    就当需要排版：内容做成图片不会比拍成文字更糟。只有在明确属于上面 text 那一类
+    场景（闲聊、现成事实、复述、要复制）时才选 text，且 MUST 写纯文字。
     """
     text = content.strip()
     if not text:
@@ -78,11 +111,12 @@ async def deliver_reply(
     return Reply(content=text, format=format)
 
 
-# ------------------------------------------------------------ Markdown 形态判定
+# ------------------------------------------------------------ 形态判定
 
-# 出现任何一条即认为「模型写的是 Markdown」→ 走图片。
-# 与 output.md 的规范一一对应：这些语法只该在图片形态里出现。
-_MARKDOWN_MARKERS: tuple[re.Pattern[str], ...] = (
+# 出现任何一条即认为「正文带了排版」→ 图片保底。
+# 前半是 Markdown 语法，后半是中文聊天里常见的非 Markdown 排版记号（项目符号、
+# 中文序号、【小标题】），这一类同样属于「边界不清晰」，按保底规则走图片。
+_STRUCTURE_MARKERS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+\S", re.M),  # 标题
     re.compile(r"^[ \t]{0,3}(?:```|~~~)", re.M),  # 代码围栏
     re.compile(r"^[ \t]*\|.*\|", re.M),  # 表格行
@@ -95,82 +129,162 @@ _MARKDOWN_MARKERS: tuple[re.Pattern[str], ...] = (
     re.compile(r"`[^`\n]+`"),  # 行内代码
     re.compile(r"!?\[[^\]\n]+\]\([^)\s]+[^)]*\)"),  # 链接 / 图片
     re.compile(r"\$\$"),  # 块级公式
+    re.compile(r"^[ \t]*[•·‧・▪◦●]\s*", re.M),  # 项目符号
+    re.compile(r"^[ \t]*[0-9]+[、．]", re.M),  # 数字顿号序号
+    re.compile(r"^[ \t]*[一二三四五六七八九十]+[、.．)）]", re.M),  # 中文序号
+    re.compile(r"^[ \t]{0,3}【[^】\n]+】", re.M),  # 【小标题】
+    re.compile(r"^[ \t]*(?:[-=—─]{3,})[ \t]*$", re.M),  # 分隔线（全角/等号）
 )
 
 
 def needs_image(text: str) -> bool:
-    """文本终局时判定形态：含 Markdown 语法 → 图片，否则纯文本。"""
-    return any(marker.search(text) for marker in _MARKDOWN_MARKERS)
+    """正文是否带排版意图（Markdown 语法或中文式排版记号）→ 走图片。"""
+    return any(marker.search(text) for marker in _STRUCTURE_MARKERS)
 
 
-def to_delivery(output: object) -> Reply:
-    """把 run 输出归一为可交付的 ``Reply``。
-
-    - 模型调过 reply 工具 → 用它声明的形态，不再替它猜；
-    - 文本终局 → 按内容判定（``needs_image``）。
-
-    text 形态统一过一遍 ``to_plain_text``：模型偶发漏写的 Markdown 语法由这里
-    兜底抹掉，保证发出去的消息是纯文本。
-    """
+def to_delivery(output: object) -> Delivery:
+    """把 run 输出归一为可交付的 ``Delivery``（形态判定见模块 docstring）。"""
     if isinstance(output, Reply):
-        fmt, content = output.format, output.content
+        fmt, content, source = output.format, output.content, "tool"
     else:
         content = str(output)
-        fmt = "image" if needs_image(content) else "text"
-    if fmt == "text":
-        plain = to_plain_text(content)
-        if plain != content:
-            logger.debug("AI 纯文本回复抹掉 Markdown 语法 chars={}→{}", len(content), len(plain))
-        return Reply(content=plain, format="text")
-    return Reply(content=content, format="image")
+        fmt: ReplyFormat = "image" if needs_image(content) else "text"
+        source: Literal["tool", "auto"] = "auto"
+
+    escalated = False
+    if fmt == "text" and needs_image(content):
+        # 模型声明了 text 却写了排版：按「有 Markdown 就是 Markdown」改判为图片，
+        # 不在这里替它抹语法（那样内容会被拍扁，表格/代码会走形）。
+        fmt, escalated = "image", True
+        logger.info("AI 回复检出排版记号，text 形态改判为图片 chars={}", len(content))
+    return Delivery(content=content, format=fmt, source=source, escalated=escalated)
 
 
-# ------------------------------------------------------------ Markdown → 纯文本
+# ------------------------------------------------------------ 纯文本分段
 
-_FENCE_LINE_RE = re.compile(r"^[ \t]{0,3}(?:```|~~~)")
-_HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+")
-_QUOTE_RE = re.compile(r"^[ \t]{0,3}>[ \t]?")
-_RULE_RE = re.compile(r"^[ \t]{0,3}(?:[-*_][ \t]*){3,}$")
-_TABLE_SEP_RE = re.compile(r"^[ \t]*\|?[ \t]*:?-{2,}[ \t:|-]*\|?[ \t]*$")
-_LIST_RE = re.compile(r"^([ \t]*)[-*+][ \t]+")
-_IMAGE_RE = re.compile(r"!\[([^\]\n]*)\]\(([^)\s]+)[^)]*\)")
-_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^)\s]+)[^)]*\)")
-_INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
-_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*|__([^_\n]+)__")
-_STRIKE_RE = re.compile(r"~~([^~\n]+)~~")
-_BLANK_LINES_RE = re.compile(r"\n{3,}")
+_PARAGRAPH_SPLIT_RE = re.compile(r"\n[ \t]*\n+")
+# 句末标点后断开（保留标点）；英文句点只在后面跟空白时断，避免切碎 URL / 版本号；
+# 换行也是句子边界。
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;…])|(?<=\.)(?=\s)|\n+")
+# 单句超长（无句末标点）时退到逗号级。
+_CLAUSE_SPLIT_RE = re.compile(r"(?<=[，,、：:])")
 
 
-def _plain_line(line: str) -> str:
-    """单行 Markdown → 纯文本（空行保留分段，表格对齐行与分隔线整行丢弃）。"""
-    if not line.strip():
-        return line
-    if _RULE_RE.match(line) or _TABLE_SEP_RE.match(line):
-        return ""
-    line = _HEADING_RE.sub("", line)
-    line = _QUOTE_RE.sub("", line)
-    if line.strip().startswith("|"):
-        line = line.strip().strip("|").strip()
-    line = _LIST_RE.sub(r"\1• ", line)
-    line = _IMAGE_RE.sub(r"\1 (\2)", line)
-    line = _LINK_RE.sub(r"\1 (\2)", line)
-    line = _INLINE_CODE_RE.sub(r"\1", line)
-    line = _BOLD_RE.sub(lambda m: m.group(1) or m.group(2), line)
-    return _STRIKE_RE.sub(r"\1", line)
-
-
-def to_plain_text(text: str) -> str:
-    """Markdown → 纯文本：保留全部文字与代码内容，只抹掉语法标记。
-
-    代码围栏内的内容原样保留（缩进、``#`` 注释、``-`` 开头都不能动，否则复制出去
-    就废了），只丢掉围栏行本身。仅作 ``text`` 形态的兜底：正常路径下模型本来就
-    该按纯文本写，这里只处理零星残留。
-    """
-    lines: list[str] = []
-    in_fence = False
-    for line in text.split("\n"):
-        if _FENCE_LINE_RE.match(line):
-            in_fence = not in_fence
+def _pieces(text: str, max_chars: int) -> list[str]:
+    """一段文字 → 每片不超过 ``max_chars`` 的句子片段（无标点长串硬切兜底）。"""
+    pieces: list[str] = []
+    for sentence in _SENTENCE_SPLIT_RE.split(text):
+        if not sentence:
             continue
-        lines.append(line if in_fence else _plain_line(line))
-    return _BLANK_LINES_RE.sub("\n\n", "\n".join(lines)).strip()
+        if len(sentence) <= max_chars:
+            pieces.append(sentence)
+            continue
+        for clause in _CLAUSE_SPLIT_RE.split(sentence):
+            if not clause:
+                continue
+            if len(clause) <= max_chars:
+                pieces.append(clause)
+            else:
+                pieces.extend(clause[i : i + max_chars] for i in range(0, len(clause), max_chars))
+    return pieces
+
+
+def _pack(pieces: list[str], *, min_chars: int, max_chars: int) -> list[str]:
+    """句子片段打包成 ``min_chars``~``max_chars`` 的几条消息（保证不丢字）。
+
+    先贪心：够 ``min_chars`` 或下一片塞不下就收一条；再修尾巴——尾条太短时优先
+    并进上一条，并进会超长就把最后两条按片段边界对半分，让每条都落进窗口。
+    """
+    groups: list[list[str]] = []
+    current: list[str] = []
+    length = 0
+    for piece in pieces:
+        if current and (length >= min_chars or length + len(piece) > max_chars):
+            groups.append(current)
+            current, length = [], 0
+        current.append(piece)
+        length += len(piece)
+    if current:
+        groups.append(current)
+    _fix_short_tail(groups, min_chars=min_chars, max_chars=max_chars)
+    return ["".join(group).strip() for group in groups if "".join(group).strip()]
+
+
+def _fix_short_tail(groups: list[list[str]], *, min_chars: int, max_chars: int) -> None:
+    """尾条短于 ``min_chars`` 时就地修正最后两条（并进上一条 / 对半分）。"""
+    if len(groups) < 2 or _length(groups[-1]) >= min_chars:
+        return
+    previous, tail = groups[-2], groups[-1]
+    if _length(previous) + _length(tail) <= max_chars:
+        previous.extend(tail)
+        groups.pop()
+        return
+    merged = previous + tail
+    total = _length(merged)
+    if total < 2 * min_chars or total > 2 * max_chars:
+        return
+    # 在片段边界里挑最靠近一半、且两半都还在窗口内的切点；挑不到就保持原样。
+    best: int | None = None
+    offset = 0
+    for index in range(1, len(merged)):
+        offset += len(merged[index - 1])
+        if not (min_chars <= offset <= max_chars and min_chars <= total - offset <= max_chars):
+            continue
+        if best is None or abs(offset - total / 2) < abs(best - total / 2):
+            best = offset
+    if best is None:
+        return
+    head: list[str] = []
+    rest: list[str] = []
+    offset = 0
+    for piece in merged:
+        (head if offset < best else rest).append(piece)
+        offset += len(piece)
+    groups[-2:] = [head, rest]
+
+
+def _length(pieces: list[str]) -> int:
+    """片段列表的总字符数。"""
+    return sum(len(piece) for piece in pieces)
+
+
+def _all_pieces(text: str, max_chars: int) -> list[str]:
+    """整条正文 → 可拼接的片段序列（段间保留空行，超长段再按句子切）。
+
+    自然段是**首选断点**而不是硬边界：短段会被打包进同一条消息（避免一句一条
+    刷屏），长段内的句子同理；只有单段超过 ``max_chars`` 才在段内切。
+    """
+    pieces: list[str] = []
+    for raw_paragraph in _PARAGRAPH_SPLIT_RE.split(text.strip()):
+        paragraph = raw_paragraph.strip()
+        if not paragraph:
+            continue
+        if len(paragraph) <= max_chars:
+            pieces.append(paragraph)
+        else:
+            pieces.extend(_pieces(paragraph, max_chars))
+        # 段间空行挂在前一段末尾，拼接后再统一 strip；最后一段不带（末尾必被 strip，
+        # 留着会让长度预算比实际消息长 2 字，尾巴就没法并了）。
+        pieces[-1] += "\n\n"
+    if pieces:
+        pieces[-1] = pieces[-1].removesuffix("\n\n")
+    return pieces
+
+
+def split_plain_text(
+    text: str,
+    *,
+    min_chars: int = SEGMENT_MIN_CHARS,
+    max_chars: int = SEGMENT_MAX_CHARS,
+) -> list[str]:
+    """纯文本 → 逐条发送的消息列表（保证不丢字）。
+
+    - 整条不超过 ``max_chars`` → 一条消息（简短回复不会被拆成好几句）；
+    - 更长时按 ``min_chars``~``max_chars`` 打包：自然段优先当断点，段内按句子切，
+      尾条过短时并进上一条或与上一条对半分；
+    - 无句末标点的长串退到逗号切，最后按 ``max_chars`` 硬切。
+    """
+    pieces = _all_pieces(text, max_chars)
+    if not pieces:
+        return []
+    return _pack(pieces, min_chars=min_chars, max_chars=max_chars)
