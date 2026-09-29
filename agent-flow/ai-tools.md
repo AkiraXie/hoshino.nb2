@@ -70,9 +70,9 @@ chat 的最终回复有「纯文本消息」和「Markdown 图片」两种形态
 - 交付前 `reply.to_delivery` 按硬规则归一形态：正文检出 Markdown / 中文式排版记号
   （`needs_image`）→ 一律图片，模型声明的 `text` 也会改判（`Delivery.escalated`）；
   否则按模型声明或文本终局自动判定；
-- text 形态由 `split_plain_text` 分段：空行分隔的自然段各自成一条消息，单段超长按
-  句子边界切成 140~210 字（`SEGMENT_MIN_CHARS`/`SEGMENT_MAX_CHARS`）的几条，
-  chat 逐条发送（条间留 0.3s 间隔）；
+- text 形态由 `split_plain_text` 分段：空行分隔的自然段是首选断点，打包成
+  140~210 字（`SEGMENT_MIN_CHARS`/`SEGMENT_MAX_CHARS`）的几条，chat 把多条
+  整合成一条合并转发聊天记录发出（单条直接发；Telegram 平台层降级为顺序逐条）；
 - 预告文本守卫对两条路都生效（`preamble.guard_preamble`），不能靠调工具绕开。
 
 ## 新增工具
