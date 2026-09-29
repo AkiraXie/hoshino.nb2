@@ -73,12 +73,16 @@ async def _ask(agent: Any, deps: Any, question: str, config: Any) -> dict[str, A
         }
 
     delivered = reply.to_delivery(result.output)
+    segments = reply.split_plain_text(delivered.content) if delivered.format == "text" else []
     usage = metrics.snapshot_from_result(result)
     return {
         "ok": True,
         "chosen": isinstance(result.output, reply.Reply),
         "format": delivered.format,
+        "escalated": delivered.escalated,
         "content": delivered.content,
+        "messages": len(segments) if segments else 1,
+        "lengths": [len(segment) for segment in segments],
         "elapsed": time.perf_counter() - started,
         "steps": run_log.steps,
         "usage": usage,
@@ -110,9 +114,12 @@ async def test_reply_format_selection():
             print(f"❌ [{res['elapsed']:.1f}s] {res['error']}")
             continue
         hit = "✅" if res["format"] == want else "⚠️"
+        origin = "工具选择" if res["chosen"] else "自动判定"
+        if res["escalated"]:
+            origin += "·Markdown改判"
         print(
-            f"{hit} 形态={res['format']}（期望 {want}）· "
-            f"{'工具选择' if res['chosen'] else '自动判定'} · "
+            f"{hit} 形态={res['format']}（期望 {want}）· {origin} · "
+            f"消息={res['messages']}{res['lengths'] or ''} · "
             f"[{res['elapsed']:.1f}s] steps={res['steps']} "
             f"工具={res['tools'] or '无'} tokens={res['usage'].total_tokens}"
         )
@@ -123,15 +130,18 @@ async def test_reply_format_selection():
 
     lines = ["# AI 回复形态 live 探针报告", "", f"- 时间：{time.strftime('%Y-%m-%d %H:%M')}", ""]
     for r in results:
+        origin = "工具选择" if r["chosen"] else "自动判定"
+        if r["escalated"]:
+            origin += "·Markdown改判"
         lines += [
-            f"## [{r['scene']}] 期望 {r['want']} → 实际 {r['format']}"
-            f"（{'工具选择' if r['chosen'] else '自动判定'}）",
+            f"## [{r['scene']}] 期望 {r['want']} → 实际 {r['format']}（{origin}）",
             "",
             f"提问：{r['question']}",
             "",
             (
                 f"- 耗时 {r['elapsed']:.1f}s / steps {r['steps']} / "
-                f"tokens {r['usage'].total_tokens} / 工具 {r['tools'] or '无'}"
+                f"tokens {r['usage'].total_tokens} / 工具 {r['tools'] or '无'} / "
+                f"分段 {r['messages']} 条 {r['lengths']}"
             ),
             "",
             "```text",
