@@ -13,14 +13,14 @@ from typing import Any
 from loguru import logger
 from nonebot_plugin_uninfo import get_session
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.output import TextOutput
+from pydantic_ai.output import TextOutput, ToolOutput
 from pydantic_ai.toolsets import (
     ApprovalRequiredToolset,
     DynamicToolset,
     FunctionToolset,
 )
 
-from . import persona, prompts
+from . import persona, prompts, reply
 from .deps import AgentDeps
 from .models import (
     build_auxiliary_model,
@@ -46,6 +46,14 @@ __all__ = [
 ]
 
 OUTPUT_STYLE_HEADER = "\n\n（对了，回复的时候记得按下面的小习惯来：）\n"
+
+# chat 的输出形态是二选一的：直接写文字（纯文本终局）或调 reply 工具交出
+# 「形态 + 正文」（工具文档见 reply.deliver_reply）。Task 用 run 级 output_type
+# 覆盖本 schema，不受影响。
+CHAT_OUTPUT_TYPE = [
+    TextOutput(guard_reply),
+    ToolOutput(reply.deliver_reply, name=reply.TOOL_NAME),
+]
 
 
 async def _persona_system_prompt(ctx: RunContext[AgentDeps]) -> str:
@@ -136,7 +144,7 @@ def build_agent(
             model=model_obj,
             model_settings=model_settings,
             deps_type=AgentDeps,
-            output_type=TextOutput(guard_reply),
+            output_type=CHAT_OUTPUT_TYPE,
             retries={"tools": max(1, tool_max_retries), "output": 1},
             toolsets=[
                 # 常驻挂载：approval_required 按 deps 判定，chat（task=None）从不审批。

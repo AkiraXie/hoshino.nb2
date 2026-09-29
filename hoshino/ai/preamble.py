@@ -2,8 +2,9 @@
 
 chat Agent 以 ``TextOutput(guard_reply)`` 接入：模型在有工具可用、本轮还没真正
 调过工具时，用短预告（「先查一下…」）终局会被 ``ModelRetry`` 同轮打回一次。
-``result.output`` 仍是 ``str``，wire 仍是纯文本。Task 的 run 级 ``output_type``
-覆盖本 guard，不受影响。
+``reply`` 输出工具走同一个 ``guard_preamble``——预告不能从工具那条路绕过去。
+``result.output`` 仍是文本或 ``Reply``，wire 仍是文本或图片。Task 的 run 级
+``output_type`` 覆盖本 guard，不受影响。
 """
 
 from __future__ import annotations
@@ -50,18 +51,29 @@ def _used_tools_this_turn(ctx: RunContext[AgentDeps]) -> bool:
 
 
 async def guard_reply(ctx: RunContext[AgentDeps], text: str) -> str:
-    """文本将要终局时调用：命中预告且还可重试则 ``ModelRetry``，否则原样返回。"""
+    """文本终局路径的 ``TextOutput`` 处理器：命中预告则打回，否则原样返回。"""
+    guard_preamble(ctx, text, source="text")
+    return text
+
+
+def guard_preamble(ctx: RunContext[AgentDeps], text: str, *, source: str) -> None:
+    """命中预告且还可重试则 ``ModelRetry``；文本终局与 ``reply`` 工具共用。
+
+    走 reply 工具的回复也必须是最终答复，否则「我先查一下」会从工具那条路
+    绕开本 guard。``source`` 只进日志，用来区分是哪条路打回的。
+    """
     # 文本终局路径上 ``available_tool_names`` 不一定已填满；用本轮实际注入的工具集。
     if ctx.last_attempt or not resolve_tools(ctx.deps) or _used_tools_this_turn(ctx):
-        return text
+        return
     if not is_tool_preamble(text):
-        return text
+        return
     tel = ctx.deps.telemetry
     logger.info(
-        "AI 预告文本打回 provider={} scope={} conv={} chars={} preview={}",
+        "AI 预告文本打回 provider={} scope={} conv={} 来源={} chars={} preview={}",
         tel.provider_id,
         ctx.deps.scope_key or tel.scope_key,
         tel.conversation_id,
+        source,
         len(text),
         text.strip(),
     )

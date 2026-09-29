@@ -13,7 +13,10 @@
 - 执行护栏（持久化不替代超时）：
   run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
   超时/超限把本轮提问写入上下文可续问；provider 异常不写。
-- 模型输出 Markdown 先渲染为图片；渲染失败（超时/浏览器异常）回退纯文本。
+- 回复形态二选一，由模型通过 ``reply`` 输出工具决定：纯文本消息（闲聊、事实、
+  要复制的内容）或 Markdown 图片（调研/对比/总结/知识等结构化长文）。模型直接
+  写文字终局时按内容判定形态——写了 Markdown 语法走图片，否则发纯文本。
+  图片渲染失败（超时/浏览器异常）回退纯文本。
 - 含图消息：同一 model 一次吃压缩后的 BinaryContent + 真实 prompt（原生多模态）；
   未配置 model 时提示超级用户 ``ai model default``。
 - 日志只记录 provider id、scope、耗时、错误类型，不打印 key 或完整历史。
@@ -44,6 +47,7 @@ from hoshino.ai import (
     provider,
     providers,
     rendering,
+    reply,
     runner,
     sessions,
 )
@@ -432,14 +436,18 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     )
 
     raw = result.output
+    # 交付形态：模型调过 reply 工具就按它声明的形态；文本终局按内容判定
+    # （写了 Markdown → 图片，没写 → 纯文本消息）。
+    delivered = reply.to_delivery(raw)
     # 结尾总结行确定性兜底（prompt 层已禁用，模型偶发用「一句话版本：」等变体收尾）。
-    raw = rendering.strip_trailing_summary(raw)
+    content = rendering.strip_trailing_summary(delivered.content)
     sv.logger.info(
         f"AI 回复 provider={provider_id} scope={scope_key} conv={conv.name} "
-        f"model={model_name} 字数={len(raw)} "
-        f"摘要「{_log_safe(runner.summarize_content(raw, 120))}」"
+        f"model={model_name} 形态={delivered.format}"
+        f"（{'工具选择' if isinstance(raw, reply.Reply) else '自动判定'}）"
+        f" 字数={len(content)} 摘要「{_log_safe(runner.summarize_content(content, 120))}」"
     )
-    await _send_result(bot, event, raw, config, provider_id)
+    await _send_result(bot, event, content, delivered.format, config, provider_id)
 
 
 def _log_safe(text: str) -> str:
@@ -538,11 +546,16 @@ async def _event_files(bot: Bot, event: Event) -> list:
         return []
 
 
-async def _send_result(bot: Bot, event: Event, raw: str, config, provider_id: str) -> None:
-    """先渲染 Markdown 为图片，失败回退纯文本。"""
+async def _send_result(
+    bot: Bot, event: Event, content: str, fmt: reply.ReplyFormat, config, provider_id: str
+) -> None:
+    """按形态交付：纯文本直接发文字，图片形态渲染 Markdown（失败回退原文）。"""
+    if fmt == "text":
+        await send_to_event(bot, event, content)
+        return
     try:
         png = await asyncio.wait_for(
-            rendering.render_markdown(raw, config),
+            rendering.render_markdown(content, config),
             timeout=config.render_timeout_seconds,
         )
         await send_to_event(bot, event, UniMessage.image(raw=png))
@@ -550,4 +563,4 @@ async def _send_result(bot: Bot, event: Event, raw: str, config, provider_id: st
         sv.logger.warning(
             f"AI 渲染失败 provider={provider_id} error={type(exc).__name__}，回退纯文本"
         )
-        await send_to_event(bot, event, raw)
+        await send_to_event(bot, event, content)
