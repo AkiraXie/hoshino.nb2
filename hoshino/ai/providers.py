@@ -45,7 +45,9 @@ __all__ = [
     "register_model_cache",
 ]
 
-OUTPUT_STYLE_HEADER = "\n\n（对了，回复的时候记得按下面的小习惯来：）\n"
+# persona 与 output.md 之间的过渡：文档自带 H1 标题，只留空行分隔，
+# 不写「小习惯」之类的引导语——与文档里「硬约束，不是建议」的口吻保持一致。
+OUTPUT_STYLE_HEADER = "\n\n"
 
 # chat 的输出形态是二选一的：直接写文字（纯文本终局）或调 reply 工具交出
 # 「形态 + 正文」（工具文档见 reply.deliver_reply）。Task 用 run 级 output_type
