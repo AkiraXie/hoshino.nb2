@@ -28,6 +28,9 @@
 
 ## 工具一览
 
+下表是 `REGISTRATIONS` 里可注入的**功能工具**（受类别/scope/surface 门控）。另有 chat
+专有的 `reply` **输出工具**，不在注册表内（见文末「输出工具」）。
+
 | tool_id | category | risk | surfaces | 说明 |
 |---|---|---|---|---|
 | `now` | core | low | chat/task | 当前时间 |
@@ -53,16 +56,30 @@
 
 询问机器人本身时优先 `help`：例如用户说 `zssm`、`ai model reset`、`#help ai model set`，先调 `help` 拿 USAGE/模块说明，需要实现细节再 `read` 对应源文件。
 
+## 输出工具（`reply`，不属于本注册表）
+
+chat 的最终回复有「纯文本消息」和「Markdown 图片」两种形态，选择器是 `hoshino/ai/reply.py`
+的 `deliver_reply`：它作为 `ToolOutput` 挂在 chat 的 `output_type`（见 `providers.py`），
+与 `TextOutput(guard_reply)` 共存——模型直接写文字就是纯文本终局，调 `reply` 工具则把
+「形态 + 正文」一次交出来并结束本轮，`result.output` 是 `Reply`。
+
+- 不进 `REGISTRATIONS`：它不是可按类别/scope 开关的能力，而是 chat 的交付出口，恒可用；
+- 工具文档（模型看到的 description）就是 `deliver_reply` 的 docstring，写清两种形态的
+  适用场景与纯文本的硬性要求；
+- 交付前 `reply.to_delivery` 归一形态：工具显式选择优先，否则按 `needs_image` 判定
+  （含 Markdown 语法走图片）；text 形态统一过 `to_plain_text` 抹掉残留语法；
+- 预告文本守卫对两条路都生效（`preamble.guard_preamble`），不能靠调工具绕开。
+
 ## 新增工具
 
 1. `tools/<category>/xxx.py` 写异步函数 `(ctx: RunContext[AgentDeps], ...)`
 2. `tools/__init__.py` 追加 `ToolRegistration(...)`
-3. `nb-tests/test_ai_tools.py` 加测试
+3. `nb-tests/modules/ai/` 的插件级 e2e 覆盖（按 AGENTS.md §8.3 决定是否补）
 4. computer/bot 类需管理员显式开启
 
 ## 验证
 
 ```bash
-uv run pytest nb-tests/test_ai_tools.py -q
+uv run pytest nb-tests/modules/ai -q
 uv run ruff check hoshino/ai/tools
 ```

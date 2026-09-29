@@ -103,7 +103,9 @@ _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
   示例对话，锚定说话方式）、TOOL_CALL_PROMPT；output.md 加载为 OUTPUT_STYLE_RULES
   （强制输出规范，所有 persona 生效）
 - persona.py：三级 persona 解析（scope > 全局 > 默认）与 {{variable}} 模板渲染
-- providers.py：build_agent 组装（model/动态 system prompt/工具集）
+- providers.py：build_agent 组装（model/动态 system prompt/工具集/输出形态）
+- reply.py：回复交付形态（纯文本消息 / Markdown 图片）：reply 输出工具、形态判定、
+  纯文本化，工具文档即该模块的 deliver_reply docstring
 - runner.py：run_agent 驱动、describe_node 实时日志、重试
 - store.py / metrics.py：SQLite 持久化与用量统计（ai stats 数据源）
 - tools/：注册表 tools/__init__.py REGISTRATIONS（分类/风险/surface）与实现
@@ -117,12 +119,13 @@ _AI_MODULE = """【AI 模块自身（hoshino/ai/）与改进指南】
 改进 AI 行为常见落点：
 - 人格/口吻：prompts.py 的 DEFAULT_SYSTEM_PROMPT / DEFAULT_BEGIN_DIALOGS
 - 输出格式/禁用词：hoshino/ai/output.md（改动注意保留测试断言的关键词）
+- 回复形态（纯文本 vs 图片）：hoshino/ai/reply.py（工具文档与形态判定同处一模块）
 - 新增工具：tools/<category>/xxx.py 写函数 + tools/__init__.py 注册一行
 - 新增配置：hoshino/ai/config.py AIConfig 字段（挂载进 HoshinoConfig，env AI_*，写 .env.prod）
 
-验证：uv run pytest nb-tests/test_ai_persona.py nb-tests/test_ai_chat.py -q；
-uv run ruff check hoshino/ai；真实 provider 人格探针：
-uv run python nb-tests/one-shot/live_ai_persona_probe.py"""
+验证：uv run pytest nb-tests/modules/ai -q；uv run ruff check hoshino/ai；
+真实 provider 探针：ONE_SHOT_LIVE=1 uv run pytest
+nb-tests/one-shot/test_persona_live.py nb-tests/one-shot/test_reply_format_live.py -s -q"""
 
 # 用户问机器人命令时优先读这些 help 文本；query 对命令名做前缀/子串匹配。
 _HELP_SOURCES: tuple[tuple[str, str, str], ...] = (
