@@ -37,7 +37,7 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 | `metrics.py` | 用量提取与聚合 |
 | `rendering.py` | Markdown → Playwright PNG（pygments 代码高亮；LaTeX 公式经 `latex2mathml` 转 MathML 交给 Chromium 排版，认 `$…$` / `$$…$$` / `\(…\)` / `\[…\]` / amsmath 环境） |
 | `media.py` | 事件图片规范为 JPEG/PNG 的 BinaryContent（按字节判格式 + 压缩 + 单边 ≤4096px）；动图抽首/中/尾帧当多张静态图，构建原生多模态 prompt |
-| `reply.py` | 回复交付形态：`reply` 输出工具（文档即 `deliver_reply` docstring）+ 排版判定 `needs_image` + 纯文本分段 `split_plain_text` + 归一 `to_delivery` |
+| `reply.py` | 回复交付形态：`reply` 输出工具（文档即 `deliver_reply` docstring）+ 排版判定 `needs_image` + 纯文本分段 `split_plain_text` + 来源归一 `sources_text` + 归一 `to_delivery` |
 | `harness.py` | pydantic-ai-harness facade（Planning / StepPersistence，可降级） |
 | `errors.py` | 异常详情提取 |
 | `tools/` | 工具注册表与实现（详见 `ai-tools.md`） |
@@ -56,14 +56,14 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 - **工具治理**：注册表 + `resolve_tools` 按 surface/scope/live-event 过滤；授权与注入分离。`hoshino_nb2_code` 属于 core，chat/zssm 默认可用，用来查仓库知识和命令 help
 - **事件溯源会话**：append-only 事件日志 → `derive_messages` 派生模型历史，log-only 事件不污染输入
 - **多对话管理**：每 scope 多命名对话，turn 锁串行化，`#new/#switch/#list/#clear` 控制
-- **persona 体系**：三级解析 + `{{variable}}` 严格插值 + 示例对话 few-shot + `output.md` 强制规范。行为规则各有唯一事实源、互不重复：人格文本只写性格（用户可替换，不放规则），格式/说话方式在 `output.md`，工具使用在 `TOOL_CALL_PROMPT`，回复形态选择在 `reply` 工具文档
+- **persona 体系**：三级解析 + `{{variable}}` 严格插值 + 示例对话 few-shot + `output.md` 强制规范。行为规则各有唯一事实源、互不重复：人格文本只写性格（用户可替换，不放规则），格式/说话方式在 `output.md`，工具使用在 `TOOL_CALL_PROMPT`，回复形态选择与来源声明在 `reply` 工具文档，模型自我认知（只报模型名、不报 provider）在 `prompts.build_model_prompt`
 - **provider 治理**：全局资源不与群绑定；统一 model 槽（scope 覆盖 > 全局默认）；`ai model list` 遍历所有 provider
 - **后台任务**：状态机 + 调度器 + 创建时冻结 capability snapshot，恢复只按冻结展开
 - **审批流**：Task 按冻结的 approval_mode 暂停/恢复 run
 - **Goal 服务**：每 scope 单目标 + revision CAS + round cap
 - **拦截瀑布**：pre-step（reject/rewrite）+ request-error（有界重试）
 - **预告文本拦截**：`preamble.py` + `TextOutput` guard；有工具却只吐「我先搜一下」时同轮打回一次（`reply` 工具走同一个 `guard_preamble`，不能绕路）
-- **回复形态**：`reply.py` 的 `reply` 输出工具让模型显式选「纯文本消息 / Markdown 图片」（工具文档用 MUST 级别写清两种场景）；交付前按硬规则归一——正文带 Markdown / 中文式排版记号一律走图片（模型声明的 text 会被改判，图片是保底），干净文字才走纯文本；纯文本按自然段与 140~210 字窗口分段：一条直接发，多条整合成一条合并转发聊天记录（Telegram 平台层降级为顺序逐条）
+- **回复形态**：`reply.py` 的 `reply` 输出工具让模型显式选「纯文本消息 / Markdown 图片」（工具文档用 MUST 级别写清两种场景）；交付前按硬规则归一——正文带 Markdown / 中文式排版记号一律走图片（模型声明的 text 会被改判，图片是保底），干净文字才走纯文本；纯文本按自然段与 140~210 字窗口分段：一条直接发，多条整合成一条合并转发聊天记录（Telegram 平台层降级为顺序逐条）；模型在 `reply` 里声明的 `sources` 会在转发记录尾部单开一条发送者名为「来源」的节点（正文只有一条时也为它走转发）
 - **可观测**：RunLog + 参数/key/url 脱敏 + 实时工具日志（info 级带主负载摘要，
   50 字截断）+ token 用量落库（含 conversation_id，`ai status` 可查当前对话用量）
 - **聊天体验**：Markdown 图片渲染、纯文本形态、引用回复识别、原生多模态看图、执行护栏

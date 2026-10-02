@@ -61,7 +61,7 @@
 chat 的最终回复有「纯文本消息」和「Markdown 图片」两种形态，选择器是 `hoshino/ai/reply.py`
 的 `deliver_reply`：它作为 `ToolOutput` 挂在 chat 的 `output_type`（见 `providers.py`），
 与 `TextOutput(guard_reply)` 共存——模型直接写文字就是纯文本终局，调 `reply` 工具则把
-「形态 + 正文」一次交出来并结束本轮，`result.output` 是 `Reply`。
+「形态 + 正文（+ 可选 `sources`）」一次交出来并结束本轮，`result.output` 是 `Reply`。
 
 - 不进 `REGISTRATIONS`：它不是可按类别/scope 开关的能力，而是 chat 的交付出口，恒可用；
 - 工具文档（模型看到的 description）就是 `deliver_reply` 的 docstring：MUST / MUST NOT /
@@ -73,6 +73,9 @@ chat 的最终回复有「纯文本消息」和「Markdown 图片」两种形态
 - text 形态由 `split_plain_text` 分段：空行分隔的自然段是首选断点，打包成
   140~210 字（`SEGMENT_MIN_CHARS`/`SEGMENT_MAX_CHARS`）的几条，chat 把多条
   整合成一条合并转发聊天记录发出（单条直接发；Telegram 平台层降级为顺序逐条）；
+- `reply` 的 `sources` 是模型声明的外部来源链接（`to_delivery` 只在 text 形态保留；
+  图片形态忽略）：chat 在转发记录尾部再加一条 `CustomNode`，发送者名即「来源」，
+  正文一行一条链接；正文只有一条时也为此走转发，定位不到会话时降级为单独一条消息；
 - 预告文本守卫对两条路都生效（`preamble.guard_preamble`），不能靠调工具绕开。
 
 ## 新增工具
