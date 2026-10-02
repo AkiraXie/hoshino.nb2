@@ -17,7 +17,8 @@
   要复制的内容）或 Markdown 图片（调研/对比/总结/知识等结构化长文）。带 Markdown
   或排版记号的正文一律按图片交付（模型声明 text 也会改判，图片是保底）；纯文本
   正文按自然段与 140~210 字窗口分段：一条直接发，多条整合成一条合并转发聊天
-  记录（Telegram 平台层降级为顺序逐条）。图片渲染失败回退纯文本分段。
+  记录（Telegram 平台层降级为顺序逐条）；模型在 ``reply`` 里声明的来源会在该
+  记录尾部单开一条「来源」节点。图片渲染失败回退纯文本分段。
 - 含图消息：同一 model 一次吃压缩后的 BinaryContent + 真实 prompt（原生多模态）；
   未配置 model 时提示超级用户 ``ai model default``。
 - 日志只记录 provider id、scope、耗时、错误类型，不打印 key 或完整历史。
@@ -30,11 +31,12 @@ import contextlib
 import time
 import traceback
 from collections.abc import Callable
+from typing import Any
 
 from nonebot.adapters import Bot, Event
 from nonebot.rule import Rule
+from nonebot_plugin_alconna.uniseg import CustomNode, UniMessage
 from nonebot_plugin_alconna.uniseg import Image as UniImage
-from nonebot_plugin_alconna.uniseg import UniMessage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
@@ -79,6 +81,9 @@ sv = Service("aichat", enable_on_default=False, visible=False)
 
 # 定位不到会话时纯文本分段只能退回逐条发，条与条之间的间隔（秒）。
 _SEGMENT_SEND_GAP_SECONDS = 0.3
+
+# 模型声明的来源在合并转发里单开一条，发送者名即这一列的标题。
+_SOURCE_NODE_NAME = "来源"
 
 
 async def _ai_chat_rule(bot: Bot, event: Event) -> bool:
@@ -458,10 +463,12 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     sv.logger.info(
         f"AI 回复 provider={provider_id} scope={scope_key} conv={conv.name} "
         f"model={model_name} 形态={delivered.format}（{origin}）"
-        f" 消息={len(segments)}{bundled} 字数={len(content)} "
+        f" 消息={len(segments)}{bundled} 来源={len(delivered.sources)} 字数={len(content)} "
         f"摘要「{_log_safe(runner.summarize_content(content, 120))}」"
     )
-    await _send_result(bot, event, segments, delivered.format, config, provider_id)
+    await _send_result(
+        bot, event, segments, delivered.format, config, provider_id, delivered.sources
+    )
 
 
 def _log_safe(text: str) -> str:
@@ -567,10 +574,11 @@ async def _send_result(
     fmt: reply.ReplyFormat,
     config,
     provider_id: str,
+    sources: tuple[str, ...] = (),
 ) -> None:
     """按形态交付：纯文本分段发送，图片形态渲染 Markdown（失败回退原文分段）。"""
     if fmt == "text":
-        await _send_text_segments(bot, event, segments)
+        await _send_text_segments(bot, event, segments, sources)
         return
     content = segments[0]
     try:
@@ -586,27 +594,46 @@ async def _send_result(
         await _send_text_segments(bot, event, reply.split_plain_text(content))
 
 
-async def _send_text_segments(bot: Bot, event: Event, segments: list[str]) -> None:
+async def _send_text_segments(
+    bot: Bot,
+    event: Event,
+    segments: list[str],
+    sources: tuple[str, ...] = (),
+) -> None:
     """纯文本分段交付：一条直接发，多条整合成一条合并转发聊天记录。
+
+    模型声明了来源时，正文之外再单开一条发送者名为「来源」的节点（正文只有一条
+    时也会为了这条来源走转发），正文本身不重复贴链接。
 
     逐条发会像刷屏也撞平台频控；多段整体塞进 forward（Telegram 无原生合并
     转发，平台层自动降级为顺序逐条）。定位不到会话时退回逐条发送。
     """
-    if len(segments) == 1:
+    if not sources and len(segments) == 1:
         await send_to_event(bot, event, segments[0])
         return
-    if (group_id := get_group_id(event)) is not None:
-        await send_group_forward(
-            bot, group_id, segments, user_id=bot.self_id, nickname=hsn_nickname
+    nodes: list[Any] = [UniMessage.text(segment) for segment in segments]
+    if sources:
+        nodes.append(
+            CustomNode(
+                uid=str(bot.self_id),
+                name=_SOURCE_NODE_NAME,
+                content=reply.sources_text(sources),
+            )
         )
+    if (group_id := get_group_id(event)) is not None:
+        await send_group_forward(bot, group_id, nodes, user_id=bot.self_id, nickname=hsn_nickname)
         return
     if (user_id := get_user_id(event)) is not None:
         await send_private_forward(
-            bot, user_id, segments, node_user_id=bot.self_id, nickname=hsn_nickname
+            bot, user_id, nodes, node_user_id=bot.self_id, nickname=hsn_nickname
         )
         return
-    for index, segment in enumerate(segments):
+    # 定位不到会话：转发用不了，退回逐条发；来源单独一条并带上标题（没有发送者名可用）。
+    messages = [*segments]
+    if sources:
+        messages.append(f"{_SOURCE_NODE_NAME}：\n{reply.sources_text(sources)}")
+    for index, message in enumerate(messages):
         if index:
             # 连续发送看起来像刷屏，也可能撞平台频控：多条之间留一点间隔。
             await asyncio.sleep(_SEGMENT_SEND_GAP_SECONDS)
-        await send_to_event(bot, event, segment)
+        await send_to_event(bot, event, message)

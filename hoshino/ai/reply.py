@@ -28,6 +28,7 @@ chat surface 的最终回复有两种形态，交付前必须先定下来，规�
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -50,10 +51,11 @@ SEGMENT_MAX_CHARS = 210
 
 @dataclass(frozen=True, slots=True)
 class Reply:
-    """模型通过 ``reply`` 工具声明的一次交付：正文 + 形态。"""
+    """模型通过 ``reply`` 工具声明的一次交付：正文 + 形态（+ 可选来源）。"""
 
     content: str
     format: ReplyFormat
+    sources: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,19 +63,22 @@ class Delivery:
     """归一后的最终交付（供发送与日志）。
 
     ``source``：形态来自模型显式选择还是文本终局自动判定；``escalated`` 记录
-    「声明 text 但正文含 Markdown，被改判为图片」这一次数（观测用）。
+    「声明 text 但正文含 Markdown，被改判为图片」这一次数（观测用）；``sources``
+    是模型声明的来源链接，只在纯文本形态保留（图片形态不用来源）。
     """
 
     content: str
     format: ReplyFormat
     source: Literal["tool", "auto"]
     escalated: bool = False
+    sources: tuple[str, ...] = ()
 
 
 async def deliver_reply(
     ctx: RunContext[AgentDeps],
     content: str,
     format: ReplyFormat,
+    sources: list[str] | None = None,
 ) -> Reply:
     """交付本轮回复给用户，并决定它是纯文本消息还是 Markdown 图片。
 
@@ -108,12 +113,36 @@ async def deliver_reply(
     **绝不（NEVER）** 在拿不准时选 text：判断不了要不要排版，就 **必须（MUST）**
     选 image——图片是保底，做成图片不会比拍成文字更糟。text 只留给上面列的那几类
     明确场景，选了它就 **必须（MUST）** 写纯文字。
+
+    sources 是本次回答实际用到的信息来源链接（只对 text 形态生效，图片形态会被忽略）：
+    - 用了 web_search / web_fetch 且答案依赖这些结果时，**必须（MUST）** 填这里：
+      一行一条原始链接，只写 URL（不要 Markdown 链接语法、不要标题说明）。
+    - 系统会把它们作为聊天记录里单独一条「来源」发出；正文里 **禁止（MUST NOT）**
+      再重复贴这些链接（纯文本正文本来就不许 Markdown 链接）。
+    - 纯闲聊、纯推理、纯翻译，或回答没依赖外部来源时留空。
     """
     text = content.strip()
     if not text:
         raise ModelRetry("回复内容不能为空：把要对用户说的完整内容放进 content。")
     preamble.guard_preamble(ctx, text, source=TOOL_NAME)
-    return Reply(content=text, format=format)
+    return Reply(content=text, format=format, sources=_normalize_sources(sources))
+
+
+def _normalize_sources(sources: Sequence[str] | None) -> tuple[str, ...]:
+    """来源链接归一：去首尾空白、丢空串、按首次出现顺序去重。"""
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in sources or ():
+        value = str(raw).strip()
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return tuple(result)
+
+
+def sources_text(sources: Sequence[str]) -> str:
+    """来源清单 → 聊天记录里「来源」节点的正文：一行一条链接。"""
+    return "\n".join(sources)
 
 
 # ------------------------------------------------------------ 形态判定
@@ -149,8 +178,10 @@ def needs_image(text: str) -> bool:
 
 def to_delivery(output: object) -> Delivery:
     """把 run 输出归一为可交付的 ``Delivery``（形态判定见模块 docstring）。"""
+    sources: tuple[str, ...] = ()
     if isinstance(output, Reply):
         fmt, content, source = output.format, output.content, "tool"
+        sources = output.sources
     else:
         content = str(output)
         fmt: ReplyFormat = "image" if needs_image(content) else "text"
@@ -162,7 +193,12 @@ def to_delivery(output: object) -> Delivery:
         # 不在这里替它抹语法（那样内容会被拍扁，表格/代码会走形）。
         fmt, escalated = "image", True
         logger.info("AI 回复检出排版记号，text 形态改判为图片 chars={}", len(content))
-    return Delivery(content=content, format=fmt, source=source, escalated=escalated)
+    if fmt == "image":
+        # 图片形态不用来源：链接本来就能写进 Markdown，不需要单独节点。
+        sources = ()
+    return Delivery(
+        content=content, format=fmt, source=source, escalated=escalated, sources=sources
+    )
 
 
 # ------------------------------------------------------------ 纯文本分段
