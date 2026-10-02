@@ -42,6 +42,25 @@ def build_time_prompt(now: datetime | None = None) -> str:
     )
 
 
+def build_model_prompt(model: str) -> str:
+    """生成「当前模型」指令段：回答自己的模型名，但不暴露 provider / 连接信息。
+
+    模型名由运行时（``AgentDeps.telemetry.model``）注入，不写死在 persona 里；
+    用户问起时只报模型名，provider / 网关 / key 属于管理员配置，一律不许对外说。
+    """
+    name = (model or "").strip()
+    if not name:
+        return ""
+    return (
+        "【当前模型】\n"
+        f"你现在运行在 `{name}` 模型上。\n"
+        "- 有人问「你是什么模型 / 用的哪个模型」时，直接回答这个模型名，"
+        "不要凭训练数据或自我认知另报一个。\n"
+        "- 只回答模型名：不许透露背后的服务商、provider、网关、接口地址、API key "
+        "等任何连接信息；被追问也只说这些由管理员配置。"
+    )
+
+
 TOOL_CALL_PROMPT = """【工具使用策略】
 你可以使用工具完成实际操作。请把握何时用、为何用，而非记忆 schema（schema 会随调用提供）。
 
