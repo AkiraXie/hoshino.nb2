@@ -25,6 +25,7 @@ from nonebot_plugin_alconna import (
 from pydantic import TypeAdapter, ValidationError
 
 from hoshino import service_dir as _service_dir
+from hoshino.core.hooks import on_bot_connect, on_bot_disconnect
 from hoshino.core.logger_wrapper import LoggerWrapper
 from hoshino.core.matcher import (
     AlconnaMatcherWrapper,
@@ -47,6 +48,18 @@ _illegal_char = re.compile(r'[\\/:*?"<>|\.!！]')
 ConfigT = TypeVar("ConfigT")
 _loaded_services: dict[str, Service[Any]] = {}
 _service_config_dir = Path(__file__).resolve().parent.parent / "service_config"
+
+
+@on_bot_connect
+@on_bot_disconnect
+async def _invalidate_enable_groups_cache(_bot: Bot) -> None:
+    """Bot 上下线会改变可见群列表，丢弃各 Service 的启用群缓存。
+
+    首次 get_enable_groups() 若发生在适配器建立连接之前，会算出空缓存；
+    不在此处失效的话，空缓存会一直保留，周期性推送永远匹配不到群。
+    """
+    for service in _loaded_services.values():
+        service.clear_enable_groups_cache()
 
 
 def _iter_to_set(words: set | list | tuple | str | None) -> set[str]:
@@ -197,6 +210,10 @@ class Service(Generic[ConfigT]):
         self.disable_scope.add(scope_key)
         self._enable_groups_cache = None
         _save_service_data(self)
+
+    def clear_enable_groups_cache(self) -> None:
+        """丢弃启用群缓存；下次 get_enable_groups() 重新枚举群列表。"""
+        self._enable_groups_cache = None
 
     async def get_enable_groups(self) -> dict[int, list[Bot]]:
         if self._enable_groups_cache is not None:
