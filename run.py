@@ -1,9 +1,40 @@
+import os
+
 import nonebot
 from nonebot.adapters.milky import Adapter as MilkyAdapter
 from nonebot.adapters.onebot.v11 import Adapter as OB11Adapter
 from nonebot.adapters.telegram import Adapter as TGAdapter
 
 from hoshino.util.proxy import apply_telegram_proxy
+
+
+def _sanitize_proxy_env() -> None:
+    """移除 httpx 无法处理的代理环境变量，避免 driver 创建客户端时崩溃。
+
+    httpx 只接受 socks5:// / socks5h://（且需 socksio），遇到 socks:// 会直接抛
+    ValueError；no_proxy 里的方括号 IPv6（如 [::1]）会让 httpx 0.28 抛
+    InvalidURL。nonebot 的 httpx driver 固定 trust_env=True 且没有配置项，于是
+    Milky 反连的 HTTP 调用会失败。境外服务的代理由 .env.prod 的 OUTSIDE_PROXY /
+    telegram_proxy 等显式配置，不依赖这些环境变量。
+    """
+    for name in ("ALL_PROXY", "all_proxy"):
+        os.environ.pop(name, None)
+    for name in ("NO_PROXY", "no_proxy"):
+        value = os.environ.get(name)
+        if value is None:
+            continue
+        entries = [
+            entry
+            for entry in value.split(",")
+            if entry.strip() and not entry.strip().startswith("[")
+        ]
+        if entries:
+            os.environ[name] = ",".join(entries)
+        else:
+            os.environ.pop(name, None)
+
+
+_sanitize_proxy_env()
 
 # 使用自定义配置初始化nonebot
 nonebot.init()
