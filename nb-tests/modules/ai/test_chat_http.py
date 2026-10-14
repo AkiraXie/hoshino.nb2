@@ -8,13 +8,15 @@ provider，让 ``#你好`` 事件真正经 ``build_agent`` 向 ``fake_ai_server`
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from nonebot.adapters.milky import Bot as MilkyBot
 from nonebot.adapters.milky.event import GroupMessageEvent as MilkyGroupMessageEvent
 from nonebot.adapters.milky.model.api import MessageResponse
 
 from _helpers import next_seq
-from fake_ai_server import openai_text_response, set_chat_responses
+from fake_ai_server import openai_text_response, set_chat_delay, set_chat_responses
 from hoshino.ai.config import AIConfig
 
 # _clear_uninfo_cache 由 modules/ai/conftest.py 提供。
@@ -260,3 +262,31 @@ async def test_chat_http_empty_function_call_placeholder_succeeds(
     assert len(sent) == 1
     _, message = sent[0]
     assert [seg.type for seg in message] == ["image"]
+
+
+@pytest.mark.usefixtures("_nonebot_bootstrap")
+async def test_chat_http_step_timeout_drops_prompt(fake_ai_server, monkeypatch, tmp_store):
+    """单步超时：慢 provider 响应触发单步上限，回复超时提示且本轮不写入上下文。
+
+    与旧的整轮墙钟用例同语义，但走真实链路：``step_timeout_seconds`` 进
+    ``ModelSettings["timeout"]`` → httpx 请求超时 → 被 provider SDK 包成
+    ``ModelAPIError`` → ``errors.is_step_timeout`` 识别为超时。
+    """
+    base_url, requests = fake_ai_server
+    from hoshino.ai import sessions
+    from hoshino.modules.ai import chat
+
+    set_chat_delay(0.6)  # 响应慢于单步上限
+    config = _seed_openai(tmp_store, base_url)
+    monkeypatch.setattr(chat, "get_config", lambda: replace(config, step_timeout_seconds=0.2))
+    monkeypatch.setattr(chat.sv, "check_enabled", lambda scope: True)
+    sent = _stub_send(monkeypatch)
+
+    bot, event = _milky_group("#慢慢来", user_id=7)
+    await bot.handle_event(event)
+
+    assert requests, "请求应已到达 fake 服务器（超时发生在等待响应时）"
+    assert "处理超时" in sent[-1][1].extract_plain_text()
+    assert "单步超过" in sent[-1][1].extract_plain_text()
+    assert "本次对话未记录" in sent[-1][1].extract_plain_text()
+    assert len(sessions.conversation_manager.get_active("milky:123456").messages) == 0

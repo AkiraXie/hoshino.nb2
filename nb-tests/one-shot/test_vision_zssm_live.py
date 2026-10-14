@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 from _live import (
+    PROBE_RUN_TIMEOUT_SECONDS,
     build_deps,
     load_config,
     load_fixture,
@@ -53,7 +54,6 @@ async def test_vision_zssm_native_multimodal():
     from hoshino.ai import media, metrics, provider, runner, store
     from hoshino.modules.ai.zssm import (
         _MAX_REQUESTS,
-        _TIMEOUT_SECONDS,
         ZssmOutput,
         _build_zssm_agent,
         _format_keywords,
@@ -99,7 +99,7 @@ async def test_vision_zssm_native_multimodal():
             usage_limits=UsageLimits(request_limit=_MAX_REQUESTS),
             run_log=run_log,
         ),
-        timeout=_TIMEOUT_SECONDS,
+        timeout=PROBE_RUN_TIMEOUT_SECONDS,
     )
     elapsed = time.perf_counter() - started
 

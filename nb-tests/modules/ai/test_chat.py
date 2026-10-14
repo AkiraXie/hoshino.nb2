@@ -575,12 +575,14 @@ async def test_chat_uses_default_provider(monkeypatch, tmp_store):
         *,
         proxy=None,
         tool_max_retries=3,
+        step_timeout_seconds=None,
     ):
         captured["provider_id"] = provider_id
         captured["provider_record"] = provider_record
         captured["model"] = model
         captured["proxy"] = proxy
         captured["tool_max_retries"] = tool_max_retries
+        captured["step_timeout_seconds"] = step_timeout_seconds
         return FakeAgent(FakeResult("hi"))
 
     monkeypatch.setattr(chat.providers, "build_agent", fake_build)
@@ -595,6 +597,7 @@ async def test_chat_uses_default_provider(monkeypatch, tmp_store):
     assert captured["model"] == "gpt-4o-mini"
     assert captured["proxy"] == chat.get_config().proxy
     assert captured["tool_max_retries"] == 3
+    assert captured["step_timeout_seconds"] == chat.get_config().step_timeout_seconds
     assert len(sent) == 1
 
 
@@ -821,53 +824,6 @@ async def test_chat_busy_replies_when_turn_in_progress(monkeypatch, tmp_store):
 
 
 @pytest.mark.usefixtures("_nonebot_bootstrap")
-async def test_chat_run_timeout_drops_prompt(monkeypatch, tmp_store):
-    """墙钟超时：回复超时提示，本轮提问不写入上下文（避免污染历史）。"""
-    import asyncio as _asyncio
-
-    from hoshino.ai import sessions
-    from hoshino.modules.ai import chat
-
-    agent, sent = _chat_env(monkeypatch, tmp_store, chat_run_timeout_seconds=0.05)
-
-    class SlowRun:
-        def __init__(self):
-            self.ctx = object()
-            self.result = None
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        def __aiter__(self):
-            return self
-
-        async def __anext__(self):
-            await _asyncio.sleep(5)
-            raise StopAsyncIteration
-
-    class SlowAgent(FakeAgent):
-        def iter(self, prompt, **kwargs):
-            self.prompt = prompt
-            return SlowRun()
-
-    slow = SlowAgent(FakeResult("回答"))
-    monkeypatch.setattr(chat.providers, "build_agent", lambda *a, **k: slow)
-    manager = sessions.conversation_manager
-
-    bot, event = _milky_group("#慢慢来", user_id=7)
-    await bot.handle_event(event)
-
-    assert "处理超时" in sent[-1][1].extract_plain_text()
-    assert "本次对话未记录" in sent[-1][1].extract_plain_text()
-    messages = manager.get_active("milky:123456").messages
-    assert len(messages) == 0  # 提问不写入上下文
-    assert slow.prompt == "慢慢来"
-
-
-@pytest.mark.usefixtures("_nonebot_bootstrap")
 async def test_chat_usage_limit_drops_prompt(monkeypatch, tmp_store):
     """UsageLimit 超限与超时同语义：提问不写入上下文。"""
     from pydantic_ai.exceptions import UsageLimitExceeded
@@ -881,7 +837,7 @@ async def test_chat_usage_limit_drops_prompt(monkeypatch, tmp_store):
     bot, event = _milky_group("#循环了", user_id=7)
     await bot.handle_event(event)
 
-    assert "处理超出步数限制" in sent[-1][1].extract_plain_text()
+    assert "处理超出单轮请求次数上限" in sent[-1][1].extract_plain_text()
     assert "本次对话未记录" in sent[-1][1].extract_plain_text()
     assert len(manager.get_active("milky:123456").messages) == 0
 

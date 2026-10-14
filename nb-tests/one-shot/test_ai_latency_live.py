@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 from _live import (
+    PROBE_RUN_TIMEOUT_SECONDS,
     build_agent,
     build_deps,
     enable_debug_logging,
@@ -137,7 +138,7 @@ async def test_non_stream_then_stream_ttfb():
                 run_log=run_log,
                 on_event=make_probe_logger(),
             ),
-            timeout=config.chat_run_timeout_seconds,
+            timeout=PROBE_RUN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
         elapsed = time.perf_counter() - started

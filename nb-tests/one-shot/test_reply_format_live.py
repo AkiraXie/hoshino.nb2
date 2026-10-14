@@ -25,7 +25,13 @@ import time
 from typing import Any
 
 import pytest
-from _live import build_agent, build_deps, load_config, write_report
+from _live import (
+    PROBE_RUN_TIMEOUT_SECONDS,
+    build_agent,
+    build_deps,
+    load_config,
+    write_report,
+)
 
 pytestmark = [
     pytest.mark.skipif(
@@ -72,7 +78,7 @@ async def _ask(agent: Any, deps: Any, question: str, config: Any) -> dict[str, A
                 usage_limits=UsageLimits(request_limit=config.chat_max_requests),
                 run_log=run_log,
             ),
-            timeout=config.chat_run_timeout_seconds,
+            timeout=PROBE_RUN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
         return {

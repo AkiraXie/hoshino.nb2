@@ -54,8 +54,12 @@ def build_deps(config: Any, provider_id: str, model: str, scope_key: str) -> Any
     )
 
 
+#: 探针自己的整轮兜底（秒）：与 bot 的单步超时语义无关，只防止探针本身挂死。
+PROBE_RUN_TIMEOUT_SECONDS = 900.0
+
+
 def build_agent(config: Any, provider_id: str, record: Any, model: str) -> Any:
-    """与 chat 同构的 agent 构建（含生效代理与工具重试预算）。"""
+    """与 chat 同构的 agent 构建（含生效代理、工具重试预算与单步超时）。"""
     from hoshino.ai import provider, providers
 
     return providers.build_agent(
@@ -64,6 +68,7 @@ def build_agent(config: Any, provider_id: str, record: Any, model: str) -> Any:
         model,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
         tool_max_retries=config.tool_max_retries,
+        step_timeout_seconds=config.step_timeout_seconds,
     )
 
 

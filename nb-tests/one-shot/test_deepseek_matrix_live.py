@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 from _live import (
+    PROBE_RUN_TIMEOUT_SECONDS,
     build_agent,
     build_deps,
     enable_debug_logging,
@@ -126,7 +127,7 @@ async def _record_one(
                 ),
                 run_log=run_log,
             ),
-            timeout=cfg.chat_run_timeout_seconds,
+            timeout=PROBE_RUN_TIMEOUT_SECONDS,
         )
     except Exception as exc:
         return {

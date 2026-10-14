@@ -15,7 +15,7 @@ import json
 import os
 
 import pytest
-from _live import load_fixture
+from _live import PROBE_RUN_TIMEOUT_SECONDS, load_fixture
 
 pytestmark = [
     pytest.mark.skipif(
@@ -89,7 +89,7 @@ async def test_zssm_structured_output_live():
                         deps=deps,
                         usage_limits=UsageLimits(request_limit=6),
                     ),
-                    timeout=90.0,
+                    timeout=PROBE_RUN_TIMEOUT_SECONDS,
                 )
 
                 if result is None:

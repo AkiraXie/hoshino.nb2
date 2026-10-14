@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 from _live import (
+    PROBE_RUN_TIMEOUT_SECONDS,
     build_agent,
     build_deps,
     load_config,
@@ -91,7 +92,7 @@ async def test_vision_chat_native_multimodal():
             run_log=run_log,
             on_event=make_probe_logger(),
         ),
-        timeout=config.chat_run_timeout_seconds,
+        timeout=PROBE_RUN_TIMEOUT_SECONDS,
     )
     elapsed = time.perf_counter() - started
 

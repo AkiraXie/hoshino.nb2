@@ -11,8 +11,10 @@ openai / anthropic SDK 的 keep-alive；每次响应只调用一次 ``send_respo
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
+import time
 from collections.abc import Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import ClassVar
@@ -146,6 +148,7 @@ class _FakeHandler(BaseHTTPRequestHandler):
     search_response: ClassVar[dict | None] = None  # 测试注入的 /v1/messages 响应（deepseek 搜索）
     tavily_response: ClassVar[dict | None] = None  # 测试注入的 /search 响应（tavily 搜索）
     bocha_response: ClassVar[dict | None] = None  # 测试注入的 /v1/web-search 响应（博查搜索）
+    chat_delay: ClassVar[float] = 0.0  # /chat/completions 响应前的延迟（单步超时用例）
 
     def _record(self, raw: bytes) -> dict:
         return {
@@ -161,6 +164,8 @@ class _FakeHandler(BaseHTTPRequestHandler):
         stem = self.path.split("?")[0]
         self.requests.append(self._record(raw))
         if stem == "/chat/completions":
+            if type(self).chat_delay:
+                time.sleep(type(self).chat_delay)
             self._respond(200, self._next_chat_response())
         elif stem == "/v1/messages":
             self._respond(200, self.search_response or ANTHROPIC_RESPONSE)
@@ -194,7 +199,9 @@ class _FakeHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("request-id", "req_fake_1")
         self.end_headers()
-        self.wfile.write(data)
+        # 客户端可能在响应前主动断开（如单步超时用例），此时写回报 broken pipe，忽略。
+        with contextlib.suppress(BrokenPipeError):
+            self.wfile.write(data)
 
     def log_message(self, *args) -> None:  # 静默，避免污染测试输出
         pass
@@ -204,6 +211,11 @@ def set_chat_responses(payloads: Sequence[dict]) -> None:
     """按请求序号轮换 ``/chat/completions`` 响应；用尽后重复最后一份。"""
     _FakeHandler.custom_responses = list(payloads)
     _FakeHandler._custom_index = 0
+
+
+def set_chat_delay(seconds: float) -> None:
+    """让 ``/chat/completions`` 在响应前等待 ``seconds``（单步超时用例：制造慢响应）。"""
+    _FakeHandler.chat_delay = seconds
 
 
 def start_fake_server(payload: dict | None = None) -> tuple[str, list[dict], callable]:
@@ -221,6 +233,7 @@ def start_fake_server(payload: dict | None = None) -> tuple[str, list[dict], cal
     _FakeHandler.search_response = None
     _FakeHandler.tavily_response = None
     _FakeHandler.bocha_response = None
+    _FakeHandler.chat_delay = 0.0
     server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
