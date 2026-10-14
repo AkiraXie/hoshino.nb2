@@ -49,6 +49,8 @@ hoshino/modules/ai/    插件层：chat.py（# 对话）、ai_admin.py（管理�
 
 **Run 驱动**（`runner.py`）：`async with agent.iter(...)` 图循环 + `UsageLimits` 护栏 + `DeferredToolResults` 审批恢复 + `RunResult.usage()` 用量落库；含图时 prompt 为文本 + BinaryContent 原生多模态。
 
+**执行护栏（单步超时，非整轮墙钟）**：单步 = 单次模型请求 / 单次工具执行，各自受 `AI_STEP_TIMEOUT_SECONDS`（默认 300s；provider 行 `timeout_seconds` 优先）约束，run 本身没有墙钟上限——多步调研（连做多次 web_search/web_fetch）本来就超过任何整轮上限，那是正常运行。落点是两条 pydantic-ai 内建机制，都在节点自己的任务内计时：模型请求走 `ModelSettings["timeout"]`（逐请求传给 provider client），工具执行走 `FunctionToolset(timeout=)`（超时转成模型可见的重试提示，不直接杀 run）。**不要**用 `asyncio.wait_for(agent_run.next(node), ...)` 包单节点：取消的只是调用方的等待，节点任务会变孤儿继续跑，run 已损坏。总时长由 `chat_max_requests`（请求次数上限）与单步上限共同兜住；模型请求超时被 SDK 包成 `ModelAPIError`，用 `errors.is_step_timeout`（沿因果链找 `httpx.TimeoutException`）判定。
+
 **Harness 扩展**（`harness.py`）：Planning 工具 + StepPersistence ledger；import 失败时降级为空，不影响核心运行。
 
 ## 4. 自建扩展
