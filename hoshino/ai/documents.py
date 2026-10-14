@@ -15,9 +15,9 @@ from markdownify import markdownify
 from pydantic_ai import BinaryContent
 from pypdf import PdfReader
 
-from hoshino import data_dir
 from hoshino.ai import media
 from hoshino.ai.net import is_private_host
+from hoshino.ai.paths import attachments_dir, tool_overflow_dir
 from hoshino.ai.tools.computer.runtime import computer_workdir
 
 MAX_FILE_BYTES = 15 * 1024 * 1024
@@ -58,7 +58,7 @@ def _safe_name(name: str, default: str = "file.bin") -> str:
 
 
 def _attachment_path(name: str, identity: str) -> Path:
-    root = data_dir / "ai_attachments"
+    root = attachments_dir()
     digest = hashlib.sha256(identity.encode()).hexdigest()[:20]
     return root / f"{digest}_{_safe_name(name)}"
 
@@ -66,11 +66,12 @@ def _attachment_path(name: str, identity: str) -> Path:
 def _allowed_local_path(path: str | Path, config, deps=None) -> Path:
     candidate = Path(path).expanduser().resolve()
     roots = (
-        (data_dir / "ai_attachments").resolve(),
+        attachments_dir().resolve(),
+        tool_overflow_dir(config).resolve(),
         Path(computer_workdir(config, deps)).resolve(),
     )
     if not any(candidate == root or root in candidate.parents for root in roots):
-        raise ValueError("路径不在允许的附件目录或工作目录内。")
+        raise ValueError("路径不在允许的附件目录、工作目录或工具输出目录内。")
     return candidate
 
 

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
 import random
 import time
 from collections.abc import Callable, Sequence
@@ -42,10 +41,9 @@ from pydantic_ai.tools import DeferredToolResults
 from pydantic_ai.usage import UsageLimits
 from pydantic_graph import End, GraphRunContext
 
-from hoshino import data_dir
-
 from . import compaction, hooks
 from .deps import AgentDeps
+from .paths import tool_overflow_dir
 
 
 @dataclass(frozen=True, slots=True)
@@ -346,9 +344,7 @@ async def _spill_oversized_tool_results(history: list[Any], config: Any) -> bool
     max_chars = getattr(config, "tool_result_spill_max_chars", 0) or 0
     if max_chars <= 0:
         return False
-    spill_dir = Path(
-        getattr(config, "tool_result_spill_dir", "") or os.path.join(data_dir, "ai_tool_overflow")
-    )
+    spill_dir = tool_overflow_dir(config)
     changed = False
     for message in history:
         for part in getattr(message, "parts", None) or []:
@@ -364,7 +360,7 @@ async def _spill_oversized_tool_results(history: list[Any], config: Any) -> bool
             preview = content[:400]
             part.content = (
                 f"[工具输出过大：完整内容已保存到 {path}，"
-                f"如需细节请用 file 工具读取该文件。]\n{preview}"
+                f"如需细节请用 file_view 读取该文件。]\n{preview}"
             )
             changed = True
     return changed
