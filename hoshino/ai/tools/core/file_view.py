@@ -16,13 +16,18 @@ async def file_view(
 
     支持 txt、md、html、pdf 和图片。PDF 使用专用解析；不要用 web_fetch 解析 PDF。
     """
-    return await documents.file_view(
-        source,
-        config=ctx.deps.config,
-        deps=ctx.deps,
-        start_line=start_line,
-        end_line=end_line,
-    )
+    # 读取失败（路径越界、下载失败、解析失败）一律回给模型文本，不抛给 pydantic-ai：
+    # 非 ModelRetry 异常会直接终止整轮 run，模型猜错一次路径就白跑前面所有步骤。
+    try:
+        return await documents.file_view(
+            source,
+            config=ctx.deps.config,
+            deps=ctx.deps,
+            start_line=start_line,
+            end_line=end_line,
+        )
+    except Exception as exc:
+        return f"读取失败：{type(exc).__name__}：{exc}"
 
 
 tool = file_view
