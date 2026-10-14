@@ -44,9 +44,12 @@ class AIConfig:
     # Task 默认审批模式：auto（high-risk 工具 deferred approval）/
     # always（全部工具先审批）/ never（不审批）。创建 Task 时冻结进 capability snapshot。
     task_approval_mode: str = "auto"
-    # 聊天执行护栏（持久化不替代超时）：
-    # run 墙钟上限；run 内模型请求次数上限（UsageLimits.request_limit）。
-    chat_run_timeout_seconds: float = 180.0
+    # 聊天执行护栏（持久化不替代超时）：单步超时 + run 内模型请求次数上限
+    # （UsageLimits.request_limit）。单步 = 单次模型请求 / 单次工具执行各自计时，
+    # run 没有整轮墙钟——多步 run 只要每步在限内就允许跑完（一次多步调研很容易
+    # 超过任何整轮上限，那是正常运行而非故障）。注意模型请求的 HTTP 重试由
+    # provider SDK 内部负责（默认 2 次），所以一次彻底失败的请求最坏约 3× 该值。
+    step_timeout_seconds: float = 300.0
     chat_max_requests: int = 12
     # 上下文内存缓存（LRU）：驻留 scope 数与每 scope 驻留对话数，超限先 flush 再逐出。
     chat_memory_scopes: int = 256

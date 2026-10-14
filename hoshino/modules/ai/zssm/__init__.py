@@ -24,7 +24,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 import time
@@ -38,7 +37,7 @@ from pydantic_ai.messages import TextContent
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.usage import UsageLimits
 
-from hoshino.ai import documents, prompts, provider, providers, runner
+from hoshino.ai import documents, errors, prompts, provider, providers, runner
 from hoshino.ai.base import get_config
 from hoshino.ai.deps import AgentDeps
 from hoshino.ai.deps_build import build_permission_snapshot, construct_chat_deps
@@ -113,7 +112,6 @@ def _zssm_system_prompt() -> str:
     return f"{_ZSSM_SYSTEM_PROMPT}\n\n{prompts.build_time_prompt()}"
 
 
-_TIMEOUT_SECONDS = 90.0  # Agent run 超时（含多轮工具调用）
 _MAX_REQUESTS = 6  # 最大模型请求次数（初始 + 工具调用轮次）
 
 # zssm Agent 缓存（key 含 provider 快照；http client 由
@@ -228,15 +226,16 @@ def _build_zssm_agent(
     *,
     proxy: str | None,
     tool_max_retries: int = 3,
+    step_timeout_seconds: float | None = None,
 ) -> Agent:
     """构建并缓存 zssm 专用 Agent（web/仓库知识工具 + ZssmOutput 结构化输出）。"""
-    key = ("zssm", record.id, record, model, proxy, tool_max_retries)
+    key = ("zssm", record.id, record, model, proxy, tool_max_retries, step_timeout_seconds)
     cached = _agent_cache.get(key)
     if cached is not None:
         return cached
 
     model_obj = providers.build_model(record, model, proxy=proxy)
-    model_settings = providers.build_model_settings(record)
+    model_settings = providers.build_model_settings(record, default_timeout=step_timeout_seconds)
 
     # 注入 web 工具 + 只读仓库知识（解释本机器人命令时用）。
     web_tools = []
@@ -250,7 +249,8 @@ def _build_zssm_agent(
         web_tools.append(_file_view.tool)
     web_tools.append(_repo_code.hoshino_nb2_code)
 
-    toolsets = [FunctionToolset(web_tools)] if web_tools else None
+    # 工具执行与 chat 同一条单步超时：卡死的工具转成模型可见的重试提示，不挂住整轮。
+    toolsets = [FunctionToolset(web_tools, timeout=step_timeout_seconds)] if web_tools else None
     # 结构化输出必须走 prompted 模式：deepseek-v4-flash 等 thinking 模型拒绝
     # 工具强制结构化输出的 ``tool_choice="required"``（上游 400 invalid_request_error
     # "Thinking mode does not support this tool_choice"，普通对话不受影响——纯文本
@@ -379,6 +379,7 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
         model_name,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
         tool_max_retries=config.tool_max_retries,
+        step_timeout_seconds=config.step_timeout_seconds,
     )
 
     # Agent run 观测：info 级实时日志（与 chat 的 stream_logger 同构）+ 状态链
@@ -394,23 +395,25 @@ async def _(bot: Bot, event: Event, text: str = ParamText()):
             suffix = f" · 上一步 {delta:.1f}s" if delta >= 0.05 else ""
             sv.logger.info(f"zssm 实时 {_log_safe(desc)}{suffix}")
 
-    # Agent run（含工具调用循环 + 结构化输出校验）
+    # Agent run（含工具调用循环 + 结构化输出校验）。无整轮墙钟：单步超时在 agent
+    # 侧生效（单次模型请求 / 单次工具执行），run 只受请求次数约束。
     try:
-        result = await asyncio.wait_for(
-            runner.run_agent(
-                agent,
-                user_prompt,
-                deps=agent_deps,
-                usage_limits=UsageLimits(request_limit=_MAX_REQUESTS),
-                run_log=run_log,
-                on_event=on_event,
-            ),
-            timeout=_TIMEOUT_SECONDS,
+        result = await runner.run_agent(
+            agent,
+            user_prompt,
+            deps=agent_deps,
+            usage_limits=UsageLimits(request_limit=_MAX_REQUESTS),
+            run_log=run_log,
+            on_event=on_event,
         )
-    except TimeoutError:
-        await send_to_event(bot, event, "解释超时，请稍后重试。")
-        return
     except Exception as exc:
+        if errors.is_step_timeout(exc):
+            sv.logger.warning(
+                f"zssm 单步超时 provider={provider_id} model={model_name} "
+                f"step={run_log.steps} detail={errors.format_exception_detail(exc)}"
+            )
+            await send_to_event(bot, event, "解释超时，请稍后重试。")
+            return
         sv.logger.warning(
             f"zssm 解释失败 provider={provider_id} model={model_name} error={type(exc).__name__}"
         )

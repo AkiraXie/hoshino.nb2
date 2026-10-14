@@ -10,9 +10,9 @@
   回复/转发里的图片（原生多模态），而不仅是当前消息本体。
 - 上下文（Session→Conversation，对齐 AstrBot）：内存缓存 + SQLite write-through，
   见 ``sessions.py``；轮次按 scope 锁串行化，run 进行中再收消息回忙提示。
-- 执行护栏（持久化不替代超时）：
-  run 墙钟 ``chat_run_timeout_seconds`` + ``UsageLimits(chat_max_requests)``。
-  超时/超限把本轮提问写入上下文可续问；provider 异常不写。
+- 执行护栏（持久化不替代超时）：单步超时 ``step_timeout_seconds``（单次模型请求
+  与单次工具执行各自计时，run 无整轮墙钟）+ ``UsageLimits(chat_max_requests)``。
+  超时/超限丢弃本轮执行，提问不写入上下文；provider 异常同样不写。
 - 回复形态二选一，由模型通过 ``reply`` 输出工具决定：纯文本消息（闲聊、事实、
   要复制的内容）或 Markdown 图片（调研/对比/总结/知识等结构化长文）。带 Markdown
   或排版记号的正文一律按图片交付（模型声明 text 也会改判，图片是保底）；纯文本
@@ -378,6 +378,7 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
         model_name,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
         tool_max_retries=config.tool_max_retries,
+        step_timeout_seconds=config.step_timeout_seconds,
     )
     # 失败可观测性：RunLog 记录本轮发起过的工具调用（含超时前），异常时随日志
     # 输出定位是模型侧问题还是工具侧问题（如 web_search）。
@@ -385,33 +386,40 @@ async def _handle_chat_turn(bot: Bot, event: Event, scope_key: str, prompt: str)
     stream_logger = _make_stream_logger(provider_id, scope_key, conv.name, model_name)
 
     try:
-        result = await asyncio.wait_for(
-            runner.run_agent_with_retry(
-                agent,
-                prompt_arg,
-                deps=agent_deps,
-                message_history=history,
-                usage_limits=UsageLimits(request_limit=config.chat_max_requests),
-                run_log=run_log,
-                on_event=stream_logger,
-            ),
-            timeout=config.chat_run_timeout_seconds,
+        # 无整轮墙钟：单步上限（模型请求 / 工具执行）在 agent 侧生效，run 只受
+        # UsageLimits 的请求次数约束——多步调研本来就会跑很久，那不是故障。
+        result = await runner.run_agent_with_retry(
+            agent,
+            prompt_arg,
+            deps=agent_deps,
+            message_history=history,
+            usage_limits=UsageLimits(request_limit=config.chat_max_requests),
+            run_log=run_log,
+            on_event=stream_logger,
         )
-    except (TimeoutError, UsageLimitExceeded) as exc:
-        # 护栏触发：丢弃本次执行，不写入上下文（避免失败的提问/中间产物污染历史）。
-        agent_deps.telemetry.record_error(type(exc).__name__)
-        run_log.reason = "timeout" if isinstance(exc, TimeoutError) else "max-requests"
-        reason = "超时" if isinstance(exc, TimeoutError) else "超出步数限制"
-        sv.logger.warning(
-            f"AI 请求{reason} provider={provider_id} scope={scope_key} conv={conv.name}"
-        )
-        await send_to_event(
-            bot,
-            event,
-            f"处理{reason}，本次对话未记录，请重新提问。",
-        )
-        return
     except Exception as exc:
+        # 单步超时（含被 provider SDK 包装的 httpx 超时）与请求次数上限同语义：
+        # 护栏触发，丢弃本次执行不写入上下文（避免失败的提问/中间产物污染历史）。
+        if isinstance(exc, UsageLimitExceeded) or errors.is_step_timeout(exc):
+            limit_hit = isinstance(exc, UsageLimitExceeded)
+            run_log.reason = "max-requests" if limit_hit else "timeout"
+            reason = (
+                f"超出单轮请求次数上限（{config.chat_max_requests} 次）"
+                if limit_hit
+                else f"超时（单步超过 {config.step_timeout_seconds:.0f} 秒）"
+            )
+            agent_deps.telemetry.record_error(run_log.reason)
+            sv.logger.warning(
+                f"AI 请求{reason} provider={provider_id} scope={scope_key} "
+                f"conv={conv.name} model={model_name} step={run_log.steps} "
+                f"detail={errors.format_exception_detail(exc)}"
+            )
+            await send_to_event(
+                bot,
+                event,
+                f"处理{reason}，本次对话未记录，请重新提问。",
+            )
+            return
         # 完整错误详情（message + body/status/tool）+ 失败前工具调用；
         # traceback 只在 DEBUG 级别落，避免 WARNING 刷屏。
         run_log.reason = "error"

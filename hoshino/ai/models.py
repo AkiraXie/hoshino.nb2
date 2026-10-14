@@ -94,11 +94,18 @@ def _build_http_client(proxy: str | None) -> httpx.AsyncClient:
     return client
 
 
-def build_model_settings(record: ProviderRecord) -> ModelSettings | None:
-    """把 provider 行的非 None 采样参数转成 ModelSettings（TypedDict）。"""
+def build_model_settings(
+    record: ProviderRecord, *, default_timeout: float | None = None
+) -> ModelSettings | None:
+    """把 provider 行的非 None 采样参数转成 ModelSettings（TypedDict）。
+
+    ``default_timeout``：provider 行未显式设置 ``timeout_seconds`` 时使用的单步
+    超时（agent 构建方传入）；不传则沿用 http client 的默认超时（辅助摘要请求）。
+    """
     settings: dict[str, Any] = {}
-    if record.timeout_seconds is not None:
-        settings["timeout"] = record.timeout_seconds
+    timeout = record.timeout_seconds if record.timeout_seconds is not None else default_timeout
+    if timeout is not None:
+        settings["timeout"] = timeout
     return ModelSettings(**settings) if settings else None
 
 

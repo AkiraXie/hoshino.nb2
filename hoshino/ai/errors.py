@@ -16,10 +16,14 @@ from __future__ import annotations
 
 import json
 
+import httpx
+
 from . import redact
 
 _GROUP_NAMES = ("ExceptionGroup", "BaseExceptionGroup")
 _DEFAULT_LIMIT = 800
+#: 因果链回溯上限：包装层通常 1~2 层，超出即为异常环，直接放弃。
+_CAUSE_DEPTH = 8
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -39,6 +43,23 @@ def _body_text(body) -> str | None:
         return json.dumps(redact.strip_thinking(body), ensure_ascii=False)
     except Exception:
         return repr(body)
+
+
+def is_step_timeout(exc: BaseException) -> bool:
+    """判定异常是否为单步超时（模型请求超时被 provider SDK 逐层包装过）。
+
+    pydantic-ai 把超时包成 ``ModelAPIError``，其 ``__cause__`` 才是
+    ``openai.APITimeoutError`` → ``httpx.ReadTimeout``，直接 ``isinstance`` 判不出来，
+    因此沿因果链回溯找 ``httpx.TimeoutException`` / 内建 ``TimeoutError``。
+    """
+    node: BaseException | None = exc
+    for _ in range(_CAUSE_DEPTH):
+        if node is None:
+            return False
+        if isinstance(node, TimeoutError | httpx.TimeoutException):
+            return True
+        node = node.__cause__ or node.__context__
+    return False
 
 
 def format_exception_detail(exc: BaseException, limit: int = _DEFAULT_LIMIT) -> str:

@@ -113,6 +113,7 @@ async def run_task_run(
         ctx.model,
         proxy=provider.resolve_effective_proxy(record, config.proxy),
         tool_max_retries=config.tool_max_retries,
+        step_timeout_seconds=config.step_timeout_seconds,
     )
     deps = build_task_deps(ctx, config)
     history = context.deserialize_messages(ctx.extra.get("message_history_json"))

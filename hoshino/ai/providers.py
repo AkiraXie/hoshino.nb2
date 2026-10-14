@@ -123,11 +123,19 @@ def _render_persona_safe(text: str, variables: dict[str, str], *, scope_key) -> 
 
 
 def _resolve_toolset(ctx: RunContext[AgentDeps]) -> FunctionToolset | None:
-    """每 run 按 deps 解析工具集；无工具时返回 None（DynamicToolset 接受 None）。"""
+    """每 run 按 deps 解析工具集；无工具时返回 None（DynamicToolset 接受 None）。
+
+    ``timeout`` 是单步超时的一部分：单个工具执行超过它会被 pydantic-ai 转成模型
+    可见的重试提示（不直接杀 run），避免删掉整轮墙钟后某个卡死的工具让本轮无限挂住。
+    """
     tools = resolve_tools(ctx.deps)
     if not tools:
         return None
-    return FunctionToolset(tools, instructions=build_tool_instructions(ctx.deps))
+    return FunctionToolset(
+        tools,
+        timeout=ctx.deps.config.step_timeout_seconds,
+        instructions=build_tool_instructions(ctx.deps),
+    )
 
 
 def build_agent(
@@ -137,19 +145,22 @@ def build_agent(
     *,
     proxy: str | None = None,
     tool_max_retries: int = 3,
+    step_timeout_seconds: float | None = None,
 ) -> Agent:
-    """构建并缓存 Agent。缓存 key 含 provider 快照、model 名与代理。
+    """构建并缓存 Agent。缓存 key 含 provider 快照、model 名、代理与单步超时。
 
     ``tool_max_retries``：工具调用失败重试预算，默认 3（pydantic-ai 默认 1，
     web_fetch 类抓取工具偶发失败会触发 "exceeded max retries" 杀掉整轮 run）。
+    ``step_timeout_seconds``：单次模型请求的超时；provider 行显式设置了
+    ``timeout_seconds`` 时优先用行值，两者都没有则沿用 http client 默认超时。
     联网搜索不在此注入 capability：统一走 ``web_search`` 工具（dsh 同款独立
     原生搜索请求，见 ``tools/web/web_search.py``）。
     """
-    key = (provider_id, provider, model, proxy, tool_max_retries)
+    key = (provider_id, provider, model, proxy, tool_max_retries, step_timeout_seconds)
     agent = _agent_cache.get(key)
     if agent is None:
         model_obj = build_model(provider, model, proxy=proxy)
-        model_settings = build_model_settings(provider)
+        model_settings = build_model_settings(provider, default_timeout=step_timeout_seconds)
         agent = Agent(
             model=model_obj,
             model_settings=model_settings,
