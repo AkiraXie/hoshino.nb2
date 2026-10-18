@@ -25,7 +25,7 @@ import psutil
 
 _PROC = Path("/proc/self")
 _ARENA_SIZE = 64 * 1024 * 1024
-_ARENA_SIZE_KB = _ARENA_SIZE // 1024
+_ARENA_MIN_KB = 32 * 1024
 _HEADER_RE = re.compile(r"^([0-9a-f]+)-([0-9a-f]+)\s")
 
 
@@ -94,7 +94,11 @@ def _read_anon_huge_kb() -> int:
 
 
 def _mapping_stats() -> _MappingStats:
-    """统计 ``[heap]`` 与 64MB 对齐的线程 arena（glibc ``new_heap``）。"""
+    """统计 ``[heap]`` 与 64MB 对齐的线程 arena（glibc ``new_heap``）。
+
+    arena 被 ``heap_trim`` 收缩后 VMA 不再等于 64MB，但起始地址仍保持对齐，
+    因此按“对齐 + 至少 32MB”识别，避免只统计完整 64MB 而漏掉已被部分归还的。
+    """
     try:
         lines = (_PROC / "smaps").read_text().splitlines()
     except OSError:
@@ -124,7 +128,7 @@ def _mapping_stats() -> _MappingStats:
 
         if path == "[heap]":
             heap_kb += rss_kb
-        elif not path and size_kb == _ARENA_SIZE_KB and start % _ARENA_SIZE == 0:
+        elif not path and size_kb >= _ARENA_MIN_KB and start % _ARENA_SIZE == 0:
             arena_count += 1
             arena_kb += rss_kb
     return _MappingStats(heap_kb, arena_count, arena_kb)
