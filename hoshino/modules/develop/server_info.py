@@ -8,8 +8,10 @@ from nonebot.adapters import Bot
 from hoshino.core.hooks import on_bot_connect
 from hoshino.platform import send_to_superuser
 from hoshino.util.command import sucmd
+from hoshino.util.memreport import build_memory_report
 
 showcmd = sucmd("状态", aliases={"serverinfo", "stat"})
+memcmd = sucmd("内存", aliases={"mem", "meminfo"})
 epoch = datetime.fromtimestamp(0, UTC)
 
 
@@ -67,6 +69,11 @@ async def get_stat():
 @showcmd.handle()
 async def _():
     await showcmd.finish(await get_stat())
+
+
+@memcmd.handle()
+async def _mem():
+    await memcmd.finish(await asyncio.to_thread(build_memory_report))
 
 
 @on_bot_connect
