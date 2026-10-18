@@ -179,7 +179,7 @@ def _build_parser() -> argparse.ArgumentParser:
     attach_parser = subparsers.add_parser("attach", help="注入正在运行的 bot")
     attach_parser.add_argument("--pid", type=int, help="目标 PID；默认自动查找")
     attach_parser.add_argument("-o", "--output", help="捕获文件")
-    attach_parser.add_argument("--duration", type=float, default=60.0, help="记录秒数，默认 60")
+    attach_parser.add_argument("--duration", type=int, default=60, help="记录秒数，默认 60")
     attach_parser.add_argument("--native", action="store_true")
     attach_parser.add_argument("--trace-python-allocators", action="store_true")
     attach_parser.set_defaults(func=_attach_command)
