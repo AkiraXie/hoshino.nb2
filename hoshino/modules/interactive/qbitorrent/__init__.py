@@ -112,7 +112,7 @@ async def _(
         await add_torrent.finish(
             "用法: 添加种子 <下载链接> [分类]\n"
             "支持格式:\n"
-            "- 磁力链接 (magnet:?xt=urn:btih:...)\n"
+            "- 磁力链接 (magnet:?xt=urn:btih:...，可带 &dn= / &tr= 参数)\n"
             "- 种子文件URL (.torrent)\n"
             "- 其他下载链接"
         )
@@ -131,7 +131,7 @@ async def _(
         await add_torrent.finish(
             "无效的下载链接格式！\n"
             "支持的格式:\n"
-            "- 磁力链接: magnet:?xt=urn:btih:...\n"
+            "- 磁力链接: magnet:?xt=urn:btih:...（可带 &dn= / &tr= 参数）\n"
             "- 种子文件: http(s)://.../*.torrent\n"
         )
 

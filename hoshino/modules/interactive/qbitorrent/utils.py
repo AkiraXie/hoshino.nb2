@@ -1,5 +1,6 @@
 import os
 import re
+from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import BaseModel
 from sqlalchemy import Integer, Text, create_engine, select
@@ -220,10 +221,32 @@ class QbtClient:
         return data if status == 200 else []
 
 
+_BTIH_PREFIX = "urn:btih:"
+_BTIH_HASH_PATTERN = re.compile(r"(?:[0-9a-fA-F]{40}|[A-Za-z2-7]{32})")
+"""``urn:btih:`` 之后允许的 infohash：40 位十六进制（v1）或 32 位 base32。"""
+
+
+def _is_btih_xt(value: str) -> bool:
+    """判断 ``xt`` 参数的值是否为 ``urn:btih:<infohash>``。"""
+    if not value.lower().startswith(_BTIH_PREFIX):
+        return False
+    return _BTIH_HASH_PATTERN.fullmatch(value[len(_BTIH_PREFIX) :]) is not None
+
+
 def validate_magnet_url(url: str) -> bool:
-    """验证是否为有效的磁力链接（32 或 40 位十六进制 BTIH）"""
-    magnet_pattern = r"^magnet:\?xt=urn:btih:(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{40})$"
-    return bool(re.match(magnet_pattern, url))
+    """验证磁力链接：只要求存在合法的 ``xt=urn:btih:``，其余参数原样放行。
+
+    真实站点给出的 magnet 几乎都带 ``dn``（名称）与多个 ``tr``（tracker），
+    qBittorrent 会自行解析并 percent-decode，因此这里不重建链接、也不拒绝附加
+    参数，否则这些链接会在入库前被判成"无效格式"。
+    """
+    parts = urlsplit(url)
+    if parts.scheme.lower() != "magnet":
+        return False
+    return any(
+        key.lower() == "xt" and _is_btih_xt(value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+    )
 
 
 def validate_torrent_url(url: str) -> bool:
